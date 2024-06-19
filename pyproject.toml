@@ -1,0 +1,31 @@
+[project]
+name = "hope-country-workspace"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "sax", email = "s.apostolico@gmail.com"},
+]
+dependencies = [
+    "django>=5.0.6",
+    "djangorestframework>=3.15.1",
+    "django-celery-beat>=2.6.0",
+    "django-admin-extra-buttons>=1.5.8",
+    "django-adminactions>=2.3.0",
+]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "pytest>=8.2.2",
+    "pytest-celery>=1.0.0",
+    "pytest-django>=4.8.0",
+    "pytest-echo>=1.7.3",
+    "freezegun>=1.5.1",
+    "factory-boy>=3.3.0",
+]
