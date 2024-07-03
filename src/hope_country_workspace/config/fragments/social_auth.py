@@ -9,7 +9,7 @@ SOCIAL_AUTH_ADMIN_USER_SEARCH_FIELDS = [
 SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_URL_NAMESPACE = "social"
 # SOCIAL_AUTH_REQUIRE_POST = True
-SOCIAL_AUTH_STRATEGY = "hope_dedup_engine.apps.social.strategy.HDEStrategy"
+SOCIAL_AUTH_STRATEGY = "hope_country_workspace.social.strategy.HDEStrategy"
 
 # SOCIAL_AUTH_PIPELINE = (
 #     "social_core.pipeline.social_auth.social_uid",
@@ -31,7 +31,7 @@ SOCIAL_AUTH_PIPELINE = (
     "social_core.pipeline.social_auth.associate_user",
     "social_core.pipeline.social_auth.load_extra_data",
     "social_core.pipeline.user.user_details",
-    "hope_dedup_engine.apps.social.pipeline.save_to_group",
+    "hope_country_workspace.social.pipeline.save_to_group",
 )
 
 SOCIAL_AUTH_SANITIZE_REDIRECTS = False

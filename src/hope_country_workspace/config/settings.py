@@ -15,9 +15,6 @@ DATABASES = {
 }
 
 INSTALLED_APPS = (
-    "hope_dedup_engine.web",
-    "hope_dedup_engine.apps.core.apps.Config",
-    "hope_dedup_engine.apps.security.apps.Config",
     # "unicef_security",
     "django.contrib.contenttypes",
     "django.contrib.auth",
@@ -36,14 +33,12 @@ INSTALLED_APPS = (
     "adminfilters",
     "adminfilters.depot",
     "constance",
-    "rest_framework",
     "django_celery_beat",
     "django_celery_results",
-    "drf_spectacular",
-    "drf_spectacular_sidecar",
-    "hope_dedup_engine.apps.api",
-    "hope_dedup_engine.apps.faces",
-    "storages",
+
+    "hope_country_workspace.security",
+    "hope_country_workspace",
+
 )
 
 MIDDLEWARE = (
@@ -60,6 +55,7 @@ MIDDLEWARE = (
 AUTHENTICATION_BACKENDS = (
     "social_core.backends.azuread_tenant.AzureADTenantOAuth2",
     "django.contrib.auth.backends.ModelBackend",
+    "hope_country_workspace.tenant.backend.TenantBackend",
     *env("AUTHENTICATION_BACKENDS"),
 )
 
@@ -123,8 +119,8 @@ CACHES = {
 }
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
-ROOT_URLCONF = "hope_dedup_engine.config.urls"
-WSGI_APPLICATION = "hope_dedup_engine.config.wsgi.application"
+ROOT_URLCONF = "hope_country_workspace.config.urls"
+WSGI_APPLICATION = "hope_country_workspace.config.wsgi.application"
 
 TEMPLATES = [
     {

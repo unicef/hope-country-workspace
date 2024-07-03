@@ -1,22 +1,21 @@
-from typing import Dict, TYPE_CHECKING
-
 import contextlib
 from copy import copy
 from threading import local
+from typing import TYPE_CHECKING, Dict
+
+from django.http import HttpRequest, HttpResponse
+
+from hope_country_workspace.security.models import CountryOffice
 
 if TYPE_CHECKING:
-    from typing import Any, List
-
     from collections.abc import Iterator
-
-    from hope_country_report.apps.core.models import CountryOffice
-    from hope_country_report.types.http import AnyRequest, AnyResponse
+    from typing import Any, List
 
 not_set = object()
 
 
 class State(local):
-    request: "AnyRequest|None" = None
+    request: "HttpRequest|None" = None
     tenant_cookie: "str|None" = None
     tenant: "CountryOffice|None" = None
     must_tenant: "bool|None" = None
@@ -28,7 +27,7 @@ class State(local):
         return f"<State {id(self)}: {self.tenant_cookie}:{self.must_tenant}>"
 
     @contextlib.contextmanager
-    def configure(self, **kwargs: "Dict[str,Any]") -> "Iterator[None]":
+    def configure(self, **kwargs: "dict[str,Any]") -> "Iterator[None]":
         pre = copy(self.__dict__)
         self.reset()
         with self.set(**kwargs):
@@ -77,9 +76,18 @@ class State(local):
         httponly: bool = False,
         samesite: "Any" = None,
     ) -> None:
-        self.cookies[key] = [value, max_age, expires, path, domain, secure, httponly, samesite]
+        self.cookies[key] = [
+            value,
+            max_age,
+            expires,
+            path,
+            domain,
+            secure,
+            httponly,
+            samesite,
+        ]
 
-    def set_cookies(self, response: "AnyResponse") -> None:
+    def set_cookies(self, response: "HttpResponse") -> None:
         for name, args in self.cookies.items():
             response.set_cookie(name, *args)
 

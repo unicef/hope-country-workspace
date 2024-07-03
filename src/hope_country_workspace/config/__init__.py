@@ -5,7 +5,9 @@ from urllib import parse
 from environ import Env
 
 if TYPE_CHECKING:
-    ConfigItem: TypeAlias = Union[Tuple[type, Any, str, Any], Tuple[type, Any, str], Tuple[type, Any]]
+    ConfigItem: TypeAlias = Union[
+        Tuple[type, Any, str, Any], Tuple[type, Any, str], Tuple[type, Any]
+    ]
 
 
 DJANGO_HELP_BASE = "https://docs.djangoproject.com/en/5.0/ref/settings"
@@ -20,7 +22,14 @@ class Group(Enum):
 
 
 NOT_SET = "<- not set ->"
-EXPLICIT_SET = ["DATABASE_URL", "SECRET_KEY", "CACHE_URL", "CELERY_BROKER_URL", "MEDIA_ROOT", "STATIC_ROOT"]
+EXPLICIT_SET = [
+    "DATABASE_URL",
+    "SECRET_KEY",
+    "CACHE_URL",
+    "CELERY_BROKER_URL",
+    "MEDIA_ROOT",
+    "STATIC_ROOT",
+]
 
 CONFIG: "Dict[str, ConfigItem]" = {
     "ADMIN_EMAIL": (str, "", "Initial user created at first deploy"),
@@ -29,7 +38,11 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "AUTHENTICATION_BACKENDS": (list, [], setting("authentication-backends")),
     "CACHE_URL": (str, "redis://localhost:6379/0"),
     "CATCH_ALL_EMAIL": (str, "If set all the emails will be sent to this address"),
-    "CELERY_BROKER_URL": (str, NOT_SET, "https://docs.celeryq.dev/en/stable/django/first-steps-with-django.html"),
+    "CELERY_BROKER_URL": (
+        str,
+        NOT_SET,
+        "https://docs.celeryq.dev/en/stable/django/first-steps-with-django.html",
+    ),
     "CELERY_TASK_ALWAYS_EAGER": (
         bool,
         False,
@@ -49,26 +62,52 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "CSRF_COOKIE_SECURE": (bool, True, setting("csrf-cookie-secure")),
     "DATABASE_URL": (
         str,
-        "postgres://127.0.0.1:5432/dedupe",
+        "postgres://127.0.0.1:5432/country_workspace",
         "https://django-environ.readthedocs.io/en/latest/types.html#environ-env-db-url",
         "postgres://127.0.0.1:5432/dedupe",
     ),
     "DEBUG": (bool, False, setting("debug"), True),
-    "EMAIL_BACKEND": (str, "django.core.mail.backends.smtp.EmailBackend", setting("email-backend"), True),
+    "EMAIL_BACKEND": (
+        str,
+        "django.core.mail.backends.smtp.EmailBackend",
+        setting("email-backend"),
+        True,
+    ),
     "EMAIL_HOST": (str, "localhost", setting("email-host"), True),
     "EMAIL_HOST_USER": (str, "", setting("email-host-user"), True),
     "EMAIL_HOST_PASSWORD": (str, "", setting("email-host-password"), True),
     "EMAIL_PORT": (int, "25", setting("email-port"), True),
-    "EMAIL_SUBJECT_PREFIX": (str, "[Hope-dedupe]", setting("email-subject-prefix"), True),
+    "EMAIL_SUBJECT_PREFIX": (
+        str,
+        "[Hope-dedupe]",
+        setting("email-subject-prefix"),
+        True,
+    ),
     "EMAIL_USE_LOCALTIME": (bool, False, setting("email-use-localtime"), True),
     "EMAIL_USE_TLS": (bool, False, setting("email-use-tls"), True),
     "EMAIL_USE_SSL": (bool, False, setting("email-use-ssl"), True),
     "EMAIL_TIMEOUT": (str, None, setting("email-timeout"), True),
     "LOGGING_LEVEL": (str, "CRITICAL", setting("logging-level")),
-    "FILE_STORAGE_DEFAULT": (str, "django.core.files.storage.FileSystemStorage", setting("storages")),
-    "FILE_STORAGE_MEDIA": (str, "django.core.files.storage.FileSystemStorage", setting("storages")),
-    "FILE_STORAGE_STATIC": (str, "django.contrib.staticfiles.storage.StaticFilesStorage", setting("storages")),
-    "FILE_STORAGE_HOPE": (str, "django.core.files.storage.FileSystemStorage", setting("storages")),
+    "FILE_STORAGE_DEFAULT": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
+    "FILE_STORAGE_MEDIA": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
+    "FILE_STORAGE_STATIC": (
+        str,
+        "django.contrib.staticfiles.storage.StaticFilesStorage",
+        setting("storages"),
+    ),
+    "FILE_STORAGE_HOPE": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
     "MEDIA_ROOT": (str, None, setting("media-root")),
     "MEDIA_URL": (str, "/media/", setting("media-url")),
     "ROOT_TOKEN": (str, "", ""),
@@ -79,16 +118,29 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "SENTRY_DSN": (str, "", "Sentry DSN"),
     "SENTRY_ENVIRONMENT": (str, "production", "Sentry Environment"),
     "SENTRY_URL": (str, "", "Sentry server url"),
-    "SESSION_COOKIE_DOMAIN": (str, "", setting("std-setting-SESSION_COOKIE_DOMAIN"), "localhost"),
+    "SESSION_COOKIE_DOMAIN": (
+        str,
+        "",
+        setting("std-setting-SESSION_COOKIE_DOMAIN"),
+        "localhost",
+    ),
     "SESSION_COOKIE_HTTPONLY": (bool, True, setting("session-cookie-httponly"), False),
     "SESSION_COOKIE_NAME": (str, "dedupe_session", setting("session-cookie-name")),
     "SESSION_COOKIE_PATH": (str, "/", setting("session-cookie-path")),
     "SESSION_COOKIE_SECURE": (bool, True, setting("session-cookie-secure"), False),
-    "SIGNING_BACKEND": (str, "django.core.signing.TimestampSigner", setting("signing-backend")),
+    "SIGNING_BACKEND": (
+        str,
+        "django.core.signing.TimestampSigner",
+        setting("signing-backend"),
+    ),
     "SOCIAL_AUTH_LOGIN_URL": (str, "/login/", "", ""),
     "SOCIAL_AUTH_RAISE_EXCEPTIONS": (bool, False, "", True),
     "SOCIAL_AUTH_REDIRECT_IS_HTTPS": (bool, True, "", False),
-    "STATIC_FILE_STORAGE": (str, "django.core.files.storage.FileSystemStorage", setting("storages")),
+    "STATIC_FILE_STORAGE": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
     "STATIC_ROOT": (str, None, setting("static-root")),
     "STATIC_URL": (str, "/static/", setting("static-url")),
     "TIME_ZONE": (str, "UTC", setting("std-setting-TIME_ZONE")),

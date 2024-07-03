@@ -1,17 +1,19 @@
+import logging
 from typing import TYPE_CHECKING
 
-import logging
-
 from django.core.signing import get_cookie_signer
+from django.http import HttpRequest, HttpResponse
 
-from hope_country_report.apps.tenant.config import conf
-from hope_country_report.state import state, State
+from hope_country_workspace.state import State, state
+from hope_country_workspace.tenant.config import conf
+
+from ..security.models import CountryOffice, User
 
 if TYPE_CHECKING:
-    from django.http import HttpResponse
 
-    from hope_country_report.apps.core.models import CountryOffice
-    from hope_country_report.types.http import AuthHttpRequest
+    class AuthHttpRequest(HttpRequest):
+        user: "User" = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,9 @@ class RequestHandler:
         state.tenant = get_selected_tenant()
         return state
 
-    def process_response(self, request: "AuthHttpRequest", response: "HttpResponse|None") -> None:
+    def process_response(
+        self, request: "AuthHttpRequest", response: "HttpResponse|None"
+    ) -> None:
         if response:
             state.set_cookies(response)
         state.reset()

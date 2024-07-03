@@ -1,12 +1,9 @@
-from typing import TYPE_CHECKING
+from django.http import HttpRequest
 
 from django_regex.utils import RegexList
 
-if TYPE_CHECKING:
-    from hope_dedup_engine.types.http import AuthHttpRequest
 
-
-def show_ddt(request: "AuthHttpRequest") -> bool:  # pragma: no-cover
+def show_ddt(request: "HttpRequest") -> bool:  # pragma: no-cover
     from flags.state import flag_enabled
 
     if request.path in RegexList(("/api/.*", "/dal/.*", "/healthcheck/")):

@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING
-
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 from django.core.signals import setting_changed
 from django.db.models import Model
@@ -9,8 +8,6 @@ if TYPE_CHECKING:
     from typing import Any, Union
 
     from .backend import TenantBackend
-
-    # from .strategy import BaseTenantStrategy
 
 
 class AppSettings:
@@ -22,8 +19,8 @@ class AppSettings:
         "TENANT_MODEL": None,
         "NAMESPACE": "tenant_admin",
         "COOKIE_NAME": "selected_tenant",
-        "STRATEGY": "hope_country_report.apps.tenant.strategy.DefaultStrategy",
-        "AUTH": "hope_country_report.apps.tenant.backend.TenantBackend",
+        "STRATEGY": "hope_country_workspace.tenant.strategy.DefaultStrategy",
+        "AUTH": "hope_country_workspace.tenant.backend.TenantBackend",
     }
 
     def __init__(self, prefix: str):
@@ -35,19 +32,15 @@ class AppSettings:
             value = getattr(settings, prefixed_name, default)
             self._set_attr(prefixed_name, value)
             setattr(settings, prefixed_name, value)
-            setting_changed.send(self.__class__, setting=prefixed_name, value=value, enter=True)
+            setting_changed.send(
+                self.__class__, setting=prefixed_name, value=value, enter=True
+            )
 
         setting_changed.connect(self._on_setting_changed)
 
     def _set_attr(self, prefixed_name: str, value: "Any") -> None:
-        name = prefixed_name[len(self.prefix) + 1 :]
+        name = prefixed_name[(len(self.prefix) + 1) :]
         setattr(self, name, value)
-
-    # @cached_property
-    # def strategy(self) -> "BaseTenantStrategy":
-    #     from .strategy import BaseTenantStrategy
-    #
-    #     return BaseTenantStrategy(self)
 
     @cached_property
     def auth(self) -> "TenantBackend":
@@ -62,9 +55,13 @@ class AppSettings:
 
         if not self.TENANT_MODEL:
             raise ValueError(f"Please set settings.{self.prefix}_TENANT_MODEL")
-        return apps.get_model(self.TENANT_MODEL)  # type ignore [return-value,attr-defined]
+        return apps.get_model(
+            self.TENANT_MODEL
+        )  # type ignore [return-value,attr-defined]
 
-    def _on_setting_changed(self, sender: "Model", setting: str, value: "Any", **kwargs: "Any") -> None:
+    def _on_setting_changed(
+        self, sender: "Model", setting: str, value: "Any", **kwargs: "Any"
+    ) -> None:
         if setting.startswith(self.prefix):
             self._set_attr(setting, value)
         for attr in ["tenant_model", "auth", "strategy"]:

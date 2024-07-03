@@ -1,0 +1,1 @@
+DEFAULT_GROUP_NAME = "Default"

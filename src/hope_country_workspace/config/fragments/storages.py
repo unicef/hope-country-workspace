@@ -1,4 +1,4 @@
-from hope_dedup_engine.config import env
+from hope_country_workspace.config import env
 
 AZURE_ACCOUNT_NAME = env("AZURE_ACCOUNT_NAME")
 AZURE_ACCOUNT_KEY = env("AZURE_ACCOUNT_KEY")

@@ -1,15 +1,11 @@
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict
 
 from django.db import models
-from django.db.models import QuerySet
 
-from hope_country_report.state import state
+from hope_country_workspace.state import state
 
 from .exceptions import InvalidTenantError
 from .utils import get_selected_tenant, must_tenant
-
-if TYPE_CHECKING:
-    from ...types.django import AnyModel
 
 
 class TenantManager(models.Manager["TenantModel"]):
@@ -35,7 +31,7 @@ class TenantManager(models.Manager["TenantModel"]):
             raise InvalidTenantError("State does not have any active tenant")
         return {tenant_filter_field: state.tenant.hope_id}
 
-    def get_queryset(self) -> "QuerySet[AnyModel, AnyModel]":
+    def get_queryset(self):
         flt = self.get_tenant_filter()
         if flt:
             state.filters.append({self.model: str(flt)})

@@ -1,21 +1,11 @@
-import cv2
-
-from hope_dedup_engine.apps.security.constants import DEFAULT_GROUP_NAME
-
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 
 CONSTANCE_CONFIG = {
     "NEW_USER_IS_STAFF": (False, "Set any new user as staff", bool),
-    "NEW_USER_DEFAULT_GROUP": (DEFAULT_GROUP_NAME, "Group to assign to any new user", str),
-    "DNN_BACKEND": (
-        cv2.dnn.DNN_BACKEND_OPENCV,
-        "Specifies the computation backend to be used by OpenCV for deep learning inference.",
-        "dnn_backend",
-    ),
-    "DNN_TARGET": (
-        cv2.dnn.DNN_TARGET_CPU,
-        "Specifies the target device on which OpenCV will perform the deep learning computations.",
-        "dnn_target",
+    "NEW_USER_DEFAULT_GROUP": (
+        "Default",
+        "Group to assign to any new user",
+        str,
     ),
     "BLOB_FROM_IMAGE_SCALE_FACTOR": (
         1.0,
@@ -110,23 +100,4 @@ CONSTANCE_ADDITIONAL_FIELDS = {
         "django.forms.EmailField",
         {},
     ],
-    "dnn_backend": [
-        "django.forms.ChoiceField",
-        {
-            "choices": ((cv2.dnn.DNN_BACKEND_OPENCV, "DNN_BACKEND_OPENCV"),),
-        },
-    ],
-    "dnn_target": [
-        "django.forms.ChoiceField",
-        {
-            "choices": ((cv2.dnn.DNN_TARGET_CPU, "DNN_TARGET_CPU"),),
-        },
-    ],
-    "face_encodings_model": [
-        "django.forms.ChoiceField",
-        {
-            "choices": (("small", "SMALL"), ("large", "LARGE")),
-        },
-    ],
-    "tuple_field": ["hope_dedup_engine.apps.faces.validators.MeanValuesTupleField", {}],
 }

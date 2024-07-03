@@ -4,9 +4,11 @@ from typing import Any
 import sentry_sdk
 from celery import Celery, signals
 
-from hope_dedup_engine.config import settings
+from hope_country_workspace.config import settings
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hope_dedup_engine.config.settings")
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE", "hope_country_workspace.config.settings"
+)
 
 
 app = Celery("hde")

@@ -11,6 +11,17 @@ dependencies = [
     "django-celery-beat>=2.6.0",
     "django-admin-extra-buttons>=1.5.8",
     "django-adminactions>=2.3.0",
+    "unicef-security>=1.5.1",
+    "sentry-sdk>=2.7.1",
+    "django-debug-toolbar>=4.4.2",
+    "django-environ>=0.11.2",
+    "django-flags>=5.0.13",
+    "django-regex>=0.5.0",
+    "psycopg2-binary>=2.9.9",
+    "django-adminfilters>=2.4.3",
+    "django-celery-results>=2.5.1",
+    "celery>=5.4.0",
+    "django-constance>=3.1.0",
 ]
 requires-python = "==3.12.*"
 readme = "README.md"
@@ -28,4 +39,34 @@ dev = [
     "pytest-echo>=1.7.3",
     "freezegun>=1.5.1",
     "factory-boy>=3.3.0",
+    "black>=24.4.2",
+    "isort>=5.13.2",
+    "flake8>=7.1.0",
 ]
+
+[tool.black]
+line-length = 88
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.pytest_cache
+  | \.tox
+  | \.venv
+  | ~build
+  | build
+  | ops
+  | migrations
+)/
+'''
+
+
+[tool.isort]
+profile = "black"
+line_length = 88
+default_section = "THIRDPARTY"
+known_first_party = []
+known_django = "django"
+sections = ["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
+include_trailing_comma = true
+skip = ["migrations", "snapshots", ".venv"]

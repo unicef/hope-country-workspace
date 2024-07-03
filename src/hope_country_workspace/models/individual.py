@@ -1,34 +1,64 @@
-from src.hope_country_workspace import models
+from django.contrib.postgres.fields import CICharField
+from django.core.validators import MinLengthValidator
 from django.db import models
 
+from hope_country_workspace.models.household import Household
 from hope_country_workspace.tenant.db import TenantModel
-from django.db import models
 
-from hope_country_workspace.tenant.db import TenantModel
+NON_BENEFICIARY = "NON_BENEFICIARY"
+HEAD = "HEAD"
+SON_DAUGHTER = "SON_DAUGHTER"
+WIFE_HUSBAND = "WIFE_HUSBAND"
+BROTHER_SISTER = "BROTHER_SISTER"
+MOTHER_FATHER = "MOTHER_FATHER"
+AUNT_UNCLE = "AUNT_UNCLE"
+GRANDMOTHER_GRANDFATHER = "GRANDMOTHER_GRANDFATHER"
+MOTHERINLAW_FATHERINLAW = "MOTHERINLAW_FATHERINLAW"
+DAUGHTERINLAW_SONINLAW = "DAUGHTERINLAW_SONINLAW"
+SISTERINLAW_BROTHERINLAW = "SISTERINLAW_BROTHERINLAW"
+GRANDDAUGHTER_GRANDSON = (
+    "GRANDDAUGHER_GRANDSON"  # key is wrong, but it is used in kobo and aurora
+)
+NEPHEW_NIECE = "NEPHEW_NIECE"
+COUSIN = "COUSIN"
+FOSTER_CHILD = "FOSTER_CHILD"
+RELATIONSHIP_UNKNOWN = "UNKNOWN"
+RELATIONSHIP_OTHER = "OTHER"
+FREE_UNION = "FREE_UNION"
+
+RELATIONSHIP_CHOICE = (
+    (RELATIONSHIP_UNKNOWN, "Unknown"),
+    (AUNT_UNCLE, "Aunt / Uncle"),
+    (BROTHER_SISTER, "Brother / Sister"),
+    (COUSIN, "Cousin"),
+    (DAUGHTERINLAW_SONINLAW, "Daughter-in-law / Son-in-law"),
+    (GRANDDAUGHTER_GRANDSON, "Granddaughter / Grandson"),
+    (GRANDMOTHER_GRANDFATHER, "Grandmother / Grandfather"),
+    (HEAD, "Head of household (self)"),
+    (MOTHER_FATHER, "Mother / Father"),
+    (MOTHERINLAW_FATHERINLAW, "Mother-in-law / Father-in-law"),
+    (NEPHEW_NIECE, "Nephew / Niece"),
+    (
+        NON_BENEFICIARY,
+        "Not a Family Member. Can only act as a recipient.",
+    ),
+    (RELATIONSHIP_OTHER, "Other"),
+    (SISTERINLAW_BROTHERINLAW, "Sister-in-law / Brother-in-law"),
+    (SON_DAUGHTER, "Son / Daughter"),
+    (WIFE_HUSBAND, "Wife / Husband"),
+    (FOSTER_CHILD, "Foster child"),
+    (FREE_UNION, "Free union"),
+)
 
 
 class Individual(TenantModel):
-    duplicate = models.BooleanField(default=False, db_index=True)
-    duplicate_date = models.DateTimeField(null=True, blank=True)
-    withdrawn = models.BooleanField(default=False, db_index=True)
-    withdrawn_date = models.DateTimeField(null=True, blank=True)
-    individual_id = models.CharField(max_length=255, blank=True)
-    photo = models.ImageField(blank=True)
-    full_name = CICharField(max_length=255, validators=[MinLengthValidator(2)], db_index=True)
-    given_name = CICharField(max_length=85, blank=True, db_index=True)
-    middle_name = CICharField(max_length=85, blank=True, db_index=True)
-    family_name = CICharField(max_length=85, blank=True, db_index=True)
-    sex = models.CharField(max_length=255, choices=SEX_CHOICE, db_index=True)
+    full_name = models.CharField(
+        max_length=255, validators=[MinLengthValidator(2)], db_index=True
+    )
+    given_name = models.CharField(max_length=85, blank=True, db_index=True)
+    middle_name = models.CharField(max_length=85, blank=True, db_index=True)
+    family_name = models.CharField(max_length=85, blank=True, db_index=True)
     birth_date = models.DateField(db_index=True)
-    estimated_birth_date = models.BooleanField(default=False)
-    marital_status = models.CharField(max_length=255, choices=MARITAL_STATUS_CHOICE, default=BLANK, db_index=True)
-
-    phone_no = PhoneNumberField(blank=True, db_index=True)
-    phone_no_valid = models.BooleanField(null=True, db_index=True)
-    phone_no_alternative = PhoneNumberField(blank=True, db_index=True)
-    phone_no_alternative_valid = models.BooleanField(null=True, db_index=True)
-    email = models.CharField(max_length=255, blank=True)
-    payment_delivery_phone_no = PhoneNumberField(blank=True, null=True)
 
     relationship = models.CharField(
         max_length=255,
@@ -38,7 +68,7 @@ class Individual(TenantModel):
             as well if household is null!""",
     )
     household = models.ForeignKey(
-        "Household",
+        Household,
         related_name="individuals",
         on_delete=models.CASCADE,
         null=True,
@@ -48,91 +78,9 @@ class Individual(TenantModel):
             simply means they are a representative of one or more households
             and not a member of one.""",
     )
-    registration_data_import = models.ForeignKey(
-        "registration_data.RegistrationDataImport",
-        related_name="individuals",
-        on_delete=models.CASCADE,
-        null=True,
-    )
-    disability = models.CharField(max_length=20, choices=DISABILITY_CHOICES, default=NOT_DISABLED)
-    work_status = models.CharField(
-        max_length=20,
-        choices=WORK_STATUS_CHOICE,
-        blank=True,
-        default=NOT_PROVIDED,
-    )
     first_registration_date = models.DateField()
-    last_registration_date = models.DateField()
-    flex_fields = JSONField(default=dict, blank=True)
-    user_fields = JSONField(default=dict, blank=True)
-    enrolled_in_nutrition_programme = models.BooleanField(null=True)
-    administration_of_rutf = models.BooleanField(null=True)
-    deduplication_golden_record_status = models.CharField(
-        max_length=50,
-        default=UNIQUE,
-        choices=DEDUPLICATION_GOLDEN_RECORD_STATUS_CHOICE,
-        db_index=True,
-    )
-    deduplication_batch_status = models.CharField(
-        max_length=50,
-        default=UNIQUE_IN_BATCH,
-        choices=DEDUPLICATION_BATCH_STATUS_CHOICE,
-        db_index=True,
-    )
-    deduplication_golden_record_results = JSONField(default=dict, blank=True)
-    deduplication_batch_results = JSONField(default=dict, blank=True)
-    imported_individual_id = models.UUIDField(null=True, blank=True)
-    sanction_list_possible_match = models.BooleanField(default=False, db_index=True)
-    sanction_list_confirmed_match = models.BooleanField(default=False, db_index=True)
-    pregnant = models.BooleanField(null=True)
-    observed_disability = MultiSelectField(choices=OBSERVED_DISABILITY_CHOICE, default=NONE)
-    seeing_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    hearing_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    physical_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    memory_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    selfcare_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    comms_disability = models.CharField(max_length=50, choices=SEVERITY_OF_DISABILITY_CHOICES, blank=True)
-    who_answers_phone = models.CharField(max_length=150, blank=True)
-    who_answers_alt_phone = models.CharField(max_length=150, blank=True)
-    business_area = models.ForeignKey("core.BusinessArea", on_delete=models.CASCADE)
-    fchild_hoh = models.BooleanField(default=False)
-    child_hoh = models.BooleanField(default=False)
-    # TODO: remove 'kobo_asset_id' and 'row_id' after migrate data
-    kobo_asset_id = models.CharField(max_length=150, blank=True, default=BLANK)
-    row_id = models.PositiveIntegerField(blank=True, null=True)
-    detail_id = models.CharField(
-        max_length=150, blank=True, null=True, help_text="Kobo asset ID, Xlsx row ID, Aurora source ID"
-    )
-    registration_id = CICharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name=_("Beneficiary Program Registration Id"),
-    )
-    disability_certificate_picture = models.ImageField(blank=True, null=True)
-    preferred_language = models.CharField(max_length=6, choices=Languages.get_tuple(), null=True, blank=True)
-    relationship_confirmed = models.BooleanField(default=False)
-    age_at_registration = models.PositiveSmallIntegerField(null=True, blank=True)
-    wallet_name = models.CharField(max_length=64, blank=True, default="")
-    blockchain_name = models.CharField(max_length=64, blank=True, default="")
-    wallet_address = models.CharField(max_length=128, blank=True, default="")
+    flex_fields = models.JSONField(default=dict, blank=True)
+    user_fields = models.JSONField(default=dict, blank=True)
 
-    program = models.ForeignKey(
-        "program.Program", null=True, blank=True, db_index=True, related_name="individuals", on_delete=models.SET_NULL
-    )  # TODO set null=False after migration
-    copied_from = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        db_index=True,
-        related_name="copied_to",
-        on_delete=models.SET_NULL,
-        help_text="If this individual was copied from another individual, "
-        "this field will contain the individual it was copied from.",
-    )
-    origin_unicef_id = models.CharField(max_length=100, blank=True, null=True)
-    is_original = models.BooleanField(db_index=True, default=False)
-    is_migration_handled = models.BooleanField(default=False)
-    migrated_at = models.DateTimeField(null=True, blank=True)
-
-    vector_column = SearchVectorField(null=True)
+    class Tenant:
+        tenant_filter_field = "household__country_office"

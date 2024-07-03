@@ -1,13 +1,12 @@
-from typing import TYPE_CHECKING
-
 from collections.abc import Callable
 from functools import update_wrapper
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import reverse, URLPattern, URLResolver
+from django.urls import URLPattern, URLResolver, reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 
@@ -15,7 +14,12 @@ from smart_admin.autocomplete import SmartAutocompleteJsonView
 from smart_admin.site import SmartAdminSite
 
 from .forms import SelectTenantForm
-from .utils import get_selected_tenant, is_tenant_valid, must_tenant, set_selected_tenant
+from .utils import (
+    get_selected_tenant,
+    is_tenant_valid,
+    must_tenant,
+    set_selected_tenant,
+)
 
 if TYPE_CHECKING:
     from typing import Any, Dict
@@ -61,7 +65,9 @@ class TenantAdminSite(SmartAdminSite):
         ret["flower_address"] = settings.POWER_QUERY_FLOWER_ADDRESS
         if must_tenant():
             selected_tenant = get_selected_tenant()
-            ret["tenant_form"] = SelectTenantForm(initial={"tenant": selected_tenant}, request=request)
+            ret["tenant_form"] = SelectTenantForm(
+                initial={"tenant": selected_tenant}, request=request
+            )
             ret["active_tenant"] = selected_tenant
             # ret["tenant"] = selected_tenant
         else:
@@ -86,7 +92,9 @@ class TenantAdminSite(SmartAdminSite):
 
         urlpatterns: "list[URLResolver | URLPattern]"
 
-        def wrap(view: "Callable[[Any], Any]", cacheable: bool = False) -> "Callable[[Any], Any]":
+        def wrap(
+            view: "Callable[[Any], Any]", cacheable: bool = False
+        ) -> "Callable[[Any], Any]":
             def wrapper(*args: "Any", **kwargs: "Any") -> "Callable[[], Any]":
                 return self.admin_view(view, cacheable)(*args, **kwargs)
 
@@ -118,7 +126,10 @@ class TenantAdminSite(SmartAdminSite):
 
     @method_decorator(never_cache)
     def index(
-        self, request: "AuthHttpRequest", extra_context: "Dict[str,Any]|None" = None, **kwargs: "Any"
+        self,
+        request: "AuthHttpRequest",
+        extra_context: "Dict[str,Any]|None" = None,
+        **kwargs: "Any",
     ) -> "HttpResponse":
         """
         Display the main admin index page, which lists all of the installed
