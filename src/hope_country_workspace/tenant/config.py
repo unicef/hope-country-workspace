@@ -39,7 +39,7 @@ class AppSettings:
         setting_changed.connect(self._on_setting_changed)
 
     def _set_attr(self, prefixed_name: str, value: "Any") -> None:
-        name = prefixed_name[(len(self.prefix) + 1) :]
+        name = prefixed_name[(len(self.prefix) + 1):]
         setattr(self, name, value)
 
     @cached_property

@@ -1,0 +1,44 @@
+{% extends "admin_extra_buttons/action_page.html" %}{% load power_query i18n %}
+{% block extrahead %}
+	{{ block.super }}
+    {{ form.media }}
+
+{% endblock %}
+{% block content_title %}{% endblock %}
+{% block action-content %}
+    <div style="width: 100%">
+        {% if sql %}
+            <dl>
+                <dt>{% trans "Executed SQL" %}</dt>
+                <dd id="sql-short" style="">{{ sql|safe|truncatechars:200 }}</dd>
+                <dd id="sql-full" style="display: none">{{ sql|safe }}</dd>
+            </dl>
+            <table style="width: 100%">
+                <thead>
+                <tr>
+                    {% for h in headers %}
+                        <th>{{ h|upper }}</th>
+                    {% endfor %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in result %}
+                    <tr>
+                        {% for column in row %}
+                            <td>{% if forloop.last %}<code>{% endif %}{{ column|escape }}{% if forloop.last %}
+                                </code>{% endif %}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+        <form method="post" id="explain-form">
+            {% csrf_token %}
+            <table  style="width: 100%">
+                {{ form }}
+            </table>
+            <input type="submit">
+        </form>
+    </div>
+{% endblock action-content %}

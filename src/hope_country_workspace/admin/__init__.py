@@ -1,1 +1,1 @@
-from .household import HouseholdAdmin
+from .household import HouseholdAdmin  # noqa

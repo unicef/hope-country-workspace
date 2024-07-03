@@ -1,0 +1,12 @@
+{% load i18n static %}
+
+<details data-filter-title="{{ spec.get_title }}" {% include "adminfilters/_attrs.html" with spec=spec %}{% if spec.lookup_val %}open{% endif %}>
+    {% block title %}
+        <summary>{% blocktrans with spec.get_title as filter_title %} By {{ filter_title }}{% endblocktrans %}
+        </summary>
+    {% endblock %}
+    <div class="filter-content">
+        {% block content %}{% endblock %}
+        {% block script %}{% endblock  %}
+    </div>
+</details>

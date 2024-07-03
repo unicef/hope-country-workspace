@@ -3,7 +3,7 @@ from copy import copy
 from threading import local
 from typing import TYPE_CHECKING, Dict
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest
 
 from hope_country_workspace.security.models import CountryOffice
 
@@ -27,7 +27,7 @@ class State(local):
         return f"<State {id(self)}: {self.tenant_cookie}:{self.must_tenant}>"
 
     @contextlib.contextmanager
-    def configure(self, **kwargs: "dict[str,Any]") -> "Iterator[None]":
+    def configure(self, **kwargs: "Dict[str,Any]") -> "Iterator[None]":
         pre = copy(self.__dict__)
         self.reset()
         with self.set(**kwargs):
@@ -76,18 +76,9 @@ class State(local):
         httponly: bool = False,
         samesite: "Any" = None,
     ) -> None:
-        self.cookies[key] = [
-            value,
-            max_age,
-            expires,
-            path,
-            domain,
-            secure,
-            httponly,
-            samesite,
-        ]
+        self.cookies[key] = [value, max_age, expires, path, domain, secure, httponly, samesite]
 
-    def set_cookies(self, response: "HttpResponse") -> None:
+    def set_cookies(self, response: "AnyResponse") -> None:
         for name, args in self.cookies.items():
             response.set_cookie(name, *args)
 

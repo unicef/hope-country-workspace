@@ -7,7 +7,7 @@ from django.urls import path
 import debug_toolbar
 
 urlpatterns = [
-    path(r"admin/", admin.site.urls),
+    path(r"", admin.site.urls),
     path(r"security/", include("unicef_security.urls", namespace="security")),
     path(r"social/", include("social_django.urls", namespace="social")),
     path(r"accounts/", include("django.contrib.auth.urls")),

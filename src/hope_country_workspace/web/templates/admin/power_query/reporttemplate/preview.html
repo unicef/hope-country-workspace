@@ -1,0 +1,14 @@
+{% extends "admin_extra_buttons/action_page.html" %}{% load power_query %}
+
+{% block content_title %}{% endblock %}
+{% block action-content %}
+    {% if form %}
+        <form method="post" id="template-form">
+            {% csrf_token %}
+            <table>
+                {{ form }}
+            </table>
+        <input type="submit">
+        </form>
+    {% endif %}
+{% endblock action-content %}

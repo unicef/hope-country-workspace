@@ -1,0 +1,39 @@
+{% extends "admin/change_form.html" %}{% load i18n admin_urls static admin_modify %}
+{% block breadcrumbs %}
+    <div class="breadcrumbs">
+        <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+        &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+        &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+        &rsaquo; Link AD User
+    </div>
+{% endblock %}
+
+{% block content %}
+    <h1>Link User with AD</h1>
+    <h3>Select AD user to link with</h3>
+    {{ message }}
+    <form method="POST" id="link_user">
+        {% csrf_token %}
+        <table>
+            {% for entry in data %}
+                <tr>
+                    <th>
+                        <input type="radio" name="selection" value="{{ entry.id }}">
+                        Select
+                    </th>
+                </tr>
+                {% for key,value in entry.items %}
+                    <tr>
+                        <th>{{ key }}</th>
+                        <td>{{ value }}</td>
+                    </tr>
+                {% endfor %}
+            {% endfor %}
+            <hr/>
+        </table>
+        <input type="submit" value="Link">
+        <input type="button" value="Cancel">
+    </form>
+{% endblock content %}
+
+{% block submit_buttons_bottom %}{% endblock %}

@@ -15,7 +15,8 @@ DATABASES = {
 }
 
 INSTALLED_APPS = (
-    # "unicef_security",
+    "hope_country_workspace.web",
+    "hope_country_workspace.web.theme",
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.humanize",
@@ -25,7 +26,7 @@ INSTALLED_APPS = (
     "django.contrib.sitemaps",
     "django.contrib.staticfiles",
     "django.contrib.postgres",
-    "django.contrib.admin",
+    "hope_country_workspace.admin_site.apps.AdminConfig",
     "flags",
     "social_django",
     "admin_extra_buttons",
@@ -35,10 +36,8 @@ INSTALLED_APPS = (
     "constance",
     "django_celery_beat",
     "django_celery_results",
-
     "hope_country_workspace.security",
-    "hope_country_workspace",
-
+    "hope_country_workspace.apps.Config",
 )
 
 MIDDLEWARE = (
@@ -55,7 +54,7 @@ MIDDLEWARE = (
 AUTHENTICATION_BACKENDS = (
     "social_core.backends.azuread_tenant.AzureADTenantOAuth2",
     "django.contrib.auth.backends.ModelBackend",
-    "hope_country_workspace.tenant.backend.TenantBackend",
+    # "hope_country_workspace.tenant.backend.TenantBackend",
     *env("AUTHENTICATION_BACKENDS"),
 )
 
@@ -181,6 +180,7 @@ EMAIL_PORT = env("EMAIL_PORT", default=25)
 EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=False)
 EMAIL_USE_SSL = env("EMAIL_USE_SSL", default=False)
 
+from .fragments.app import *  # noqa
 from .fragments.celery import *  # noqa
 from .fragments.constance import *  # noqa
 from .fragments.csp import *  # noqa
@@ -192,3 +192,4 @@ from .fragments.sentry import *  # noqa
 from .fragments.social_auth import *  # noqa
 from .fragments.spectacular import *  # noqa
 from .fragments.storages import *  # noqa
+from .fragments.smart_admin import *  # noqa

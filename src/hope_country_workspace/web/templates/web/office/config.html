@@ -1,0 +1,119 @@
+{% extends "web/office/_base.html" %}{% load i18n user_tz colors %}
+
+{% block content %}
+    <div class="box">
+        <table class="report-detail">
+            <tr>
+                <th>{% trans "title" %}</th>
+                <td>{{ config.title }}</td>
+            </tr>
+            <tr>
+                <th>{% trans "Owner" %}</th>
+                <td>{% if config.owner %}
+                    <div class="flex items-center">
+                    {{ config.owner }}
+                    <a href="mailto:{{ config.owner.email }}">
+                        <div class="px-4 icon icon-mail-envelope"></div>
+                    </a>{% endif %}
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <th>{% trans "date" %}</th>
+                <td>{{ config.updated_on|userdatetime:"-" }}</td>
+            </tr>
+            <tr>
+                <th>{% trans "scheduling" %}</th>
+                <td>{{ config.schedule.name }}</td>
+            </tr>
+            <tr>
+                <th>{% trans "tags" %}</th>
+                <td>
+                    {% for t in config.tags.all %}<span class="tag {{ t.name|color }}">{{ t }}</span>{% endfor %}
+                </td>
+            </tr>
+            <tr>
+                <th>{% trans "description" %}</th>
+                <td>{{ config.description }}</td>
+            </tr>
+        </table>
+    </div>
+    {% if request.user.is_staff %}
+        <div class="box">
+            <small class="float-right"><a target="_admin" href="{{ config.query.get_admin_url }}">View in
+                Admin</a></small>
+            <h3>{% trans "Query" %}</h3>
+            <div>{{ config.query.name }}</div>
+            <div class="italic p-2">{{ config.query.description|default_if_none:"" }}</div>
+
+        </div>
+    {% endif %}
+    {% if config.limit_access_to.count %}
+        <div class="box">
+            {% if request.user == config.owner or user.is_superuser %}
+                <h3>{% trans "Restrict Access To" %}</h3>
+                <table class="restricted-list">
+                    {% for u in config.limit_access_to.all %}
+                        <tbody>
+                        <tr>
+                            <td class="text-center">
+                                <div class="">{{ u }}</div>
+                            </td>
+                            <td class="text-center">
+                                <div class="">{{ u.email }}</div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <div>{% trans "Access to this report needs special permission" %}</div>
+                <a class="float-right button primary" type="button"
+                   href="{% url "request-access" config.country_office.slug config.pk %}">{% trans "Request Access" %}</a>
+            {% endif %}
+        </div>
+    {% endif %}
+    {% if config.query.parametrizer %}
+        <div class="box">
+            {% if config.query.parametrizer.get_admin_url and user.is_staff %}
+                <small class="float-right"><a target="_admin" href="{{ config.query.parametrizer.get_admin_url }}">View
+                    in
+                    Admin</a></small>
+            {% endif %}
+            <h3>{% trans "Parametrizer" %}</h3>
+            <table class="document-list">
+                <thead>
+                <tr>
+                    <th>{% trans "param" %}</th>
+                    <th>{% trans "values" %}</th>
+                </tr>
+                </thead>
+                {% for k,v in config.query.parametrizer.value.items %}
+                    <tbody>
+                    <tr>
+                        <td class="text-center">
+                            <div class="">{{ k }}</div>
+                        </td>
+                        <td class="text-center">
+                            <div class="">{{ v }}</div>
+                        </td>
+                    </tr>
+                    </tbody>
+                {% endfor %}
+            </table>
+        </div>
+    {% endif %}
+    <div class="box">
+        <h3>{% trans "Formatters" %}</h3>
+        {% trans "Total linked documents: " %}{{ config.formatters.count }}
+        <ul class="list-disc">
+            {% for formatter in config.formatters.all %}
+                <li>- {{formatter.name}}</li>
+            {% endfor %}
+        <ul>
+    </div>
+    <div class="box">
+        <h3>{% trans "Documents" %}</h3>
+        {% trans "Total linked documents: " %}{{ config.documents.count }} <a class="button primary small" href="{% url "office-doc-list" config.country_office.slug %}?report={{ config.name }}">view</a>
+    </div>
+{% endblock %}

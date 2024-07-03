@@ -1,0 +1,29 @@
+{% extends "power_query/list.html" %}{% load admin_urls power_query %}
+{% block header %}{{ report }}{% endblock %}
+{% block contents %}
+    <table>
+    <thead>
+    <tr><th class="w-1/4 font-bold"></th><td></td></tr><tr>
+    </thead>
+    <tbody>
+    <tr><th>Title</th><td>{{ report.title }}</td></tr>
+    <tr><th>Query</th><td>{{ report.query }}</td></tr>
+    <tr><th>Date</th><td>{{ report.last_run|default_if_none:"" }}</td></tr>
+    <tr><th>description</th><td>{{ report.description|default_if_none:"" }}</td></tr>
+    </tbody>
+    </table>
+
+        <table>
+            {% for doc in report.documents.all %}
+                <tr>
+                    <td>
+                    <a href="{{ doc.get_absolute_url }}">{{ doc.title }}</a>
+                    </td>
+                    <td>{{ doc.timestamp }}</td>
+                    <td class="number">{{ doc.size|fmt_size }}</td>
+                    <td>{{ doc.content_type }}</td>
+                    <td>{{ doc.arguments }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+{% endblock %}

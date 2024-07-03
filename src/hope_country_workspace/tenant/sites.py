@@ -1,8 +1,7 @@
 from collections.abc import Callable
 from functools import update_wrapper
-from typing import TYPE_CHECKING
+from typing import Any
 
-from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -21,12 +20,6 @@ from .utils import (
     set_selected_tenant,
 )
 
-if TYPE_CHECKING:
-    from typing import Any, Dict
-
-    from hope_country_report.types.http import AuthHttpRequest
-
-    from ...types.django import AnyModel
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -60,29 +53,28 @@ class TenantAdminSite(SmartAdminSite):
     # def has_permission(self, request: "AuthHttpRequest") -> bool:
     #     return request.user.is_active
 
-    def each_context(self, request: "AuthHttpRequest") -> "Dict[str, Any]":
+    def each_context(self, request: "HttpRequest") -> "dict[str, Any]":
         ret = super().each_context(request)
-        ret["flower_address"] = settings.POWER_QUERY_FLOWER_ADDRESS
-        if must_tenant():
-            selected_tenant = get_selected_tenant()
-            ret["tenant_form"] = SelectTenantForm(
-                initial={"tenant": selected_tenant}, request=request
-            )
-            ret["active_tenant"] = selected_tenant
+        # if must_tenant():
+        selected_tenant = get_selected_tenant()
+        ret["tenant_form"] = SelectTenantForm(
+            initial={"tenant": selected_tenant}, request=request
+        )
+        ret["active_tenant"] = selected_tenant
             # ret["tenant"] = selected_tenant
-        else:
-            ret["active_tenant"] = None
+        # else:
+        #     ret["active_tenant"] = None
         return ret  # type: ignore
 
-    def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
-        if must_tenant():
-            return False
-        return super().is_smart_enabled(request)
+    # def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
+    #     if must_tenant():
+    #         return False
+    #     return super().is_smart_enabled(request)
 
-    def autocomplete_view(self, request: "AuthHttpRequest") -> HttpResponse:
+    def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:
         return TenantAutocompleteJsonView.as_view(admin_site=self)(request)
 
-    def has_permission(self, request: "AuthHttpRequest") -> bool:
+    def has_permission(self, request: "HttpRequest") -> bool:
         # if must_tenant():
         return request.user.is_active
         # return super().has_permission(request)
@@ -119,7 +111,7 @@ class TenantAdminSite(SmartAdminSite):
     ) -> "HttpResponse|HttpResponseRedirect":
         response = super().login(request, extra_context)
         if request.method == "POST":
-            if request.user.is_authenticated and not request.user.is_staff:
+            if request.user.is_authenticated:
                 return HttpResponseRedirect(reverse("admin:select_tenant"))
 
         return response
@@ -127,8 +119,8 @@ class TenantAdminSite(SmartAdminSite):
     @method_decorator(never_cache)
     def index(
         self,
-        request: "AuthHttpRequest",
-        extra_context: "Dict[str,Any]|None" = None,
+        request: "HttpRequest",
+        extra_context: "dict[str,Any]|None" = None,
         **kwargs: "Any",
     ) -> "HttpResponse":
         """
@@ -140,14 +132,14 @@ class TenantAdminSite(SmartAdminSite):
         return super().index(request, extra_context, **kwargs)
 
     @method_decorator(never_cache)
-    def select_tenant(self, request: "AuthHttpRequest") -> "HttpResponse":
+    def select_tenant(self, request: "HttpRequest") -> "HttpResponse":
         context = self.each_context(request)
         if request.method == "POST":
             form = SelectTenantForm(request.POST, request=request)
             if form.is_valid():
                 set_selected_tenant(form.cleaned_data["tenant"])
-                return HttpResponseRedirect("/admin/")
+                return HttpResponseRedirect(reverse("admin:index"))
 
-        form = SelectTenantForm(request=request, initial={"next": "/admin/"})
+        form = SelectTenantForm(request=request, initial={"next": reverse("admin:index")})
         context["form"] = form
         return TemplateResponse(request, "tenant_admin/select_tenant.html", context)

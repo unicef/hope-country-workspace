@@ -1,0 +1,51 @@
+{% extends "admin_extra_buttons/change_form.html" %}{% load power_query i18n admin_urls static admin_modify user_tz %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "admin/power_query/_celery.html" %}
+
+    {% if original.error %}
+        <ul class="messagelist">
+            <li class="error"> This query raised an exception:
+                <a target="_sentry" href="{{ original.error|link_to_sentry }}">View on Sentry</a>
+            </li>
+        </ul>
+    {% endif %}
+{% endblock %}
+{% block content %}
+    {% if change and not is_popup %}
+        <ul class="object-tools">
+            {% block object-tools-items %}
+                {% change_form_object_tools %}
+            {% endblock %}
+            {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+
+        </ul>
+    {% endif %}
+    {% block object-tools %}{% endblock %}
+
+    <table>
+        <tr>
+            <td style="width: 95%">{{ block.super }}</td>
+            <td>
+                <table style="width: 250px">
+                    {% for doc in original.documents.all %}
+                        <tr>
+                            <td>
+                                <a href="{% url "admin:power_query_reportdocument_change" doc.pk %}">{{ doc.formatter.name }}</a>
+                            </td>
+                            <td>
+                                <a href="{% url "admin:power_query_reportdocument_download" doc.pk %}">
+                                    <div class="icon {{ doc.file_suffix|slice:"1:" }}"></div>
+                                </a>
+                            </td>
+                            <td>
+                                {{ doc.updated_on|userdatetime:"h:i a" }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </td>
+        </tr>
+    </table>
+{% endblock %}

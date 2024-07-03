@@ -3,7 +3,7 @@ from django.contrib import admin
 # from unicef_security.admin import UserAdminPlus
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from hope_country_workspace.security.models import User, UserRole, CountryOffice
+from hope_country_workspace.security.models import CountryOffice, User, UserRole
 
 
 @admin.register(User)

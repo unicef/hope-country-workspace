@@ -1,0 +1,16 @@
+{% extends "layout.html" %}{% load i18n %}
+{% block logo %}{% endblock %}
+{% block sidebar %}{% endblock %}
+{% block content %}
+    <div class="flex flex-col items-center justify-center">
+        <div class="mt-40 text-9xl font-extralight">
+            500
+        </div>
+        <div class="text-2xl font-extralight">
+            {% trans "Object Not Found or you do not have permissions to access it" %}
+        </div>
+        <div class="text-2xl mt-10 font-extralight">
+            <a href="javascript:history.back()">{% trans "back" %}</a>
+        </div>
+    </div>
+{% endblock %}

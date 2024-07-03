@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block sidebar %}
+{% endblock %}
+{% block content %}
+    <div class="flex items-center justify-center">
+        <div class="w-1/4 mt-40">
+            <form id="select-tenant" method="post" action="{% url 'select-tenant' %}">
+                {% csrf_token %}{{ tenant_form }}</form>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "layout.html" %}{% load i18n feature_flags %}
+{% block header %}
+    <div class="pr-10 flex-grow align-middle pt-3">
+        <form id="select-tenant" method="post" action="{% url 'select-tenant' %}">
+            {% csrf_token %}{{ tenant_form.tenant }}
+        </form>
+    </div>
+    {% block user-prefs %}
+    <div class="flex-shrink align-middle pt-3 pr-10">
+        <div class="flex align-middle">
+        <div class="flex-shrink pt-2">{{ user }}</div>
+        <div class="flex-shrink mx-2">
+        <a class="profile-link" href="{% url "user-profile" %}">
+            <div class="icon icon-user text-3xl float-shrink"></div>
+        </a>
+        </div>
+        </div>
+    </div>
+        {% endblock %}
+{% endblock %}
+{% block menu %}
+    {% flag_enabled 'MENU_PREFERENCES' as FLAG_PREFERENCES %}
+    {% flag_enabled 'MENU_PAGES' as FLAG_PAGES %}
+    {% flag_enabled 'MENU_MAP' as FLAG_MAP %}
+    {% flag_enabled 'MENU_WORLD' as FLAG_WORLD %}
+    {% flag_enabled 'MENU_CHART' as FLAG_CHART %}
+    {% flag_enabled 'MENU_API' as FLAG_API %}
+    <ul class="menu p-0 w-full h-5/6 mt-10">
+        <li class="flex OfficeHomeView h-12">
+            <a class="flex w-full px-4" href="{% url "office-index" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-home"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "Home" %}</div>
+            </a>
+        </li>
+        <li class="OfficeReportDocumentListView OfficeReportDocumentDetailView flex">
+            <a class="flex w-full px-4" href="{% url "office-doc-list" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-papers"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "Reports" %}</div>
+            </a>
+        </li>
+        <li class="OfficeConfigurationListView OfficeConfigurationDetailView flex">
+            <a class="flex w-full px-4" href="{% url "office-config-list" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-equalizer"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "Settings" %}</div>
+            </a>
+        </li>
+        {% if FLAG_PREFERENCES %}
+        <li class="OfficePreferences flex">
+            <a class="flex w-full px-4" href="{% url "office-preferences" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-settings"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "Preferences" %}</div>
+            </a>
+        </li>
+        {% endif %}
+        {% if FLAG_WORLD %}
+        <li class="OfficePreferences flex">
+            <a class="flex w-full px-4" href="{% url "office-world" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-globe"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "World" %}</div>
+            </a>
+        </li>
+        {% endif %}
+        {% if FLAG_MAP %}
+        <li class="OfficePreferences flex">
+            <a class="flex w-full px-4" href="{% url "office-map" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-map"></span>
+                <div class="flex-grow pt-3 display-open">{% trans "Map" %}</div>
+            </a>
+        </li>
+        {% endif %}
+        {% if FLAG_CHART %}
+        <li class="OfficePageListView flex">
+            <a class="flex w-full px-4" href="{% url "office-chart-list" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-bargraph"></span>
+                <div class="flex-grow  pt-3 display-open">{% trans "Charts" %}</div>
+            </a></li>
+        {% endif %}
+        {% if FLAG_PAGES %}
+        <li class="OfficePageListView flex">
+            <a class="flex w-full px-4" href="{% url "office-pages" selected_office.slug %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-bargraph"></span>
+                <div class="flex-grow  pt-3 display-open">{% trans "Dashboards" %}</div>
+            </a></li>
+        {% endif %}
+        {% if FLAG_API and perms.access_api %}
+        <li class="OfficePageListView flex">
+            <a class="flex w-full px-4" target="_api" href="{% url "api:api-root" %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-bargraph"></span>
+                <div class="flex-grow  pt-3 display-open">{% trans "API" %}</div>
+            </a></li>
+        {% endif %}
+        <li class="OfficePageListView flex">
+            <a class="flex w-full px-4" href="{% url "logout" %}">
+                <span class="flex text-2xl pt-2 pr-4 icon icon-logout"></span>
+                <div class="flex-grow  pt-3 display-open">{% trans "Logout" %}</div>
+            </a>
+        </li>
+    </ul>
+    <ul class="menu d-block block">
+        {% if user.is_staff %}
+            <li class="flex">
+                <a class="flex w-full px-4" target="_admin" href="{% url "admin:index" %}">
+                    <span class="flex text-2xl pt-2 pr-4 icon icon-shield1"></span>
+                    <div class="flex-grow  pt-3 display-open">{% trans "Admin" %}</div>
+                </a>
+            </li>
+        {% endif %}
+            <li class="flex items-center border-t-black display-open">
+            <div class="m-auto text-gray-400 ">
+                <span>HOPE Reporting</span>
+                <span>{{ version }}</span>
+                <span>{{ release_date }}</span>
+            </div>
+        </li>
+    </ul>
+{% endblock %}
+{% block page-top %}
+    <div class="box">
+        <h1>{% block page-title %}{{ title }}{% endblock %}
+            {% if object and object.get_admin_url and user.is_staff %}
+                <small class="float-right"><a target="_admin" href="{{ object.get_admin_url }}">View in
+                    Admin</a></small>
+                </h1>
+            {% endif %}
+    </div>
+{% endblock %}

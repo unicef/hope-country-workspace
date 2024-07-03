@@ -1,0 +1,6 @@
+<div id="footer">
+        {{ active_tenant|default_if_none:"" }}
+    <div>state.tenant: {{ state.tenant }}</div>
+    <div>state.must_tenant: {{ state.must_tenant }}</div>
+    <div>selected_tenant: {{ selected_tenant }}</div>
+</div>

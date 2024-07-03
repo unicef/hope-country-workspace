@@ -1,0 +1,38 @@
+{% extends "admin/index.html" %}{% load i18n static %}
+{% block branding %}
+    <h1 id="site-name"><a href="{% url 'admin:index' %}">HOPE Reporting</a></h1>
+{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static "admin/css/dashboard.css" %}">
+<link rel="stylesheet" href="{% static 'admin/hr.css' %}">
+{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block breadcrumbs %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+{% block select_ba_form %}{% endblock %}
+
+
+{% block content %}
+    <div id="content-main" class="">
+    {% if  form.fields.tenant.queryset.exists %}
+        <form id="select-tenant" method="post">
+            <table>
+                {% csrf_token %}
+                {{ form }}
+            </table>
+            <input type="submit">
+        </form>
+    {% else %}
+            Seems you do not have any tenant enabled.
+    {% endif %}
+    </div>
+{% endblock %}
+
+{% block sidebar %}
+{% endblock %}
+{% block footer %}{% include "admin/_footer.html" %}{% endblock %}
