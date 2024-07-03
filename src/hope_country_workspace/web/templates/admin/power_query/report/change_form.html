@@ -1,4 +1,4 @@
-{% extends "admin_extra_buttons/change_form.html" %}{% load power_query i18n admin_urls static admin_modify user_tz %}
+{% extends "~admin_extra_buttons/change_form.html" %}{% load power_query i18n admin_urls static admin_modify user_tz %}
 
 {% block breadcrumbs %}
     {{ block.super }}
@@ -18,7 +18,7 @@
             {% block object-tools-items %}
                 {% change_form_object_tools %}
             {% endblock %}
-            {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+            {% include "~admin_extra_buttons/includes/change_form_buttons.html" %}
 
         </ul>
     {% endif %}

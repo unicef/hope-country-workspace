@@ -46,7 +46,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: "Any", **options: "Any") -> None:
-        from hope_country_report.config import CONFIG, env, EXPLICIT_SET
+        from hope_country_workspace.config import CONFIG, env, EXPLICIT_SET
 
         check_failure = False
         pattern = options["pattern"]

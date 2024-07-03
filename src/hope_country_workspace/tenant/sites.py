@@ -1,5 +1,6 @@
+from asyncio import iscoroutinefunction
 from collections.abc import Callable
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 from typing import Any
 
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -40,6 +41,31 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     #     return JsonResponse({"t": state.tenant.slug})
 
 
+
+
+def force_tenant(view_func):
+    """
+    Decorator that adds headers to a response so that it will never be cached.
+    """
+
+    if iscoroutinefunction(view_func):
+
+        async def _view_wrapper(request, *args, **kwargs):
+            if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
+                return redirect(f"admin:select_tenant")
+            response = await view_func(request, *args, **kwargs)
+            return response
+
+    else:
+
+        def _view_wrapper(request, *args, **kwargs):
+            if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
+                return redirect(f"admin:select_tenant")
+            response = view_func(request, *args, **kwargs)
+            return response
+
+    return wraps(view_func)(_view_wrapper)
+
 class TenantAdminSite(SmartAdminSite):
     enable_nav_sidebar = False
 
@@ -66,9 +92,9 @@ class TenantAdminSite(SmartAdminSite):
         #     ret["active_tenant"] = None
         return ret  # type: ignore
 
-    # def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
+    def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
     #     if must_tenant():
-    #         return False
+        return False
     #     return super().is_smart_enabled(request)
 
     def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:
@@ -78,6 +104,9 @@ class TenantAdminSite(SmartAdminSite):
         # if must_tenant():
         return request.user.is_active
         # return super().has_permission(request)
+
+    def admin_view(self, view, cacheable=False):
+        return force_tenant(super().admin_view(view, cacheable))
 
     def get_urls(self) -> "list[URLResolver | URLPattern]":
         from django.urls import path
@@ -123,11 +152,7 @@ class TenantAdminSite(SmartAdminSite):
         extra_context: "dict[str,Any]|None" = None,
         **kwargs: "Any",
     ) -> "HttpResponse":
-        """
-        Display the main admin index page, which lists all of the installed
-        apps that have been registered in this site.
-        """
-        if must_tenant() and not is_tenant_valid():
+        if not is_tenant_valid():
             return redirect(f"{self.name}:select_tenant")
         return super().index(request, extra_context, **kwargs)
 

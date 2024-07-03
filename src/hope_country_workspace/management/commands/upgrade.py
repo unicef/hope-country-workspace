@@ -5,17 +5,16 @@ import os
 import sys
 from pathlib import Path
 
+from django.conf import settings
+from django.contrib.auth.models import Group
 from django.contrib.gis.utils import LayerMapping
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand, call_command
 from django.core.management.base import CommandError, SystemCheckError
 from django.core.validators import validate_email
+from django.utils.text import slugify
 
-from hope_country_report.apps.core.models import CountryShape
-from hope_country_report.apps.core.utils import get_or_create_reporter_group
-from hope_country_report.apps.power_query.defaults import create_defaults, create_periodic_tasks
-from hope_country_report.config import env
-from hope_country_report.utils.media import resource_path
+from hope_country_workspace.config import env
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -108,7 +107,7 @@ class Command(BaseCommand):
         sys.exit(1)
 
     def handle(self, *args: Any, **options: Any) -> None:  # noqa
-        from hope_country_report.apps.core.models import CountryOffice, User
+        from hope_country_workspace.security.models import CountryOffice, User
 
         self.get_options(options)
         if self.verbosity >= 1:
@@ -162,41 +161,12 @@ class Command(BaseCommand):
                         interactive=False,
                     )
 
-            if not CountryShape.objects.exists():
-                data = resource_path("INITIAL_DATA/TM_WORLD_BORDERS-0.3.shp")
-                try:
-                    world_mapping = {
-                        "fips": "FIPS",
-                        "iso2": "ISO2",
-                        "iso3": "ISO3",
-                        "un": "UN",
-                        "name": "NAME",
-                        "area": "AREA",
-                        "region": "REGION",
-                        "subregion": "SUBREGION",
-                        "lon": "LON",
-                        "lat": "LAT",
-                        "mpoly": "MULTIPOLYGON",
-                    }
-                    lm = LayerMapping(CountryShape, data, world_mapping, transform=False)
-                    lm.save(strict=True)
-                except TypeError as e:
-                    print(e)
 
             echo("Create default group")
-            get_or_create_reporter_group()
+            Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
             echo("Sync Country Offices")
+            CountryOffice.objects.get_or_create(slug=slugify(settings.TENANT_HQ, ), name=settings.TENANT_HQ)
             CountryOffice.objects.sync()
-
-            created = create_defaults()
-            if not created:
-                echo("WARNING:  default formatters not created")
-            else:
-                echo("Created default formatters")
-                for f in created:
-                    echo(f.name)
-            echo("Create default PeriodicTask")
-            create_periodic_tasks()
             echo("Upgrade completed", style_func=self.style.SUCCESS)
         except ValidationError as e:
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))

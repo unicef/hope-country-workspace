@@ -1,6 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
+from django.conf import settings
 from django.core.signing import get_cookie_signer
 from django.http import HttpRequest, HttpResponse
 
@@ -10,10 +11,8 @@ from hope_country_workspace.tenant.config import conf
 from ..security.models import CountryOffice, User
 
 if TYPE_CHECKING:
-
     class AuthHttpRequest(HttpRequest):
         user: "User" = None
-
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,10 @@ def get_selected_tenant() -> "CountryOffice | None":
         state.filters.append(filters)
         state.tenant = conf.auth.get_allowed_tenants().filter(**filters).first()
     return state.tenant
+
+
+def is_hq_active() -> bool:
+    return get_selected_tenant() and get_selected_tenant().name == settings.TENANT_HQ
 
 
 def set_selected_tenant(tenant: "CountryOffice") -> None:
@@ -56,7 +59,7 @@ def must_tenant() -> bool:
 
 def get_tenant_cookie_from_request(request: "AuthHttpRequest") -> str | None:
     if request and request.user.is_authenticated:
-        if request.user.roles.exists():
+        if request.user.roles.exists() or request.user.is_superuser:
             signer = get_cookie_signer()
             cookie_value = request.COOKIES.get(conf.COOKIE_NAME)
             if cookie_value:
@@ -73,7 +76,7 @@ class RequestHandler:
         return state
 
     def process_response(
-        self, request: "AuthHttpRequest", response: "HttpResponse|None"
+            self, request: "AuthHttpRequest", response: "HttpResponse|None"
     ) -> None:
         if response:
             state.set_cookies(response)

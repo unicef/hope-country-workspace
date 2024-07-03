@@ -16,7 +16,6 @@ DATABASES = {
 
 INSTALLED_APPS = (
     "hope_country_workspace.web",
-    "hope_country_workspace.web.theme",
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.humanize",
@@ -29,6 +28,7 @@ INSTALLED_APPS = (
     "hope_country_workspace.admin_site.apps.AdminConfig",
     "flags",
     "social_django",
+    "debug_toolbar",
     "admin_extra_buttons",
     "adminactions",
     "adminfilters",
@@ -45,10 +45,15 @@ MIDDLEWARE = (
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "csp.middleware.CSPMiddleware",
+    "hope_country_workspace.middleware.state.StateSetMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # "unicef_security.middleware.UNICEFSocialAuthExceptionMiddleware",
+    "hope_country_workspace.middleware.state.StateClearMiddleware",
+
 )
 
 AUTHENTICATION_BACKENDS = (

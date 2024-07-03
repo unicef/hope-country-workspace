@@ -5,6 +5,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.management import BaseCommand
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class Command(BaseCommand):
         for flag in settings.FLAGS.keys():
             FlagState.objects.get_or_create(name=flag, condition="hostname", value="127.0.0.1,localhost")
 
-        for co in [settings.TENANT_HQ, "afghanistan", "ukraine", "sudan", "haiti"]:
+        CountryOffice.objects.get_or_create(slug=slugify(settings.TENANT_HQ, ), name=settings.TENANT_HQ)
+
+        for co in ["afghanistan", "ukraine", "sudan", "haiti"]:
             CountryOffice.objects.get_or_create(slug=co, name=co.capitalize())
 
         analysts, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
