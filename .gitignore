@@ -1,0 +1,9 @@
+.*
+~*
+Makefile
+coverage.xml
+!.dockerignore
+!.gitignore
+!.pdm-python
+!.github
+!.flake8

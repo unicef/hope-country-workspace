@@ -1,8 +1,9 @@
 from asyncio import iscoroutinefunction
 from collections.abc import Callable
 from functools import update_wrapper, wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from django.db.models import Model
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -14,13 +15,10 @@ from smart_admin.autocomplete import SmartAutocompleteJsonView
 from smart_admin.site import SmartAdminSite
 
 from .forms import SelectTenantForm
-from .utils import (
-    get_selected_tenant,
-    is_tenant_valid,
-    must_tenant,
-    set_selected_tenant,
-)
+from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
 
+if TYPE_CHECKING:
+    from hope_country_workspace.types.http import AuthHttpRequest
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -34,13 +32,11 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     # def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
     #     return super().get_context_data(**kwargs)
     #
-    def has_perm(self, request: "AuthHttpRequest", obj: "AnyModel|None" = None) -> bool:
+    def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
         return request.user.is_active
 
     # def get(self, request, *args, **kwargs):
     #     return JsonResponse({"t": state.tenant.slug})
-
-
 
 
 def force_tenant(view_func):
@@ -52,7 +48,7 @@ def force_tenant(view_func):
 
         async def _view_wrapper(request, *args, **kwargs):
             if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
-                return redirect(f"admin:select_tenant")
+                return redirect("admin:select_tenant")
             response = await view_func(request, *args, **kwargs)
             return response
 
@@ -60,11 +56,12 @@ def force_tenant(view_func):
 
         def _view_wrapper(request, *args, **kwargs):
             if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
-                return redirect(f"admin:select_tenant")
+                return redirect("admin:select_tenant")
             response = view_func(request, *args, **kwargs)
             return response
 
     return wraps(view_func)(_view_wrapper)
+
 
 class TenantAdminSite(SmartAdminSite):
     enable_nav_sidebar = False
@@ -87,14 +84,15 @@ class TenantAdminSite(SmartAdminSite):
             initial={"tenant": selected_tenant}, request=request
         )
         ret["active_tenant"] = selected_tenant
-            # ret["tenant"] = selected_tenant
+        # ret["tenant"] = selected_tenant
         # else:
         #     ret["active_tenant"] = None
         return ret  # type: ignore
 
     def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
-    #     if must_tenant():
+        #     if must_tenant():
         return False
+
     #     return super().is_smart_enabled(request)
 
     def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:
@@ -165,6 +163,8 @@ class TenantAdminSite(SmartAdminSite):
                 set_selected_tenant(form.cleaned_data["tenant"])
                 return HttpResponseRedirect(reverse("admin:index"))
 
-        form = SelectTenantForm(request=request, initial={"next": reverse("admin:index")})
+        form = SelectTenantForm(
+            request=request, initial={"next": reverse("admin:index")}
+        )
         context["form"] = form
         return TemplateResponse(request, "tenant_admin/select_tenant.html", context)

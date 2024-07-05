@@ -11,8 +11,10 @@ from hope_country_workspace.tenant.config import conf
 from ..security.models import CountryOffice, User
 
 if TYPE_CHECKING:
+
     class AuthHttpRequest(HttpRequest):
         user: "User" = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +78,8 @@ class RequestHandler:
         return state
 
     def process_response(
-            self, request: "AuthHttpRequest", response: "HttpResponse|None"
+        self, request: "AuthHttpRequest", response: "HttpResponse|None"
     ) -> None:
         if response:
             state.set_cookies(response)
         state.reset()
-
-    # @contextlib.contextmanager
-    # def context(self, request: "AuthHttpRequest", response: "HttpResponse|None" = None) -> "Iterator[None]":
-    #     self.process_request(request)
-    #     yield
-    #     self.process_response(request, response)

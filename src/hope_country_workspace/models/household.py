@@ -24,6 +24,7 @@ RESIDENCE_STATUS_CHOICE = (
 
 class Household(TenantModel):
     country_office = models.ForeignKey(CountryOffice, on_delete=models.CASCADE)
+    name = models.CharField(_("Name"), max_length=255)
     flex_fields = models.JSONField(default=dict, blank=True)
 
     class Meta:

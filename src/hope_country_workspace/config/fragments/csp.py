@@ -1,4 +1,5 @@
-# CSP_DEFAULT_SRC = ["'self'", "'unsafe-inline'", "'same-origin'", "fonts.googleapis.com", 'fonts.gstatic.com', 'data:',
+# CSP_DEFAULT_SRC = ["'self'", "'unsafe-inline'", "'same-origin'",
+#                   "fonts.googleapis.com", 'fonts.gstatic.com', 'data:',
 #                    'blob:', "cdn.redoc.ly"]
 CSP_DEFAULT_SRC = ["'self'", "'unsafe-inline'"]
 CSP_STYLE_SRC = [

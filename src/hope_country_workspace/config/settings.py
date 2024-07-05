@@ -54,7 +54,6 @@ MIDDLEWARE = (
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # "unicef_security.middleware.UNICEFSocialAuthExceptionMiddleware",
     "hope_country_workspace.middleware.state.StateClearMiddleware",
-
 )
 
 AUTHENTICATION_BACKENDS = (
@@ -170,6 +169,21 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": True,
         },
+        "celery": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "faker": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "factory": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
     },
 }
 
@@ -177,7 +191,6 @@ AUTH_USER_MODEL = "security.User"
 
 
 DEFAULT_FROM_EMAIL = "hope@unicef.org"
-# EMAIL_BACKEND = "djcelery_email.backends.CeleryEmailBackend" # TODO: when ready, add djcelery_email
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
@@ -195,7 +208,7 @@ from .fragments.flags import *  # noqa
 from .fragments.rest_framework import *  # noqa
 from .fragments.root import *  # noqa
 from .fragments.sentry import *  # noqa
+from .fragments.smart_admin import *  # noqa
 from .fragments.social_auth import *  # noqa
 from .fragments.spectacular import *  # noqa
 from .fragments.storages import *  # noqa
-from .fragments.smart_admin import *  # noqa
