@@ -1,6 +1,5 @@
 from contextlib import ContextDecorator
 from random import choice
-
 from unittest.mock import Mock
 
 from django.conf import settings
@@ -45,9 +44,13 @@ def get_group(name=None, permissions=None):
         except ValueError:
             raise ValueError(f"Invalid permission name `{permission_name}`")
         try:
-            permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+            permission = Permission.objects.get(
+                content_type__app_label=app_label, codename=codename
+            )
         except Permission.DoesNotExist:
-            raise Permission.DoesNotExist("Permission `{0}` does not exists", permission_name)
+            raise Permission.DoesNotExist(
+                "Permission `{0}` does not exists", permission_name
+            )
 
         group.permissions.add(permission)
     return group
@@ -148,7 +151,9 @@ class user_grant_permissions(ContextDecorator):  # noqa
         self.group = get_group(name=self.group_name, permissions=self.permissions or [])
         self.user.groups.add(self.group)
         if self.country_office:
-            UserRole.objects.get_or_create(country_office=self.country_office, user=self.user, group=self.group)
+            UserRole.objects.get_or_create(
+                country_office=self.country_office, user=self.user, group=self.group
+            )
         return self
 
     def __exit__(self, e_typ, e_val, trcbak):

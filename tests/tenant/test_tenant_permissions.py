@@ -43,7 +43,9 @@ def req(request, rf) -> "AuthHttpRequest":
 
 
 @pytest.mark.parametrize("u", ["tenant_user", "admin_user", "anonymous"])
-def test_tenant_backend_get_allowed_tenants(request, afghanistan, req, u, django_assert_max_num_queries):
+def test_tenant_backend_get_allowed_tenants(
+    request, afghanistan, req, u, django_assert_max_num_queries
+):
     from hope_country_workspace.tenant.backend import TenantBackend
 
     req.user = request.getfixturevalue(u)
@@ -51,13 +53,17 @@ def test_tenant_backend_get_allowed_tenants(request, afghanistan, req, u, django
 
     # with django_assert_max_num_queries(1):
     if req.user.is_authenticated:
-        assert list(b.get_allowed_tenants().values_list("pk", flat=True)) == [afghanistan.pk]
+        assert list(b.get_allowed_tenants().values_list("pk", flat=True)) == [
+            afghanistan.pk
+        ]
     else:
         assert not b.get_allowed_tenants().values_list("pk", flat=True)
 
 
 @pytest.mark.parametrize("u", ["tenant_user", "admin_user", "anonymous"])
-def test_tenant_backend_get_all_permissions(request, afghanistan, req, u, django_assert_max_num_queries):
+def test_tenant_backend_get_all_permissions(
+    request, afghanistan, req, u, django_assert_max_num_queries
+):
     from hope_country_workspace.tenant.backend import TenantBackend
 
     req.user = request.getfixturevalue(u)

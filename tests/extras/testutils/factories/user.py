@@ -2,7 +2,7 @@ from django.contrib.auth.models import Group
 
 import factory.fuzzy
 
-from hope_country_workspace.security.models import User, CountryOffice
+from hope_country_workspace.security.models import CountryOffice, User
 
 from .base import AutoRegisterModelFactory
 

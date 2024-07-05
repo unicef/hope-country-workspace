@@ -29,7 +29,7 @@ class TenantManager(models.Manager["TenantModel"]):
         active_tenant = get_selected_tenant()
         if not active_tenant:
             raise InvalidTenantError("State does not have any active tenant")
-        return {tenant_filter_field: state.tenant.hope_id}
+        return {tenant_filter_field: state.tenant}
 
     def get_queryset(self):
         flt = self.get_tenant_filter()

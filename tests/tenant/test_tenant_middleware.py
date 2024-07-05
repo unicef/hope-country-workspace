@@ -2,7 +2,10 @@ from unittest.mock import MagicMock
 
 from django.http import HttpResponse
 
-from hope_country_workspace.middleware.state import StateClearMiddleware, StateSetMiddleware
+from hope_country_workspace.middleware.state import (
+    StateClearMiddleware,
+    StateSetMiddleware,
+)
 
 
 def test_set(rf, user):

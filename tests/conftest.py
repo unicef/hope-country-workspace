@@ -8,13 +8,12 @@ import pytest
 import responses
 from constance import config
 
-
 here = Path(__file__).parent
 sys.path.insert(0, str(here / "../src"))
 sys.path.insert(0, str(here / "extras"))
 
-def pytest_configure(config):
 
+def pytest_configure(config):
     os.environ.update(DJANGO_SETTINGS_MODULE="hope_country_workspace.config.settings")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")
     os.environ.setdefault("STATIC_ROOT", "/tmp/media/")
@@ -73,13 +72,18 @@ def mocked_responses():
         yield rsps
 
 
+@pytest.fixture()
+def user(db):
+    from testutils.factories import UserFactory
+
+    return UserFactory()
+
 
 @pytest.fixture()
 def afghanistan(db):
     from testutils.factories import CountryOfficeFactory
 
     return CountryOfficeFactory(name="Afghanistan")
-
 
 
 @pytest.fixture
