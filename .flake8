@@ -11,3 +11,4 @@ exclude =
 
 per-file-ignores =
     src/**/migrations/*.py:E501
+    src/**/upgrade.py:E731
