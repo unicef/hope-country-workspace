@@ -17,6 +17,13 @@ def setting(anchor: str) -> str:
     return f"@see {DJANGO_HELP_BASE}#{anchor}"
 
 
+def celery_doc(anchor: str) -> str:
+    return (
+        f"@see https://docs.celeryq.dev/en/stable/"
+        f"userguide/configuration.html#{anchor}"
+    )
+
+
 class Group(Enum):
     DJANGO = 1
 
@@ -46,18 +53,18 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "CELERY_TASK_ALWAYS_EAGER": (
         bool,
         False,
-        "https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_always_eager",
+        f"{celery_doc}#std-setting-task_always_eager",
         True,
     ),
     "CELERY_TASK_EAGER_PROPAGATES": (
         bool,
         True,
-        "https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-eager-propagates",
+        f"{celery_doc}#task-eager-propagates",
     ),
     "CELERY_VISIBILITY_TIMEOUT": (
         int,
         1800,
-        "https://docs.celeryq.dev/en/stable/userguide/configuration.html#broker-transport-options",
+        f"{celery_doc}#broker-transport-options",
     ),
     "CSRF_COOKIE_SECURE": (bool, True, setting("csrf-cookie-secure")),
     "DATABASE_URL": (

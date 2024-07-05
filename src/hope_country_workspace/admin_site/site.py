@@ -1,14 +1,12 @@
 import logging
 from typing import Any
 
-from django.conf import settings
 from django.http import HttpRequest
-from django.utils.text import slugify
 from django.utils.translation import gettext_lazy
 
 from hope_country_workspace.tenant.forms import TenantAuthenticationForm
 from hope_country_workspace.tenant.sites import TenantAdminSite
-from hope_country_workspace.tenant.utils import get_selected_tenant, must_tenant, is_hq_active
+from hope_country_workspace.tenant.utils import get_selected_tenant, is_hq_active
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +25,13 @@ class CWAdminSite(TenantAdminSite):
         app_dict = {}
         for app_label, data in original_app_dict.items():
             if is_hq_active():
-                data["models"] = [m for m in data["models"] if not hasattr(m["model"], "Tenant")]
+                data["models"] = [
+                    m for m in data["models"] if not hasattr(m["model"], "Tenant")
+                ]
             else:
-                data["models"] = [m for m in data["models"] if hasattr(m["model"], "Tenant")]
+                data["models"] = [
+                    m for m in data["models"] if hasattr(m["model"], "Tenant")
+                ]
             if data["models"]:
                 app_dict[app_label] = data
         return app_dict

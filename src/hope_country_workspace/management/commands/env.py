@@ -25,10 +25,14 @@ class Command(BaseCommand):
             help="Only dumps keys, without values",
         )
         parser.add_argument(
-            "--develop", action="store_true", help="Get values from teh code not from the current environment"
+            "--develop",
+            action="store_true",
+            help="Get values from teh code not from the current environment",
         )
         parser.add_argument(
-            "--changed", action="store_true", help="Get values from teh code not from the current environment"
+            "--changed",
+            action="store_true",
+            help="Get values from teh code not from the current environment",
         )
 
         parser.add_argument(
@@ -39,14 +43,22 @@ class Command(BaseCommand):
             help="Check env for variable availability",
         )
         parser.add_argument(
-            "--check", action="store_true", dest="check", default=False, help="Check env for variable availability"
+            "--check",
+            action="store_true",
+            dest="check",
+            default=False,
+            help="Check env for variable availability",
         )
         parser.add_argument(
-            "--ignore-errors", action="store_true", dest="ignore_errors", default=False, help="Do not fail"
+            "--ignore-errors",
+            action="store_true",
+            dest="ignore_errors",
+            default=False,
+            help="Do not fail",
         )
 
     def handle(self, *args: "Any", **options: "Any") -> None:
-        from hope_country_workspace.config import CONFIG, env, EXPLICIT_SET
+        from hope_country_workspace.config import CONFIG, EXPLICIT_SET, env
 
         check_failure = False
         pattern = options["pattern"]
@@ -61,7 +73,9 @@ class Command(BaseCommand):
             else:
                 value: Any = env.get_value(k)
                 if not options["changed"] or (value != default):
-                    self.stdout.write(pattern.format(key=k, value=value, help=help, default=default))
+                    self.stdout.write(
+                        pattern.format(key=k, value=value, help=help, default=default)
+                    )
 
         if check_failure and not options["ignore_errors"]:
             raise CommandError("Env check command failure!")
