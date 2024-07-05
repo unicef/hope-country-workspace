@@ -5,6 +5,8 @@ from django.apps import apps
 from django.contrib.auth.models import AnonymousUser
 
 import pytest
+from pytest_factoryboy import register
+from testutils.factories import UserFactory
 from testutils.perms import user_grant_permissions
 
 from hope_country_workspace.state import state
@@ -15,8 +17,6 @@ if TYPE_CHECKING:
 
 _DATA = namedtuple("_DATA", "afg,ukr")
 
-from pytest_factoryboy import register
-from testutils.factories import UserFactory
 
 register(UserFactory)
 

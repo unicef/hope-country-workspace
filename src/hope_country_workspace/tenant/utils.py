@@ -83,9 +83,3 @@ class RequestHandler:
         if response:
             state.set_cookies(response)
         state.reset()
-
-    # @contextlib.contextmanager
-    # def context(self, request: "AuthHttpRequest", response: "HttpResponse|None" = None) -> "Iterator[None]":
-    #     self.process_request(request)
-    #     yield
-    #     self.process_response(request, response)

@@ -55,6 +55,7 @@ dev = [
     "responses>=0.25.3",
     "pytest-factoryboy>=2.7.0",
     "django-webtest>=1.9.11",
+    "pre-commit>=3.7.1",
 ]
 
 [tool.black]

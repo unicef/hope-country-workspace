@@ -18,7 +18,8 @@ class TenantManager(models.Manager["TenantModel"]):
         tenant_filter_field = self.model.Tenant.tenant_filter_field
         if not tenant_filter_field:
             raise ValueError(
-                f"Set 'tenant_filter_field' on {self} or override `get_queryset()` to enable queryset filtering"
+                f"Set 'tenant_filter_field' on {self} or override "
+                f"`get_queryset()` to enable queryset filtering"
             )
         if tenant_filter_field == "__all__":
             return {}

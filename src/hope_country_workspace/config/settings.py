@@ -190,7 +190,6 @@ AUTH_USER_MODEL = "security.User"
 
 
 DEFAULT_FROM_EMAIL = "hope@unicef.org"
-# EMAIL_BACKEND = "djcelery_email.backends.CeleryEmailBackend" # TODO: when ready, add djcelery_email
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")

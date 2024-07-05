@@ -1,6 +1,6 @@
 [flake8]
 max-complexity = 12
-max-line-length = 120
+max-line-length = 88
 exclude =
     .*/
     __pycache__
@@ -11,4 +11,5 @@ exclude =
 
 per-file-ignores =
     src/**/migrations/*.py:E501
+    src/**/upgrade.py:E731
     src/**/upgrade.py:E731
