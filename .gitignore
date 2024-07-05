@@ -5,3 +5,4 @@
 !.pdm-python
 !.github
 Makefile
+coverage.xml
