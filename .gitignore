@@ -2,6 +2,7 @@
 ~*
 Makefile
 coverage.xml
+!tests/.coveragerc
 !.dockerignore
 !.gitignore
 !.pdm-python
