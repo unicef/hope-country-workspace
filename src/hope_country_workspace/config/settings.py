@@ -36,6 +36,7 @@ INSTALLED_APPS = (
     "constance",
     "django_celery_beat",
     "django_celery_results",
+    "hope_country_workspace.hope",
     "hope_country_workspace.security",
     "hope_country_workspace.apps.Config",
 )

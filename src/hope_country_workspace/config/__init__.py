@@ -108,6 +108,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
         "django.core.files.storage.FileSystemStorage",
         setting("storages"),
     ),
+    "HOPE_API_TOKEN": (str, "", "", True),
     "MEDIA_ROOT": (str, None, setting("media-root")),
     "MEDIA_URL": (str, "/media/", setting("media-url")),
     "ROOT_TOKEN": (str, "", ""),
