@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING
-
 import logging
+from typing import TYPE_CHECKING
 
 from django.http import HttpRequest, HttpResponse
 
@@ -9,9 +8,9 @@ from sentry_sdk import configure_scope
 from hope_country_workspace.tenant.utils import RequestHandler
 
 if TYPE_CHECKING:
-    from typing import TYPE_CHECKING
-
     from collections.abc import Callable
+
+    from hope_country_workspace.types.http import AuthHttpRequest
 
 
 logger = logging.getLogger(__name__)

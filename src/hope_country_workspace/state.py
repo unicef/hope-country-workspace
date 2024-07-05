@@ -10,6 +10,7 @@ from hope_country_workspace.security.models import CountryOffice
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Any, List
+    from hope_country_workspace.types.http import AnyResponse
 
 not_set = object()
 
@@ -76,7 +77,16 @@ class State(local):
         httponly: bool = False,
         samesite: "Any" = None,
     ) -> None:
-        self.cookies[key] = [value, max_age, expires, path, domain, secure, httponly, samesite]
+        self.cookies[key] = [
+            value,
+            max_age,
+            expires,
+            path,
+            domain,
+            secure,
+            httponly,
+            samesite,
+        ]
 
     def set_cookies(self, response: "AnyResponse") -> None:
         for name, args in self.cookies.items():
