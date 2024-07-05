@@ -1,8 +1,9 @@
 .*
 ~*
+Makefile
+coverage.xml
 !.dockerignore
 !.gitignore
 !.pdm-python
 !.github
-Makefile
-coverage.xml
+!.flake8
