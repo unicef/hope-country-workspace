@@ -1,0 +1,49 @@
+name: Branch Deleted
+on: delete
+jobs:
+  delete:
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install regctl
+        uses: regclient/actions/regctl-installer@main
+      - name: regctl login
+        uses: regclient/actions/regctl-login@main
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - shell: bash
+        run: |
+          ref="${{github.event.ref}}"
+          tag=$(echo $ref | sed -e "s#refs/heads/##g" | sed -e s#/#-##g)
+          name="${{vars.DOCKER_IMAGE}}:test-${{github.event.ref}}"          
+          echo "Delete $name" 
+#      - name: Delete Test Docker Image
+#        shell: bash
+#        run: |
+#          name="${{vars.DOCKER_IMAGE}}:test-${{github.event.ref}}"
+#          registry="https://registry-1.docker.io"
+#          curl -v -sSL -X DELETE "http://${registry}/v2/${name}/manifests/$(
+#              curl -sSL -I \
+#                  -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+#                  "http://${registry}/v2/${name}/manifests/$(
+#                      curl -sSL "http://${registry}/v2/${name}/tags/list" | jq -r '.tags[0]'
+#                  )" \
+#              | awk '$1 == "Docker-Content-Digest:" { print $2 }' \
+#              | tr -d $'\r' \
+#          )"
+#      - name: Delete linked Docker Image
+#        shell: bash
+#        run: |
+#          name="${{vars.DOCKER_IMAGE}}:${{github.event.ref}}"
+#          registry="https://registry-1.docker.io"
+#          curl -v -sSL -X DELETE "http://${registry}/v2/${name}/manifests/$(
+#              curl -sSL -I \
+#                  -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+#                  "http://${registry}/v2/${name}/manifests/$(
+#                      curl -sSL "http://${registry}/v2/${name}/tags/list" | jq -r '.tags[0]'
+#                  )" \
+#              | awk '$1 == "Docker-Content-Digest:" { print $2 }' \
+#              | tr -d $'\r' \
+#          )"

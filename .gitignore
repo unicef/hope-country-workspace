@@ -1,0 +1,7 @@
+.*
+~*
+!.dockerignore
+!.gitignore
+!.pdm-python
+!.github
+Makefile
