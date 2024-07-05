@@ -64,7 +64,9 @@ runs:
         key: ${{ runner.os }}-regclient
     - name: Install regctl
       if: steps.cache-regclient.outputs.cache-hit != 'true'
-      uses: regclient/actions/regctl-installer@main
+      uses: regclient/actions/regctl-installer@1.2
+      with:
+        regctl-release: v0.4.7 # optional
     - name: Cache regclient
       id: cache-regclient-save
       uses: actions/cache/save@v4
