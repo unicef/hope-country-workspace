@@ -1,6 +1,5 @@
-from typing import Any
-
 import logging
+from typing import Any
 
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -31,9 +30,16 @@ class Command(BaseCommand):
         Site.objects.clear_cache()
 
         for flag in settings.FLAGS.keys():
-            FlagState.objects.get_or_create(name=flag, condition="hostname", value="127.0.0.1,localhost")
+            FlagState.objects.get_or_create(
+                name=flag, condition="hostname", value="127.0.0.1,localhost"
+            )
 
-        CountryOffice.objects.get_or_create(slug=slugify(settings.TENANT_HQ, ), name=settings.TENANT_HQ)
+        CountryOffice.objects.get_or_create(
+            slug=slugify(
+                settings.TENANT_HQ,
+            ),
+            name=settings.TENANT_HQ,
+        )
 
         for co in ["afghanistan", "ukraine", "sudan", "haiti"]:
             CountryOffice.objects.get_or_create(slug=co, name=co.capitalize())

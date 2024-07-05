@@ -7,7 +7,6 @@ CONSTANCE_CONFIG = {
         "Group to assign to any new user",
         str,
     ),
-
 }
 
 

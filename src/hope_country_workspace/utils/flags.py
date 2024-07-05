@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING
-
 import contextlib
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -10,9 +9,11 @@ from flags import state as flag_state
 from flags.conditions import conditions
 
 if TYPE_CHECKING:
-    from typing import Any
+    from hope_country_workspace.types.http import AuthHttpRequest
 
+if TYPE_CHECKING:
     from collections.abc import Iterator
+    from typing import Any
 
     from django.http import HttpRequest
 
@@ -25,7 +26,18 @@ def enable_flag(name: str) -> "Iterator[Any]":
 
 
 def validate_bool(value: str) -> None:
-    if not value.lower() in ["true", "1", "yes", "t", "y", "false", "0", "no", "f", "n"]:
+    if not value.lower() in [
+        "true",
+        "1",
+        "yes",
+        "t",
+        "y",
+        "false",
+        "0",
+        "no",
+        "f",
+        "n",
+    ]:
         raise ValidationError("Enter a valid bool")
 
 

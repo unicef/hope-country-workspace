@@ -1,5 +1,4 @@
 from typing import Any
-
 from urllib.parse import urlencode
 
 from django.template import Library
@@ -11,7 +10,9 @@ register = Library()
 
 
 @register.simple_tag(takes_context=True)
-def build_filter_url(context: dict[str, Any], field: str | None = None, value: str | None = None) -> str:
+def build_filter_url(
+    context: dict[str, Any], field: str | None = None, value: str | None = None
+) -> str:
     params = context["request"].GET.copy()
     if field:
         if value:

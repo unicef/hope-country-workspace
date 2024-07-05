@@ -11,6 +11,9 @@ class CountryOfficeManager(models.Manager):
 
 class CountryOffice(models.Model):
     HQ = "HQ"
+
+    hope_id = models.CharField(max_length=100, blank=True, null=True)
+    code = models.CharField(max_length=100, blank=True, null=True)
     name = models.CharField(max_length=100, blank=True, null=True)
     slug = models.SlugField(max_length=100, blank=True, null=True)
     objects = CountryOfficeManager()

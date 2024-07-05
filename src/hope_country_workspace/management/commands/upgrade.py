@@ -1,13 +1,11 @@
-from typing import Any, TYPE_CHECKING
-
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.contrib.auth.models import Group
-from django.contrib.gis.utils import LayerMapping
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand, call_command
 from django.core.management.base import CommandError, SystemCheckError
@@ -15,6 +13,7 @@ from django.core.validators import validate_email
 from django.utils.text import slugify
 
 from hope_country_workspace.config import env
+from hope_country_workspace.utils import get_or_create_defaults_group
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -94,7 +93,9 @@ class Command(BaseCommand):
         self.debug = options["debug"]
 
         self.admin_email = str(options["admin_email"] or env("ADMIN_EMAIL", ""))
-        self.admin_password = str(options["admin_password"] or env("ADMIN_PASSWORD", ""))
+        self.admin_password = str(
+            options["admin_password"] or env("ADMIN_PASSWORD", "")
+        )
 
     def halt(self, e: Exception) -> None:  # pragma: no cover
         self.stdout.write(str(e), style_func=self.style.ERROR)
@@ -128,7 +129,9 @@ class Command(BaseCommand):
                 call_command("check", deploy=True, verbosity=self.verbosity - 1)
             if self.static:
                 static_root = Path(env("STATIC_ROOT"))
-                echo(f"Run collectstatic to: '{static_root}' - '{static_root.absolute()}")
+                echo(
+                    f"Run collectstatic to: '{static_root}' - '{static_root.absolute()}"
+                )
                 if not static_root.exists():
                     static_root.mkdir(parents=True)
                 call_command("collectstatic", **extra)
@@ -161,13 +164,19 @@ class Command(BaseCommand):
                         interactive=False,
                     )
 
-
             echo("Create default group")
             Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
             echo("Sync Country Offices")
-            CountryOffice.objects.get_or_create(slug=slugify(settings.TENANT_HQ, ), name=settings.TENANT_HQ)
+            CountryOffice.objects.get_or_create(
+                slug=slugify(
+                    settings.TENANT_HQ,
+                ),
+                name=settings.TENANT_HQ,
+            )
             CountryOffice.objects.sync()
             echo("Upgrade completed", style_func=self.style.SUCCESS)
+
+            get_or_create_defaults_group()
         except ValidationError as e:
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))
         except (CommandError, SystemCheckError) as e:

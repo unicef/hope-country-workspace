@@ -1,5 +1,9 @@
 # hope-country-workspace
 
+[![Test](https://github.com/unicef/hope-country-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/unicef/hope-country-workspace/actions/workflows/test.yml)
+[![Lint](https://github.com/unicef/hope-country-workspace/actions/workflows/lint.yml/badge.svg)](https://github.com/unicef/hope-country-workspace/actions/workflows/lint.yml)
+[![codecov](https://codecov.io/github/unicef/hope-country-workspace/graph/badge.svg?token=FBUB7HML5S)](https://codecov.io/github/unicef/hope-country-workspace)
+
 ## Spreadsheet import
 
 ```mermaid

@@ -18,7 +18,8 @@ class TenantManager(models.Manager["TenantModel"]):
         tenant_filter_field = self.model.Tenant.tenant_filter_field
         if not tenant_filter_field:
             raise ValueError(
-                f"Set 'tenant_filter_field' on {self} or override `get_queryset()` to enable queryset filtering"
+                f"Set 'tenant_filter_field' on {self} or override "
+                f"`get_queryset()` to enable queryset filtering"
             )
         if tenant_filter_field == "__all__":
             return {}
@@ -29,7 +30,7 @@ class TenantManager(models.Manager["TenantModel"]):
         active_tenant = get_selected_tenant()
         if not active_tenant:
             raise InvalidTenantError("State does not have any active tenant")
-        return {tenant_filter_field: state.tenant.hope_id}
+        return {tenant_filter_field: state.tenant}
 
     def get_queryset(self):
         flt = self.get_tenant_filter()
