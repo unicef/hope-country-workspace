@@ -90,6 +90,7 @@ runs:
         else
           echo "TAG_PREFIX=test-" >> $GITHUB_ENV
         fi
+        echo "IMAGE=${{ inputs.image }}" >> $GITHUB_ENV
     - id: last_commit
       uses: ./.github/actions/last_commit
     - name: Docker meta
