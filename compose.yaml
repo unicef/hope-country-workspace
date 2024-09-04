@@ -1,0 +1,98 @@
+x-common: &common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: python_dev_deps
+  platform: linux/amd64
+  environment:
+    - DEBUG=true
+    - ADMIN_EMAIL=adm@hcw.org
+    - ADMIN_PASSWORD=123
+    - CACHE_URL=redis://redis:6379/1
+    - CELERY_BROKER_URL=redis://redis:6379/9
+    - CELERY_TASK_ALWAYS_EAGER=False
+    - DATABASE_URL=postgres://hcw:password@db:5432/hope_country_workspace
+    - DJANGO_SETTINGS_MODULE=hope_country_workspace.config.settings
+    - MEDIA_ROOT=/var/hope_country_workspace/media
+    - PYTHONPATH=/code/src/:/code/__pypackages__/3.12/lib/
+    - SECRET_KEY=sensitive-secret-key
+    - STATIC_ROOT=/var/hope_country_workspace/static
+  volumes:
+    - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+  restart: always
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  backend:
+    <<: *common
+    ports:
+      - 8000:8000
+    # command: ["tail", "-f", "/dev/null"]
+    command: >
+      bash -c "
+        ./manage.py upgrade  &&
+        ./manage.py demo &&
+        django-admin runserver 0.0.0.0:8000
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=hcw
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=hope_country_workspace
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - 5432:5432
+    restart: always
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "hcw", "-d", "hope_country_workspace"]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+
+  redis:
+    image: redis:7.2
+    ports:
+      - 6379:6379
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+
+  celery_worker:
+    <<: *common
+    # entrypoint: ["sh", "-c", "exec docker-entrypoint.sh \"$0\" \"$@\""]
+    # command: worker
+    command: >
+      sh -c '
+      gosu user:app celery -A hope_country_workspace.config.celery worker -E --loglevel=INFO --concurrency=4
+      '
+
+  celery-beat:
+    <<: *common
+    command: >
+      sh -c '
+      gosu user:app celery -A hope_country_workspace.config.celery beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      '
+
+
+volumes:
+  postgres_data:

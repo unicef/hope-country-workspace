@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        stages: [commit]
+  - repo: https://github.com/ambv/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        args: [--config=pyproject.toml]
+        exclude: "migrations|snapshots"
+        stages: [commit]
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.0
+    hooks:
+      - id: flake8
+        args: [--config=.flake8]
+
+        additional_dependencies: [flake8-bugbear==22.9.23]
+        stages: [ commit ]
+  - repo: https://github.com/PyCQA/bandit
+    rev: '1.7.9' # Update me!
+    hooks:
+      - id: bandit
+        args: ["-c", "bandit.yaml"]
+  - repo: https://github.com/twisted/towncrier
+    rev: 23.11.0
+    hooks:
+      - id: towncrier-check
