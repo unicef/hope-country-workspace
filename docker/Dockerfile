@@ -91,6 +91,7 @@ RUN set -x \
         cmake \
         curl \
         gcc \
+        git \
         libgdal-dev \
         libgif-dev \
         libjpeg-dev \

@@ -114,7 +114,7 @@ class Command(BaseCommand):
         if self.verbosity >= 1:
             echo = self.stdout.write
         else:
-            echo = lambda *a, **kw: None
+            echo = lambda *a, **kw: None  # noqa: E731
 
         try:
             extra = {
@@ -173,7 +173,12 @@ class Command(BaseCommand):
                 ),
                 name=settings.TENANT_HQ,
             )
-            CountryOffice.objects.sync()
+            # CountryOffice.objects.sync()
+            # TODO: Implement sync for Country Offices
+            echo(
+                "Country Offices sync not implemented yet - TODO it !!!",
+                style_func=self.style.ERROR,
+            )
             echo("Upgrade completed", style_func=self.style.SUCCESS)
 
             get_or_create_defaults_group()
