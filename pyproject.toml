@@ -25,15 +25,17 @@ dependencies = [
     "django-select2",
     "django-smart-admin>=2.6.0",
     "django-stubs-ext",
+    "django-storages[azure]>=1.14.4",
     "django>=5.0.6",
     "djangorestframework>=3.15.1",
+    "hope-flex-fields @ git+https://github.com/unicef/hope-flex-fields@release/0.1rc",
     "psycopg2-binary>=2.9.9",
+    "python-calamine>=0.2.2",
     "redis",
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
     "unicef-security>=1.5.1",
     "uwsgi",
-    "hope-flex-fields @ git+https://github.com/unicef/hope-flex-fields@release/0.1rc",
 ]
 
 [tool.pdm]
