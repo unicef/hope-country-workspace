@@ -29,6 +29,7 @@ jobs:
           python -m pip install pdm
           pdm install
           ls -la ./
+          ls -la ~HOME/.local/bin
       - name: Start db
         run: docker compose run --rm -d db
       - name: Wait for db
@@ -43,6 +44,7 @@ jobs:
             sleep 1
           done
           echo "Database is not available."
+          docker ps -a
           exit 1
       - name: Run tests
         run: pdm run pytest
