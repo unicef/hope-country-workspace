@@ -29,7 +29,8 @@ jobs:
           python -m pip install pdm
           pdm install
           ls -la ./
-          ls -la $HOME/.local/bin
+          pdm info
+          pdm list
       - name: Start db
         run: docker compose run --rm -d db
       - name: Wait for db
