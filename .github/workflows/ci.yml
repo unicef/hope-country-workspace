@@ -37,7 +37,7 @@ jobs:
         run: |
           docker ps -a
           for i in {1..60}; do
-            if nc -zv localhost 5432; then
+            if docker compose exec db pg_isready -U hcw -d hope_country_workspace; then
               echo "Database is up!"
               exit 0
             fi
