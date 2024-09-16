@@ -23,4 +23,5 @@ jobs:
         pdm install
     - name: Run tests
       run: |
+        docker compose run --rm -d db
         pdm run pytest
