@@ -33,9 +33,16 @@ jobs:
         run: docker compose run --rm -d db
       - name: Wait for db
         run: |
-          for i in {1..30}; do
-            nc -zv localhost 5432 && break
+          docker ps -a
+          for i in {1..60}; do
+            if nc -zv localhost 5432; then
+              echo "Database is up!"
+              exit 0
+            fi
+            echo "Waiting for database..."
             sleep 1
           done
+          echo "Database is not available."
+          exit 1
       - name: Run tests
         run: pdm run pytest
