@@ -1,0 +1,60 @@
+services:
+  tests:
+    image: ${image}
+    environment:
+      - DEBUG=False
+      - ADMIN_EMAIL=adm@hcw.org
+      - ADMIN_PASSWORD=123
+      - CACHE_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/9
+      - CELERY_TASK_ALWAYS_EAGER=False
+      - DATABASE_URL=postgres://hcw:password@db:5432/hope_country_workspace
+      - DJANGO_SETTINGS_MODULE=hope_country_workspace.config.settings
+      - MEDIA_ROOT=/var/hope_country_workspace/media
+      - PYTHONPATH=/code/src/:/code/__pypackages__/3.12/lib/
+      - SECRET_KEY=sensitive-secret-key
+      - STATIC_ROOT=/var/hope_country_workspace/static
+    restart: no
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      bash -c "
+        pytest
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:16
+    network_mode: host
+    environment:
+      - POSTGRES_USER=hcw
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=hope_country_workspace
+    restart: always
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "hcw", "-d", "hope_country_workspace"]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+
+  redis:
+    image: redis:7.2
+    ports:
+      - 6379:6379
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
