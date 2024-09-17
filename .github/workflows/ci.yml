@@ -3,6 +3,8 @@ on:
   pull_request:
     branches: [develop] # If more branches are needed, add them here.
     types: [synchronize, opened, reopened, ready_for_review]
+  push:
+    branches: [develop] # If more branches are needed, add them here.
 concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
