@@ -22,8 +22,10 @@ services:
         condition: service_healthy
     command: >
       bash -c "
-        pytest
+        pytest -vvv ./tests
       "
+    volumes:
+      - ../../tests:/code/tests
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
       interval: 10s
@@ -32,7 +34,6 @@ services:
 
   db:
     image: postgres:16
-    network_mode: host
     environment:
       - POSTGRES_USER=hcw
       - POSTGRES_PASSWORD=password
