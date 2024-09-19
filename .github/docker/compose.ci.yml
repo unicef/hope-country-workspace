@@ -22,7 +22,7 @@ services:
         condition: service_healthy
     command: >
       bash -c "
-        pytest -vvv ./tests
+        pytest -vvv --cov=src ./tests
       "
     volumes:
       - ../../tests:/code/tests
