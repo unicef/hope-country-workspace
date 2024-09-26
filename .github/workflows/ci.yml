@@ -1,0 +1,38 @@
+name: CI
+on:
+  pull_request:
+    branches: [develop] # If more branches are needed, add them here.
+    types: [synchronize, opened, reopened, ready_for_review]
+  push:
+    branches: [develop] # If more branches are needed, add them here.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure cache directory exists
+        run: mkdir -p /tmp/.buildx-cache
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+      - name: Build the Docker image
+        run: |
+          docker buildx create --use
+          docker buildx build \
+            --tag unicef/hope_country_workspace:${{ github.sha }} \
+            --load \
+            --target python_dev_deps \
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache \
+            -f ./docker/Dockerfile \
+            ./
+      - name: Run the tests
+        run: |-
+          image=unicef/hope_country_workspace:${{ github.sha }} docker compose -f ./.github/docker/compose.ci.yml up --exit-code-from tests
