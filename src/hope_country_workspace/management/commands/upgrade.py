@@ -123,7 +123,6 @@ class Command(BaseCommand):
                 "stdout": self.stdout,
             }
             echo("Running upgrade", style_func=self.style.WARNING)
-            call_command("env", check=True)
 
             if self.run_check:
                 call_command("check", deploy=True, verbosity=self.verbosity - 1)

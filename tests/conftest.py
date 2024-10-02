@@ -49,14 +49,7 @@ def pytest_configure(config):
     os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
     os.makedirs(settings.STATIC_ROOT, exist_ok=True)
 
-    from django.core.management import CommandError, call_command
-
     django.setup()
-
-    try:
-        call_command("env", check=True)
-    except CommandError:
-        pytest.exit("FATAL: Environment variables missing")
 
 
 @pytest.fixture(autouse=True)

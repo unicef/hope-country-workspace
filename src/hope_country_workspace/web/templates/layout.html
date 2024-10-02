@@ -1,7 +1,7 @@
 {% load static i18n %}{% get_current_language_bidi as LANGUAGE_BIDI %}<!DOCTYPE html>
 <html lang="en" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}">
 <head>
-    <title>{{ title|default_if_none:"HOPE Reporting" }}</title>
+    <title>{{ title|default_if_none:"HOPE Workspace" }}</title>
     {% block meta %}
         <meta name="view" content="{{ view_name }}"/>
         <meta charset="utf-8">
@@ -75,7 +75,7 @@
     </div>
     {#    <div class="flex items-center p-2">#}
     {#        <div class="m-auto">#}
-    {#            <span>HOPE Reporting</span>#}
+    {#            <span>HOPE Workspace</span>#}
     {#            <span>{{ version }}</span>#}
     {#            <span>{{ release_date }}</span>#}
     {#        </div>#}

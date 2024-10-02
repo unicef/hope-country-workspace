@@ -1,16 +1,11 @@
 import factory
 
-from hope_country_workspace.security.models import CountryOffice, UserRole
+from hope_country_workspace.security.models import UserRole
 
 from .base import AutoRegisterModelFactory
 from .django_auth import GroupFactory
+from .office import CountryOfficeFactory
 from .user import UserFactory
-
-
-class CountryOfficeFactory(AutoRegisterModelFactory):
-    class Meta:
-        model = CountryOffice
-        django_get_or_create = ("name",)
 
 
 class UserRoleFactory(AutoRegisterModelFactory):

@@ -25,7 +25,8 @@ INSTALLED_APPS = (
     "django.contrib.sitemaps",
     "django.contrib.staticfiles",
     "django.contrib.postgres",
-    "hope_country_workspace.admin_site.apps.AdminConfig",
+    "django.contrib.admin",
+    # "hope_country_workspace.admin_site.apps.AdminConfig",
     "flags",
     "social_django",
     "debug_toolbar",
@@ -38,6 +39,7 @@ INSTALLED_APPS = (
     "django_celery_results",
     "hope_country_workspace.security",
     "hope_country_workspace.apps.Config",
+    "hope_country_workspace.workspaces.apps.Config",
 )
 
 MIDDLEWARE = (
@@ -80,7 +82,6 @@ STORAGES = {
     "default": env.storage("FILE_STORAGE_DEFAULT"),
     "staticfiles": env.storage("FILE_STORAGE_STATIC"),
     "media": env.storage("FILE_STORAGE_MEDIA"),
-    "hope": env.storage("FILE_STORAGE_HOPE"),
 }
 
 SECRET_KEY = env("SECRET_KEY")
@@ -210,4 +211,3 @@ from .fragments.sentry import *  # noqa
 from .fragments.smart_admin import *  # noqa
 from .fragments.social_auth import *  # noqa
 from .fragments.spectacular import *  # noqa
-from .fragments.storages import *  # noqa
