@@ -13,8 +13,27 @@ sys.path.insert(0, str(here / "../src"))
 sys.path.insert(0, str(here / "extras"))
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--selenium",
+        action="store_true",
+        dest="enable_selenium",
+        default=False,
+        help="enable selenium tests",
+    )
+
+    parser.addoption(
+        "--show-browser",
+        "-S",
+        action="store_true",
+        dest="show_browser",
+        default=False,
+        help="will not start browsers in headless mode",
+    )
+
+
 def pytest_configure(config):
-    os.environ.update(DJANGO_SETTINGS_MODULE="hope_country_workspace.config.settings")
+    os.environ.update(DJANGO_SETTINGS_MODULE="country_workspace.config.settings")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")
     os.environ.setdefault("STATIC_ROOT", "/tmp/media/")
     os.environ.setdefault("TEST_EMAIL_SENDER", "sender@example.com")
@@ -44,6 +63,7 @@ def pytest_configure(config):
     from django.conf import settings
 
     settings.ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+    settings.SIGNING_BACKEND = "testutils.signers.PlainSigner"
     settings.MEDIA_ROOT = "/tmp/media"
     settings.STATIC_ROOT = "/tmp/static"
     os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
@@ -81,6 +101,6 @@ def afghanistan(db):
 
 @pytest.fixture
 def reporters(db, afghanistan, user):
-    from hope_country_workspace.utils import get_or_create_defaults_group
+    from country_workspace.utils import get_or_create_defaults_group
 
     return get_or_create_defaults_group()

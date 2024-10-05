@@ -7,8 +7,8 @@ from django.contrib.auth.models import Group, Permission
 
 from faker import Faker
 
-from hope_country_workspace.security.models import UserRole
-from hope_country_workspace.state import state
+from country_workspace.models import CountryOffice, UserRole
+from country_workspace.state import state
 
 from .factories import GroupFactory
 
@@ -82,13 +82,22 @@ class user_grant_role(ContextDecorator):  # noqa
         "_dss_acl_cache",
     ]
 
-    def __init__(self, user, country_office, group=settings.ANALYST_GROUP_NAME):
+    def __init__(
+        self, user, country_office_or_program, group=settings.ANALYST_GROUP_NAME
+    ):
         self.user = user
         if isinstance(group, str):
-            self.group = Group.objects.get(name=settings.ANALYST_GROUP_NAME)
+            self.group, __ = Group.objects.get_or_create(
+                name=settings.ANALYST_GROUP_NAME
+            )
         else:
             self.group = group
-        self.country_office = country_office
+        if isinstance(country_office_or_program, CountryOffice):
+            self.country_office = country_office_or_program
+            self.program = None
+        else:
+            self.country_office = country_office_or_program.country_office
+            self.program = country_office_or_program
 
     def __enter__(self):
         for cache in self.caches:
@@ -99,7 +108,10 @@ class user_grant_role(ContextDecorator):  # noqa
             if hasattr(self.user, cache_name):
                 delattr(self.user, cache_name)
         __, self.is_added = UserRole.objects.get_or_create(
-            country_office=self.country_office, user=self.user, group=self.group
+            country_office=self.country_office,
+            program=self.program,
+            user=self.user,
+            group=self.group,
         )
         return self
 
@@ -130,14 +142,21 @@ class user_grant_permissions(ContextDecorator):  # noqa
         "_dss_acl_cache",
     ]
 
-    def __init__(self, user, permissions=None, country_office=None, group_name=None):
+    def __init__(
+        self, user, permissions=None, country_office_or_program=None, group_name=None
+    ):
         self.user = user
         if not isinstance(permissions, (list, tuple)):
             permissions = [permissions]
         self.permissions = permissions
         self.group_name = group_name
         self.group = None
-        self.country_office = country_office
+        if isinstance(country_office_or_program, CountryOffice):
+            self.country_office = country_office_or_program
+            self.program = None
+        else:
+            self.country_office = country_office_or_program.country_office
+            self.program = country_office_or_program
 
     def __enter__(self):
         for cache in self.caches:

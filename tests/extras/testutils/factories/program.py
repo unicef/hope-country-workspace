@@ -1,6 +1,6 @@
 import factory
 
-from hope_country_workspace.models import Program
+from country_workspace.models import Program
 
 from .base import AutoRegisterModelFactory
 from .office import CountryOfficeFactory

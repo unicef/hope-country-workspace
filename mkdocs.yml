@@ -2,12 +2,12 @@ copyright: Copyright &copy; 2020-2024 UNICEF.
 dev_addr: 127.0.0.1:8001
 docs_dir: docs/src
 edit_uri: 'blob/develop/docs/'
-repo_url: https://github.com/unicef/django-country-workspace
+repo_url: https://github.com/unicef/hope-country-workspace
 site_author: HOPE Team
 site_description: ""
 site_dir: ./~build/docs
 site_name: Django Country Workspace
-site_url: https://unicef.github.io/unicef/django-country-workspace/
+site_url: https://unicef.github.io/unicef/hope-country-workspace/
 strict: false
 
 

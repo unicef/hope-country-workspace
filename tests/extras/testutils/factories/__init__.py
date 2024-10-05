@@ -12,6 +12,7 @@ from .base import (
 )
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import HouseholdFactory  # noqa
+from .individual import HouseholdFactory  # noqa
 from .office import CountryOfficeFactory  # noqa
 from .program import ProgramFactory  # noqa
 from .smart_fields import (  # noqa
@@ -21,13 +22,7 @@ from .smart_fields import (  # noqa
     FlexFieldFactory,
 )
 from .social import SocialAuthUserFactory  # noqa
-from .user import (  # noqa
-    CountryOfficeFactory,
-    GroupFactory,
-    SuperUserFactory,
-    User,
-    UserFactory,
-)
+from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
 
 for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):

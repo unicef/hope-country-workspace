@@ -1,10 +1,11 @@
 [run]
 branch = True
-source = hope_country_workspace
+source = country_workspace
 
 omit =
     */tests/**
     */migrations/*,
+    */country_workspace/management/commands/demo.py
     */wsgi.py,
 
 

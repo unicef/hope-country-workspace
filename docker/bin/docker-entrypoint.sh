@@ -4,7 +4,7 @@
 export MEDIA_ROOT="${MEDIA_ROOT:-/var/run/app/media}"
 export STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}"
 export UWSGI_PROCESSES="${UWSGI_PROCESSES:-"4"}"
-export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-"hope_country_workspace.config.settings"}"
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-"country_workspace.config.settings"}"
 mkdir -p "${MEDIA_ROOT}" "${STATIC_ROOT}" || echo "Cannot create dirs ${MEDIA_ROOT} ${STATIC_ROOT}"
 
 case "$1" in
@@ -41,10 +41,10 @@ exec "$@"
 #      exec uwsgi --ini /conf/uwsgi.ini
 #      ;;
 #    worker)
-#      exec celery -A hope_country_workspace.celery worker -E --loglevel=ERROR --concurrency=4
+#      exec celery -A country_workspace.celery worker -E --loglevel=ERROR --concurrency=4
 #      ;;
 #    beat)
-#      exec celery -A hope_country_workspace.celery beat -E --loglevel=ERROR ---scheduler django_celery_beat.schedulers:DatabaseScheduler
+#      exec celery -A country_workspace.celery beat -E --loglevel=ERROR ---scheduler django_celery_beat.schedulers:DatabaseScheduler
 #      ;;
 #    dev)
 #      until pg_isready -h db -p 5432;

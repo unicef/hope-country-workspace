@@ -42,6 +42,11 @@ dependencies = [
 [tool.pdm]
 distribution = false
 
+[tool.pdm.dev-dependencies]
+dev = [
+    "pytest-selenium>=4.1.0",
+    "selenium>=4.25.0",
+]
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.2.2",
@@ -89,4 +94,4 @@ skip = ["migrations", "snapshots", ".venv"]
 
 
 [tool.django-stubs]
-django_settings_module = "hope_country_workspace.config.settings"
+django_settings_module = "country_workspace.config.settings"

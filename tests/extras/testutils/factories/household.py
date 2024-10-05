@@ -1,6 +1,6 @@
 import factory
 
-from hope_country_workspace.models import Household
+from country_workspace.models import Household
 
 from .base import AutoRegisterModelFactory
 from .office import CountryOfficeFactory

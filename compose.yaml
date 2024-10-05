@@ -11,12 +11,12 @@ x-common: &common
     - CACHE_URL=redis://redis:6379/1
     - CELERY_BROKER_URL=redis://redis:6379/9
     - CELERY_TASK_ALWAYS_EAGER=False
-    - DATABASE_URL=postgres://hcw:password@db:5432/hope_country_workspace
-    - DJANGO_SETTINGS_MODULE=hope_country_workspace.config.settings
-    - MEDIA_ROOT=/var/hope_country_workspace/media
+    - DATABASE_URL=postgres://hcw:password@db:5432/country_workspace
+    - DJANGO_SETTINGS_MODULE=country_workspace.config.settings
+    - MEDIA_ROOT=/var/country_workspace/media
     - PYTHONPATH=/code/src/:/code/__pypackages__/3.12/lib/
     - SECRET_KEY=sensitive-secret-key
-    - STATIC_ROOT=/var/hope_country_workspace/static
+    - STATIC_ROOT=/var/country_workspace/static
   volumes:
     - .:/code
     - /var/run/docker.sock:/var/run/docker.sock
@@ -50,14 +50,14 @@ services:
     environment:
       - POSTGRES_USER=hcw
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=hope_country_workspace
+      - POSTGRES_DB=country_workspace
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - 5432:5432
     restart: always
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "hcw", "-d", "hope_country_workspace"]
+      test: ["CMD", "pg_isready", "-U", "hcw", "-d", "country_workspace"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
@@ -83,14 +83,14 @@ services:
     # command: worker
     command: >
       sh -c '
-      gosu user:app celery -A hope_country_workspace.config.celery worker -E --loglevel=INFO --concurrency=4
+      gosu user:app celery -A country_workspace.config.celery worker -E --loglevel=INFO --concurrency=4
       '
 
   celery-beat:
     <<: *common
     command: >
       sh -c '
-      gosu user:app celery -A hope_country_workspace.config.celery beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      gosu user:app celery -A country_workspace.config.celery beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
       '
 
 

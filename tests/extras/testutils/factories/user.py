@@ -2,18 +2,9 @@ from django.contrib.auth.models import Group
 
 import factory.fuzzy
 
-from hope_country_workspace.security.models import CountryOffice, User
+from country_workspace.models import User
 
 from .base import AutoRegisterModelFactory
-
-
-class CountryOfficeFactory(AutoRegisterModelFactory):
-    name = factory.Iterator(["Afghanistan", "Ukraine", "Niger", "South Sudan"])
-    code = factory.Sequence(lambda x: str(x))
-
-    class Meta:
-        model = CountryOffice
-        django_get_or_create = ("name",)
 
 
 class UserFactory(AutoRegisterModelFactory):
