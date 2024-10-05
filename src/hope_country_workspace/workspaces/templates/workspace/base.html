@@ -1,4 +1,4 @@
-{% extends "~admin/layout.html" %}{% load i18n static %}
+{% extends "workspace/layout.html" %}{% load i18n static %}
 {% block extrastyle %}
     {{ block.super }}
     <link rel="stylesheet" href="{% static 'admin/hr.css' %}">
@@ -8,7 +8,7 @@
 {#    {% if active_tenant %}#}
         {% block select_ba_form %}
             <div style="display: inline-flex">
-                <form id="select-tenant" method="post" action="{% url "admin:select_tenant" %}">
+                <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}">
                     {% csrf_token %}{{ tenant_form }}
                     <script>
                         document.querySelector('#id_tenant').addEventListener('change', function () {
@@ -18,7 +18,7 @@
                 </form>
             </div>
         {% endblock %}
-        <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+        <form id="logout-form" method="post" action="{% url 'workspace:logout' %}">
             {% csrf_token %}
             <button type="submit">{% translate 'Logout' %}</button>
         </form>

@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 from unittest.mock import Mock
 
-from django.contrib.admin.sites import site
 from django.contrib.admin.templatetags.admin_urls import admin_urlname
 from django.db.models import Model
 from django.db.models.options import Options
@@ -16,6 +15,9 @@ from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
 from testutils.factories.base import AutoRegisterModelFactory
 from testutils.factories.user import SuperUserFactory
+
+from hope_country_workspace.workspaces.sites import workspace
+from hope_country_workspace.workspaces.templatetags.reverse import workspace_urlname
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
@@ -33,26 +35,13 @@ class RegexList(_RegexList):  # type: ignore[misc]
             self.append(e)
 
 
-GLOBAL_EXCLUDED_MODELS = RegexList(
-    [
-        r"django_celery_beat\.ClockedSchedule",
-        r"contenttypes\.ContentType",
-        r"webpush\.BrowserAdmin",
-        "authtoken",
-        "social_django",
-        "depot",
-    ]
-)
+GLOBAL_EXCLUDED_MODELS = RegexList([])
 
-GLOBAL_EXCLUDED_BUTTONS = RegexList(
-    [
-        r"social.SocialProviderAdmin:test",
-        r"bitcaster.*:lock",
-        r"bitcaster.*:unlock",
-        r"hope_flex_fields.FieldsetAdmin:detect_changes",
-        r"hope_country_workspace.CountryHouseholdAdmin:import_file"
-    ]
-)
+GLOBAL_EXCLUDED_BUTTONS = RegexList([
+    r"hope_flex_fields.FieldsetAdmin:detect_changes",
+    r"hope_country_workspace.CountryHouseholdAdmin:import_file"
+
+])
 
 KWARGS: Mapping[str, Any] = {}
 
@@ -61,9 +50,11 @@ def reverse_model_admin(
     model_admin: "ModelAdmin[Model]", op: str, args: Optional[list[Any]] = None
 ) -> str:
     if args:
-        return reverse(admin_urlname(model_admin.model._meta, mark_safe(op)), args=args)
+        return reverse(
+            workspace_urlname(model_admin.model._meta, mark_safe(op)), args=args
+        )
     else:
-        return reverse(admin_urlname(model_admin.model._meta, mark_safe(op)))
+        return reverse(workspace_urlname(model_admin.model._meta, mark_safe(op)))
 
 
 def log_submit_error(res: "DjangoWebtestResponse") -> str:
@@ -91,7 +82,7 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
     if "button_handler" in metafunc.fixturenames:
         m1: list[tuple[ModelAdmin[ExtraButtonsMixin], ButtonHandler]] = []
         ids = []
-        for model, admin in site._registry.items():
+        for model, admin in workspace._registry.items():
             if hasattr(admin, "extra_button_handlers"):
                 name = model._meta.object_name
                 assert admin.urls  # we need to force this call
@@ -108,13 +99,13 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
         metafunc.parametrize("model_admin,button_handler", m1, ids=ids)
     elif "app_label" in metafunc.fixturenames:
         m: dict[str, int] = {}
-        for model, admin in site._registry.items():
+        for model, admin in workspace._registry.items():
             m[model._meta.app_label] = 1
         metafunc.parametrize("app_label", m.keys(), ids=m.keys())
     elif "model_admin" in metafunc.fixturenames:
         m2: list[ModelAdmin[Model]] = []
         ids = []
-        for model, admin in site._registry.items():
+        for model, admin in workspace._registry.items():
             name = model._meta.object_name
             full_name = f"{model._meta.app_label}.{name}"
             if not (full_name in excluded_models):
@@ -159,14 +150,14 @@ def app(
     return django_app
 
 
-def test_app_list(app: "DjangoTestApp", app_label: str) -> None:
+def test_ws_app_list(app: "DjangoTestApp", app_label: str) -> None:
     url = reverse("admin:app_list", args=[app_label])
     res = app.get(url)
     assert res.status_code == 200
 
 
 @pytest.mark.skip_models("constance.Config")
-def test_admin_changelist(
+def test_ws_changelist(
     app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
 ) -> None:
     url = reverse_model_admin(model_admin, "changelist")
@@ -186,7 +177,7 @@ def show_error(res: Any) -> tuple[str]:
 
 
 @pytest.mark.skip_models("constance.Config")
-def test_admin_changeform(
+def test_ws_changeform(
     app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
 ) -> None:
     opts: Options[Model] = model_admin.model._meta
@@ -200,7 +191,7 @@ def test_admin_changeform(
 
 
 @pytest.mark.skip_models("constance.Config", "bitcaster.MediaFile")
-def test_admin_add(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]") -> None:
+def test_ws_add(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]") -> None:
     url = reverse_model_admin(model_admin, "add")
     if model_admin.has_add_permission(Mock(user=app._user)):
         res = app.get(url)
@@ -213,7 +204,7 @@ def test_admin_add(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]") -> No
 @pytest.mark.skip_models(
     "constance.Config", "webpush.Browser", "bitcaster.Organization"
 )
-def test_admin_delete(
+def test_ws_delete(
     app: "DjangoTestApp",
     model_admin: "ModelAdmin[Model]",
     record: Model,
@@ -231,7 +222,7 @@ def test_admin_delete(
 
 
 @pytest.mark.skip_buttons("bitcaster.EventAdmin:subscribe")
-def test_admin_buttons(
+def test_ws_buttons(
     app: "DjangoTestApp",
     model_admin: "ExtraButtonsMixin",
     button_handler: "ButtonHandler",

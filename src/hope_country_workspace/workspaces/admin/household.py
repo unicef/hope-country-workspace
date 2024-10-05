@@ -1,15 +1,18 @@
-from admin_extra_buttons.decorators import button
-from django.contrib import admin
 from django.http import HttpRequest, HttpResponse
 
-from hope_country_workspace.workspaces.models import CountryHousehold
-from hope_country_workspace.workspaces.options import CWModelAdmin
-from hope_country_workspace.workspaces.sites import workspace
+from admin_extra_buttons.decorators import button
+
+from hope_country_workspace.state import state
+
+from ..models import CountryHousehold
+from ..options import WorkspaceModelAdmin
 
 
-class CountryHouseholddAdmin(CWModelAdmin):
-    change_list_template = "workspace/change_list.html"
+class CountryHouseholdAdmin(WorkspaceModelAdmin):
 
     @button()
     def import_file(self, request: HttpRequest):
         return HttpResponse("Ok")
+
+    def get_queryset(self, request):
+        return CountryHousehold.objects.filter(country_office=state.tenant)

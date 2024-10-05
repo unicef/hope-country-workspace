@@ -12,8 +12,15 @@ from .base import (
 )
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import HouseholdFactory  # noqa
-from .social import SocialAuthUserFactory  # noqa
 from .office import CountryOfficeFactory  # noqa
+from .program import ProgramFactory  # noqa
+from .smart_fields import (  # noqa
+    DataCheckerFactory,
+    FieldDefinitionFactory,
+    FieldsetFactory,
+    FlexFieldFactory,
+)
+from .social import SocialAuthUserFactory  # noqa
 from .user import (  # noqa
     CountryOfficeFactory,
     GroupFactory,

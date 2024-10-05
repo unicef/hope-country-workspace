@@ -5,7 +5,7 @@ from django.http import HttpRequest, HttpResponse
 
 from sentry_sdk import configure_scope
 
-from hope_country_workspace.tenant.utils import RequestHandler
+from hope_country_workspace.workspaces.utils import RequestHandler
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -1,10 +1,12 @@
-from admin_extra_buttons.mixins import ExtraButtonsMixin
 from django.contrib import admin
-from django.utils.translation import gettext_lazy
 
-from hope_country_workspace.tenant.forms import TenantAuthenticationForm
-from hope_country_workspace.tenant.sites import TenantAdminSite
+from admin_extra_buttons.mixins import ExtraButtonsMixin
 
 
-class CWModelAdmin(ExtraButtonsMixin, admin.ModelAdmin):
-    pass
+class WorkspaceModelAdmin(ExtraButtonsMixin, admin.ModelAdmin):
+    change_list_template = 'workspace/change_list.html'
+    change_form_template = 'workspace/change_form.html'
+    def get_changelist(self, request, **kwargs):
+        from .changelist import ChangeList
+
+        return ChangeList

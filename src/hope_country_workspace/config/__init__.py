@@ -27,6 +27,13 @@ class Group(Enum):
 
 
 CONFIG: "Dict[str, ConfigItem]" = {
+    "SUPERUSERS": (
+        list,
+        [],
+        [],
+        True,
+        "list of emails that will automatically created as superusers",
+    ),
     "ADMIN_EMAIL": (str, "", "admin", True, "Initial user created at first deploy"),
     "ADMIN_PASSWORD": (
         str,

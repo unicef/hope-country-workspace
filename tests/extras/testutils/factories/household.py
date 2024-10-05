@@ -1,13 +1,15 @@
 import factory
 
 from hope_country_workspace.models import Household
-from .office import CountryOfficeFactory
 
 from .base import AutoRegisterModelFactory
+from .office import CountryOfficeFactory
+from .program import ProgramFactory
 
 
 class HouseholdFactory(AutoRegisterModelFactory):
     country_office = factory.SubFactory(CountryOfficeFactory)
+    program = factory.SubFactory(ProgramFactory)
     name = factory.Sequence(lambda n: f"Household {n}")
 
     class Meta:

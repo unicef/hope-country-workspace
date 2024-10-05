@@ -37,6 +37,9 @@ INSTALLED_APPS = (
     "constance",
     "django_celery_beat",
     "django_celery_results",
+    "hope_flex_fields",
+    "hope_smart_import",
+    "hope_smart_export",
     "hope_country_workspace.security",
     "hope_country_workspace.apps.Config",
     "hope_country_workspace.workspaces.apps.Config",
@@ -63,7 +66,6 @@ AUTHENTICATION_BACKENDS = (
     # "hope_country_workspace.tenant.backend.TenantBackend",
     *env("AUTHENTICATION_BACKENDS"),
 )
-
 
 # path
 MEDIA_ROOT = env("MEDIA_ROOT")
@@ -111,7 +113,6 @@ INTERNAL_IPS = ["127.0.0.1", "localhost"]
 
 USE_I18N = True
 USE_TZ = True
-
 
 CACHE_URL = env("CACHE_URL")
 REDIS_URL = urlparse(CACHE_URL).hostname
@@ -188,7 +189,7 @@ LOGGING = {
 }
 
 AUTH_USER_MODEL = "security.User"
-
+SUPERUSERS = env("SUPERUSERS")
 
 DEFAULT_FROM_EMAIL = "hope@unicef.org"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

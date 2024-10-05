@@ -1,1 +1,1 @@
-from .household import CountryHouseholddAdmin
+from .household import CountryHouseholdAdmin  # noqa

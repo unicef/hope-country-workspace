@@ -5,10 +5,9 @@ from django.conf import settings
 from django.core.signing import get_cookie_signer
 from django.http import HttpRequest, HttpResponse
 
-from hope_country_workspace.state import State, state
-from hope_country_workspace.tenant.config import conf
-
 from ..security.models import CountryOffice, User
+from ..state import State, state
+from .config import conf
 
 if TYPE_CHECKING:
 

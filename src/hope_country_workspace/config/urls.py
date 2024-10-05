@@ -3,13 +3,14 @@ from django.conf.urls import include
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
-from hope_country_workspace.workspaces.sites import workspace
 
 import debug_toolbar
 
+from hope_country_workspace.workspaces.sites import workspace
+
 urlpatterns = [
+    path(r"admin/", admin.site.urls),
     path(r"", workspace.urls),
-    path(r"admin", admin.site.urls),
     path(r"security/", include("unicef_security.urls", namespace="security")),
     path(r"social/", include("social_django.urls", namespace="social")),
     path(r"accounts/", include("django.contrib.auth.urls")),

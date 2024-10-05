@@ -7,7 +7,7 @@
 {% block nav-breadcrumbs %}
   <nav aria-label="{% translate 'Breadcrumbs' %}">
     <div class="breadcrumbs">
-      <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+      <a href="{% url 'workspace:index' %}">{% translate 'Workspace' %}</a>
       &rsaquo;
       {% for app in app_list %}
         {{ app.name }}

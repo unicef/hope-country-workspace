@@ -7,9 +7,9 @@ from django.http import HttpRequest
 
 from dateutil.utils import today
 
-from hope_country_workspace.security.models import CountryOffice, User
-from hope_country_workspace.state import state
-from hope_country_workspace.tenant.utils import get_selected_tenant
+from ..security.models import CountryOffice, User
+from ..state import state
+from .utils import get_selected_tenant
 
 
 class TenantBackend(BaseBackend):
