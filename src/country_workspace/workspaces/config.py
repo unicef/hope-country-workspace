@@ -19,8 +19,8 @@ class AppSettings:
         "TENANT_MODEL": None,
         "NAMESPACE": "tenant_admin",
         "COOKIE_NAME": "selected_tenant",
-        "STRATEGY": "country_workspace.tenant.strategy.DefaultStrategy",
-        "AUTH": "country_workspace.tenant.backend.TenantBackend",
+        "STRATEGY": "country_workspace.workspaces.strategy.DefaultStrategy",
+        "AUTH": "country_workspace.workspaces.backend.TenantBackend",
     }
 
     def __init__(self, prefix: str):

@@ -1,7 +1,6 @@
-from asyncio import iscoroutinefunction
 from collections.abc import Callable
 from functools import update_wrapper, wraps
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from django.apps import apps
 from django.db.models import Model
@@ -19,9 +18,6 @@ from smart_admin.site import SmartAdminSite
 
 from .forms import SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
-
-if TYPE_CHECKING:
-    from country_workspace.types.http import AuthHttpRequest
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -47,25 +43,13 @@ def force_tenant(view_func):
     Decorator that adds headers to a response so that it will never be cached.
     """
 
-    if iscoroutinefunction(view_func):
-
-        async def _view_wrapper(request, *args, **kwargs):
-            if not request.user.is_authenticated:
-                return redirect("workspace:login")
-            if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
-                return redirect("workspace:select_tenant")
-            response = await view_func(request, *args, **kwargs)
-            return response
-
-    else:
-
-        def _view_wrapper(request, *args, **kwargs):
-            if not request.user.is_authenticated:
-                return redirect("workspace:login")
-            if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
-                return redirect("workspace:select_tenant")
-            response = view_func(request, *args, **kwargs)
-            return response
+    def _view_wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect("workspace:login")
+        if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
+            return redirect("workspace:select_tenant")
+        response = view_func(request, *args, **kwargs)
+        return response
 
     return wraps(view_func)(_view_wrapper)
 
@@ -175,7 +159,7 @@ class TenantAdminSite(SmartAdminSite):
         #     ret["active_tenant"] = None
         return ret  # type: ignore
 
-    def is_smart_enabled(self, request: "AuthHttpRequest") -> bool:
+    def is_smart_enabled(self, request: "HttpRequest") -> bool:
         #     if must_tenant():
         return False
 

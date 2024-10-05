@@ -63,7 +63,7 @@ MIDDLEWARE = (
 AUTHENTICATION_BACKENDS = (
     "social_core.backends.azuread_tenant.AzureADTenantOAuth2",
     "django.contrib.auth.backends.ModelBackend",
-    # "country_workspace.tenant.backend.TenantBackend",
+    "country_workspace.workspaces.backend.TenantBackend",
     *env("AUTHENTICATION_BACKENDS"),
 )
 

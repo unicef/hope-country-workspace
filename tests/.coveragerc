@@ -5,7 +5,8 @@ source = country_workspace
 omit =
     */tests/**
     */migrations/*,
-    */country_workspace/management/commands/demo.py
+    src/country_workspace/management/commands/demo.py
+    src/country_workspace/security/backends.py
     */wsgi.py,
 
 

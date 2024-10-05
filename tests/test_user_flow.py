@@ -87,4 +87,3 @@ def test_login(app, user, program, data):
         assert app.cookies["selected_tenant"] == program.country_office.slug
         res = res.follow()
         res = res.click("Households")
-        res.showbrowser()

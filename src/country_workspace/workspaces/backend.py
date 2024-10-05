@@ -1,7 +1,7 @@
 from typing import Optional
 
 from django.contrib.auth.backends import BaseBackend
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import AnonymousUser, Permission
 from django.db.models import Model, Q, QuerySet
 from django.http import HttpRequest
 
@@ -13,9 +13,9 @@ from .utils import get_selected_tenant
 
 
 class TenantBackend(BaseBackend):
-    model: "Model" = None
-
-    def get_all_permissions(self, user: "User", obj: "Model|None" = None) -> set[str]:
+    def get_all_permissions(
+        self, user: "User|AnonymousUser", obj: "Model|None" = None
+    ) -> set[str]:
         tenant: "CountryOffice|None" = state.tenant
         if not tenant:
             return set()
