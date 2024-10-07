@@ -44,7 +44,7 @@
         <ul class="object-tools">
           {% block object-tools-items %}
 {#            {% change_list_object_tools %}#}
----
+
   {% if has_add_permission %}
   <li>
     {% url cl.opts|workspace_urlname:'add' as add_url %}
@@ -53,7 +53,6 @@
     </a>
   </li>
   {% endif %}
-----
           {% endblock %}
         {% include "admin_extra_buttons/includes/change_list_buttons.html" %}
         </ul>
