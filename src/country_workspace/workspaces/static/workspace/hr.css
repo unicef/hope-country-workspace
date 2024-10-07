@@ -1,0 +1,117 @@
+html[data-theme],
+:root {
+  --header-bg: #37B0F8FF;
+  --accent: white;
+  --header-color: #e8e8e8;
+}
+
+html[data-tenant=yes][data-theme],
+:root {
+  --primary: #0f2f3b;
+  --header-bg: #1E3A8AFF;
+  --breadcrumbs-bg: #0f2f3b;
+  --link-fg: #37b0f8;
+  --accent: #f5dd5d;
+  --header-color: #ffc
+  //--secondary: #417690;
+}
+
+body.tenant {
+  --primary: rgb(30, 58, 138);
+  --link-fg: rgb(30, 58, 138);
+}
+body.tenant #header {
+  background-color: rgb(30, 58, 138);
+}
+body.tenant nav .breadcrumbs {
+  background-color: rgb(31, 41, 55);
+}
+body.tenant .module caption, body.tenant .module h2 {
+  background-color: rgb(30, 58, 138);
+}
+body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle svg.theme-icon-when-dark, body.tenant .theme-toggle svg.theme-icon-when-light {
+  color: rgb(30, 58, 138);
+}
+
+#celery-status {
+  padding: 10px 40px;
+  background-color: #1f2937;
+}
+#celery-status.STARTED {
+  background-color: #37b0f8;
+}
+#celery-status.FAILURE {
+  background-color: rgba(255, 37, 37, 0.65);
+}
+#celery-status.INTERRUPTED {
+  background-color: rgb(255, 196, 0);
+  color: black;
+}
+#celery-status.SUCCESS {
+  background-color: rgba(0, 255, 13, 0.57);
+}
+#celery-status .popup {
+  position: absolute;
+  z-index: 200;
+  right: 20px;
+  background-color: var(--body-bg);
+  margin-top: 20px;
+  width: 200px;
+  padding: 2px;
+  display: block;
+  float: right;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+}
+#celery-status .popup.hidden {
+  display: none;
+}
+#celery-status .popup .p-2 {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+#celery-status .popup .center {
+  text-align: center;
+}
+#celery-status .popup table {
+  width: 90%;
+  margin: 5px;
+}
+#celery-status .popup table th {
+  text-align: center;
+}
+
+#id_code_container {
+  width: 100%;
+}
+#id_code_container .CodeMirror {
+  width: 100%;
+}
+
+.w-screen {
+  width: 100%;
+}
+
+.container {
+  height: 300px;
+  width: 100%;
+  position: relative;
+}
+
+.center-h {
+  position: absolute;
+  left: 50%;
+}
+
+.center-v {
+  position: relative;
+  top: 50%;
+}
+
+.center-screen {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+/*# sourceMappingURL=hr.css.map */

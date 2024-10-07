@@ -1,7 +1,7 @@
 {% extends "workspace/base_site.html" %}
 {% load i18n static  %}
 
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" type="text/css" href="{% static "admin/css/dashboard.css" %}">{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" type="text/css" href="{% static "workspace/css/dashboard.css" %}">{% endblock %}
 
 {% block coltype %}colMS{% endblock %}
 
@@ -11,9 +11,11 @@
 {% block nav-sidebar %}{% include "workspace/nav_sidebar.html" %}{% endblock %}
 
 {% block content %}
+    1111
     <div id="content-main">
             {% include "workspace/_app_list.html" %}
     </div>
+    ddddd
 {% endblock %}
 
-{% block sidebar %}{% include "workspace/_actionlist.html" %}{% endblock %}
+{% block sidebar %}{% endblock %}

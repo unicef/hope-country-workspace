@@ -1,14 +1,14 @@
 {% extends "workspace/base_site.html" %}
 {% load i18n static %}
 
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/login.css" %}">
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "workspace/css/login.css" %}">
 {{ form.media }}
 {% endblock %}
 
 {% block branding %}
 <h1 id="site-name"><a href="{% url 'workspace:index' %}">Workspace login</a></h1>
 {% if user.is_anonymous %}
-  {% include "admin/color_theme_toggle.html" %}
+  {% include "workspace/color_theme_toggle.html" %}
 {% endif %}
 {% endblock %}
 

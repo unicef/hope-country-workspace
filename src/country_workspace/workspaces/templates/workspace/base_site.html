@@ -5,7 +5,7 @@
 {% block branding %}
 <h1 id="site-name"><a href="{% url 'workspace:index' %}">Workspace: {{ active_tenant }}</a></h1>
 {% if user.is_anonymous %}
-  {% include "admin/color_theme_toggle.html" %}
+  {% include "workspace/color_theme_toggle.html" %}
 {% endif %}
 {% endblock %}
 

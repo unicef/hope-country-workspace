@@ -10,6 +10,7 @@ from country_workspace.workspaces.sites import workspace
 
 urlpatterns = [
     path(r"admin/", admin.site.urls),
+    # path(r"", admin.site.urls),
     path(r"", workspace.urls),
     path(r"security/", include("unicef_security.urls", namespace="security")),
     path(r"social/", include("social_django.urls", namespace="social")),

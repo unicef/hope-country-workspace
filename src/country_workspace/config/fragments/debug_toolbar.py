@@ -6,7 +6,9 @@ from django_regex.utils import RegexList
 def show_ddt(request: "HttpRequest") -> bool:  # pragma: no-cover
     from flags.state import flag_enabled
 
-    if request.path in RegexList(("/api/.*", "/dal/.*", "/healthcheck/")):
+    if request.path in RegexList(
+        ("/api/.*", "/dal/.*", "/healthcheck/", "/autocomplete/")
+    ):
         return False
     return flag_enabled("DEVELOP_DEBUG_TOOLBAR", request=request)
 

@@ -1,11 +1,11 @@
 {% extends "workspace/base_site.html" %}
-{% load i18n admin_urls static admin_list %}
+{% load i18n admin_urls workspace_urls static admin_list %}
 
 {% block extrastyle %}
   {{ block.super }}
-  <link rel="stylesheet" href="{% static "admin/css/changelists.css" %}">
+  <link rel="stylesheet" href="{% static "workspace/css/changelists.css" %}">
   {% if cl.formset %}
-    <link rel="stylesheet" href="{% static "admin/css/forms.css" %}">
+    <link rel="stylesheet" href="{% static "workspace/css/forms.css" %}">
   {% endif %}
   {% if cl.formset or action_form %}
     <script src="{% url 'workspace:jsi18n' %}"></script>
@@ -21,7 +21,7 @@
 {% block extrahead %}
 {{ block.super }}
 {{ media.js }}
-<script src="{% static 'admin/js/filters.js' %}" defer></script>
+<script src="{% static 'workspace/js/filters.js' %}" defer></script>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
@@ -43,7 +43,17 @@
     {% block object-tools %}
         <ul class="object-tools">
           {% block object-tools-items %}
-            {% change_list_object_tools %}
+{#            {% change_list_object_tools %}#}
+---
+  {% if has_add_permission %}
+  <li>
+    {% url cl.opts|workspace_urlname:'add' as add_url %}
+    <a href="{% add_preserved_filters add_url is_popup to_field %}" class="addlink">
+      {% blocktranslate with cl.opts.verbose_name as name %}Add {{ name }}{% endblocktranslate %}
+    </a>
+  </li>
+  {% endif %}
+----
           {% endblock %}
         {% include "admin_extra_buttons/includes/change_list_buttons.html" %}
         </ul>

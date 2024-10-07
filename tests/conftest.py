@@ -101,6 +101,8 @@ def afghanistan(db):
 
 @pytest.fixture
 def reporters(db, afghanistan, user):
-    from country_workspace.utils import get_or_create_defaults_group
-
-    return get_or_create_defaults_group()
+    from country_workspace.security.utils import setup_workspace_group
+    from django.contrib.auth.models import Group
+    from django.conf import settings
+    setup_workspace_group()
+    return  Group.objects.get(name=settings.ANALYST_GROUP_NAME)

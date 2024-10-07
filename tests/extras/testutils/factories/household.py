@@ -1,6 +1,7 @@
 import factory
 
 from country_workspace.models import Household
+from country_workspace.workspaces.models import CountryHousehold
 
 from .base import AutoRegisterModelFactory
 from .office import CountryOfficeFactory
@@ -14,4 +15,11 @@ class HouseholdFactory(AutoRegisterModelFactory):
 
     class Meta:
         model = Household
+        django_get_or_create = ("name",)
+
+
+class CountryHouseholdFactory(HouseholdFactory):
+
+    class Meta:
+        model = CountryHousehold
         django_get_or_create = ("name",)

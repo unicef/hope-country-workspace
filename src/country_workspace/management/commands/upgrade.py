@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
-from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand, call_command
 from django.core.management.base import CommandError, SystemCheckError
@@ -13,7 +12,7 @@ from django.core.validators import validate_email
 from django.utils.text import slugify
 
 from country_workspace.config import env
-from country_workspace.utils import get_or_create_defaults_group
+from country_workspace.security.utils import setup_workspace_group
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser
@@ -163,9 +162,8 @@ class Command(BaseCommand):
                         interactive=False,
                     )
 
-            echo("Create default group")
-            Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
-            echo("Sync Country Offices")
+            echo("Setup base security")
+            setup_workspace_group()
             CountryOffice.objects.get_or_create(
                 slug=slugify(
                     settings.TENANT_HQ,
@@ -179,8 +177,6 @@ class Command(BaseCommand):
                 style_func=self.style.ERROR,
             )
             echo("Upgrade completed", style_func=self.style.SUCCESS)
-
-            get_or_create_defaults_group()
         except ValidationError as e:
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))
         except (CommandError, SystemCheckError) as e:

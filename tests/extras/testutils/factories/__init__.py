@@ -15,6 +15,7 @@ from .household import HouseholdFactory  # noqa
 from .individual import HouseholdFactory  # noqa
 from .office import CountryOfficeFactory  # noqa
 from .program import ProgramFactory  # noqa
+from .workspaces import CountryChecker  # noqa
 from .smart_fields import (  # noqa
     DataCheckerFactory,
     FieldDefinitionFactory,

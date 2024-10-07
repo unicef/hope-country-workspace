@@ -73,11 +73,12 @@ def test_login(app, user, program, data):
         assert app.cookies["selected_tenant"] == program.country_office.slug
         res = res.follow()
         assert "You don't have permission to view anything here." in res.text
+
     with user_grant_permissions(
         user,
         [
-            "country_workspace.view_household",
-            "country_workspace.view_individual",
+            "workspaces.view_countryhousehold",
+            "workspaces.view_countryindividual",
         ],
         program.country_office,
     ):
@@ -86,4 +87,4 @@ def test_login(app, user, program, data):
         res = res.forms["select-tenant"].submit()
         assert app.cookies["selected_tenant"] == program.country_office.slug
         res = res.follow()
-        res = res.click("Households")
+        res = res.click("Country households")

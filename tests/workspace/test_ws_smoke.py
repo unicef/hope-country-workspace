@@ -16,7 +16,7 @@ from testutils.factories.base import AutoRegisterModelFactory
 
 from country_workspace.state import state
 from country_workspace.workspaces.sites import workspace
-from country_workspace.workspaces.templatetags.reverse import workspace_urlname
+from country_workspace.workspaces.templatetags.workspace_urls import workspace_urlname
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
@@ -137,7 +137,14 @@ def record(db: Any, program, request: "FixtureRequest") -> Model:
             model_admin.model
         )
         try:
-            instance = factory(program=program, country_office=program.country_office)
+            kwargs: dict[str, Any] = {}
+
+            if 'program' in model_admin.model._meta.fields:
+                kwargs["program"] = program
+                kwargs["country_office"] = program.country_office
+            elif 'country_office' in model_admin.model._meta.fields:
+                kwargs["country_office"] = program.country_office
+            instance = factory(**kwargs)
         except Exception as e:
             raise Exception(
                 f"Error creating fixture for {factory} using {KWARGS}"
@@ -151,7 +158,6 @@ def app(
     mocked_responses: "RequestsMock",
     settings: SettingsWrapper,
 ) -> "DjangoTestApp":
-    settings.FLAGS = {"OLD_STYLE_UI": [("boolean", True)]}
     django_app = django_app_factory(csrf_checks=False)
     admin_user = SuperUserFactory(username="superuser")
     django_app.set_user(admin_user)
@@ -160,8 +166,8 @@ def app(
 
 
 def test_ws_app_list(app: "DjangoTestApp", app_label: str) -> None:
-    url = reverse("admin:app_list", args=[app_label])
-    res = app.get(url)
+    url = reverse("workspace:app_list", args=[app_label])
+    res = app.get(url).follow()
     assert res.status_code == 200
 
 

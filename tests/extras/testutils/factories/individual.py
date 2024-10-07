@@ -1,6 +1,7 @@
 import factory
 
 from country_workspace.models import Individual
+from country_workspace.workspaces.models import CountryIndividual
 
 from . import HouseholdFactory
 from .base import AutoRegisterModelFactory
@@ -16,4 +17,11 @@ class IndividualFactory(AutoRegisterModelFactory):
 
     class Meta:
         model = Individual
+        django_get_or_create = ("full_name",)
+
+
+class CountryIndividualFactory(IndividualFactory):
+
+    class Meta:
+        model = CountryIndividual
         django_get_or_create = ("full_name",)

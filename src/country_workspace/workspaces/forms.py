@@ -5,6 +5,7 @@ from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
+from . import models
 from .config import conf
 
 if TYPE_CHECKING:
@@ -29,3 +30,9 @@ class SelectTenantForm(forms.Form):
         self.request = kwargs.pop("request")
         super().__init__(*args, **kwargs)
         self.fields["tenant"].queryset = conf.auth.get_allowed_tenants(self.request)
+
+
+class ProgramForm(forms.ModelForm):
+    class Meta:
+        model = models.CountryProgram
+        fields = ("country_office", "name")

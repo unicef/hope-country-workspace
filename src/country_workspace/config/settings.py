@@ -209,6 +209,7 @@ from .fragments.flags import *  # noqa
 from .fragments.rest_framework import *  # noqa
 from .fragments.root import *  # noqa
 from .fragments.sentry import *  # noqa
-from .fragments.smart_admin import *  # noqa
+
+# from .fragments.smart_admin import *  # noqa
 from .fragments.social_auth import *  # noqa
 from .fragments.spectacular import *  # noqa

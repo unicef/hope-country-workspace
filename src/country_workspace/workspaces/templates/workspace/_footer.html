@@ -3,4 +3,6 @@
     <div>state.tenant: {{ state.tenant }}</div>
     <div>state.must_tenant: {{ state.must_tenant }}</div>
     <div>selected_tenant: {{ selected_tenant }}</div>
+{#    <div>groups: {% for g in user.groups.all %}{{ g }}, {% endfor %}</div>#}
+{#    <div>permission: {% for p in user.get_all_permissions %}{{ p }}, {% endfor %}</div>#}
 </div>

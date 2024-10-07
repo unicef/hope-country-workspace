@@ -3,7 +3,8 @@ from django.contrib.admin.views.main import ChangeList as DjangoChangeList
 from django.urls import reverse
 
 
-class ChangeList(DjangoChangeList):
+class WorkspaceChangeList(DjangoChangeList):
+
     def url_for_result(self, result):
         pk = getattr(result, self.pk_attname)
         return reverse(
