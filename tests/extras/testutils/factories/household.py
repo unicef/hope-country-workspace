@@ -1,3 +1,7 @@
+from random import getrandbits
+
+from django.utils import timezone
+
 import factory
 
 from country_workspace.models import Household
@@ -8,10 +12,36 @@ from .office import CountryOfficeFactory
 from .program import ProgramFactory
 
 
+class JSONFactory(factory.DictFactory):
+    """
+    Use with factory.Dict to make JSON strings.
+    """
+
+    @classmethod
+    def _generate(cls, create, attrs):
+        return {
+            "consent_h_c": bool(getrandbits(1)),
+            "country_origin_h_c": "",
+            "country_h_c": "",
+            "admin1_h_c": "",
+            "admin2_h_c": "",
+            "size_h_c": "",
+            "hh_latrine_h_f": "",
+            "hh_electricity_h_f": "",
+            "registration_method_h_c": "",
+            "collect_individual_data_h_c": "",
+            "name_enumerator_h_c": "",
+            "org_enumerator_h_c": "",
+            "consent_sharing_h_c": "",
+            "first_registration_date_h_c": str(timezone.now().date()),
+        }
+
+
 class HouseholdFactory(AutoRegisterModelFactory):
     country_office = factory.SubFactory(CountryOfficeFactory)
     program = factory.SubFactory(ProgramFactory)
     name = factory.Sequence(lambda n: f"Household {n}")
+    flex_fields = JSONFactory()
 
     class Meta:
         model = Household
@@ -19,7 +49,6 @@ class HouseholdFactory(AutoRegisterModelFactory):
 
 
 class CountryHouseholdFactory(HouseholdFactory):
-
     class Meta:
         model = CountryHousehold
         django_get_or_create = ("name",)

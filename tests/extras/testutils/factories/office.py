@@ -6,7 +6,15 @@ from .base import AutoRegisterModelFactory
 
 
 class CountryOfficeFactory(AutoRegisterModelFactory):
-    name = factory.Iterator(["Afghanistan", "Ukraine", "Niger", "South Sudan"])
+    _COUNTRIES = [
+        "Afghanistan",
+        "Ukraine",
+        "Niger",
+        "South Sudan",
+        "Somalia",
+        "Belarus",
+    ]
+    name = factory.Iterator(_COUNTRIES)
     code = factory.LazyAttribute(lambda o: o.name.lower().replace(" ", "_"))
     slug = factory.LazyAttribute(lambda o: o.name.lower().replace(" ", "_"))
 

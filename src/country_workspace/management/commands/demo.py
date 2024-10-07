@@ -1,4 +1,6 @@
 import logging
+import sys
+from pathlib import Path
 from random import randint
 from typing import Any
 
@@ -50,29 +52,6 @@ class Command(BaseCommand):
         analysts, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
         user, __ = User.objects.get_or_create(username="user")
 
-        from faker import Faker
-
-        faker = Faker()
-        for co in ["afghanistan", "ukraine", "sudan", "haiti"]:
-            co, __ = CountryOffice.objects.get_or_create(
-                slug=co, code=co, name=co.capitalize()
-            )
-            for p in [1, 2, 3]:
-                p, __ = Program.objects.get_or_create(
-                    name=f"Program {p} ({co.slug})", country_office=co
-                )
-                for hx in range(50):
-                    h, __ = Household.objects.get_or_create(
-                        country_office=co, program=p, name=faker.name(), flex_fields={}
-                    )
-                    for ix in range(1, randint(2, 6)):
-                        i, __ = Individual.objects.get_or_create(
-                            country_office=co,
-                            household=h,
-                            program=p,
-                            full_name=faker.name(),
-                            flex_fields={},
-                        )
         # Create HH Validator
         from django import forms
 
@@ -203,3 +182,41 @@ class Command(BaseCommand):
         ds.fieldsets.add(hh_fs)
         ds, __ = DataChecker.objects.get_or_create(name="Base Individual")
         ds.fieldsets.add(ind_fs)
+
+
+        test_utils_dir = Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
+        assert test_utils_dir.exists(), str(test_utils_dir.absolute()) + " does not exist"
+        sys.path.append(str(test_utils_dir.absolute()))
+        from testutils.factories import IndividualFactory, ProgramFactory, CountryOfficeFactory
+        # from faker import Faker
+        #
+        # faker = Faker()
+        for ic in CountryOfficeFactory._COUNTRIES:
+            co = CountryOfficeFactory(name=ic)
+            for ip in [1, 2, 3]:
+                p = ProgramFactory( name=f"Program {ip} ({co.slug})", country_office=co)
+                IndividualFactory.create_batch(10,
+                                               household__country_office=co,
+                                               household__program=p,
+                                               country_office=co, program=p)
+                # for hx in range(50):
+
+            # co, __ = CountryOffice.objects.get_or_create(
+            #     slug=co, code=co, name=co.capitalize()
+            # )
+        #     for p in [1, 2, 3]:
+        #         p, __ = Program.objects.get_or_create(
+        #             name=f"Program {p} ({co.slug})", country_office=co
+        #         )
+        #         for hx in range(50):
+        #             h, __ = Household.objects.get_or_create(
+        #                 country_office=co, program=p, name=faker.name(), flex_fields={}
+        #             )
+        #             for ix in range(1, randint(2, 6)):
+        #                 i, __ = Individual.objects.get_or_create(
+        #                     country_office=co,
+        #                     household=h,
+        #                     program=p,
+        #                     full_name=faker.name(),
+        #                     flex_fields={},
+        #                 )

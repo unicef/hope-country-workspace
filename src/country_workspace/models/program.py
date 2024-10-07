@@ -1,3 +1,4 @@
+from django import forms
 from django.db import models
 from django.utils.translation import gettext as _
 
@@ -44,6 +45,8 @@ class Program(models.Model):
     individual_checker = models.ForeignKey(
         DataChecker, blank=True, null=True, on_delete=models.CASCADE, related_name="+"
     )
+    changelist_columns = models.TextField(default="__str__\nid",
+                                          help_text="Columns to display ib the Admin table")
 
     def __str__(self):
         return self.name

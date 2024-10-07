@@ -12,10 +12,9 @@ from .base import (
 )
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import HouseholdFactory  # noqa
-from .individual import HouseholdFactory  # noqa
+from .individual import IndividualFactory  # noqa
 from .office import CountryOfficeFactory  # noqa
 from .program import ProgramFactory  # noqa
-from .workspaces import CountryChecker  # noqa
 from .smart_fields import (  # noqa
     DataCheckerFactory,
     FieldDefinitionFactory,
@@ -25,6 +24,7 @@ from .smart_fields import (  # noqa
 from .social import SocialAuthUserFactory  # noqa
 from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
+from .workspaces import CountryChecker  # noqa
 
 for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):
     importlib.import_module(f".{name}", __package__)

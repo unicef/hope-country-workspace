@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 
 from django.db.models import Model
-from django.db.models.options import Options
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 
@@ -139,10 +138,10 @@ def record(db: Any, program, request: "FixtureRequest") -> Model:
         try:
             kwargs: dict[str, Any] = {}
 
-            if 'program' in model_admin.model._meta.fields:
+            if "program" in model_admin.model._meta.fields:
                 kwargs["program"] = program
                 kwargs["country_office"] = program.country_office
-            elif 'country_office' in model_admin.model._meta.fields:
+            elif "country_office" in model_admin.model._meta.fields:
                 kwargs["country_office"] = program.country_office
             instance = factory(**kwargs)
         except Exception as e:
@@ -171,17 +170,28 @@ def test_ws_app_list(app: "DjangoTestApp", app_label: str) -> None:
     assert res.status_code == 200
 
 
-@pytest.mark.skip_models("constance.Config")
 def test_ws_changelist(
     app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
 ) -> None:
     url = reverse_model_admin(model_admin, "changelist")
-    opts: Options[Model] = model_admin.model._meta
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = record.country_office.pk
-    res = res.forms["select-tenant"].submit().follow()
+    res.forms["select-tenant"].submit()
+    res = app.get(url)
     assert res.status_code == 200, res.location
-    assert str(opts.app_config.verbose_name) in str(res.content)
+    assert f"Add {record._meta.verbose_name}" in res.text
+
+
+def test_ws_change(
+    app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
+) -> None:
+    url = reverse_model_admin(model_admin, "change", args=[record.pk])
+    res = app.get(url).follow()
+    res.forms["select-tenant"]["tenant"] = record.country_office.pk
+    res.forms["select-tenant"].submit()
+    res = app.get(url)
+    assert res.status_code == 200, res.location
+    assert f"Change {record._meta.verbose_name}" in res.text
 
 
 def show_error(res: Any) -> tuple[str]:
