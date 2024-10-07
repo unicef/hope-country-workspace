@@ -3,7 +3,7 @@ from unittest.mock import Mock
 from django.contrib.auth.models import AnonymousUser
 
 import pytest
-from testutils.factories import CountryOfficeFactory, UserFactory
+from testutils.factories import OfficeFactory, UserFactory
 
 from country_workspace.state import state
 from country_workspace.workspaces.backend import TenantBackend
@@ -21,7 +21,7 @@ def user(db):
 
 @pytest.fixture()
 def office(db):
-    return CountryOfficeFactory()
+    return OfficeFactory()
 
 
 def test_get_all_permissions(backend, user, office):

@@ -1,9 +1,9 @@
 from django.contrib import admin
 
-from ..models import CountryOffice
+from ..models import Office
 
 
-@admin.register(CountryOffice)
+@admin.register(Office)
 class CountryOfficeAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)

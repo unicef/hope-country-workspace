@@ -3,7 +3,7 @@
 {% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Workspace') }}{% endblock %}
 
 {% block branding %}
-<h1 id="site-name"><a href="{% url 'workspace:index' %}">Workspace: {{ active_tenant }}</a></h1>
+<h1 id="site-name"><a href="{% url 'workspace:index' %}">Workspace: {{ active_tenant }}{% block active_program %}{% endblock %}</a></h1>
 {% if user.is_anonymous %}
   {% include "workspace/color_theme_toggle.html" %}
 {% endif %}

@@ -94,9 +94,9 @@ def user(db):
 
 @pytest.fixture()
 def afghanistan(db):
-    from testutils.factories import CountryOfficeFactory
+    from testutils.factories import OfficeFactory
 
-    return CountryOfficeFactory(name="Afghanistan")
+    return OfficeFactory(name="Afghanistan")
 
 
 @pytest.fixture

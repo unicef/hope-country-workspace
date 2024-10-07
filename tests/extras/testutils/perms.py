@@ -7,7 +7,7 @@ from django.contrib.auth.models import Group, Permission
 
 from faker import Faker
 
-from country_workspace.models import CountryOffice, UserRole
+from country_workspace.models import Office, UserRole
 from country_workspace.state import state
 
 from .factories import GroupFactory
@@ -92,7 +92,7 @@ class user_grant_role(ContextDecorator):  # noqa
             )
         else:
             self.group = group
-        if isinstance(country_office_or_program, CountryOffice):
+        if isinstance(country_office_or_program, Office):
             self.country_office = country_office_or_program
             self.program = None
         else:
@@ -151,7 +151,7 @@ class user_grant_permissions(ContextDecorator):  # noqa
         self.permissions = permissions
         self.group_name = group_name
         self.group = None
-        if isinstance(country_office_or_program, CountryOffice):
+        if isinstance(country_office_or_program, Office):
             self.country_office = country_office_or_program
             self.program = None
         else:

@@ -212,19 +212,18 @@ class TenantAdminSite(admin.AdminSite):
 
     def each_context(self, request: "HttpRequest") -> "dict[str, Any]":
         ret = super().each_context(request)
-        # if must_tenant():
         selected_tenant = get_selected_tenant()
         ret["tenant_form"] = SelectTenantForm(
             initial={"tenant": selected_tenant}, request=request
         )
         ret["active_tenant"] = selected_tenant
         ret["namespace"] = self.namespace
+        # ret["selected_program"] = "???"
         # else:
         #     ret["active_tenant"] = None
         return ret  # type: ignore
 
     def is_smart_enabled(self, request: "HttpRequest") -> bool:
-        #     if must_tenant():
         return False
 
     #     return super().is_smart_enabled(request)
@@ -233,9 +232,7 @@ class TenantAdminSite(admin.AdminSite):
         return TenantAutocompleteJsonView.as_view(admin_site=self)(request)
 
     def has_permission(self, request: "HttpRequest") -> bool:
-        # if must_tenant():
         return request.user.is_active
-        # return super().has_permission(request)
 
     def admin_view(self, view, cacheable=False):
         return force_tenant(super().admin_view(view, cacheable))

@@ -10,7 +10,7 @@ from admin_extra_buttons.mixins import ExtraButtonsMixin
 from django_regex.utils import RegexList as _RegexList
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
-from testutils.factories import CountryOfficeFactory, ProgramFactory, SuperUserFactory
+from testutils.factories import OfficeFactory, ProgramFactory, SuperUserFactory
 from testutils.factories.base import AutoRegisterModelFactory
 
 from country_workspace.state import state
@@ -115,7 +115,7 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
 
 @pytest.fixture()
 def office():
-    co = CountryOfficeFactory()
+    co = OfficeFactory()
     state.tenant = co
     yield co
 

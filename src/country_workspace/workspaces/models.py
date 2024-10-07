@@ -6,7 +6,7 @@ from django.db.models import Model, QuerySet
 from hope_flex_fields.models import DataChecker
 
 from country_workspace import models as global_models
-from country_workspace.models import CountryOffice
+from country_workspace.models import Office
 
 __all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual"]
 
@@ -18,8 +18,6 @@ from country_workspace.workspaces.utils import get_selected_tenant
 class TenantManager(models.Manager["TenantModel"]):
 
     def get_tenant_filter(self) -> "dict[str, Any]":
-        if not self.must_tenant():
-            return {}
         tenant_filter_field = self.model.Tenant.tenant_filter_field
         if not tenant_filter_field:
             raise ValueError(
@@ -74,7 +72,7 @@ class CountryProgram(global_models.Program):
 
 
 class CountryChecker(DataChecker):
-    country_office = models.ForeignKey(CountryOffice, on_delete=models.CASCADE)
+    country_office = models.ForeignKey(Office, on_delete=models.CASCADE)
 
     # class Meta:
     #     app_label = "workspaces"

@@ -107,7 +107,7 @@ class Command(BaseCommand):
         sys.exit(1)
 
     def handle(self, *args: Any, **options: Any) -> None:  # noqa
-        from country_workspace.models import CountryOffice, User
+        from country_workspace.models import Office, User
 
         self.get_options(options)
         if self.verbosity >= 1:
@@ -164,13 +164,13 @@ class Command(BaseCommand):
 
             echo("Setup base security")
             setup_workspace_group()
-            CountryOffice.objects.get_or_create(
+            Office.objects.get_or_create(
                 slug=slugify(
                     settings.TENANT_HQ,
                 ),
                 name=settings.TENANT_HQ,
             )
-            # CountryOffice.objects.sync()
+            # Office.objects.sync()
             # TODO: Implement sync for Country Offices
             echo(
                 "Country Offices sync not implemented yet - TODO it !!!",

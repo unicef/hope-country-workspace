@@ -1,5 +1,4 @@
 from django import forms
-from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 from admin_extra_buttons.api import link
@@ -15,12 +14,6 @@ class ProgramForm(forms.ModelForm):
     class Meta:
         model = CountryProgram
         exclude = ("country_office",)
-
-    def clean_changelist_columns(self):
-        data = self.cleaned_data.get("changelist_columns", "")
-        if data:
-            columns = data.split("\n")
-        return data
 
 
 class CountryProgramAdmin(WorkspaceModelAdmin):

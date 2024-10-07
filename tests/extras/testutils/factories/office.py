@@ -1,11 +1,11 @@
 import factory
 
-from country_workspace.models import CountryOffice
+from country_workspace.models import Office
 
 from .base import AutoRegisterModelFactory
 
 
-class CountryOfficeFactory(AutoRegisterModelFactory):
+class OfficeFactory(AutoRegisterModelFactory):
     _COUNTRIES = [
         "Afghanistan",
         "Ukraine",
@@ -19,5 +19,5 @@ class CountryOfficeFactory(AutoRegisterModelFactory):
     slug = factory.LazyAttribute(lambda o: o.name.lower().replace(" ", "_"))
 
     class Meta:
-        model = CountryOffice
+        model = Office
         django_get_or_create = ("name",)

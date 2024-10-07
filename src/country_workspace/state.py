@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict
 
 from django.http import HttpRequest, HttpResponse
 
-from .models.office import CountryOffice
+from .models import Office, Program
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -17,14 +17,14 @@ not_set = object()
 class State(local):
     request: "HttpRequest|None" = None
     tenant_cookie: "str|None" = None
-    tenant: "CountryOffice|None" = None
-    must_tenant: "bool|None" = None
+    tenant: "Office|None" = None
+    program: "Program|None" = None
     cookies: "dict[str, List[Any]]" = {}
     filters: "List[Any]" = []
     inspecting: bool = False
 
     def __repr__(self) -> str:
-        return f"<State {id(self)}: {self.tenant_cookie}:{self.must_tenant}>"
+        return f"<State {id(self)}: {self.tenant_cookie}>"
 
     @contextlib.contextmanager
     def configure(self, **kwargs: "Dict[str,Any]") -> "Iterator[None]":
@@ -36,15 +36,12 @@ class State(local):
             setattr(self, k, v)
 
     @contextlib.contextmanager
-    def activate_tenant(self, country_office: "CountryOffice") -> "Iterator[None]":
-        _must_tenant = self.must_tenant
+    def activate_tenant(self, country_office: "Office") -> "Iterator[None]":
         _country_office = self.tenant
         _tenant_cookie = self.tenant_cookie
-        self.must_tenant = True
         self.tenant = country_office
         self.tenant_cookie = country_office.slug
         yield
-        self.must_tenant = _must_tenant
         self.tenant = _country_office
         self.tenant_cookie = _tenant_cookie
 
@@ -93,8 +90,8 @@ class State(local):
 
     def reset(self) -> None:
         self.tenant = None
+        self.program = None
         self.tenant_cookie = None
-        self.must_tenant = None
         self.request = None
         self.cookies = {}
         self.filters = []

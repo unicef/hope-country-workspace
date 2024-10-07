@@ -4,7 +4,7 @@ from country_workspace.models import UserRole
 
 from .base import AutoRegisterModelFactory
 from .django_auth import GroupFactory
-from .office import CountryOfficeFactory
+from .office import OfficeFactory
 from .user import UserFactory
 
 
@@ -15,4 +15,4 @@ class UserRoleFactory(AutoRegisterModelFactory):
 
     user = factory.SubFactory(UserFactory)
     group = factory.SubFactory(GroupFactory)
-    country_office = factory.SubFactory(CountryOfficeFactory)
+    country_office = factory.SubFactory(OfficeFactory)

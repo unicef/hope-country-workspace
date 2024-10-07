@@ -5,11 +5,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Group
 
-from country_workspace.models import CountryOffice, UserRole
+from country_workspace.models import Office, UserRole
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest
     from django.contrib.auth.models import AbstractBaseUser
+    from django.http import HttpRequest
 
 
 class AnyUserAuthBackend(ModelBackend):
@@ -22,7 +22,7 @@ class AnyUserAuthBackend(ModelBackend):
         password: str | None = None,
         **kwargs: Any,
     ) -> "AbstractBaseUser | None":
-        countries = CountryOffice.objects.values_list("slug", flat=True)
+        countries = Office.objects.values_list("slug", flat=True)
 
         if settings.DEBUG:
             if username in countries:
@@ -30,7 +30,7 @@ class AnyUserAuthBackend(ModelBackend):
                     username=username,
                     defaults=dict(is_staff=True, is_active=True, is_superuser=False),
                 )
-                office = CountryOffice.objects.get(slug=username)
+                office = Office.objects.get(slug=username)
                 g = Group.objects.get(name=settings.ANALYST_GROUP_NAME)
                 UserRole.objects.create(user=user, country_office=office, group=g)
                 return user

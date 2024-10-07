@@ -1,12 +1,12 @@
 from django.db import models
 
 from .household import Household
-from .office import CountryOffice
+from .office import Office
 from .program import Program
 
 
 class Individual(models.Model):
-    country_office = models.ForeignKey(CountryOffice, on_delete=models.CASCADE)
+    country_office = models.ForeignKey(Office, on_delete=models.CASCADE)
     program = models.ForeignKey(Program, on_delete=models.CASCADE)
 
     household = models.ForeignKey(

@@ -7,7 +7,7 @@ from django.http import HttpRequest
 
 from dateutil.utils import today
 
-from ..models import CountryOffice, User
+from ..models import Office, User
 from ..state import state
 from .utils import get_selected_tenant
 
@@ -16,7 +16,7 @@ class TenantBackend(BaseBackend):
     def get_all_permissions(
         self, user: "User|AnonymousUser", obj: "Model|None" = None
     ) -> set[str]:
-        tenant: "CountryOffice|None" = state.tenant
+        tenant: "Office|None" = state.tenant
         if not tenant:
             return set()
         if user.is_anonymous:

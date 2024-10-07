@@ -6,8 +6,8 @@ from django_webtest.pytest_plugin import MixinWithInstanceVariables
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
 from testutils.factories import (
-    CountryOfficeFactory,
     HouseholdFactory,
+    OfficeFactory,
     ProgramFactory,
     UserFactory,
 )
@@ -18,7 +18,7 @@ from country_workspace.state import state
 
 @pytest.fixture()
 def office():
-    co = CountryOfficeFactory()
+    co = OfficeFactory()
     yield co
 
 

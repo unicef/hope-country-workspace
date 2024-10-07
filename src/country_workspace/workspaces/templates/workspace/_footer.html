@@ -1,7 +1,8 @@
 <div id="footer">
-        {{ active_tenant|default_if_none:"" }}
+{#        {{ active_tenant|default_if_none:"" }}#}
     <div>state.tenant: {{ state.tenant }}</div>
-    <div>state.must_tenant: {{ state.must_tenant }}</div>
+    <div>state.program: {{ state.program }}</div>
+    <div>state.data.program: {{ state.data.program }}</div>
     <div>selected_tenant: {{ selected_tenant }}</div>
 {#    <div>groups: {% for g in user.groups.all %}{{ g }}, {% endfor %}</div>#}
 {#    <div>permission: {% for p in user.get_all_permissions %}{{ p }}, {% endfor %}</div>#}
