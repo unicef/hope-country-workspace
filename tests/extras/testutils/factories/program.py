@@ -1,6 +1,7 @@
 import factory
 
 from country_workspace.models import Program
+from country_workspace.workspaces.models import CountryProgram
 
 from .base import AutoRegisterModelFactory
 from .office import OfficeFactory
@@ -13,4 +14,10 @@ class ProgramFactory(AutoRegisterModelFactory):
 
     class Meta:
         model = Program
+        django_get_or_create = ("name",)
+
+
+class CountryProgramFactory(ProgramFactory):
+    class Meta:
+        model = CountryProgram
         django_get_or_create = ("name",)

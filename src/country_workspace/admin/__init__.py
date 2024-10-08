@@ -5,4 +5,5 @@ from .lookups import RelationshipAdmin  # noqa
 from .office import OfficeAdmin  # noqa
 from .program import ProgramAdmin  # noqa
 from .role import UserRoleAdmin  # noqa
+from .sync import SyncLog  # noqa
 from .user import UserAdmin  # noqa

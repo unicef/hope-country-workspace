@@ -170,12 +170,6 @@ class Command(BaseCommand):
                 ),
                 name=settings.TENANT_HQ,
             )
-            # Office.objects.sync()
-            # TODO: Implement sync for Country Offices
-            echo(
-                "Country Offices sync not implemented yet - TODO it !!!",
-                style_func=self.style.ERROR,
-            )
             echo("Upgrade completed", style_func=self.style.SUCCESS)
         except ValidationError as e:
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))

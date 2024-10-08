@@ -3,7 +3,7 @@ from inspect import getfullargspec
 from django.template.library import InclusionNode, parse_bits
 
 
-class InclusionAdminNode(InclusionNode):
+class WorkspaceInclusionAdminNode(InclusionNode):
     """
     Template tag that allows its template to be overridden per model, per app,
     or globally.
@@ -37,9 +37,9 @@ class InclusionAdminNode(InclusionNode):
         # thread-safe.)
         context.render_context[self] = context.template.engine.select_template(
             [
-                "admin/%s/%s/%s" % (app_label, object_name, self.template_name),
-                "admin/%s/%s" % (app_label, self.template_name),
-                "admin/%s" % self.template_name,
+                "workspace/%s/%s/%s" % (app_label, object_name, self.template_name),
+                "workspace/%s/%s" % (app_label, self.template_name),
+                "workspace/%s" % self.template_name,
             ]
         )
         return super().render(context)

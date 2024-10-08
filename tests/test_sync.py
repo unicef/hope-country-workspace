@@ -6,12 +6,13 @@ import vcr
 from vcr.record_mode import RecordMode
 
 from country_workspace.sync.office import (
+    sync_all,
     sync_maritalstatus,
     sync_observeddisability,
     sync_offices,
     sync_programs,
     sync_relationship,
-    sync_residencestatus, sync_all,
+    sync_residencestatus,
 )
 
 
@@ -25,8 +26,8 @@ def scrub_string(response):
                         s = r["name"]
                         r["name"] = "".join(sample(s, len(s)))
                     response["body"]["string"] = json.dumps(data).encode()
-        except Exception as e:
-            raise
+        except Exception:
+            pass
     return response
 
 

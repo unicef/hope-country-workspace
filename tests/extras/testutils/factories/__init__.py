@@ -11,12 +11,12 @@ from .base import (
     factories_registry,
 )
 from .django_celery_beat import PeriodicTaskFactory  # noqa
-from .household import HouseholdFactory  # noqa
-from .individual import IndividualFactory  # noqa
+from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
+from .individual import CountryIndividualFactory, IndividualFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .lookups import RelationshipFactory  # noqa
 from .office import OfficeFactory  # noqa
-from .program import ProgramFactory  # noqa
+from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .smart_fields import (  # noqa
     DataCheckerFactory,
     FieldDefinitionFactory,
@@ -24,6 +24,7 @@ from .smart_fields import (  # noqa
     FlexFieldFactory,
 )
 from .social import SocialAuthUserFactory  # noqa
+from .sync import SyncLogFactory  # noqa
 from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
 from .workspaces import CountryChecker  # noqa

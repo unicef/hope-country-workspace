@@ -1,4 +1,4 @@
-from country_workspace.models import Office, Program, Relationship
+from country_workspace.models import Office, Program, Relationship, SyncLog
 
 from ..models.lookups import MaritalStatus, ObservedDisability, ResidenceStatus
 from .client import HopeClient
@@ -17,6 +17,7 @@ def sync_offices():
                 "long_name": record["long_name"],
             },
         )
+    SyncLog.objects.register_sync(Office)
     return i
 
 
@@ -33,6 +34,7 @@ def sync_programs():
                 "country_office": Office.objects.get(code=record["business_area_code"]),
             },
         )
+    SyncLog.objects.register_sync(Program)
     return i
 
 
@@ -41,6 +43,7 @@ def sync_maritalstatus():
     record = client.get_lookup("lookups/maritalstatus")
     for k, v in record.items():
         MaritalStatus.objects.get_or_create(code=k, defaults={"label": v})
+    SyncLog.objects.register_sync(MaritalStatus)
     return True
 
 
@@ -49,6 +52,7 @@ def sync_observeddisability():
     record = client.get_lookup("lookups/observeddisability")
     for k, v in record.items():
         ObservedDisability.objects.get_or_create(code=k, defaults={"label": v})
+    SyncLog.objects.register_sync(ObservedDisability)
     return True
 
 
@@ -57,6 +61,7 @@ def sync_relationship():
     record = client.get_lookup("lookups/relationship")
     for k, v in record.items():
         Relationship.objects.get_or_create(code=k, defaults={"label": v})
+    SyncLog.objects.register_sync(Relationship)
     return True
 
 
@@ -65,6 +70,7 @@ def sync_residencestatus():
     record = client.get_lookup("lookups/residencestatus")
     for k, v in record.items():
         ResidenceStatus.objects.get_or_create(code=k, defaults={"label": v})
+    SyncLog.objects.register_sync(ResidenceStatus)
     return True
 
 

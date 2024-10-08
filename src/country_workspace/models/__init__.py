@@ -10,4 +10,5 @@ from .lookups import (  # noqa
 from .office import Office  # noqa
 from .program import Program  # noqa
 from .role import UserRole  # noqa
+from .sync import SyncLog  # noqa
 from .user import User  # noqa
