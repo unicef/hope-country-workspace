@@ -186,40 +186,18 @@ class Command(BaseCommand):
             str(test_utils_dir.absolute()) + " does not exist"
         )
         sys.path.append(str(test_utils_dir.absolute()))
-        from testutils.factories import IndividualFactory, OfficeFactory, ProgramFactory
+        import vcr
+        from testutils.factories import HouseholdFactory
+        from vcr.record_mode import RecordMode
 
-        # from faker import Faker
-        #
-        # faker = Faker()
-        for ic in OfficeFactory._COUNTRIES:
-            co = OfficeFactory(name=ic)
-            for ip in [1, 2, 3]:
-                p = ProgramFactory(name=f"Program {ip} ({co.slug})", country_office=co)
-                IndividualFactory.create_batch(
-                    10,
-                    household__country_office=co,
-                    household__program=p,
-                    country_office=co,
-                    program=p,
-                )
-                # for hx in range(50):
+        from country_workspace.sync.office import sync_all
 
-            # co, __ = Office.objects.get_or_create(
-            #     slug=co, code=co, name=co.capitalize()
-            # )
-        #     for p in [1, 2, 3]:
-        #         p, __ = Program.objects.get_or_create(
-        #             name=f"Program {p} ({co.slug})", country_office=co
-        #         )
-        #         for hx in range(50):
-        #             h, __ = Household.objects.get_or_create(
-        #                 country_office=co, program=p, name=faker.name(), flex_fields={}
-        #             )
-        #             for ix in range(1, randint(2, 6)):
-        #                 i, __ = Individual.objects.get_or_create(
-        #                     country_office=co,
-        #                     household=h,
-        #                     program=p,
-        #                     full_name=faker.name(),
-        #                     flex_fields={},
-        #                 )
+        with vcr.use_cassette(
+            test_utils_dir.parent / "sync_all.yaml",
+            record_mode=RecordMode.NONE,
+        ):
+            sync_all()
+
+        for co in Office.objects.filter(active=True):
+            for p in co.programs.filter():
+                HouseholdFactory.create_batch(10, country_office=co, program=p)

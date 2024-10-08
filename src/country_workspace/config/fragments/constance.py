@@ -28,4 +28,5 @@ CONSTANCE_CONFIG = {
         "Group to assign to any new user",
         "group_select",
     ),
+    "HOPE_API_URL": ("https://hope.unicef.org/api/rest/", "", str),
 }

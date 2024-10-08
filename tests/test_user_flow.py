@@ -5,35 +5,36 @@ from django_webtest import DjangoTestApp
 from django_webtest.pytest_plugin import MixinWithInstanceVariables
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
-from testutils.factories import (
-    HouseholdFactory,
-    OfficeFactory,
-    ProgramFactory,
-    UserFactory,
-)
-from testutils.perms import user_grant_permissions
 
 from country_workspace.state import state
 
 
 @pytest.fixture()
 def office():
+    from testutils.factories import OfficeFactory
+
     co = OfficeFactory()
     yield co
 
 
 @pytest.fixture()
 def program(office):
+    from testutils.factories import ProgramFactory
+
     return ProgramFactory()
 
 
 @pytest.fixture()
 def user():
+    from testutils.factories import UserFactory
+
     return UserFactory(is_staff=True)
 
 
 @pytest.fixture()
 def data(program):
+    from testutils.factories import HouseholdFactory
+
     return HouseholdFactory.create_batch(
         10, program=program, country_office=program.country_office
     )
@@ -52,7 +53,7 @@ def app(
 
 
 def test_login(app, user, program, data):
-    from testutils.perms import user_grant_role
+    from testutils.perms import user_grant_permissions, user_grant_role
 
     home = reverse("workspace:index")
     res = app.get(home)

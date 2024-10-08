@@ -28,3 +28,27 @@ repos:
     rev: 23.11.0
     hooks:
       - id: towncrier-check
+
+  - repo: https://github.com/saxix/pch
+    rev: '0.1'
+    hooks:
+      - id: check-missed-migrations
+        args:
+          - src
+        stages: [ commit ]
+        additional_dependencies: [ setuptools ]
+
+      - id: check-untracked
+        args:
+          - src
+          - tests
+        stages: [ push ]
+
+      - id: check-forbidden
+        args:
+          - -p
+          - /\.showbrowser\(/
+          - -p
+          - /print\(111/
+        stages: [ commit ]
+        additional_dependencies: [ setuptools ]

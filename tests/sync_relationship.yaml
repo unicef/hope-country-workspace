@@ -1,0 +1,167 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/relationship/
+  response:
+    body:
+      string: '{"UNKNOWN":"Unknown","AUNT_UNCLE":"Aunt / Uncle","BROTHER_SISTER":"Brother
+        / Sister","COUSIN":"Cousin","DAUGHTERINLAW_SONINLAW":"Daughter-in-law / Son-in-law","GRANDDAUGHER_GRANDSON":"Granddaughter
+        / Grandson","GRANDMOTHER_GRANDFATHER":"Grandmother / Grandfather","HEAD":"Head
+        of household (self)","MOTHER_FATHER":"Mother / Father","MOTHERINLAW_FATHERINLAW":"Mother-in-law
+        / Father-in-law","NEPHEW_NIECE":"Nephew / Niece","NON_BENEFICIARY":"Not a
+        Family Member. Can only act as a recipient.","OTHER":"Other","SISTERINLAW_BROTHERINLAW":"Sister-in-law
+        / Brother-in-law","SON_DAUGHTER":"Son / Daughter","WIFE_HUSBAND":"Wife / Husband","FOSTER_CHILD":"Foster
+        child","FREE_UNION":"Free union"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '688'
+      Content-Security-Policy-Report-Only:
+      - 'font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; default-src
+        ''self''; style-src ''self'' ''unsafe-inline'' ''unsafe-eval''; img-src ''self''
+        data:; manifest-src ''self''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval'';
+        frame-ancestors ''none''; connect-src gov-bam.nr-data.net cdn.jsdelivr.net;
+        media-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 08 Oct 2024 14:12:39 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/relationship/
+  response:
+    body:
+      string: '{"UNKNOWN":"Unknown","AUNT_UNCLE":"Aunt / Uncle","BROTHER_SISTER":"Brother
+        / Sister","COUSIN":"Cousin","DAUGHTERINLAW_SONINLAW":"Daughter-in-law / Son-in-law","GRANDDAUGHER_GRANDSON":"Granddaughter
+        / Grandson","GRANDMOTHER_GRANDFATHER":"Grandmother / Grandfather","HEAD":"Head
+        of household (self)","MOTHER_FATHER":"Mother / Father","MOTHERINLAW_FATHERINLAW":"Mother-in-law
+        / Father-in-law","NEPHEW_NIECE":"Nephew / Niece","NON_BENEFICIARY":"Not a
+        Family Member. Can only act as a recipient.","OTHER":"Other","SISTERINLAW_BROTHERINLAW":"Sister-in-law
+        / Brother-in-law","SON_DAUGHTER":"Son / Daughter","WIFE_HUSBAND":"Wife / Husband","FOSTER_CHILD":"Foster
+        child","FREE_UNION":"Free union"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '688'
+      Content-Security-Policy-Report-Only:
+      - 'connect-src gov-bam.nr-data.net cdn.jsdelivr.net; style-src ''self'' ''unsafe-inline''
+        ''unsafe-eval''; default-src ''self''; script-src ''self'' ''unsafe-inline''
+        ''unsafe-eval''; manifest-src ''self''; img-src ''self'' data:; media-src
+        ''self''; frame-ancestors ''none''; font-src ''self'' data: fonts.gstatic.com
+        maxcdn.bootstrapcdn.com'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 08 Oct 2024 14:15:54 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/relationship/
+  response:
+    body:
+      string: '{"UNKNOWN":"Unknown","AUNT_UNCLE":"Aunt / Uncle","BROTHER_SISTER":"Brother
+        / Sister","COUSIN":"Cousin","DAUGHTERINLAW_SONINLAW":"Daughter-in-law / Son-in-law","GRANDDAUGHER_GRANDSON":"Granddaughter
+        / Grandson","GRANDMOTHER_GRANDFATHER":"Grandmother / Grandfather","HEAD":"Head
+        of household (self)","MOTHER_FATHER":"Mother / Father","MOTHERINLAW_FATHERINLAW":"Mother-in-law
+        / Father-in-law","NEPHEW_NIECE":"Nephew / Niece","NON_BENEFICIARY":"Not a
+        Family Member. Can only act as a recipient.","OTHER":"Other","SISTERINLAW_BROTHERINLAW":"Sister-in-law
+        / Brother-in-law","SON_DAUGHTER":"Son / Daughter","WIFE_HUSBAND":"Wife / Husband","FOSTER_CHILD":"Foster
+        child","FREE_UNION":"Free union"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '688'
+      Content-Security-Policy-Report-Only:
+      - 'frame-ancestors ''none''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        manifest-src ''self''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval'';
+        style-src ''self'' ''unsafe-inline'' ''unsafe-eval''; media-src ''self'';
+        default-src ''self''; img-src ''self'' data:; connect-src gov-bam.nr-data.net
+        cdn.jsdelivr.net'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 08 Oct 2024 14:19:34 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+version: 1

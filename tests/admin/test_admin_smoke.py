@@ -14,8 +14,6 @@ from admin_extra_buttons.mixins import ExtraButtonsMixin
 from django_regex.utils import RegexList as _RegexList
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
-from testutils.factories.base import AutoRegisterModelFactory
-from testutils.factories.user import SuperUserFactory
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
@@ -126,6 +124,7 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
 @pytest.fixture()
 def record(db: Any, request: "FixtureRequest") -> Model:
     from testutils.factories import get_factory_for_model
+    from testutils.factories.user import AutoRegisterModelFactory
 
     model_admin = request.getfixturevalue("model_admin")
     instance: Model = model_admin.model.objects.first()
@@ -151,6 +150,8 @@ def app(
     mocked_responses: "RequestsMock",
     settings: SettingsWrapper,
 ) -> "DjangoTestApp":
+    from testutils.factories.user import SuperUserFactory
+
     settings.FLAGS = {"OLD_STYLE_UI": [("boolean", True)]}
     django_app = django_app_factory(csrf_checks=False)
     admin_user = SuperUserFactory(username="superuser")

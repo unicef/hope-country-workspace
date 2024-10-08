@@ -44,6 +44,6 @@ class CountryHouseholdAdmin(WorkspaceModelAdmin):
 
     def get_list_display(self, request):
         if program := self.get_selected_program(request):
-            return [c.strip() for c in program.changelist_columns.split("\n")]
+            return [c.strip() for c in program.household_columns.split("\n")]
         else:
             return self.list_display

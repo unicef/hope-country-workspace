@@ -5,39 +5,14 @@ from django.db.models import JSONField, Q, UniqueConstraint
 from django.utils.translation import gettext as _
 
 from mptt.fields import TreeForeignKey
-from mptt.managers import TreeManager
 from mptt.models import MPTTModel
-from mptt.querysets import TreeQuerySet
+
+from .base import BaseModel
 
 
-class ValidityQuerySet(TreeQuerySet):
-    def active(self, *args: Any, **kwargs: Any) -> "ValidityQuerySet":
-        return super().filter(valid_until__isnull=True).filter(*args, **kwargs)
-
-
-class ValidityManager(TreeManager):
-    _queryset_class = ValidityQuerySet
-
-
-class Country(MPTTModel):
+class Country(BaseModel):
     name = models.CharField(max_length=255, db_index=True)
-    short_name = models.CharField(max_length=255, db_index=True)
     iso_code2 = models.CharField(max_length=2, unique=True)
-    iso_code3 = models.CharField(max_length=3, unique=True)
-    iso_num = models.CharField(max_length=4, unique=True)
-    parent = TreeForeignKey(
-        "self",
-        verbose_name=_("Parent"),
-        null=True,
-        blank=True,
-        related_name="children",
-        db_index=True,
-        on_delete=models.CASCADE,
-    )
-    valid_from = models.DateTimeField(blank=True, null=True, auto_now_add=True)
-    valid_until = models.DateTimeField(blank=True, null=True)
-
-    objects = ValidityManager()
 
     class Meta:
         verbose_name_plural = "Countries"
@@ -59,6 +34,7 @@ class Country(MPTTModel):
 
 
 class AreaType(MPTTModel):
+    hope_id = models.CharField(max_length=200, unique=True, editable=False)
     name = models.CharField(max_length=255, db_index=True)
     country = models.ForeignKey(Country, on_delete=models.CASCADE)
     area_level = models.PositiveIntegerField(default=1)
@@ -74,8 +50,6 @@ class AreaType(MPTTModel):
     valid_until = models.DateTimeField(blank=True, null=True)
     extras = JSONField(default=dict, blank=True)
 
-    objects = ValidityManager()
-
     class Meta:
         verbose_name_plural = "Area Types"
         unique_together = ("country", "area_level", "name")
@@ -85,6 +59,7 @@ class AreaType(MPTTModel):
 
 
 class Area(MPTTModel):
+    hope_id = models.CharField(max_length=200, unique=True, editable=False)
     name = models.CharField(max_length=255)
     parent = TreeForeignKey(
         "self",
@@ -102,8 +77,6 @@ class Area(MPTTModel):
     valid_from = models.DateTimeField(blank=True, null=True, auto_now_add=True)
     valid_until = models.DateTimeField(blank=True, null=True)
     extras = JSONField(default=dict, blank=True)
-
-    objects = ValidityManager()
 
     class Meta:
         verbose_name_plural = "Areas"

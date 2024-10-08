@@ -13,9 +13,11 @@ class CountryIndividualAdmin(WorkspaceModelAdmin):
     list_display = ("full_name", "program")
     search_fields = ("full_name",)
     list_filter = (("program", ProgramFilter),)
-    readonly_fields = ["program"]
     exclude = [
+        "household",
         "country_office",
+        "program",
+        "user_fields",
     ]
 
     @button()

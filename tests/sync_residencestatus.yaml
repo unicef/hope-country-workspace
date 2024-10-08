@@ -1,0 +1,100 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/residencestatus/
+  response:
+    body:
+      string: '{"":"None","IDP":"Displaced  |  Internally Displaced People","REFUGEE":"Displaced  |  Refugee
+        / Asylum Seeker","OTHERS_OF_CONCERN":"Displaced  |  Others of Concern","HOST":"Non-displaced  |   Host","NON_HOST":"Non-displaced  |   Non-host","RETURNEE":"Displaced  |   Returnee"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '276'
+      Content-Security-Policy-Report-Only:
+      - 'font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; default-src
+        ''self''; style-src ''self'' ''unsafe-inline'' ''unsafe-eval''; img-src ''self''
+        data:; manifest-src ''self''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval'';
+        frame-ancestors ''none''; connect-src gov-bam.nr-data.net cdn.jsdelivr.net;
+        media-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 08 Oct 2024 14:15:56 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/residencestatus/
+  response:
+    body:
+      string: '{"":"None","IDP":"Displaced  |  Internally Displaced People","REFUGEE":"Displaced  |  Refugee
+        / Asylum Seeker","OTHERS_OF_CONCERN":"Displaced  |  Others of Concern","HOST":"Non-displaced  |   Host","NON_HOST":"Non-displaced  |   Non-host","RETURNEE":"Displaced  |   Returnee"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '276'
+      Content-Security-Policy-Report-Only:
+      - 'manifest-src ''self''; img-src ''self'' data:; default-src ''self''; media-src
+        ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        frame-ancestors ''none''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval'';
+        connect-src gov-bam.nr-data.net cdn.jsdelivr.net; style-src ''self'' ''unsafe-inline''
+        ''unsafe-eval'''
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 08 Oct 2024 14:19:41 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+version: 1

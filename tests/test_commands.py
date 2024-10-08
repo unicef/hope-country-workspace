@@ -8,9 +8,10 @@ from unittest import mock
 from django.core.management import call_command
 
 import pytest
+import vcr
 from pytest import MonkeyPatch
 from responses import RequestsMock
-from testutils.factories import SuperUserFactory
+from vcr.record_mode import RecordMode
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
@@ -91,6 +92,8 @@ def test_upgrade(
 
 
 def test_upgrade_next(mocked_responses: RequestsMock) -> None:
+    from testutils.factories import SuperUserFactory
+
     SuperUserFactory()
     out = StringIO()
     call_command("upgrade", stdout=out, check=False)
@@ -110,6 +113,8 @@ def test_upgrade_check(
 def test_upgrade_admin(
     mocked_responses: RequestsMock, environment: dict[str, str], admin: str
 ) -> None:
+    from testutils.factories import SuperUserFactory
+
     if admin:
         email = SuperUserFactory().email
     else:
@@ -118,3 +123,13 @@ def test_upgrade_admin(
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
         call_command("upgrade", stdout=out, check=True, admin_email=email)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sync(environment: dict[str, str]) -> None:
+    out = StringIO()
+    with vcr.use_cassette(
+        Path(__file__).parent / "sync_all.yaml", record_mode=RecordMode.NONE
+    ):
+        with mock.patch.dict(os.environ, environment, clear=True):
+            call_command("sync", stdout=out)

@@ -62,7 +62,7 @@ class TenantBackend(BaseBackend):
         request = request or state.request
         allowed_tenants: "Optional[QuerySet[Model]]"
         if request.user.is_superuser:
-            allowed_tenants = conf.tenant_model.objects.all()
+            allowed_tenants = conf.tenant_model.objects.filter(active=True)
         elif request.user.is_authenticated:
             allowed_tenants = (
                 conf.tenant_model.objects.filter(userrole__user=request.user)

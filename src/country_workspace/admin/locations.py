@@ -23,9 +23,14 @@ class ImportCSVForm(Form):
 
 @admin.register(Country)
 class CountryAdmin(AdminFiltersMixin, admin.ModelAdmin):
-    list_display = ("name", "short_name", "iso_code2", "iso_code3", "iso_num")
-    search_fields = ("name", "short_name", "iso_code2", "iso_code3", "iso_num")
-    raw_id_fields = ("parent",)
+    list_display = (
+        "name",
+        "iso_code2",
+    )
+    search_fields = (
+        "name",
+        "iso_code2",
+    )
 
 
 @admin.register(AreaType)

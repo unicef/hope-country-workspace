@@ -13,18 +13,11 @@ class CountryFactory(AutoRegisterModelFactory):
         model = Country
         django_get_or_create = (
             "name",
-            "short_name",
             "iso_code2",
-            "iso_code3",
-            "iso_num",
         )
 
     name = "Afghanistan"
-    short_name = "Afghanistan"
     iso_code2 = "AF"
-    iso_code3 = "AFG"
-    iso_num = "0004"
-    parent = None
 
 
 class AreaTypeFactory(AutoRegisterModelFactory):

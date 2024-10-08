@@ -36,4 +36,4 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def population1(self, button: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryhousehold_changelist")
         obj = button.context["original"]
-        button.href = f"{base}?program={obj.pk}"
+        button.href = f"{base}?program__exact={obj.pk}"

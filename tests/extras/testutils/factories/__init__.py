@@ -14,6 +14,7 @@ from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import HouseholdFactory  # noqa
 from .individual import IndividualFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
+from .lookups import RelationshipFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import ProgramFactory  # noqa
 from .smart_fields import (  # noqa

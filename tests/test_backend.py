@@ -3,7 +3,6 @@ from unittest.mock import Mock
 from django.contrib.auth.models import AnonymousUser
 
 import pytest
-from testutils.factories import OfficeFactory, UserFactory
 
 from country_workspace.state import state
 from country_workspace.workspaces.backend import TenantBackend
@@ -16,11 +15,15 @@ def backend(db):
 
 @pytest.fixture()
 def user(db):
+    from testutils.factories import UserFactory
+
     return UserFactory()
 
 
 @pytest.fixture()
 def office(db):
+    from testutils.factories import OfficeFactory
+
     return OfficeFactory()
 
 

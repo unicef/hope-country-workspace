@@ -1,12 +1,13 @@
 from django.contrib.auth.models import Group
 from django.db import models
 
+from .base import BaseModel
 from .office import Office
 from .program import Program
 from .user import User
 
 
-class UserRole(models.Model):
+class UserRole(BaseModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="roles")
     country_office = models.ForeignKey(Office, on_delete=models.CASCADE)
     program = models.ForeignKey(

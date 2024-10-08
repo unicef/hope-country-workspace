@@ -58,6 +58,7 @@ def pytest_configure(config):
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
     os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
 
+    os.environ["LOGGING_LEVEL"] = "CRITICAL"
     os.environ["GMAIL_USER"] = "11"
     os.environ["GMAIL_PASSWORD"] = "11"
     from django.conf import settings

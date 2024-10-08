@@ -8,6 +8,7 @@ from .office import OfficeFactory
 
 class ProgramFactory(AutoRegisterModelFactory):
     country_office = factory.SubFactory(OfficeFactory)
+    hope_id = factory.Sequence(lambda n: f"program-{n}")
     name = factory.Sequence(lambda n: f"Program {n}")
 
     class Meta:

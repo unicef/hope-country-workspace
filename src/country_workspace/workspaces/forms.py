@@ -22,7 +22,11 @@ class TenantAuthenticationForm(AdminAuthenticationForm):
 
 class SelectTenantForm(forms.Form):
     tenant = forms.ModelChoiceField(
-        label=_("Office"), queryset=None, required=True, blank=False
+        label=_("Office"),
+        queryset=None,
+        required=True,
+        blank=False,
+        limit_choices_to={"active": True},
     )
     next = forms.CharField(required=False, widget=forms.HiddenInput)
 

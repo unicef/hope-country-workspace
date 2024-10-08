@@ -168,7 +168,7 @@ LOGGING = {
     "loggers": {
         "": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": env("LOGGING_LEVEL"),
             "propagate": True,
         },
         "celery": {

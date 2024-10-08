@@ -15,11 +15,7 @@ from .program import ProgramFactory
 fake = Faker()
 
 
-class JSONFactory(factory.DictFactory):
-    """
-    Use with factory.Dict to make JSON strings.
-    """
-
+class HouseholdFlexFieldFactory(factory.DictFactory):
     @classmethod
     def _generate(cls, create, attrs):
         return {
@@ -43,12 +39,23 @@ class JSONFactory(factory.DictFactory):
 class HouseholdFactory(AutoRegisterModelFactory):
     country_office = factory.SubFactory(OfficeFactory)
     program = factory.SubFactory(ProgramFactory)
-    name = factory.Faker("name")
-    flex_fields = JSONFactory()
+    name = factory.Faker("last_name")
+    flex_fields = HouseholdFlexFieldFactory()
 
     class Meta:
         model = Household
         django_get_or_create = ("name",)
+
+    @factory.post_generation
+    def individuals(self, create, extracted, **kwargs):
+        from .individual import IndividualFactory
+
+        for i in range(self.flex_fields["size_h_c"]):
+            IndividualFactory(
+                country_office=self.country_office,
+                program=self.program,
+                household=self,
+            )
 
 
 class CountryHouseholdFactory(HouseholdFactory):

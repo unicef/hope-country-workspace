@@ -10,8 +10,6 @@ from admin_extra_buttons.mixins import ExtraButtonsMixin
 from django_regex.utils import RegexList as _RegexList
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
-from testutils.factories import OfficeFactory, ProgramFactory, SuperUserFactory
-from testutils.factories.base import AutoRegisterModelFactory
 
 from country_workspace.state import state
 from country_workspace.workspaces.sites import workspace
@@ -115,6 +113,8 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
 
 @pytest.fixture()
 def office():
+    from testutils.factories import OfficeFactory
+
     co = OfficeFactory()
     state.tenant = co
     yield co
@@ -122,12 +122,14 @@ def office():
 
 @pytest.fixture()
 def program(office):
+    from testutils.factories import ProgramFactory
+
     return ProgramFactory()
 
 
 @pytest.fixture()
 def record(db: Any, program, request: "FixtureRequest") -> Model:
-    from testutils.factories import get_factory_for_model
+    from testutils.factories import AutoRegisterModelFactory, get_factory_for_model
 
     model_admin = request.getfixturevalue("model_admin")
     instance: Model = model_admin.model.objects.first()
@@ -157,6 +159,8 @@ def app(
     mocked_responses: "RequestsMock",
     settings: SettingsWrapper,
 ) -> "DjangoTestApp":
+    from testutils.factories import SuperUserFactory
+
     django_app = django_app_factory(csrf_checks=False)
     admin_user = SuperUserFactory(username="superuser")
     django_app.set_user(admin_user)
