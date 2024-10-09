@@ -63,14 +63,14 @@
                                 <a href="{% url "workspace:workspaces_countryprogram_change" original.program.pk %}">{{ original.program }}</a>
                             </td>
                         </tr>
-
-                        {% include "workspace/includes/flex_field_form.html" with  form=checker_form fields=original.flex_fields %}
-
+                        <tr>
+                            <th>Household</th>
+                            <td>
+                                <a href="{% url "workspace:workspaces_countryhousehold_change" original.household.pk %}">{{ original.household }}</a>
+                            </td>
+                        </tr>
+                    {% include "workspace/includes/flex_field_form.html" with  form=checker_form fields=original.flex_fields %}
                     </table>
-                    {##}
-                    {#{% for fieldset in adminform %}#}
-                    {#  {% include "workspace/includes/fieldset.html" with heading_level=2 prefix="fieldset" id_prefix=0 id_suffix=forloop.counter0 %}#}
-                    {#{% endfor %}#}
                 {% endblock %}
 
                 {% block after_field_sets %}{% endblock %}

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture()
-def office(db):
+def office(db, worker_id):
     from testutils.factories import OfficeFactory
 
     co = OfficeFactory()
@@ -17,13 +17,15 @@ def office(db):
 
 
 @pytest.fixture()
-def program(office):
+def program(office, worker_id):
     from testutils.factories import CountryProgramFactory
 
     return CountryProgramFactory(
         country_office=office,
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
+        household_checker__name=f"HH Checker {worker_id}",
+        individual_checker__name=f"IND Checker  {worker_id}",
     )
 
 

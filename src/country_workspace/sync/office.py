@@ -1,5 +1,8 @@
+from hope_flex_fields.models import DataChecker
+
 from country_workspace.models import Office, Program, Relationship, SyncLog
 
+from .. import constants
 from ..models.lookups import MaritalStatus, ObservedDisability, ResidenceStatus
 from .client import HopeClient
 
@@ -23,8 +26,10 @@ def sync_offices():
 
 def sync_programs():
     client = HopeClient()
+    hh_chk = DataChecker.objects.filter(name=constants.HOUSEHOLD_CHECKER_NAME).first()
+    ind_chk = DataChecker.objects.filter(name=constants.INDIVIDUAL_CHECKER_NAME).first()
     for i, record in enumerate(client.get("programs")):
-        Program.objects.get_or_create(
+        p, created = Program.objects.get_or_create(
             hope_id=record["id"],
             defaults={
                 "name": record["name"],
@@ -34,6 +39,10 @@ def sync_programs():
                 "country_office": Office.objects.get(code=record["business_area_code"]),
             },
         )
+        if created:
+            p.household_checker = hh_chk
+            p.individual_checker = ind_chk
+            p.save()
     SyncLog.objects.register_sync(Program)
     return i
 
@@ -41,9 +50,15 @@ def sync_programs():
 def sync_maritalstatus():
     client = HopeClient()
     record = client.get_lookup("lookups/maritalstatus")
+    choices = []
     for k, v in record.items():
         MaritalStatus.objects.get_or_create(code=k, defaults={"label": v})
+        choices.append((k, v))
     SyncLog.objects.register_sync(MaritalStatus)
+
+    if fd := MaritalStatus.get_field_definition():
+        fd.attrs["choices"] = choices
+        fd.save()
     return True
 
 

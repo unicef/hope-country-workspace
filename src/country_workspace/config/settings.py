@@ -43,6 +43,7 @@ INSTALLED_APPS = (
     "country_workspace.security",
     "country_workspace.apps.Config",
     "country_workspace.workspaces.apps.Config",
+    "country_workspace.versions",
 )
 
 MIDDLEWARE = (

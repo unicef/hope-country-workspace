@@ -91,9 +91,6 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         extra_context["changelist_url2"] = self.add_preserved_filters(
             request, self.get_changelist_url(request)
         )
-        #     extra_context = self.get_common_context(
-        #         request, object_id, **(extra_context or {})
-        #     )
         return super().changeform_view(
             request, object_id, form_url, extra_context=extra_context
         )

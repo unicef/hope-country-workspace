@@ -1,3 +1,5 @@
+from random import choice
+
 import factory
 from faker import Faker
 
@@ -27,7 +29,7 @@ class IndividualFlexFieldFactory(factory.DictFactory):
             "middle_name_i_c": "",
             "family_name_i_c": "",
             "photo_i_c": "",
-            "gender_i_c": "",
+            "gender_i_c": choice(["MALE", "FEMALE"]),
             "birth_date_i_c": "",
             "estimated_birth_date_i_c": "",
             "national_id_photo_i_c": "",
@@ -35,6 +37,7 @@ class IndividualFlexFieldFactory(factory.DictFactory):
             "phone_no_i_c": "",
             "primary_collector_id": "",
             "alternate_collector_id": "",
+            "disability_i_c": "",
         }
 
 

@@ -1,0 +1,12 @@
+
+{% if has_change_permission %}
+    {{ form.as_table }}
+{% else %}
+    {% for k,v in fields.items %}
+        <tr>
+            <th>{{ k }}</th>
+            <td>{{ v }}</td>
+        </tr>
+    {% endfor %}
+{% endif %}
+</table>

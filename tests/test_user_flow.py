@@ -93,4 +93,3 @@ def test_login(app, user, program, data):
         res = res.click("Country Households")
         res = res.click(hh.name)
         res = res.click("Close")
-        res.showbrowser()
