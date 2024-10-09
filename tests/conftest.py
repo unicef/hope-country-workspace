@@ -34,6 +34,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     os.environ.update(DJANGO_SETTINGS_MODULE="country_workspace.config.settings")
+    os.environ.setdefault("STATIC_URL", "/static/")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")
     os.environ.setdefault("STATIC_ROOT", "/tmp/media/")
     os.environ.setdefault("TEST_EMAIL_SENDER", "sender@example.com")
@@ -41,35 +42,16 @@ def pytest_configure(config):
 
     os.environ["MAILJET_API_KEY"] = "11"
     os.environ["MAILJET_SECRET_KEY"] = "11"
-    os.environ["FILE_STORAGE_DEFAULT"] = (
-        "django.core.files.storage.FileSystemStorage?location=/tmp/hde/storage/"
-    )
-    os.environ["FILE_STORAGE_STATIC"] = (
-        "django.core.files.storage.FileSystemStorage?location=/tmp/hde/static/"
-    )
-    os.environ["FILE_STORAGE_MEDIA"] = (
-        "django.core.files.storage.FileSystemStorage?location=/tmp/hde/storage/"
-    )
-    os.environ["FILE_STORAGE_HOPE"] = (
-        "django.core.files.storage.FileSystemStorage?location=/tmp/hde/hope/"
-    )
     os.environ["SOCIAL_AUTH_REDIRECT_IS_HTTPS"] = "0"
     os.environ["CELERY_TASK_ALWAYS_EAGER"] = "0"
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
     os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
 
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
-    os.environ["GMAIL_USER"] = "11"
-    os.environ["GMAIL_PASSWORD"] = "11"
     from django.conf import settings
 
     settings.ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
     settings.SIGNING_BACKEND = "testutils.signers.PlainSigner"
-    settings.MEDIA_ROOT = "/tmp/media"
-    settings.STATIC_ROOT = "/tmp/static"
-    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-    os.makedirs(settings.STATIC_ROOT, exist_ok=True)
-
     django.setup()
 
 

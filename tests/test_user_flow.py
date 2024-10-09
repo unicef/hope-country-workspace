@@ -67,6 +67,7 @@ def test_login(app, user, program, data):
     assert res.location == reverse("workspace:select_tenant")
     res = res.follow()
     assert "Seems you do not have any tenant enabled." in res.text
+
     with user_grant_role(user, program.country_office):
         res = app.get(reverse("workspace:select_tenant"), user=user)
         res.forms["select-tenant"]["tenant"] = program.country_office.pk
@@ -83,9 +84,13 @@ def test_login(app, user, program, data):
         ],
         program.country_office,
     ):
+        hh = program.country_office.households.first()
         res = app.get(reverse("workspace:select_tenant"), user=user)
         res.forms["select-tenant"]["tenant"] = program.country_office.pk
         res = res.forms["select-tenant"].submit()
         assert app.cookies["selected_tenant"] == program.country_office.slug
         res = res.follow()
-        res = res.click("Country households")
+        res = res.click("Country Households")
+        res = res.click(hh.name)
+        res = res.click("Close")
+        res.showbrowser()

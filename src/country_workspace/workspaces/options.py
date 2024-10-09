@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib import admin
 from django.contrib.admin.templatetags.admin_urls import add_preserved_filters
 from django.http import HttpResponseRedirect
@@ -20,10 +22,28 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         "workspace/delete_selected_confirmation.html"
     )
     delete_confirmation_template = "workspace/delete_confirmation.html"
+    preserve_filters = True
 
     def __init__(self, model, admin_site):
         self._selected_program = None
         super().__init__(model, admin_site)
+
+    def get_preserved_filters(self, request):
+        """
+        Return the preserved filters querystring.
+        """
+        match = request.resolver_match
+        if self.preserve_filters and match:
+            current_url = "%s:%s" % (match.app_name, match.url_name)
+            changelist_url = self.get_changelist_url(request)
+            if current_url == changelist_url:
+                preserved_filters = request.GET.urlencode()
+            else:
+                preserved_filters = request.GET.get("_changelist_filters")
+
+            if preserved_filters:
+                return urlencode({"_changelist_filters": preserved_filters})
+        return ""
 
     def add_preserved_filters(self, request, base_url):
         preserved_filters = self.get_preserved_filters(request)
@@ -44,7 +64,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
             % (self.admin_site.namespace, opts.app_label, opts.model_name),
             current_app=self.admin_site.name,
         )
-        return self.add_preserved_filters(request, obj_url)
+        return obj_url
 
     def get_change_url(self, request, obj):
         opts = self.model._meta
@@ -54,7 +74,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
             args=[obj.pk],
             current_app=self.admin_site.name,
         )
-        return self.add_preserved_filters(request, obj_url)
+        return obj_url
 
     def get_changelist(self, request, **kwargs):
         from .changelist import WorkspaceChangeList
@@ -68,6 +88,9 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         extra_context["show_save_and_add_another"] = False
         extra_context["show_save_and_continue"] = True
         extra_context["show_save"] = False
+        extra_context["changelist_url2"] = self.add_preserved_filters(
+            request, self.get_changelist_url(request)
+        )
         #     extra_context = self.get_common_context(
         #         request, object_id, **(extra_context or {})
         #     )
@@ -76,7 +99,9 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         )
 
     def _response_post_save(self, request, obj):
-        return HttpResponseRedirect(self.get_changelist_url(request))
+        return HttpResponseRedirect(
+            self.add_preserved_filters(request, self.get_changelist_url(request))
+        )
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(self.get_change_url(request, obj))

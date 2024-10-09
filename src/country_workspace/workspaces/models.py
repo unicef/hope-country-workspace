@@ -11,8 +11,8 @@ __all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual"]
 class CountryHousehold(global_models.Household):
     class Meta:
         proxy = True
-        # verbose_name = "Household"
-        # verbose_name_plural = "Households"
+        verbose_name = "Country Household"
+        verbose_name_plural = "Country Households"
         # app_label = "country_workspace"
 
 

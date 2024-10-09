@@ -3,7 +3,7 @@ from collections import namedtuple
 
 import pytest
 from selenium.webdriver.common.by import By
-from testutils.utils import wait_for
+from testutils.utils import wait_for, wait_for_url
 
 Proxy = namedtuple("Proxy", "host,port")
 
@@ -11,11 +11,6 @@ Proxy = namedtuple("Proxy", "host,port")
 def pytest_configure(config):
     if not config.option.driver:
         setattr(config.option, "driver", "chrome")
-
-
-SELENIUM_DEFAULT_PAGE_LOAD_TIMEOUT = 3
-SELENIUM_DEFAULT_IMPLICITLY_WAIT = 1
-SELENIUM_DEFAULT_SCRIPT_TIMEOUT = 1
 
 
 @contextlib.contextmanager
@@ -45,24 +40,40 @@ def find_by_css(selenium, *args):
 
 
 @pytest.fixture
-def chrome_options(request):
-    from selenium.webdriver.chrome.options import Options
-
-    chrome_options = Options()
+def chrome_options(request, chrome_options):
     if not request.config.getvalue("show_browser"):
         chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--allow-insecure-localhost")
+    chrome_options.add_argument("--disable-browser-side-navigation")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-translate")
+    chrome_options.add_argument("--ignore-certificate-errors")
+    chrome_options.add_argument("--lang=en-GB")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--proxy-bypass-list=*")
+    chrome_options.add_argument("--proxy-server='direct://'")
+    chrome_options.add_argument("--start-maximized")
+
+    prefs = {
+        "profile.default_content_setting_values.notifications": 1
+    }  # explicitly allow notifications
+    chrome_options.add_experimental_option("prefs", prefs)
 
     return chrome_options
 
 
 @pytest.fixture
-def selenium(monkeypatch, settings, driver):
+def selenium(monkeypatch, live_server, settings, driver):
+
     driver.with_timeouts = timeouts.__get__(driver)
     driver.set_input_value = set_input_value.__get__(driver)
-
+    driver.live_server = live_server
     driver.wait_for = wait_for.__get__(driver)
+    driver.wait_for_url = wait_for_url.__get__(driver)
     driver.find_by_css = find_by_css.__get__(driver)
+
+    # driver.maximize_window()
+    # driver.fullscreen_window()
 
     yield driver
