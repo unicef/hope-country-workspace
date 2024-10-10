@@ -12,7 +12,7 @@ license = {text = "MIT"}
 dependencies = [
     "celery>=5.4.0",
     "deepdiff>=8.0.1",
-    "django-admin-extra-buttons>=1.5.8",
+    "django-admin-extra-buttons>=1.6.0",
     "django-adminactions>=2.3.0",
     "django-adminfilters>=2.4.3",
     "django-celery-beat>=2.6.0",

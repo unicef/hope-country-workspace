@@ -7,7 +7,7 @@ from country_workspace.models.base import BaseManager, BaseModel
 
 
 class SyncManager(BaseManager):
-    def register_sync(self, model: "Model"):
+    def register_sync(self, model: "type[Model]"):
         ct = ContentType.objects.get_for_model(model)
         SyncLog.objects.update_or_create(
             content_type=ct,

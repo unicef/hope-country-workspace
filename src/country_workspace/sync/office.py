@@ -1,92 +1,97 @@
+from typing import Optional
+
 from hope_flex_fields.models import DataChecker
 
 from country_workspace.models import Office, Program, Relationship, SyncLog
 
 from .. import constants
-from ..models.lookups import MaritalStatus, ObservedDisability, ResidenceStatus
+from ..models.lookups import (
+    LookupMixin,
+    MaritalStatus,
+    ObservedDisability,
+    ResidenceStatus,
+)
 from .client import HopeClient
 
 
 def sync_offices():
     client = HopeClient()
     for i, record in enumerate(client.get("business_areas")):
-        Office.objects.get_or_create(
-            hope_id=record["id"],
-            defaults={
-                "name": record["name"],
-                "slug": record["slug"],
-                "code": record["code"],
-                "active": record["active"],
-                "long_name": record["long_name"],
-            },
-        )
+        if record["active"]:
+            Office.objects.get_or_create(
+                hope_id=record["id"],
+                defaults={
+                    "name": record["name"],
+                    "slug": record["slug"],
+                    "code": record["code"],
+                    "active": record["active"],
+                    "long_name": record["long_name"],
+                },
+            )
     SyncLog.objects.register_sync(Office)
     return i
 
 
-def sync_programs():
+def sync_programs(limit_to_office: "Optional[Office]" = None):
     client = HopeClient()
     hh_chk = DataChecker.objects.filter(name=constants.HOUSEHOLD_CHECKER_NAME).first()
     ind_chk = DataChecker.objects.filter(name=constants.INDIVIDUAL_CHECKER_NAME).first()
+    if limit_to_office:
+        office = limit_to_office
     for i, record in enumerate(client.get("programs")):
-        p, created = Program.objects.get_or_create(
-            hope_id=record["id"],
-            defaults={
-                "name": record["name"],
-                "programme_code": record["programme_code"],
-                "status": record["status"],
-                "sector": record["sector"],
-                "country_office": Office.objects.get(code=record["business_area_code"]),
-            },
-        )
-        if created:
-            p.household_checker = hh_chk
-            p.individual_checker = ind_chk
-            p.save()
+        try:
+            if limit_to_office and record["business_area_code"] != office.code:
+                continue
+            else:
+                office = Office.objects.get(code=record["business_area_code"])
+            p, created = Program.objects.get_or_create(
+                hope_id=record["id"],
+                defaults={
+                    "name": record["name"],
+                    "programme_code": record["programme_code"],
+                    "status": record["status"],
+                    "sector": record["sector"],
+                    "country_office": office,
+                },
+            )
+            if created:
+                p.household_checker = hh_chk
+                p.individual_checker = ind_chk
+                p.save()
+        except Office.DoesNotExist:
+            pass
     SyncLog.objects.register_sync(Program)
     return i
 
 
-def sync_maritalstatus():
+def _sync_lookup_model(model: type[LookupMixin], url: str):
     client = HopeClient()
-    record = client.get_lookup("lookups/maritalstatus")
+    record = client.get_lookup(url)
     choices = []
     for k, v in record.items():
-        MaritalStatus.objects.get_or_create(code=k, defaults={"label": v})
+        model.objects.get_or_create(code=k, defaults={"label": v})
         choices.append((k, v))
-    SyncLog.objects.register_sync(MaritalStatus)
-
-    if fd := MaritalStatus.get_field_definition():
+    SyncLog.objects.register_sync(model)
+    if fd := model.get_field_definition():
         fd.attrs["choices"] = choices
         fd.save()
-    return True
+    return len(choices)
+
+
+def sync_maritalstatus():
+    return _sync_lookup_model(MaritalStatus, "lookups/maritalstatus")
 
 
 def sync_observeddisability():
-    client = HopeClient()
-    record = client.get_lookup("lookups/observeddisability")
-    for k, v in record.items():
-        ObservedDisability.objects.get_or_create(code=k, defaults={"label": v})
-    SyncLog.objects.register_sync(ObservedDisability)
-    return True
+    return _sync_lookup_model(ObservedDisability, "lookups/observeddisability")
 
 
 def sync_relationship():
-    client = HopeClient()
-    record = client.get_lookup("lookups/relationship")
-    for k, v in record.items():
-        Relationship.objects.get_or_create(code=k, defaults={"label": v})
-    SyncLog.objects.register_sync(Relationship)
-    return True
+    return _sync_lookup_model(Relationship, "lookups/relationship")
 
 
 def sync_residencestatus():
-    client = HopeClient()
-    record = client.get_lookup("lookups/residencestatus")
-    for k, v in record.items():
-        ResidenceStatus.objects.get_or_create(code=k, defaults={"label": v})
-    SyncLog.objects.register_sync(ResidenceStatus)
-    return True
+    return _sync_lookup_model(ResidenceStatus, "lookups/residencestatus")
 
 
 def sync_areas():

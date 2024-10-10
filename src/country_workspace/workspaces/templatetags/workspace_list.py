@@ -37,11 +37,13 @@ def result_headers(cl):  # noqa
             if field_name == "action_checkbox":
                 aria_label = _("Select all objects on this page for an action")
                 yield {
-                    "text": mark_safe(
+                    "text": mark_safe(  # nosec B308 B703
                         f'<input type="checkbox" id="action-toggle" '
                         f'aria-label="{aria_label}">'
                     ),
-                    "class_attrib": mark_safe(' class="action-checkbox-column"'),
+                    "class_attrib": mark_safe(  # nosec B308 B703
+                        ' class="action-checkbox-column"'
+                    ),
                     "sortable": False,
                 }
                 continue
@@ -144,4 +146,15 @@ def result_list_tag(parser, token):
         func=result_list,
         template_name="change_list_results.html",
         takes_context=False,
+    )
+
+
+@register.tag(name="change_list_object_tools")
+def change_list_object_tools_tag(parser, token):
+    """Display the row of change list object tools."""
+    return WorkspaceInclusionAdminNode(
+        parser,
+        token,
+        func=lambda context: context,
+        template_name="change_list_object_tools.html",
     )

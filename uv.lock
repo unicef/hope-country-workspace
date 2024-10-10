@@ -393,9 +393,12 @@ wheels = [
 
 [[package]]
 name = "django-admin-extra-buttons"
-version = "1.5.8"
+version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ea/81/1a590014b6d87b6544cfaf21d06a6c584cfbc84bb41e33acfc9fd3e5af7f/django_admin_extra_buttons-1.5.8.tar.gz", hash = "sha256:48dc9d470ade3f5f29c80753af4d367c08947d02c9a5757aa7a9223eda6812c5", size = 995588 }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/ad/100d68b4a7410d3cb2c0b56032c19816e73790b3db70639906b6aac6ffcb/django_admin_extra_buttons-1.6.0.tar.gz", hash = "sha256:bf260aa654f82e125718aa337f8acdaef46959dc981cf46cd5cde2db577c0bd5", size = 188130 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/0c/cd02498331a6bf9ff4472765f650296afa058c24da596ac340a639dba7be/django_admin_extra_buttons-1.6.0-py2.py3-none-any.whl", hash = "sha256:fb79cca443866679a97d769d781ff4ff921ea68cdb28873d7e00a70a9c90e24f", size = 21334 },
+]
 
 [[package]]
 name = "django-adminactions"
@@ -910,7 +913,7 @@ requires-dist = [
     { name = "celery", specifier = ">=5.4.0" },
     { name = "deepdiff", specifier = ">=8.0.1" },
     { name = "django", specifier = ">=5.1" },
-    { name = "django-admin-extra-buttons", specifier = ">=1.5.8" },
+    { name = "django-admin-extra-buttons", specifier = ">=1.6.0" },
     { name = "django-adminactions", specifier = ">=2.3.0" },
     { name = "django-adminfilters", specifier = ">=2.4.3" },
     { name = "django-celery-beat", specifier = ">=2.6.0" },

@@ -43,16 +43,7 @@
     {% block object-tools %}
         <ul class="object-tools">
           {% block object-tools-items %}
-{#            {% change_list_object_tools %}#}
-
-  {% if has_add_permission %}
-  <li>
-    {% url cl.opts|workspace_urlname:'add' as add_url %}
-    <a href="{% add_preserved_filters add_url is_popup to_field %}" class="addlink">
-      {% blocktranslate with cl.opts.verbose_name as name %}Add {{ name }}{% endblocktranslate %}
-    </a>
-  </li>
-  {% endif %}
+            {% change_list_object_tools %}
           {% endblock %}
         {% include "admin_extra_buttons/includes/change_list_buttons.html" %}
         </ul>

@@ -17,4 +17,3 @@ class Config(AppConfig):
         workspace.register(models.CountryHousehold, admin.CountryHouseholdAdmin)
         workspace.register(models.CountryIndividual, admin.CountryIndividualAdmin)
         workspace.register(models.CountryProgram, admin.CountryProgramAdmin)
-        workspace.register(models.CountryChecker, admin.CountryCheckerAdmin)

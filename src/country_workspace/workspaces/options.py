@@ -18,6 +18,7 @@ class WorkspaceAutoCompleteFilter(AutoCompleteFilter):
 class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin):
     change_list_template = "workspace/change_list.html"
     change_form_template = "workspace/change_form.html"
+    object_history_template = "workspace/object_history.html"
     delete_selected_confirmation_template = (
         "workspace/delete_selected_confirmation.html"
     )

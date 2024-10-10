@@ -69,7 +69,7 @@ def test_hh_changelist(app: "DjangoTestApp", household: "CountryHousehold") -> N
     res.forms["select-tenant"].submit()
     res = app.get(url)
     assert res.status_code == 200, res.location
-    assert f"Add {household._meta.verbose_name}" in res.text
+    assert f"Add {household._meta.verbose_name}" not in res.text
     # filter by program
     res = app.get(f"{url}?program__exact={household.program.pk}")
     assert res.status_code == 200, res.location

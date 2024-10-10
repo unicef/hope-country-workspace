@@ -69,7 +69,7 @@ def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -
     res.forms["select-tenant"].submit()
     res = app.get(url)
     assert res.status_code == 200, res.location
-    assert f"Add {individual._meta.verbose_name}" in res.text
+    assert f"Add {individual._meta.verbose_name}" not in res.text
     # filter by program
     res = app.get(f"{url}?program__exact={individual.program.pk}")
     assert res.status_code == 200, res.location

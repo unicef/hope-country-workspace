@@ -49,6 +49,7 @@ GLOBAL_EXCLUDED_BUTTONS = RegexList(
         r"bitcaster.*:unlock",
         r"hope_flex_fields.FieldsetAdmin:detect_changes",
         r"country_workspace.CountryHouseholdAdmin:import_file",
+        r".*:sync",
     ]
 )
 

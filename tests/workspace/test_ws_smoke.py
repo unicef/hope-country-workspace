@@ -184,7 +184,7 @@ def test_ws_changelist(
     res.forms["select-tenant"].submit()
     res = app.get(url)
     assert res.status_code == 200, res.location
-    assert f"Add {record._meta.verbose_name}" in res.text
+    assert f"Add {record._meta.verbose_name}" not in res.text
 
 
 def test_ws_change(
