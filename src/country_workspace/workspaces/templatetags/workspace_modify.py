@@ -8,9 +8,7 @@ register = template.Library()
 
 @register.tag(name="submit_row")
 def submit_row_tag(parser, token):
-    return WorkspaceInclusionAdminNode(
-        parser, token, func=submit_row, template_name="w_submit_line.html"
-    )
+    return WorkspaceInclusionAdminNode(parser, token, func=submit_row, template_name="w_submit_line.html")
 
 
 @register.tag(name="change_form_object_tools")

@@ -3,11 +3,10 @@ from typing import TYPE_CHECKING
 from django.http import HttpRequest, HttpResponse
 
 from admin_extra_buttons.decorators import button
-from adminfilters.autocomplete import AutoCompleteFilter
 
 from country_workspace.state import state
 
-from ..filters import ProgramFilter
+from ..filters import HouseholdFilter, ProgramFilter
 from .hh_ind import CountryHouseholdIndividualBaseAdmin
 
 if TYPE_CHECKING:
@@ -15,11 +14,11 @@ if TYPE_CHECKING:
 
 
 class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
-    list_display = ("full_name", "program", "household", "country_office")
-    search_fields = ("full_name",)
+    list_display = ("name", "program", "household", "country_office")
+    search_fields = ("name",)
     list_filter = (
         ("program", ProgramFilter),
-        ("household", AutoCompleteFilter),
+        ("household", HouseholdFilter),
     )
     exclude = [
         "household",
@@ -29,6 +28,7 @@ class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
     ]
     change_list_template = "workspace/individual/change_list.html"
     change_form_template = "workspace/individual/change_form.html"
+    ordering = ("name",)
 
     def get_list_display(self, request):
         if program := self.get_selected_program(request):

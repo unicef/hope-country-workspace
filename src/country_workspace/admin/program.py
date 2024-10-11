@@ -1,31 +1,58 @@
+from typing import TYPE_CHECKING
+
 from django.contrib import admin
+from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
-from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.decorators import link
+from admin_extra_buttons.api import button, confirm_action, link
 from adminfilters.autocomplete import AutoCompleteFilter
 
 from ..models import Program
+from ..sync.office import sync_programs
 from .base import BaseModelAdmin
+
+if TYPE_CHECKING:
+    from admin_extra_buttons.buttons import LinkButton
 
 
 @admin.register(Program)
 class ProgramAdmin(BaseModelAdmin):
-    list_display = ("name", "active", "sector")
+    list_display = ("name", "sector", "status", "active")
     search_fields = ("name",)
-    list_filter = (
-        "active",
-        ("country_office", AutoCompleteFilter),
-    )
-
-    @link(change_list=False, html_attrs={"target": "_workspace"})
-    def view_in_workspace(self, button: LinkButton) -> None:
-        obj = button.context["original"]
-        base = reverse("workspace:workspaces_countryprogram_change", args=[obj.pk])
-        button.href = base
+    list_filter = (("country_office", AutoCompleteFilter), "status", "active", "sector")
+    ordering = ("name",)
 
     @link(change_list=False)
-    def population(self, button: LinkButton) -> None:
+    def view_in_workspace(self, btn: "LinkButton") -> None:
+        obj = btn.context["original"]
+        base = reverse("workspace:workspaces_countryprogram_change", args=[obj.pk])
+        btn.href = base
+
+    @link(change_list=False)
+    def population(self, btn: "LinkButton") -> None:
         base = reverse("admin:country_workspace_individual_changelist")
-        obj = button.context["original"]
-        button.href = f"{base}?household__exact={obj.pk}"
+        obj = btn.context["original"]
+        btn.href = f"{base}?household__exact={obj.pk}"
+
+    @button()
+    def zap(self, request, pk) -> None:
+        obj: Program = self.get_object(request, pk)
+
+        def _action(request: HttpRequest) -> HttpResponse:
+            obj.households.all().delete()
+
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Confirm action",
+            description="Continuing will erase all the beneficiaries from this program",
+            success_message="Successfully executed",
+        )
+
+        # base = reverse("admin:country_workspace_individual_changelist")
+        # btn.href = f"{base}?household__exact={obj.pk}"
+
+    @button()
+    def sync(self, request) -> None:
+        sync_programs()

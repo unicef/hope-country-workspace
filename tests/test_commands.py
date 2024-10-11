@@ -35,9 +35,7 @@ def environment() -> dict[str, str]:
     }
 
 
-@pytest.mark.parametrize(
-    "static_root", ["static", ""], ids=["static_missing", "static_existing"]
-)
+@pytest.mark.parametrize("static_root", ["static", ""], ids=["static_missing", "static_existing"])
 @pytest.mark.parametrize("static", [True, False], ids=["static", "no-static"])
 @pytest.mark.parametrize("verbosity", [1, 0], ids=["verbose", ""])
 @pytest.mark.parametrize("migrate", [True, False], ids=["migrate", ""])
@@ -79,9 +77,7 @@ def test_upgrade_init(
 
 @pytest.mark.parametrize("verbosity", [1, 0], ids=["verbose", ""])
 @pytest.mark.parametrize("migrate", [1, 0], ids=["migrate", ""])
-def test_upgrade(
-    verbosity: int, migrate: int, monkeypatch: MonkeyPatch, environment: dict[str, str]
-) -> None:
+def test_upgrade(verbosity: int, migrate: int, monkeypatch: MonkeyPatch, environment: dict[str, str]) -> None:
     from testutils.factories import SuperUserFactory
 
     out = StringIO()
@@ -100,9 +96,7 @@ def test_upgrade_next(mocked_responses: RequestsMock) -> None:
     assert "error" not in str(out.getvalue())
 
 
-def test_upgrade_check(
-    mocked_responses: RequestsMock, admin_user: "User", environment: dict[str, str]
-) -> None:
+def test_upgrade_check(mocked_responses: RequestsMock, admin_user: "User", environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
         call_command("upgrade", stdout=out, check=True)
@@ -110,9 +104,7 @@ def test_upgrade_check(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("admin", [True, False], ids=["existing_admin", "new_admin"])
-def test_upgrade_admin(
-    mocked_responses: RequestsMock, environment: dict[str, str], admin: str
-) -> None:
+def test_upgrade_admin(mocked_responses: RequestsMock, environment: dict[str, str], admin: str) -> None:
     from testutils.factories import SuperUserFactory
 
     if admin:
@@ -128,8 +120,6 @@ def test_upgrade_admin(
 @pytest.mark.django_db(transaction=True)
 def test_sync(environment: dict[str, str]) -> None:
     out = StringIO()
-    with vcr.use_cassette(
-        Path(__file__).parent / "sync_all.yaml", record_mode=RecordMode.NONE
-    ):
+    with vcr.use_cassette(Path(__file__).parent / "sync_all.yaml", record_mode=RecordMode.NONE):
         with mock.patch.dict(os.environ, environment, clear=True):
             call_command("sync", stdout=out)

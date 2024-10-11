@@ -92,9 +92,7 @@ class Command(BaseCommand):
         self.debug = options["debug"]
 
         self.admin_email = str(options["admin_email"] or env("ADMIN_EMAIL", ""))
-        self.admin_password = str(
-            options["admin_password"] or env("ADMIN_PASSWORD", "")
-        )
+        self.admin_password = str(options["admin_password"] or env("ADMIN_PASSWORD", ""))
 
     def halt(self, e: Exception) -> None:  # pragma: no cover
         self.stdout.write(str(e), style_func=self.style.ERROR)
@@ -127,9 +125,7 @@ class Command(BaseCommand):
                 call_command("check", deploy=True, verbosity=self.verbosity - 1)
             if self.static:
                 static_root = Path(env("STATIC_ROOT"))
-                echo(
-                    f"Run collectstatic to: '{static_root}' - '{static_root.absolute()}"
-                )
+                echo(f"Run collectstatic to: '{static_root}' - '{static_root.absolute()}")
                 if not static_root.exists():
                     static_root.mkdir(parents=True)
                 call_command("collectstatic", **extra)

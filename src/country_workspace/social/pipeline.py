@@ -6,18 +6,14 @@ from constance import config
 from social_core.backends.base import BaseAuth
 
 
-def save_to_group(
-    backend: BaseAuth, user: Optional[User] = None, **kwargs: Any
-) -> dict[str, Any]:
+def save_to_group(backend: BaseAuth, user: Optional[User] = None, **kwargs: Any) -> dict[str, Any]:
     if user:
         grp = Group.objects.get(name=config.NEW_USER_DEFAULT_GROUP)
         user.groups.add(grp)
     return {}
 
 
-def set_superusers(
-    backend: BaseAuth, user: Optional[User] = None, is_new=False, **kwargs: Any
-) -> dict[str, Any]:
+def set_superusers(backend: BaseAuth, user: Optional[User] = None, is_new=False, **kwargs: Any) -> dict[str, Any]:
     if user and is_new and user.email in config.SUPERUSERS:
         user.is_superuser = True
         user.save()

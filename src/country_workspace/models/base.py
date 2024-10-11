@@ -11,8 +11,7 @@ class BaseQuerySet(models.QuerySet["models.Model"]):
             return super().get(*args, **kwargs)
         except self.model.DoesNotExist:
             raise self.model.DoesNotExist(
-                "%s matching query does not exist. Using %s %s"
-                % (self.model._meta.object_name, args, kwargs)
+                "%s matching query does not exist. Using %s %s" % (self.model._meta.object_name, args, kwargs)
             )
 
 
@@ -28,7 +27,6 @@ class BaseModel(models.Model):
 
     def get_change_url(self, namespace="workspace"):
         return reverse(
-            "%s:%s_%s_change"
-            % (namespace, self._meta.app_label, self._meta.model_name),
+            "%s:%s_%s_change" % (namespace, self._meta.app_label, self._meta.model_name),
             args=[self.pk],
         )

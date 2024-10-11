@@ -13,9 +13,7 @@ from .utils import get_selected_tenant
 
 
 class TenantBackend(BaseBackend):
-    def get_all_permissions(
-        self, user: "User|AnonymousUser", obj: "Model|None" = None
-    ) -> set[str]:
+    def get_all_permissions(self, user: "User|AnonymousUser", obj: "Model|None" = None) -> set[str]:
         tenant: "Office|None" = state.tenant
         if not tenant:
             return set()
@@ -54,9 +52,7 @@ class TenantBackend(BaseBackend):
             return True
         return app_label in self.get_available_modules(user)
 
-    def get_allowed_tenants(
-        self, request: "HttpRequest|None" = None
-    ) -> "Optional[QuerySet[Model]]":
+    def get_allowed_tenants(self, request: "HttpRequest|None" = None) -> "Optional[QuerySet[Model]]":
         from .config import conf
 
         request = request or state.request

@@ -35,9 +35,7 @@ def user():
 def data(program):
     from testutils.factories import HouseholdFactory
 
-    return HouseholdFactory.create_batch(
-        10, program=program, country_office=program.country_office
-    )
+    return HouseholdFactory.create_batch(10, program=program, country_office=program.country_office)
 
 
 @pytest.fixture()
@@ -91,5 +89,10 @@ def test_login(app, user, program, data):
         assert app.cookies["selected_tenant"] == program.country_office.slug
         res = res.follow()
         res = res.click("Country Households")
+        assert "Please select a program on the left" in res.text
+        base_url = reverse("workspace:workspaces_countryhousehold_changelist")
+        res = app.get(f"{base_url}?program__exact={hh.program.id}", user=user)
         res = res.click(hh.name)
-        res = res.click("Close")
+        res = res.click("Close", verbose=True)
+
+        # res = res.pyquery('a.closelink')[0].click()

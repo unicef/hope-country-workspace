@@ -24,30 +24,21 @@ from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     #
     def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
-        return request.user.is_active
+        return self.model_admin.has_view_permission(request, obj=obj)
 
     def get_queryset(self):
         """Return queryset based on ModelAdmin.get_search_results()."""
         qs = self.model_admin.get_queryset(self.request)
         if hasattr(self.source_field, "get_limit_choices_to"):
             qs = qs.complex_filter(self.source_field.get_limit_choices_to())
-        qs, search_use_distinct = self.model_admin.get_search_results(
-            self.request, qs, self.term
-        )
+        qs, search_use_distinct = self.model_admin.get_search_results(self.request, qs, self.term)
         if search_use_distinct:
             qs = qs.distinct()
         return qs
 
     def process_request(self, request):  # noqa C901
         """
-        Validate request integrity, extract and return request parameters.
-
-        Since the subsequent view permission check requires the target model
-        admin, which is determined here, raise PermissionDenied if the
-        requested app, model or field are malformed.
-
-        Raise Http404 if the target model admin is not configured properly with
-        search_fields.
+        Overridden to handle Proxy Models
         """
         term = request.GET.get("term", "")
         try:
@@ -86,14 +77,9 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
 
         # Validate suitability of objects.
         if not model_admin.get_search_fields(request):
-            raise Http404(
-                "%s must have search_fields for the autocomplete_view."
-                % type(model_admin).__qualname__
-            )
+            raise Http404("%s must have search_fields for the autocomplete_view." % type(model_admin).__qualname__)
 
-        to_field_name = getattr(
-            source_field.remote_field, "field_name", remote_model._meta.pk.attname
-        )
+        to_field_name = getattr(source_field.remote_field, "field_name", remote_model._meta.pk.attname)
         to_field_name = remote_model._meta.get_field(to_field_name).attname
         if not model_admin.to_field_allowed(request, to_field_name):
             raise PermissionDenied
@@ -146,11 +132,7 @@ class TenantAdminSite(admin.AdminSite):
         app_dict = {}
 
         if label:
-            models = {
-                m: m_a
-                for m, m_a in self._registry.items()
-                if m._meta.app_label == label
-            }
+            models = {m: m_a for m, m_a in self._registry.items() if m._meta.app_label == label}
         else:
             models = self._registry
 
@@ -180,16 +162,15 @@ class TenantAdminSite(admin.AdminSite):
             if perms.get("change") or perms.get("view"):
                 model_dict["view_only"] = not perms.get("change")
                 try:
-                    model_dict["admin_url"] = reverse(
-                        "%s:%s_%s_changelist" % info, current_app=self.name
-                    )
+                    model_dict["admin_url"] = self._registry[model].get_changelist_index_url(request)
+                    # model_dict["admin_url"] = reverse(
+                    #     "%s:%s_%s_changelist" % info, current_app=self.name
+                    # )
                 except NoReverseMatch:
                     pass
             if perms.get("add"):
                 try:
-                    model_dict["add_url"] = reverse(
-                        "%s:%s_%s_add" % info, current_app=self.name
-                    )
+                    model_dict["add_url"] = reverse("%s:%s_%s_add" % info, current_app=self.name)
                 except NoReverseMatch:
                     pass
 
@@ -213,9 +194,7 @@ class TenantAdminSite(admin.AdminSite):
     def each_context(self, request: "HttpRequest") -> "dict[str, Any]":
         ret = super().each_context(request)
         selected_tenant = get_selected_tenant()
-        ret["tenant_form"] = SelectTenantForm(
-            initial={"tenant": selected_tenant}, request=request
-        )
+        ret["tenant_form"] = SelectTenantForm(initial={"tenant": selected_tenant}, request=request)
         ret["active_tenant"] = selected_tenant
         ret["namespace"] = self.namespace
         # ret["selected_program"] = "???"
@@ -242,9 +221,7 @@ class TenantAdminSite(admin.AdminSite):
 
         urlpatterns: "list[URLResolver | URLPattern]"
 
-        def wrap(
-            view: "Callable[[Any], Any]", cacheable: bool = False
-        ) -> "Callable[[Any], Any]":
+        def wrap(view: "Callable[[Any], Any]", cacheable: bool = False) -> "Callable[[Any], Any]":
             def wrapper(*args: "Any", **kwargs: "Any") -> "Callable[[], Any]":
                 return self.admin_view(view, cacheable)(*args, **kwargs)
 

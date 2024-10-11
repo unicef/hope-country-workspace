@@ -50,13 +50,8 @@ def add_preserved_filters(context, url, popup=False, to_field=None):
                 opts.app_label,
                 opts.model_name,
             )
-            if (
-                changelist_url == current_url
-                and "_changelist_filters" in preserved_filters
-            ):
-                preserved_filters = dict(
-                    parse_qsl(preserved_filters["_changelist_filters"])
-                )
+            if changelist_url == current_url and "_changelist_filters" in preserved_filters:
+                preserved_filters = dict(parse_qsl(preserved_filters["_changelist_filters"]))
 
         merged_qs.update(preserved_filters)
 

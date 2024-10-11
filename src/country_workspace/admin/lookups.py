@@ -17,9 +17,7 @@ class RelationshipAdmin(ExtraButtonsMixin, admin.ModelAdmin):
     @button()
     def sync_from_hope(self, request):
         num = sync_relationship()
-        self.message_user(
-            request, f"Synced from Hope. {num} records updated or created"
-        )
+        self.message_user(request, f"Synced from Hope. {num} records updated or created")
 
     @button()
     def view_linked_field(self, request):

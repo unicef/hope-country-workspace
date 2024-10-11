@@ -22,6 +22,7 @@ dependencies = [
     "django-debug-toolbar>=4.4.2",
     "django-environ>=0.11.2",
     "django-flags>=5.0.13",
+    "django-jsoneditor>=0.2.4",
     "django-mptt>=0.16.0",
     "django-regex>=0.5.0",
     "django-select2",
@@ -31,9 +32,10 @@ dependencies = [
     "django-stubs-ext",
     "django>=5.1",
     "djangorestframework>=3.15.1",
-    "hope-flex-fields @ git+https://github.com/unicef/hope-flex-fields@release/0.1rc",
+    "hope-flex-fields>=0.4.0",
+    "hope-smart-export>=0.3.0",
+    "hope-smart-import>=0.2.0",
     "psycopg2-binary>=2.9.9",
-    "python-calamine>=0.2.2",
     "redis",
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
@@ -44,6 +46,7 @@ dependencies = [
 [tool.uv]
 dev-dependencies = [
     "black>=24.4.2",
+    "bump2version>=1.0.1",
     "django-webtest>=1.9.11",
     "factory-boy>=3.3.0",
     "flake8>=7.1.0",
@@ -51,6 +54,7 @@ dev-dependencies = [
     "isort>=5.13.2",
     "pdbpp>=0.10.3",
     "pre-commit>=3.7.1",
+    "pyquery>=2.0.1",
     "pytest-celery>=1.0.0",
     "pytest-coverage>=0.0",
     "pytest-django>=4.8.0",
@@ -63,8 +67,12 @@ dev-dependencies = [
     "vcrpy>=6.0.2",
 ]
 
+#[tool.uv.sources]
+#hope-smart-export = { git = "https://github.com/unicef/hope-smart-export/tree/0.3" }
+#hope-flex-fields = { git = "https://github.com/unicef/hope-flex-fields/tree/0.3" }
+
 [tool.black]
-line-length = 88
+line-length = 120
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -81,7 +89,7 @@ exclude = '''
 
 [tool.isort]
 profile = "black"
-line_length = 88
+line_length = 120
 default_section = "THIRDPARTY"
 known_first_party = []
 known_django = "django"

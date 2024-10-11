@@ -17,12 +17,13 @@
                     </script>
                 </form>
             </div>
-        {% endblock %}
+        {% endblock %} |
         <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
             {% csrf_token %}
             <button type="submit">{% translate 'Logout' %}</button>
-        </form>
-        {% include "workspace/color_theme_toggle.html" %}
+        </form> |
+        {% include "workspace/color_theme_toggle.html" %} |
+        {% if request.user.is_superuser %}<a href="{% url "admin:index" %}">admin</a>{% endif %}
 {#    {% else %}#}
 {#        {{ block.super }}#}
 {#    {% endif %}#}

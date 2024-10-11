@@ -2,7 +2,10 @@ from django.db import models
 from django.utils.translation import gettext as _
 
 from hope_flex_fields.models import DataChecker
+from strategy_field.fields import StrategyField
+from strategy_field.utils import fqn
 
+from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel
 from .office import Office
 
@@ -33,15 +36,15 @@ class Program(BaseModel):
         (WASH, _("WASH")),
     )
     hope_id = models.CharField(max_length=200, unique=True, editable=False)
-    country_office = models.ForeignKey(
-        Office, on_delete=models.CASCADE, related_name="programs"
-    )
+    country_office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="programs")
     name = models.CharField(max_length=255)
     programme_code = models.CharField(max_length=255)
     status = models.CharField(max_length=10, choices=STATUS_CHOICE, db_index=True)
     sector = models.CharField(max_length=50, choices=SECTOR_CHOICE, db_index=True)
     active = models.BooleanField(default=False)
-
+    beneficiary_validator = StrategyField(
+        registry=beneficiary_validator_registry, default=fqn(NoopValidator), blank=True, null=True
+    )
     household_checker = models.ForeignKey(
         DataChecker, blank=True, null=True, on_delete=models.CASCADE, related_name="+"
     )
@@ -49,12 +52,8 @@ class Program(BaseModel):
     individual_checker = models.ForeignKey(
         DataChecker, blank=True, null=True, on_delete=models.CASCADE, related_name="+"
     )
-    household_columns = models.TextField(
-        default="__str__\nid", help_text="Columns to display ib the Admin table"
-    )
-    individual_columns = models.TextField(
-        default="__str__\nid", help_text="Columns to display ib the Admin table"
-    )
+    household_columns = models.TextField(default="__str__\nid", help_text="Columns to display ib the Admin table")
+    individual_columns = models.TextField(default="__str__\nid", help_text="Columns to display ib the Admin table")
 
     def __str__(self):
         return self.name

@@ -42,9 +42,7 @@ def program(office):
 def household(program):
     from testutils.factories import CountryHouseholdFactory
 
-    return CountryHouseholdFactory(
-        program=program, country_office=program.country_office
-    )
+    return CountryHouseholdFactory(program=program, country_office=program.country_office)
 
 
 @pytest.fixture()

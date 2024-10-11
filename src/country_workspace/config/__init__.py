@@ -4,9 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Tuple, TypeAlias, Union
 from smart_env import SmartEnv
 
 if TYPE_CHECKING:
-    ConfigItem: TypeAlias = Union[
-        Tuple[type, Any, str, Any], Tuple[type, Any, str], Tuple[type, Any]
-    ]
+    ConfigItem: TypeAlias = Union[Tuple[type, Any, str, Any], Tuple[type, Any, str], Tuple[type, Any]]
 
 DJANGO_HELP_BASE = "https://docs.djangoproject.com/en/5.0/ref/settings"
 
@@ -16,10 +14,7 @@ def setting(anchor: str) -> str:
 
 
 def celery_doc(anchor: str) -> str:
-    return (
-        f"@see https://docs.celeryq.dev/en/stable/"
-        f"userguide/configuration.html#{anchor}"
-    )
+    return f"@see https://docs.celeryq.dev/en/stable/" f"userguide/configuration.html#{anchor}"
 
 
 class Group(Enum):
@@ -85,10 +80,8 @@ CONFIG: "Dict[str, ConfigItem]" = {
         False,
         f"{celery_doc}#broker-transport-options",
     ),
-    # "CSRF_COOKIE_SECURE": (bool,
-    #                        True,
-    #                        False,
-    #                        setting("csrf-cookie-secure")),
+    "CSRF_COOKIE_SECURE": (bool, True, False, setting("csrf-cookie-secure")),
+    "CSRF_TRUSTED_ORIGINS": (list, "localhost", "", True, ""),
     "DATABASE_URL": (
         str,
         SmartEnv.NOTSET,
@@ -141,8 +134,9 @@ CONFIG: "Dict[str, ConfigItem]" = {
         "django.contrib.staticfiles.storage.StaticFilesStorage",
         setting("storages"),
     ),
-    "MEDIA_ROOT": (str, "/var/media/", "/tmp/media", True, setting("media-root")),
-    "MEDIA_URL": (str, "/media/", "/media", False, setting("media-root")),
+    "HOPE_API_TOKEN": (str, "", "", True, "Hope API token"),
+    "MEDIA_ROOT": (str, "/var/media/", "/tmp/media", True, setting("media-root")),  # nosec
+    "MEDIA_URL": (str, "/media/", "/media", False, setting("media-root")),  # nosec
     # "ROOT_TOKEN": (str, "", ""),
     "SECRET_KEY": (
         str,
@@ -182,8 +176,8 @@ CONFIG: "Dict[str, ConfigItem]" = {
     #     "django.core.files.storage.FileSystemStorage",
     #     setting("storages"),
     # ),
-    "STATIC_ROOT": (str, "/var/static", "/tmp/static", True, setting("static-root")),
-    "STATIC_URL": (str, "/static/", "/static/", False, setting("static-url")),
+    "STATIC_ROOT": (str, "/var/static", "/tmp/static", True, setting("static-root")),  # nosec
+    "STATIC_URL": (str, "/static/", "/static/", False, setting("static-url")),  # nosec
     "TIME_ZONE": (str, "UTC", "UTC", False, setting("std-setting-TIME_ZONE")),
     # "AZURE_ACCOUNT_NAME": (str, ""),
     # "AZURE_ACCOUNT_KEY": (str, ""),

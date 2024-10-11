@@ -11,9 +11,7 @@ class WorkspaceInclusionAdminNode(InclusionNode):
 
     def __init__(self, parser, token, func, template_name, takes_context=True):
         self.template_name = template_name
-        params, varargs, varkw, defaults, kwonly, kwonly_defaults, _ = getfullargspec(
-            func
-        )
+        params, varargs, varkw, defaults, kwonly, kwonly_defaults, _ = getfullargspec(func)
         bits = token.split_contents()
         args, kwargs = parse_bits(
             parser,

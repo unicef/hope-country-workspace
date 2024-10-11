@@ -55,12 +55,15 @@ def chrome_options(request, chrome_options):
     chrome_options.add_argument("--proxy-server='direct://'")
     chrome_options.add_argument("--start-maximized")
 
-    prefs = {
-        "profile.default_content_setting_values.notifications": 1
-    }  # explicitly allow notifications
+    prefs = {"profile.default_content_setting_values.notifications": 1}  # explicitly allow notifications
     chrome_options.add_experimental_option("prefs", prefs)
 
     return chrome_options
+
+
+SELENIUM_DEFAULT_PAGE_LOAD_TIMEOUT = 5
+SELENIUM_DEFAULT_IMPLICITLY_WAIT = 1
+SELENIUM_DEFAULT_SCRIPT_TIMEOUT = 1
 
 
 @pytest.fixture

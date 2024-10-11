@@ -6,18 +6,13 @@ from country_workspace.state import state
 
 
 class ProgramFilter(AutoCompleteFilter):
-    fk_name = "name"
+    # def __init__(self, field, request, params, model, model_admin, field_path):
+    #     self.request = request
+    #     super().__init__(field, request, params, model, model_admin, field_path)
 
-    def __init__(self, field, request, params, model, model_admin, field_path):
-        self.request = request
-        super().__init__(field, request, params, model, model_admin, field_path)
-
-    def get_url(self):
-        url = reverse("%s:autocomplete" % self.admin_site.namespace)
-        if self.fk_name in self.request.GET:
-            oid = self.request.GET[self.fk_name]
-            return f"{url}?oid={oid}"
-        return url
+    # def get_url(self):
+    #     url = reverse("%s:autocomplete" % self.admin_site.namespace)
+    #     return url
 
     def queryset(self, request, queryset):
         if self.lookup_val:
@@ -26,3 +21,31 @@ class ProgramFilter(AutoCompleteFilter):
             queryset = super().queryset(request, queryset)
             state.program = p
         return queryset
+
+
+class HouseholdFilter(AutoCompleteFilter):
+    fk_name = "name"
+
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.request = request
+        super().__init__(field, request, params, model, model_admin, field_path)
+
+    def has_output(self):
+        return bool(self.selected_program())
+
+    def selected_program(self):
+        return self.request.GET.get("program__exact")
+
+    def get_url(self):
+        url = reverse("%s:autocomplete" % self.admin_site.namespace)
+        if oid := self.selected_program():
+            return f"{url}?program={oid}"
+        return url
+
+    def queryset(self, request, queryset):
+        qs = super().queryset(request, queryset)
+        if oid := self.selected_program():
+            qs = qs.filter(program__exact=oid)
+        else:
+            qs = qs.none()
+        return qs

@@ -33,9 +33,7 @@ def program(office, worker_id):
 def household(program):
     from testutils.factories import CountryHouseholdFactory
 
-    return CountryHouseholdFactory(
-        program=program, country_office=program.country_office
-    )
+    return CountryHouseholdFactory(program=program, country_office=program.country_office)
 
 
 @pytest.mark.selenium
@@ -59,27 +57,25 @@ def test_list_household(selenium, user, household: "CountryHousehold"):
         [
             "workspaces.view_countryhousehold",
             "workspaces.view_countryindividual",
+            "workspaces.view_countryprogram",
         ],
         household.program.country_office,
     ):
+        # Login
         selenium.find_by_css("input[name=username").send_keys(user.username)
         selenium.find_by_css("input[name=password").send_keys(user._password)
         selenium.find_by_css("input[type=submit").click()
-        Select(
-            selenium.wait_for(By.CSS_SELECTOR, "select[name=tenant]")
-        ).select_by_visible_text(household.program.country_office.name)
+        # Select Tenant
+        Select(selenium.wait_for(By.CSS_SELECTOR, "select[name=tenant]")).select_by_visible_text(
+            household.program.country_office.name
+        )
         selenium.find_by_css("input[type=submit").click()
         selenium.wait_for(By.CSS_SELECTOR, "h1")
-        selenium.wait_for(
-            By.LINK_TEXT, str(CountryHousehold._meta.verbose_name_plural)
-        ).click()
+        # Workspace
+        selenium.wait_for(By.LINK_TEXT, str(CountryHousehold._meta.verbose_name_plural)).click()
         selenium.wait_for_url("/workspaces/countryhousehold/")
-        selenium.wait_for(By.LINK_TEXT, str(household.name)).click()
-        selenium.wait_for_url(household.get_change_url())
-
-        selenium.wait_for(By.LINK_TEXT, "Close").click()
-        selenium.wait_for(By.CSS_SELECTOR, "h1")
-
+        # Household changelist
+        assert "Please select a program on the left" in selenium.page_source
         selenium.wait_for(
             By.CSS_SELECTOR,
             "#program__exact_program__isnull .select2-selection.select2-selection--single",
@@ -90,4 +86,46 @@ def test_list_household(selenium, user, household: "CountryHousehold"):
             By.CSS_SELECTOR,
             "li.select2-results__option.select2-results__option--highlighted",
         ).click()
-        selenium.wait_for_url("/workspaces/countryhousehold/?&program__exact=1")
+
+        selenium.wait_for(By.LINK_TEXT, str(household.name)).click()
+        selenium.wait_for_url(household.get_change_url())
+        selenium.wait_for(
+            By.CSS_SELECTOR,
+            "a.closelink",
+        ).click()
+        selenium.wait_for_url(f"/workspaces/countryhousehold/?program__exact={household.program.pk}")
+
+
+@pytest.mark.selenium
+def test_edit_household(selenium, user, household: "CountryHousehold"):
+    from testutils.perms import user_grant_permissions
+    from testutils.selenium import force_login
+
+    with user_grant_permissions(
+        user,
+        [
+            "workspaces.change_countryhousehold",
+            "workspaces.change_countryindividual",
+            "workspaces.change_countryprogram",
+        ],
+        household.program.country_office,
+    ):
+        force_login(selenium, user, household.program.country_office)
+        selenium.get(f"{selenium.live_server.url}/workspaces/countryhousehold/")
+        assert "Please select a program on the left" in selenium.page_source
+
+        #
+        # selenium.wait_for(By.LINK_TEXT, "Close").click()
+        # selenium.wait_for(By.CSS_SELECTOR, "h1")
+        #
+        # selenium.wait_for(
+        #     By.CSS_SELECTOR,
+        #     "#program__exact_program__isnull .select2-selection.select2-selection--single",
+        # ).click()
+        # el = selenium.wait_for(By.CSS_SELECTOR, ".select2-search__field")
+        # el.send_keys(household.program.name)
+        # selenium.wait_for(
+        #     By.CSS_SELECTOR,
+        #     "li.select2-results__option.select2-results__option--highlighted",
+        # ).click()
+        # selenium.wait_for_url("/workspaces/countryhousehold/?&program__exact=1")

@@ -21,9 +21,7 @@ def group() -> "Group":
 
 
 @pytest.fixture()
-def app(
-    django_app_factory: MixinWithInstanceVariables, rf: RequestFactory
-) -> DjangoTestApp:
+def app(django_app_factory: MixinWithInstanceVariables, rf: RequestFactory) -> DjangoTestApp:
     from testutils.factories import SuperUserFactory
 
     django_app = django_app_factory(csrf_checks=False)

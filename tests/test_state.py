@@ -24,9 +24,7 @@ def req(rf, tenant_user):
 
     req = rf.get("/")
     req.user = tenant_user
-    req.COOKIES[conf.COOKIE_NAME] = signer.sign(
-        tenant_user.roles.first().country_office.slug
-    )
+    req.COOKIES[conf.COOKIE_NAME] = signer.sign(tenant_user.roles.first().country_office.slug)
     yield req
 
 

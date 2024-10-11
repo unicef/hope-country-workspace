@@ -50,15 +50,14 @@ GLOBAL_EXCLUDED_BUTTONS = RegexList(
         r"hope_flex_fields.FieldsetAdmin:detect_changes",
         r"country_workspace.CountryHouseholdAdmin:import_file",
         r".*:sync",
+        r".*:create_xls_importer",
     ]
 )
 
 KWARGS: Mapping[str, Any] = {}
 
 
-def reverse_model_admin(
-    model_admin: "ModelAdmin[Model]", op: str, args: Optional[list[Any]] = None
-) -> str:
+def reverse_model_admin(model_admin: "ModelAdmin[Model]", op: str, args: Optional[list[Any]] = None) -> str:
     if args:
         return reverse(admin_urlname(model_admin.model._meta, mark_safe(op)), args=args)
     else:
@@ -130,18 +129,12 @@ def record(db: Any, request: "FixtureRequest") -> Model:
     model_admin = request.getfixturevalue("model_admin")
     instance: Model = model_admin.model.objects.first()
     if not instance:
-        full_name = (
-            f"{model_admin.model._meta.app_label}.{model_admin.model._meta.object_name}"
-        )
-        factory: type[AutoRegisterModelFactory[Any]] = get_factory_for_model(
-            model_admin.model
-        )
+        full_name = f"{model_admin.model._meta.app_label}.{model_admin.model._meta.object_name}"
+        factory: type[AutoRegisterModelFactory[Any]] = get_factory_for_model(model_admin.model)
         try:
             instance = factory(**KWARGS.get(full_name, {}))
         except Exception as e:
-            raise Exception(
-                f"Error creating fixture for {factory} using {KWARGS}"
-            ) from e
+            raise Exception(f"Error creating fixture for {factory} using {KWARGS}") from e
     return instance
 
 
@@ -168,9 +161,7 @@ def test_app_list(app: "DjangoTestApp", app_label: str) -> None:
 
 
 @pytest.mark.skip_models("constance.Config")
-def test_admin_changelist(
-    app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
-) -> None:
+def test_admin_changelist(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model) -> None:
     url = reverse_model_admin(model_admin, "changelist")
     opts: Options[Model] = model_admin.model._meta
     res = app.get(url)
@@ -188,9 +179,7 @@ def show_error(res: Any) -> tuple[str]:
 
 
 @pytest.mark.skip_models("constance.Config")
-def test_admin_changeform(
-    app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
-) -> None:
+def test_admin_changeform(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model) -> None:
     opts: Options[Model] = model_admin.model._meta
     url = reverse_model_admin(model_admin, "change", args=[record.pk])
 
@@ -212,18 +201,14 @@ def test_admin_add(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]") -> No
         pytest.skip("No 'add' permission")
 
 
-@pytest.mark.skip_models(
-    "constance.Config", "webpush.Browser", "bitcaster.Organization"
-)
+@pytest.mark.skip_models("constance.Config", "webpush.Browser", "bitcaster.Organization")
 def test_admin_delete(
     app: "DjangoTestApp",
     model_admin: "ModelAdmin[Model]",
     record: Model,
     monkeypatch: "MonkeyPatch",
 ) -> None:
-    url = reverse(
-        admin_urlname(model_admin.model._meta, mark_safe("delete")), args=[record.pk]
-    )
+    url = reverse(admin_urlname(model_admin.model._meta, mark_safe("delete")), args=[record.pk])
     if model_admin.has_delete_permission(Mock(user=app._user)):
         res = app.get(url)
         res.forms[1].submit()

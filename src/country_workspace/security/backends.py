@@ -32,7 +32,7 @@ class AnyUserAuthBackend(ModelBackend):
                 )
                 office = Office.objects.get(slug=username)
                 g = Group.objects.get(name=settings.ANALYST_GROUP_NAME)
-                UserRole.objects.create(user=user, country_office=office, group=g)
+                UserRole.objects.get_or_create(user=user, country_office=office, group=g)
                 return user
             elif username in ["admin", "superuser", "administrator", "sax"]:
                 user, __ = get_user_model().objects.update_or_create(

@@ -5,11 +5,7 @@ from pathlib import Path
 from factory.django import DjangoModelFactory
 from pytest_factoryboy import register
 
-from .base import (
-    AutoRegisterModelFactory,
-    TAutoRegisterModelFactory,
-    factories_registry,
-)
+from .base import AutoRegisterModelFactory, TAutoRegisterModelFactory, factories_registry
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
@@ -17,12 +13,7 @@ from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .lookups import RelationshipFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
-from .smart_fields import (  # noqa
-    DataCheckerFactory,
-    FieldDefinitionFactory,
-    FieldsetFactory,
-    FlexFieldFactory,
-)
+from .smart_fields import DataCheckerFactory, FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory  # noqa
 from .social import SocialAuthUserFactory  # noqa
 from .sync import SyncLogFactory  # noqa
 from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
@@ -33,9 +24,7 @@ for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):
     importlib.import_module(f".{name}", __package__)
 
 
-django_model_factories = {
-    factory._meta.model: factory for factory in DjangoModelFactory.__subclasses__()
-}
+django_model_factories = {factory._meta.model: factory for factory in DjangoModelFactory.__subclasses__()}
 
 
 def get_factory_for_model(
@@ -51,6 +40,4 @@ def get_factory_for_model(
     if _model in django_model_factories:
         return django_model_factories[_model]
 
-    return register(
-        type(f"{_model._meta.model_name}AutoCreatedFactory", bases, {"Meta": Meta})
-    )  # noqa
+    return register(type(f"{_model._meta.model_name}AutoCreatedFactory", bases, {"Meta": Meta}))  # noqa

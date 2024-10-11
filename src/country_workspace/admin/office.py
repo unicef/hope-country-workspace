@@ -14,6 +14,7 @@ class OfficeAdmin(BaseModelAdmin):
     search_fields = ("name",)
     list_filter = ("active",)
     readonly_fields = ("hope_id", "slug")
+    ordering = ("name",)
 
     @link(change_list=False)
     def programmes(self, btn):

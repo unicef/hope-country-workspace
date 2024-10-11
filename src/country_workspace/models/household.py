@@ -7,12 +7,12 @@ from .program import Program
 
 
 class Household(BaseModel):
-    country_office = models.ForeignKey(
-        Office, on_delete=models.CASCADE, related_name="households"
-    )
-    program = models.ForeignKey(Program, on_delete=models.CASCADE)
+    country_office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="households")
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name="households")
     name = models.CharField(_("Name"), max_length=255)
+
     flex_fields = models.JSONField(default=dict, blank=True)
+    system_fields = models.JSONField(default=dict, blank=True)
 
     class Meta:
         verbose_name = "Household"

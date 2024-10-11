@@ -5,12 +5,7 @@ from hope_flex_fields.models import DataChecker
 from country_workspace.models import Office, Program, Relationship, SyncLog
 
 from .. import constants
-from ..models.lookups import (
-    LookupMixin,
-    MaritalStatus,
-    ObservedDisability,
-    ResidenceStatus,
-)
+from ..models.lookups import LookupMixin, MaritalStatus, ObservedDisability, ResidenceStatus
 from .client import HopeClient
 
 

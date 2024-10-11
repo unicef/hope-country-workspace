@@ -35,6 +35,7 @@ INSTALLED_APPS = (
     "adminfilters",
     "adminfilters.depot",
     "constance",
+    "jsoneditor",
     "django_celery_beat",
     "django_celery_results",
     "hope_flex_fields",
@@ -189,6 +190,10 @@ LOGGING = {
         },
     },
 }
+SILENCED_SYSTEM_CHECKS = ["admin.E108"]
+
+CSRF_COOKIE_SECURE = env("CSRF_COOKIE_SECURE")
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 AUTH_USER_MODEL = "country_workspace.User"
 SUPERUSERS = env("SUPERUSERS")
@@ -208,6 +213,7 @@ from .fragments.constance import *  # noqa
 from .fragments.csp import *  # noqa
 from .fragments.debug_toolbar import *  # noqa
 from .fragments.flags import *  # noqa
+from .fragments.jsoneditor import *  # noqa
 from .fragments.rest_framework import *  # noqa
 from .fragments.root import *  # noqa
 from .fragments.sentry import *  # noqa

@@ -42,9 +42,7 @@ def program(office):
 def individual(program):
     from testutils.factories import CountryIndividualFactory
 
-    return CountryIndividualFactory(
-        program=program, country_office=program.country_office
-    )
+    return CountryIndividualFactory(program=program, country_office=program.country_office)
 
 
 @pytest.fixture()

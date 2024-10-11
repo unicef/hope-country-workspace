@@ -6,9 +6,9 @@ from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
+from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.state import state
 from country_workspace.workspaces.filters import ProgramFilter
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 
@@ -16,11 +16,15 @@ if TYPE_CHECKING:
     from country_workspace.workspaces.models import CountryProgram
 
 
-class CountryHouseholdIndividualBaseAdmin(WorkspaceModelAdmin):
+class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
     list_filter = (("program", ProgramFilter),)
 
-    def get_queryset(self, request):
-        return super().get_queryset(request).filter(country_office=state.tenant)
+    def get_changelist(self, request, **kwargs):
+        from ..changelist import FlexFieldsChangeList
+
+        if program := self.get_selected_program(request):
+            return type("FlexFieldsChangeList", (FlexFieldsChangeList,), {"checker": program.household_checker})
+        return FlexFieldsChangeList
 
     def has_add_permission(self, request):
         return False
@@ -28,10 +32,9 @@ class CountryHouseholdIndividualBaseAdmin(WorkspaceModelAdmin):
     def get_selected_program(self, request) -> "CountryProgram | None":
         from country_workspace.workspaces.models import CountryProgram
 
+        self._selected_program = None
         if "program__exact" in request.GET:
-            self._selected_program = CountryProgram.objects.get(
-                pk=request.GET["program__exact"]
-            )
+            self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
         return self._selected_program
 
     def changelist_view(self, request, extra_context=None):
@@ -51,18 +54,15 @@ class CountryHouseholdIndividualBaseAdmin(WorkspaceModelAdmin):
         extra_context = extra_context or {}
         if object_id:
             if obj := self.get_object(request, object_id):
-                # dc: "DataChecker" = obj.program.household_checker
                 dc: "DataChecker" = self.get_checker(request, obj)
-                extra_context["checker_form"] = dc.get_form()(
-                    initial=obj.flex_fields, prefix="flex_field"
-                )
+                extra_context["checker_form"] = dc.get_form()(initial=obj.flex_fields, prefix="flex_field")
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def _changeform_view(self, request, object_id, form_url, extra_context):
         context = self.get_common_context(request, object_id, **extra_context)
         add = object_id is None
         obj = self.get_object(request, unquote(object_id))
-        dc: "DataChecker" = obj.program.individual_checker
+        dc: "DataChecker" = self.get_checker(request, obj)
         form_class = dc.get_form()
         if request.method == "POST":
             if not self.has_change_permission(request, obj):

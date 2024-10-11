@@ -1,0 +1,52 @@
+{% extends "workspace/change_form.html" %}{% load i18n workspace_urls %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'workspace:index' %}">{% translate 'Home' %}</a>
+&rsaquo; <a href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; {% if has_view_permission %}<a href="{% url opts|workspace_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}{{ opts.verbose_name_plural|capfirst }}{% endif %}
+&rsaquo; {% if has_change_permission %}<a href="{% url opts|workspace_urlname:'change' original.pk %}">{{ original }}</a>{% else %}{{ original }}{% endif %}
+{#&rsaquo; {% if add %}{% blocktranslate with name=opts.verbose_name %}Add {{ name }}{% endblocktranslate %}{% else %}{{ original|truncatewords:"18" }}{% endif %}#}
+</div>
+{% endblock %}
+
+{% block content %}
+    <h2>{{ checker }}</h2>
+    <form method="post">
+        {% csrf_token %}
+        <table>
+            <tr>
+                <td><input type="checkbox"
+                           name="columns" {% if "name" in form.initial.columns %}checked="checked"{% endif %}value="name"
+                           id="id_columns_name"></td>
+                <td><label for="id_columns_name">record title</label></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td><input type="checkbox"
+                           name="columns" {% if "id" in form.initial.columns %}checked="checked"{% endif %}value="id"
+                           id="id_columns_id"></td>
+                <td><label for="id_columns_id">record id</label></td>
+                <td></td>
+                <td></td>
+            </tr>
+            {% for l,f in form.checker_fields.items %}
+                <tr>
+                    <td><input type="checkbox"
+                               name="columns"
+                               {% if l in form.initial.columns %}checked="checked"{% endif %}value="{{ l }}"
+                               id="id_columns_{{ l }}"></td>
+                    <td><label for="id_columns_{{ l }}">{{ l }}</label></td>
+                    <td>{{ f.flex_field.field }}</td>
+                    <td>{{ f.flex_field.field.description }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+        <div class="submit-row">
+            <input type="submit" value="{% translate 'Save' %}" class="default" name="_save">
+            {% url opts|workspace_urlname:'change' original.pk as changelist_url %}
+            <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
+        </div>
+    </form>
+
+{% endblock content %}

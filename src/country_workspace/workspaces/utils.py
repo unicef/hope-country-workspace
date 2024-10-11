@@ -58,9 +58,7 @@ class RequestHandler:
         state.tenant = get_selected_tenant()
         return state
 
-    def process_response(
-        self, request: "AuthHttpRequest", response: "HttpResponse|None"
-    ) -> None:
+    def process_response(self, request: "AuthHttpRequest", response: "HttpResponse|None") -> None:
         if response:
             state.set_cookies(response)
         state.reset()

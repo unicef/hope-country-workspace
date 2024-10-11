@@ -1,13 +1,15 @@
 from urllib.parse import urlencode
 
 from django.contrib import admin
-from django.contrib.admin.templatetags.admin_urls import add_preserved_filters
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 
 from admin_extra_buttons.mixins import ExtraButtonsMixin
 from adminfilters.autocomplete import AutoCompleteFilter
 from adminfilters.mixin import AdminFiltersMixin
+from smart_admin.mixins import SmartFilterMixin
+
+from country_workspace.workspaces.templatetags.workspace_urls import add_preserved_filters
 
 
 class WorkspaceAutoCompleteFilter(AutoCompleteFilter):
@@ -15,15 +17,14 @@ class WorkspaceAutoCompleteFilter(AutoCompleteFilter):
         return reverse("%s:autocomplete" % self.admin_site.namespace)
 
 
-class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin):
+class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin, admin.ModelAdmin):
     change_list_template = "workspace/change_list.html"
     change_form_template = "workspace/change_form.html"
     object_history_template = "workspace/object_history.html"
-    delete_selected_confirmation_template = (
-        "workspace/delete_selected_confirmation.html"
-    )
+    delete_selected_confirmation_template = "workspace/delete_selected_confirmation.html"
     delete_confirmation_template = "workspace/delete_confirmation.html"
     preserve_filters = True
+    default_url_filters = {}
 
     def __init__(self, model, admin_site):
         self._selected_program = None
@@ -36,7 +37,11 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         match = request.resolver_match
         if self.preserve_filters and match:
             current_url = "%s:%s" % (match.app_name, match.url_name)
-            changelist_url = self.get_changelist_url(request)
+            changelist_url = "%s:%s_%s_changelist" % (
+                self.admin_site.namespace,
+                self.opts.app_label,
+                self.opts.model_name,
+            )
             if current_url == changelist_url:
                 preserved_filters = request.GET.urlencode()
             else:
@@ -58,11 +63,17 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
             base_url,
         )
 
+    def get_default_url_filters(self, request):
+        return self.default_url_filters
+
+    def get_changelist_index_url(self, request):
+        bsse = self.get_changelist_url(request)
+        return f"{bsse}?{urlencode(self.get_default_url_filters(request))}"
+
     def get_changelist_url(self, request):
         opts = self.model._meta
         obj_url = reverse(
-            "%s:%s_%s_changelist"
-            % (self.admin_site.namespace, opts.app_label, opts.model_name),
+            "%s:%s_%s_changelist" % (self.admin_site.namespace, opts.app_label, opts.model_name),
             current_app=self.admin_site.name,
         )
         return obj_url
@@ -70,8 +81,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
     def get_change_url(self, request, obj):
         opts = self.model._meta
         obj_url = reverse(
-            "%s:%s_%s_change"
-            % (self.admin_site.namespace, opts.app_label, opts.model_name),
+            "%s:%s_%s_change" % (self.admin_site.namespace, opts.app_label, opts.model_name),
             args=[obj.pk],
             current_app=self.admin_site.name,
         )
@@ -89,17 +99,14 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, admin.ModelAdmin
         extra_context["show_save_and_add_another"] = False
         extra_context["show_save_and_continue"] = True
         extra_context["show_save"] = False
-        extra_context["changelist_url2"] = self.add_preserved_filters(
-            request, self.get_changelist_url(request)
-        )
-        return super().changeform_view(
-            request, object_id, form_url, extra_context=extra_context
-        )
+        extra_context["preserved_filters"] = self.get_preserved_filters(request)
+        # extra_context["changelist_url2"] = self.add_preserved_filters(
+        #     request, self.get_changelist_url(request)
+        # )
+        return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
     def _response_post_save(self, request, obj):
-        return HttpResponseRedirect(
-            self.add_preserved_filters(request, self.get_changelist_url(request))
-        )
+        return HttpResponseRedirect(self.add_preserved_filters(request, self.get_changelist_url(request)))
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(self.get_change_url(request, obj))

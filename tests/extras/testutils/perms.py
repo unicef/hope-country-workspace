@@ -44,13 +44,9 @@ def get_group(name=None, permissions=None):
         except ValueError:
             raise ValueError(f"Invalid permission name `{permission_name}`")
         try:
-            permission = Permission.objects.get(
-                content_type__app_label=app_label, codename=codename
-            )
+            permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
         except Permission.DoesNotExist:
-            raise Permission.DoesNotExist(
-                "Permission `{0}` does not exists", permission_name
-            )
+            raise Permission.DoesNotExist("Permission `{0}` does not exists", permission_name)
 
         group.permissions.add(permission)
     return group
@@ -82,14 +78,10 @@ class user_grant_role(ContextDecorator):  # noqa
         "_dss_acl_cache",
     ]
 
-    def __init__(
-        self, user, country_office_or_program, group=settings.ANALYST_GROUP_NAME
-    ):
+    def __init__(self, user, country_office_or_program, group=settings.ANALYST_GROUP_NAME):
         self.user = user
         if isinstance(group, str):
-            self.group, __ = Group.objects.get_or_create(
-                name=settings.ANALYST_GROUP_NAME
-            )
+            self.group, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
         else:
             self.group = group
         if isinstance(country_office_or_program, Office):
@@ -142,9 +134,7 @@ class user_grant_permissions(ContextDecorator):  # noqa
         "_dss_acl_cache",
     ]
 
-    def __init__(
-        self, user, permissions=None, country_office_or_program=None, group_name=None
-    ):
+    def __init__(self, user, permissions=None, country_office_or_program=None, group_name=None):
         self.user = user
         if not isinstance(permissions, (list, tuple)):
             permissions = [permissions]
@@ -170,9 +160,7 @@ class user_grant_permissions(ContextDecorator):  # noqa
         self.group = get_group(name=self.group_name, permissions=self.permissions or [])
         self.user.groups.add(self.group)
         if self.country_office:
-            UserRole.objects.get_or_create(
-                country_office=self.country_office, user=self.user, group=self.group
-            )
+            UserRole.objects.get_or_create(country_office=self.country_office, user=self.user, group=self.group)
         return self
 
     def __exit__(self, e_typ, e_val, trcbak):

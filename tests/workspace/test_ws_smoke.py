@@ -44,13 +44,9 @@ KWARGS: Mapping[str, Any] = {}
 #
 
 
-def reverse_model_admin(
-    model_admin: "ModelAdmin[Model]", op: str, args: Optional[list[Any]] = None
-) -> str:
+def reverse_model_admin(model_admin: "ModelAdmin[Model]", op: str, args: Optional[list[Any]] = None) -> str:
     if args:
-        return reverse(
-            workspace_urlname(model_admin.model._meta, mark_safe(op)), args=args
-        )
+        return reverse(workspace_urlname(model_admin.model._meta, mark_safe(op)), args=args)
     else:
         return reverse(workspace_urlname(model_admin.model._meta, mark_safe(op)))
 
@@ -135,9 +131,7 @@ def record(db: Any, program, request: "FixtureRequest") -> Model:
     model_admin = request.getfixturevalue("model_admin")
     instance: Model = model_admin.model.objects.first()
     if not instance:
-        factory: type[AutoRegisterModelFactory[Any]] = get_factory_for_model(
-            model_admin.model
-        )
+        factory: type[AutoRegisterModelFactory[Any]] = get_factory_for_model(model_admin.model)
         try:
             kwargs: dict[str, Any] = {}
 
@@ -148,9 +142,7 @@ def record(db: Any, program, request: "FixtureRequest") -> Model:
                 kwargs["country_office"] = program.country_office
             instance = factory(**kwargs)
         except Exception as e:
-            raise Exception(
-                f"Error creating fixture for {factory} using {KWARGS}"
-            ) from e
+            raise Exception(f"Error creating fixture for {factory} using {KWARGS}") from e
     return instance
 
 
@@ -175,9 +167,7 @@ def test_ws_app_list(app: "DjangoTestApp", app_label: str) -> None:
     assert res.status_code == 200
 
 
-def test_ws_changelist(
-    app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
-) -> None:
+def test_ws_changelist(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model) -> None:
     url = reverse_model_admin(model_admin, "changelist")
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = record.country_office.pk
@@ -187,9 +177,7 @@ def test_ws_changelist(
     assert f"Add {record._meta.verbose_name}" not in res.text
 
 
-def test_ws_change(
-    app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model
-) -> None:
+def test_ws_change(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model) -> None:
     url = reverse_model_admin(model_admin, "change", args=[record.pk])
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = record.country_office.pk

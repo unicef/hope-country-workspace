@@ -48,52 +48,80 @@ def create_hope_core_fieldset(apps, schema_editor):
     fs: "Fieldset" = apps.get_model("hope_flex_fields", "Fieldset")
     fd: "FieldDefinition" = apps.get_model("hope_flex_fields", "FieldDefinition")
 
-    _cf = fd.objects.get(field_type=forms.CharField)
-    _df = fd.objects.get(field_type=forms.DateField)
-    _bf = fd.objects.get(field_type=forms.BooleanField)
-    _if = fd.objects.get(field_type=forms.IntegerField)
+    _char = fd.objects.get(field_type=forms.CharField)
+    _date = fd.objects.get(field_type=forms.DateField)
+    _bool = fd.objects.get(field_type=forms.BooleanField)
+    _int = fd.objects.get(field_type=forms.IntegerField)
 
-    _hr = fd.objects.get(slug="hope-hh-relationship")
-    _hg = fd.objects.get(slug="hope-ind-gender")
-    _hd = fd.objects.get(slug="hope-ind-disability")
+    _h_relationship = fd.objects.get(slug="hope-hh-relationship")
+    _h_residence = fd.objects.get(slug="hope-hh-residencestatus")
+    _i_gender = fd.objects.get(slug="hope-ind-gender")
+    _i_disability = fd.objects.get(slug="hope-ind-disability")
 
     hh_fs, __ = fs.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
-    hh_fs.fields.get_or_create(field=_cf, name="household_id")
-    hh_fs.fields.get_or_create(field=_bf, name="consent_h_c", attrs={"required": False})
-    hh_fs.fields.get_or_create(field=_cf, name="country_origin_h_c")
-    hh_fs.fields.get_or_create(field=_cf, name="admin1_h_c")
-    hh_fs.fields.get_or_create(field=_cf, name="admin2_h_c")
-    hh_fs.fields.get_or_create(field=_if, name="size_h_c")
-    hh_fs.fields.get_or_create(field=_cf, name="admin1_h_c")
-    hh_fs.fields.get_or_create(field=_bf, name="hh_latrine_h_f")
-    hh_fs.fields.get_or_create(field=_bf, name="hh_electricity_h_f")
-    hh_fs.fields.get_or_create(field=_cf, name="registration_method_h_c")
-    hh_fs.fields.get_or_create(field=_bf, name="collect_individual_data_h_c")
-    hh_fs.fields.get_or_create(field=_cf, name="name_enumerator_h_c")
-    hh_fs.fields.get_or_create(field=_cf, name="org_enumerator_h_c")
-    hh_fs.fields.get_or_create(field=_bf, name="consent_sharing_h_c")
-    hh_fs.fields.get_or_create(field=_df, name="first_registration_date_h_c")
+    hh_fs.fields.get_or_create(name="address", attrs={"label": "Household ID", "required": True}, field=_char, )
+    hh_fs.fields.get_or_create(name="admin1", field=_char, )
+    hh_fs.fields.get_or_create(name="admin2", field=_char, )
+    hh_fs.fields.get_or_create(name="admin3", field=_char, )
+    hh_fs.fields.get_or_create(name="admin4", field=_char, )
+    hh_fs.fields.get_or_create(name="collect_individual_data", field=_bool, )
+    hh_fs.fields.get_or_create(name="consent", attrs={"required": False, "label": "Consent"}, field=_bool, )
+    hh_fs.fields.get_or_create(name="consent_sharing", field=_bool, )
+    hh_fs.fields.get_or_create(name="country_origin", field=_char, )
+    hh_fs.fields.get_or_create(name="first_registration_date", attrs={"label": "First Registration"}, field=_date, )
+    hh_fs.fields.get_or_create(name="household_id", attrs={"label": "Household ID"}, field=_char, )
+    hh_fs.fields.get_or_create(name="name_enumerator", attrs={"label": "Enumerator"}, field=_char, )
+    hh_fs.fields.get_or_create(name="org_enumerator", field=_char, )
+    hh_fs.fields.get_or_create(name="registration_method", field=_char, )
+    hh_fs.fields.get_or_create(name="residence_status", field=_h_residence, )
+    hh_fs.fields.get_or_create(name="size", field=_int, )
+
+    for segment in ["female_age_group_0_5_count",
+                    "female_age_group_6_11_count",
+                    "female_age_group_12_17_count",
+                    "female_age_group_18_59_count",
+                    "female_age_group_60_count",
+                    "pregnant_count",
+                    "male_age_group_0_5_count",
+                    "male_age_group_6_11_count",
+                    "male_age_group_12_17_count",
+                    "male_age_group_18_59_count",
+                    "male_age_group_60_count",
+                    "female_age_group_0_5_disabled_count",
+                    "female_age_group_6_11_disabled_count",
+                    "female_age_group_12_17_disabled_count",
+                    "female_age_group_18_59_disabled_count",
+                    "female_age_group_60_disabled_count",
+                    "male_age_group_0_5_disabled_count",
+                    "male_age_group_6_11_disabled_count",
+                    "male_age_group_12_17_disabled_count",
+                    "male_age_group_18_59_disabled_count",
+                    "male_age_group_60_disabled_count"]:
+        hh_fs.fields.get_or_create(name=segment, field=_int, attrs={"required": False})
+
+    # hh_fs.fields.get_or_create(field=_bf, name="hh_latrine_h_f", attrs={"label": "Latrine"})
+    # hh_fs.fields.get_or_create(field=_bf, name="hh_electricity_h_f")
 
     ind_fs, __ = fs.objects.get_or_create(name="HOPE individual core")
-    ind_fs.fields.get_or_create(field=_cf, name="household_id")
-    ind_fs.fields.get_or_create(field=_hr, name="relationship_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="full_name_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="given_name_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="middle_name_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="family_name_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="photo_i_c")
-    ind_fs.fields.get_or_create(field=_hg, name="gender_i_c")
-    ind_fs.fields.get_or_create(field=_df, name="birth_date_i_c")
-    ind_fs.fields.get_or_create(field=_bf, name="estimated_birth_date_i_c", attrs={"required": False})
-    ind_fs.fields.get_or_create(field=_cf, name="national_id_no_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="national_id_photo_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="national_id_issuer_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="phone_no_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="primary_collector_id")
-    ind_fs.fields.get_or_create(field=_cf, name="alternate_collector_id")
-    ind_fs.fields.get_or_create(field=_df, name="first_registration_date_i_c")
-    ind_fs.fields.get_or_create(field=_hd, name="disability_i_c")
-    ind_fs.fields.get_or_create(field=_cf, name="alternate_collector_id")
+    ind_fs.fields.get_or_create(name="address", attrs={"label": "Household ID", "required": True}, field=_char, )
+    ind_fs.fields.get_or_create(name="alternate_collector_id", attrs={"label": "Alternative Collector for"},
+                                field=_char, )
+    ind_fs.fields.get_or_create(name="birth_date", field=_date, )
+    ind_fs.fields.get_or_create(name="disability", attrs={"label": "Disability"}, field=_i_disability, )
+    ind_fs.fields.get_or_create(name="estimated_birth_date", attrs={"required": False}, field=_bool, )
+    ind_fs.fields.get_or_create(name="family_name", attrs={"label": "Family Name"}, field=_char, )
+    ind_fs.fields.get_or_create(name="first_registration_date", field=_date, )
+    ind_fs.fields.get_or_create(name="full_name", attrs={"label": "Full Name"}, field=_char, )
+    ind_fs.fields.get_or_create(name="gender", field=_i_gender, )
+    ind_fs.fields.get_or_create(name="given_name", attrs={"label": "Given Name"}, field=_char, )
+    ind_fs.fields.get_or_create(name="middle_name", attrs={"label": "Middle Name"}, field=_char, )
+    ind_fs.fields.get_or_create(name="national_id_issuer", field=_char, )
+    ind_fs.fields.get_or_create(name="national_id_no", field=_char, )
+    ind_fs.fields.get_or_create(name="national_id_photo", field=_char, )
+    ind_fs.fields.get_or_create(name="phone_no", field=_char, )
+    ind_fs.fields.get_or_create(name="photo", field=_char, )
+    ind_fs.fields.get_or_create(name="primary_collector_id", attrs={"label": "Primary Collector for"}, field=_char, )
+    ind_fs.fields.get_or_create(name="relationship", attrs={"label": "Relationship"}, field=_h_relationship, )
 
     hh_dc, __ = dc.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_dc.fieldsets.add(hh_fs)

@@ -32,9 +32,7 @@ class Command(BaseCommand):
         Site.objects.clear_cache()
 
         for flag in settings.FLAGS.keys():
-            FlagState.objects.get_or_create(
-                name=flag, condition="hostname", value="127.0.0.1,localhost"
-            )
+            FlagState.objects.get_or_create(name=flag, condition="hostname", value="127.0.0.1,localhost")
 
         Office.objects.get_or_create(
             slug=slugify(
@@ -46,12 +44,8 @@ class Command(BaseCommand):
         analysts, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
         user, __ = User.objects.get_or_create(username="user")
 
-        test_utils_dir = (
-            Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
-        )
-        assert test_utils_dir.exists(), (  # nosec B101
-            str(test_utils_dir.absolute()) + " does not exist"
-        )
+        test_utils_dir = Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
+        assert test_utils_dir.exists(), str(test_utils_dir.absolute()) + " does not exist"  # nosec B101
         sys.path.append(str(test_utils_dir.absolute()))
         import vcr
         from testutils.factories import HouseholdFactory
@@ -59,12 +53,14 @@ class Command(BaseCommand):
 
         from country_workspace.sync.office import sync_all
 
-        with vcr.use_cassette(
-            test_utils_dir.parent / "sync_all.yaml",
-            record_mode=RecordMode.NONE,
-        ):
+        if settings.HOPE_API_TOKEN:
             sync_all()
+        else:
+            with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.NONE):
+                sync_all()
+        from country_workspace.models import Household
 
+        Household.objects.all().delete()
         for co in Office.objects.filter(active=True):
             for p in co.programs.filter():
-                HouseholdFactory.create_batch(10, country_office=co, program=p)
+                HouseholdFactory.create_batch(1, country_office=co, program=p)

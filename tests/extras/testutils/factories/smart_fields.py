@@ -1,21 +1,13 @@
 from django import forms
 
 import factory.fuzzy
-from hope_flex_fields.models import (
-    DataChecker,
-    DataCheckerFieldset,
-    FieldDefinition,
-    Fieldset,
-    FlexField,
-)
+from hope_flex_fields.models import DataChecker, DataCheckerFieldset, FieldDefinition, Fieldset, FlexField
 from testutils.factories import AutoRegisterModelFactory
 
 
 class FieldDefinitionFactory(AutoRegisterModelFactory):
     name = factory.Sequence(lambda d: "FieldDefinition-%s" % d)
-    field_type = factory.fuzzy.FuzzyChoice(
-        [forms.CharField, forms.IntegerField, forms.FloatField, forms.BooleanField]
-    )
+    field_type = factory.fuzzy.FuzzyChoice([forms.CharField, forms.IntegerField, forms.FloatField, forms.BooleanField])
     attrs = {}
 
     class Meta:
