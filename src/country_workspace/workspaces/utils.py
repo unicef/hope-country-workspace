@@ -12,7 +12,7 @@ from .config import conf
 if TYPE_CHECKING:
 
     class AuthHttpRequest(HttpRequest):
-        user: "User" = None
+        user: "User|None" = None
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ def get_selected_tenant() -> "Office | None":
 
 
 def is_hq_active() -> bool:
-    return get_selected_tenant() and get_selected_tenant().name == settings.TENANT_HQ
+    return bool(get_selected_tenant() and get_selected_tenant().name == settings.TENANT_HQ)
 
 
 def set_selected_tenant(tenant: "Office") -> None:

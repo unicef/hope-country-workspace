@@ -5,5 +5,5 @@ class Config(AppConfig):
     name = __name__.rpartition(".")[0]
     verbose_name = "Country Workspace"
 
-    def ready(self):
+    def ready(self) -> None:
         from .utils import flags  # noqa

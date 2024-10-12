@@ -9,7 +9,7 @@ from ..models.lookups import LookupMixin, MaritalStatus, ObservedDisability, Res
 from .client import HopeClient
 
 
-def sync_offices():
+def sync_offices() -> int:
     client = HopeClient()
     for i, record in enumerate(client.get("business_areas")):
         if record["active"]:
@@ -27,7 +27,7 @@ def sync_offices():
     return i
 
 
-def sync_programs(limit_to_office: "Optional[Office]" = None):
+def sync_programs(limit_to_office: "Optional[Office]" = None) -> int:
     client = HopeClient()
     hh_chk = DataChecker.objects.filter(name=constants.HOUSEHOLD_CHECKER_NAME).first()
     ind_chk = DataChecker.objects.filter(name=constants.INDIVIDUAL_CHECKER_NAME).first()
@@ -59,7 +59,7 @@ def sync_programs(limit_to_office: "Optional[Office]" = None):
     return i
 
 
-def _sync_lookup_model(model: type[LookupMixin], url: str):
+def _sync_lookup_model(model: type[LookupMixin], url: str) -> int:
     client = HopeClient()
     record = client.get_lookup(url)
     choices = []
@@ -73,27 +73,27 @@ def _sync_lookup_model(model: type[LookupMixin], url: str):
     return len(choices)
 
 
-def sync_maritalstatus():
+def sync_maritalstatus() -> int:
     return _sync_lookup_model(MaritalStatus, "lookups/maritalstatus")
 
 
-def sync_observeddisability():
+def sync_observeddisability() -> int:
     return _sync_lookup_model(ObservedDisability, "lookups/observeddisability")
 
 
-def sync_relationship():
+def sync_relationship() -> int:
     return _sync_lookup_model(Relationship, "lookups/relationship")
 
 
-def sync_residencestatus():
+def sync_residencestatus() -> int:
     return _sync_lookup_model(ResidenceStatus, "lookups/residencestatus")
 
 
-def sync_areas():
+def sync_areas() -> None:
     pass
 
 
-def sync_all():
+def sync_all() -> bool:
     sync_offices()
     sync_programs()
     sync_maritalstatus()

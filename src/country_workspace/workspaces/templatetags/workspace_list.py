@@ -8,7 +8,7 @@ from django.contrib.admin.utils import display_for_field, display_for_value, lab
 from django.contrib.admin.views.main import ORDER_VAR
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import Model
+from django.db.models import Field, Model
 from django.db.models.constants import LOOKUP_SEP
 from django.template import Library
 from django.urls import NoReverseMatch
@@ -29,11 +29,11 @@ class ResultList(DjangoResultList):
     pass
 
 
-def flex_field_label_for_field(column_name: str, model: "Model", model_admin: "ModelAdmin"):
+def flex_field_label_for_field(column_name: str, model: "Model", model_admin: "ModelAdmin") -> tuple[str, str]:
     return column_name.replace("flex_fields__", ""), ""
 
 
-def flex_field_lookup_field(field_name: str, result, model_admin: "ModelAdmin"):
+def flex_field_lookup_field(field_name: str, result, model_admin: "ModelAdmin") -> tuple[Field, str, str]:
     dict_key = field_name.replace("flex_fields__", "")
     f, attr, value = lookup_field(lambda o: o.flex_fields.get(dict_key), result, model_admin)
     return f, attr, value

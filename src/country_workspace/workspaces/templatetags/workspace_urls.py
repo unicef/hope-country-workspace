@@ -1,3 +1,5 @@
+from typing import Any, Optional
+
 from django import template
 from django.contrib.admin.templatetags.admin_urls import (
     Resolver404,
@@ -9,22 +11,25 @@ from django.contrib.admin.templatetags.admin_urls import (
     urlparse,
     urlunparse,
 )
+from django.db.models.options import Options
 
 register = template.Library()
 
 
 @register.filter
-def workspace_urlname(value, arg):
+def workspace_urlname(value: Options, arg: str) -> str:
     return "workspace:%s_%s_%s" % (value.app_label, value.model_name, arg)
 
 
 @register.filter
-def admin_urlname(value, arg):
+def admin_urlname(value: Options, arg: str) -> str:
     return "workspace:%s_%s_%s" % (value.app_label, value.model_name, arg)
 
 
 @register.simple_tag(takes_context=True)
-def add_preserved_filters(context, url, popup=False, to_field=None):
+def add_preserved_filters(
+    context: dict[str, Any], url: str, popup: bool = False, to_field: Optional[str] = None
+) -> str:
     opts = context.get("opts")
     preserved_filters = context.get("preserved_filters")
     preserved_qsl = context.get("preserved_qsl")

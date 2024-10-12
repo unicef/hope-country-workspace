@@ -35,7 +35,7 @@ class ProgramAdmin(BaseModelAdmin):
         btn.href = f"{base}?household__exact={obj.pk}"
 
     @button()
-    def zap(self, request, pk) -> None:
+    def zap(self, request: HttpRequest, pk: str) -> None:
         obj: Program = self.get_object(request, pk)
 
         def _action(request: HttpRequest) -> HttpResponse:
@@ -54,5 +54,5 @@ class ProgramAdmin(BaseModelAdmin):
         # btn.href = f"{base}?household__exact={obj.pk}"
 
     @button()
-    def sync(self, request) -> None:
+    def sync(self, request: HttpRequest) -> None:
         sync_programs()

@@ -1,3 +1,5 @@
+from typing import Union
+
 from django.db import models
 from django.utils.translation import gettext as _
 
@@ -6,7 +8,7 @@ from strategy_field.fields import StrategyField
 from strategy_field.utils import fqn
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
-from .base import BaseModel
+from .base import BaseModel, Validable
 from .office import Office
 
 
@@ -52,12 +54,22 @@ class Program(BaseModel):
     individual_checker = models.ForeignKey(
         DataChecker, blank=True, null=True, on_delete=models.CASCADE, related_name="+"
     )
-    household_columns = models.TextField(default="__str__\nid", help_text="Columns to display ib the Admin table")
-    individual_columns = models.TextField(default="__str__\nid", help_text="Columns to display ib the Admin table")
+    household_columns = models.TextField(default="name\nid", help_text="Columns to display ib the Admin table")
+    individual_columns = models.TextField(default="name\nid", help_text="Columns to display ib the Admin table")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
     class Meta:
         verbose_name = _("Programme")
         verbose_name_plural = _("Programmes")
+
+    def get_checker_for(self, m: Union[type[Validable], Validable]) -> DataChecker:
+        from country_workspace.models import Household, Individual
+
+        if isinstance(m, Household) or m == Household:
+            return self.household_checker
+        elif isinstance(m, Individual) or m == Individual:
+            return self.individual_checker
+        else:
+            raise ValueError(m)

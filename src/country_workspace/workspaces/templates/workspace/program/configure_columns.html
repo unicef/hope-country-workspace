@@ -11,7 +11,7 @@
 
 {% block content %}
     <h2>{{ checker }}</h2>
-    <form method="post">
+    <form method="post" id="configure-columns">
         {% csrf_token %}
         <table>
             <tr>

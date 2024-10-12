@@ -1,21 +1,23 @@
+from functools import cached_property
+from typing import TYPE_CHECKING
+
 from django.db import models
-from django.utils.translation import gettext as _
 
-from .base import BaseModel
-from .office import Office
-from .program import Program
+from .base import BaseModel, Validable
+
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
 
 
-class Household(BaseModel):
-    country_office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="households")
-    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name="households")
-    name = models.CharField(_("Name"), max_length=255)
-
-    flex_fields = models.JSONField(default=dict, blank=True)
+class Household(Validable, BaseModel):
     system_fields = models.JSONField(default=dict, blank=True)
 
     class Meta:
         verbose_name = "Household"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
+
+    @cached_property
+    def checker(self) -> "DataChecker":
+        return self.program.household_checker

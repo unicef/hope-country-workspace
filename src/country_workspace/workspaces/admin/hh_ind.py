@@ -1,11 +1,13 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
+from django.contrib import messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
+from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
 
@@ -13,23 +15,39 @@ from country_workspace.workspaces.filters import ProgramFilter
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 
 if TYPE_CHECKING:
-    from country_workspace.workspaces.models import CountryProgram
+    from ...models.base import Validable
+    from .program import CountryProgram
 
 
 class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
     list_filter = (("program", ProgramFilter),)
 
-    def get_changelist(self, request, **kwargs):
+    @button(label=_("Validate"))
+    def validate_with_checker(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        obj: "Validable" = self.get_object(request, pk)
+        if obj.validate_with_checker():
+            self.message_user(request, _("Validation successful!"))
+        else:
+            self.message_user(request, _("Validation failed!"), messages.ERROR)
+
+    def is_valid(self, obj: "Validable") -> bool | None:
+        if not obj.last_checked:
+            return None
+        return not bool(obj.errors)
+
+    is_valid.boolean = True
+
+    def get_changelist(self, request: HttpRequest, **kwargs: Any) -> type:
         from ..changelist import FlexFieldsChangeList
 
         if program := self.get_selected_program(request):
             return type("FlexFieldsChangeList", (FlexFieldsChangeList,), {"checker": program.household_checker})
         return FlexFieldsChangeList
 
-    def has_add_permission(self, request):
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def get_selected_program(self, request) -> "CountryProgram | None":
+    def get_selected_program(self, request: HttpRequest) -> "CountryProgram | None":
         from country_workspace.workspaces.models import CountryProgram
 
         self._selected_program = None
@@ -37,28 +55,25 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
             self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
         return self._selected_program
 
-    def changelist_view(self, request, extra_context=None):
-        extra_context = extra_context or {}
-        extra_context["selected_program"] = self.get_selected_program(request)
-        extra_context["title"] = ""
-        return super().changelist_view(request, extra_context)
+    def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:
+        context = self.get_common_context(request, title="")
+        context.update(extra_context or {})
+        return super().changelist_view(request, context)
 
-    def get_checker(self, request, obj=None) -> "DataChecker":
-        raise NotImplementedError
+    def get_checker(self, request: HttpRequest, obj: Optional[str] = None) -> "DataChecker":
+        if obj:
+            return obj.program.get_checker_for(obj)
+        elif p := self.get_selected_program(request):
+            return p.household_checker
+        raise Http404("No Household checkers available")
 
-    def get_common_context(self, request, pk=None, **kwargs):
+    def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["selected_program"] = self.get_selected_program(request)
         return super().get_common_context(request, pk, **kwargs)
 
-    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
-        extra_context = extra_context or {}
-        if object_id:
-            if obj := self.get_object(request, object_id):
-                dc: "DataChecker" = self.get_checker(request, obj)
-                extra_context["checker_form"] = dc.get_form()(initial=obj.flex_fields, prefix="flex_field")
-        return super().changeform_view(request, object_id, form_url, extra_context)
-
-    def _changeform_view(self, request, object_id, form_url, extra_context):
+    def _changeform_view(
+        self, request: HttpRequest, object_id: str, form_url: str, extra_context: dict[str, Any]
+    ) -> HttpResponse:
         context = self.get_common_context(request, object_id, **extra_context)
         add = object_id is None
         obj = self.get_object(request, unquote(object_id))
@@ -70,17 +85,19 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         else:
             if not self.has_view_or_change_permission(request, obj):
                 raise PermissionDenied
+        initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
+
         if request.method == "POST":
             if obj:
-                form = form_class(request.POST, prefix="flex_field")
+                form = form_class(request.POST, prefix="flex_field", initial=initials)
                 if form.is_valid():
                     obj.flex_fields = form.cleaned_data
                     obj.save()
                     return HttpResponseRedirect(request.META["HTTP_REFERER"])
                 else:
-                    self.message_user(request, "Please fixes the errors below")
+                    self.message_user(request, "Please fixes the errors below", messages.ERROR)
         else:
-            form = form_class(prefix="flex_field")
+            form = form_class(prefix="flex_field", initial=initials)
         if add:
             title = _("Add %s")
         elif self.has_change_permission(request, obj):

@@ -1,20 +1,16 @@
-from typing import TYPE_CHECKING
+from typing import Any, Optional
 
-from django.http import HttpRequest, HttpResponse
-
-from admin_extra_buttons.decorators import button
-
-from country_workspace.state import state
+from django.contrib.admin import AdminSite
+from django.db.models import Model
+from django.http import HttpRequest
 
 from ..filters import HouseholdFilter, ProgramFilter
+from ..models import CountryHousehold, CountryIndividual, CountryProgram
 from .hh_ind import CountryHouseholdIndividualBaseAdmin
-
-if TYPE_CHECKING:
-    from hope_flex_fields.models import DataChecker
 
 
 class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
-    list_display = ("name", "program", "household", "country_office")
+    list_display = ["name", "program", "household", "country_office"]
     search_fields = ("name",)
     list_filter = (
         ("program", ProgramFilter),
@@ -30,26 +26,32 @@ class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
     change_form_template = "workspace/individual/change_form.html"
     ordering = ("name",)
 
-    def get_list_display(self, request):
+    def __init__(self, model: Model, admin_site: AdminSite):
+        self._selected_household = None
+        super().__init__(model, admin_site)
+
+    def get_list_display(self, request: HttpRequest) -> list[str]:
+        program: CountryProgram | None
         if program := self.get_selected_program(request):
-            return [c.strip() for c in program.individual_columns.split("\n")]
+            fields = [c.strip() for c in program.individual_columns.split("\n")]
         else:
-            return self.list_display
+            fields = self.list_display
+        return fields + [
+            "is_valid",
+        ]
 
-    @button()
-    def import_file(self, request: HttpRequest):
-        return HttpResponse("Ok")
+    def get_selected_household(
+        self, request: HttpRequest, obj: "Optional[CountryIndividual]" = None
+    ) -> CountryHousehold | None:
+        from country_workspace.workspaces.models import CountryHousehold
 
-    def get_checker(self, request, obj=None) -> "DataChecker":
-        if obj:
-            return obj.program.individual_checker
-        return state.program.individual_checker
+        self._selected_household = None
+        if "household__exact" in request.GET:
+            self._selected_household = CountryHousehold.objects.get(pk=request.GET["household__exact"])
+        elif obj:
+            self._selected_household = obj.household
+        return self._selected_household
 
-    #
-    # def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
-    #     extra_context = extra_context or {}
-    #     if object_id:
-    #         if obj := self.get_object(request, object_id):
-    #             dc: "DataChecker" = obj.program.individual_checker
-    #             extra_context['checker_form'] = dc.get_form()(initial=obj.flex_fields, prefix="flex_field")
-    #     return super().changeform_view(request, object_id, form_url, extra_context)
+    def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+        kwargs["selected_household"] = self.get_selected_household(request)
+        return super().get_common_context(request, pk, **kwargs)

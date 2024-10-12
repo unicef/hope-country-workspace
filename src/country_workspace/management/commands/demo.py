@@ -51,6 +51,7 @@ class Command(BaseCommand):
         from testutils.factories import HouseholdFactory
         from vcr.record_mode import RecordMode
 
+        from country_workspace.models import Household
         from country_workspace.sync.office import sync_all
 
         if settings.HOPE_API_TOKEN:
@@ -58,9 +59,8 @@ class Command(BaseCommand):
         else:
             with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.NONE):
                 sync_all()
-        from country_workspace.models import Household
 
         Household.objects.all().delete()
         for co in Office.objects.filter(active=True):
             for p in co.programs.filter():
-                HouseholdFactory.create_batch(1, country_office=co, program=p)
+                HouseholdFactory.create_batch(10, country_office=co, program=p)

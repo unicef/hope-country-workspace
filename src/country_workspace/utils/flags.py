@@ -1,21 +1,22 @@
 import contextlib
-from typing import TYPE_CHECKING
+import os
+import re
+from typing import Any, Iterator
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.http import HttpRequest
 
+import pytricia
 from adminfilters.utils import parse_bool
 from flags import state as flag_state
 from flags.conditions import conditions
 
-if TYPE_CHECKING:
-    from country_workspace.types.http import AuthHttpRequest
+from country_workspace.state import state
 
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from typing import Any
+from .http import get_client_ip
 
-    from django.http import HttpRequest
+pyt = pytricia.PyTricia()
 
 
 @contextlib.contextmanager
@@ -42,7 +43,7 @@ def validate_bool(value: str) -> None:
 
 
 @conditions.register("superuser", validator=validate_bool)
-def superuser(value: str, request: "AuthHttpRequest|None", **kwargs: "Any") -> bool:
+def superuser(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
     return request.user.is_superuser == parse_bool(value)
 
 
@@ -59,3 +60,33 @@ def server_ip(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
 @conditions.register("hostname")
 def hostname(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
     return request.get_host().split(":")[0] in value.split(",")
+
+
+@conditions.register("User IP")
+def client_ip(value: str, **kwargs: Any) -> bool:
+    remote = get_client_ip()
+    pyt.insert(value, "")
+    return remote in pyt
+
+
+@conditions.register("Environment Variable")
+def env_var(value: str, **kwargs: Any) -> bool:
+    if "=" in value:
+        key, value = value.split("=")
+        return os.environ.get(key, -1) == value
+    else:
+        return value.strip() in os.environ
+
+
+@conditions.register("HTTP Request Header")
+def header_key(value: str, **kwargs: Any) -> bool:
+    if "=" in value:
+        key, value = value.split("=")
+        key = f"HTTP_{key.strip()}"
+        try:
+            return bool(re.compile(value).match(state.request.META.get(key, "")))
+        except re.error:
+            return False
+    else:
+        value = f"HTTP_{value.strip()}"
+        return value in state.request.META

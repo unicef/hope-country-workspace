@@ -103,10 +103,10 @@ TIME_ZONE = env("TIME_ZONE")
 LANGUAGE_CODE = "en-us"
 ugettext = lambda s: s  # noqa
 LANGUAGES = (
-    ("es", ugettext("Spanish")),
-    ("fr", ugettext("French")),
-    ("en", ugettext("English")),
-    ("ar", ugettext("Arabic")),
+    ("es", ugettext("Spanish")),  # type: ignore[no-untyped-call]
+    ("fr", ugettext("French")),  # type: ignore[no-untyped-call]
+    ("en", ugettext("English")),  # type: ignore[no-untyped-call]
+    ("ar", ugettext("Arabic")),  # type: ignore[no-untyped-call]
 )
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"

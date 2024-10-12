@@ -52,6 +52,14 @@ class DataCheckerFactory(AutoRegisterModelFactory):
         model = DataChecker
         django_get_or_create = ("name",)
 
+    @factory.post_generation
+    def fields(self, create, extracted, **kwargs):
+        if extracted:
+            fs = FieldsetFactory()
+            for i in extracted:
+                FlexFieldFactory(fieldset=fs, name=i)
+            self.fieldsets.add(fs)
+
 
 class DataCheckerFieldsetFactory(AutoRegisterModelFactory):
     checker = factory.SubFactory(DataCheckerFactory)

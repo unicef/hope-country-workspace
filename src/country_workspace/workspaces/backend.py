@@ -36,7 +36,7 @@ class TenantBackend(BaseBackend):
     def get_available_modules(self, user: "User") -> "set[str]":
         return {perm[: perm.index(".")] for perm in self.get_all_permissions(user)}
 
-    def has_perm(self, user_obj, perm, obj=None):
+    def has_perm(self, user_obj: "User", perm: str, obj: Optional[Model] = None):
         if user_obj.is_superuser:
             return True
         return super().has_perm(user_obj, perm, obj)

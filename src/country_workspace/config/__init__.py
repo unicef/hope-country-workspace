@@ -1,10 +1,15 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Tuple, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypeAlias, Union
 
 from smart_env import SmartEnv
 
 if TYPE_CHECKING:
-    ConfigItem: TypeAlias = Union[Tuple[type, Any, str, Any], Tuple[type, Any, str], Tuple[type, Any]]
+    ConfigItem: TypeAlias = Union[
+        tuple[type, Any, Any, bool, str],
+        tuple[type, Optional[Any], Optional[Any], bool],
+        tuple[type, Any, Any],
+        tuple[type, Any],
+    ]
 
 DJANGO_HELP_BASE = "https://docs.djangoproject.com/en/5.0/ref/settings"
 
@@ -80,7 +85,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
         False,
         f"{celery_doc}#broker-transport-options",
     ),
-    "CSRF_COOKIE_SECURE": (bool, True, False, setting("csrf-cookie-secure")),
+    "CSRF_COOKIE_SECURE": (bool, True, False, True, setting("csrf-cookie-secure")),
     "CSRF_TRUSTED_ORIGINS": (list, "localhost", "", True, ""),
     "DATABASE_URL": (
         str,
@@ -96,10 +101,10 @@ CONFIG: "Dict[str, ConfigItem]" = {
     #     setting("email-backend"),
     #     True,
     # ),
-    "EMAIL_HOST": (str, "", "", False, setting("email-host"), True),
-    "EMAIL_HOST_USER": (str, "", "", False, setting("email-host-user"), True),
-    "EMAIL_HOST_PASSWORD": (str, "", "", False, setting("email-host-password"), True),
-    "EMAIL_PORT": (int, "25", "25", False, setting("email-port"), True),
+    "EMAIL_HOST": (str, "", "", False, setting("email-host")),
+    "EMAIL_HOST_USER": (str, "", "", False, setting("email-host-user")),
+    "EMAIL_HOST_PASSWORD": (str, "", "", False, setting("email-host-password")),
+    "EMAIL_PORT": (int, "25", "25", False, setting("email-port")),
     "EMAIL_SUBJECT_PREFIX": (
         str,
         "[Hope-cw]",
@@ -113,11 +118,10 @@ CONFIG: "Dict[str, ConfigItem]" = {
         False,
         False,
         setting("email-use-localtime"),
-        True,
     ),
-    "EMAIL_USE_TLS": (bool, False, False, False, setting("email-use-tls"), True),
-    "EMAIL_USE_SSL": (bool, False, False, False, setting("email-use-ssl"), True),
-    "EMAIL_TIMEOUT": (str, None, None, False, setting("email-timeout"), True),
+    "EMAIL_USE_TLS": (bool, False, False, False, setting("email-use-tls")),
+    "EMAIL_USE_SSL": (bool, False, False, False, setting("email-use-ssl")),
+    "EMAIL_TIMEOUT": (str, None, None, False, setting("email-timeout")),
     "LOGGING_LEVEL": (str, "CRITICAL", "DEBUG", False, setting("logging-level")),
     "FILE_STORAGE_DEFAULT": (
         str,
@@ -152,7 +156,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
     # "SECURE_SSL_REDIRECT": (bool, True, setting("secure-ssl-redirect"), False),
     "SENTRY_DSN": (str, "", "", False, "Sentry DSN"),
     "SENTRY_ENVIRONMENT": (str, "production", "develop", False, "Sentry Environment"),
-    "SENTRY_URL": (str, "", "", "False", "Sentry server url"),
+    "SENTRY_URL": (str, "", "", False, "Sentry server url"),
     # "SESSION_COOKIE_DOMAIN": (
     #     str,
     #     "",
@@ -186,4 +190,4 @@ CONFIG: "Dict[str, ConfigItem]" = {
     # "CV2DNN_PATH": (str, ""),
 }
 
-env = SmartEnv(**CONFIG)  # type: ignore[no-untyped-call]
+env = SmartEnv(**CONFIG)

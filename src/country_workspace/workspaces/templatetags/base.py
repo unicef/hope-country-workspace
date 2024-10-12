@@ -9,7 +9,7 @@ class WorkspaceInclusionAdminNode(InclusionNode):
     or globally.
     """
 
-    def __init__(self, parser, token, func, template_name, takes_context=True):
+    def __init__(self, parser, token, func, template_name: str, takes_context: bool = True):
         self.template_name = template_name
         params, varargs, varkw, defaults, kwonly, kwonly_defaults, _ = getfullargspec(func)
         bits = token.split_contents()

@@ -5,7 +5,7 @@ from typing import Any
 from django.apps import apps
 from django.contrib import admin
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
-from django.db.models import Model
+from django.db.models import Model, QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -26,7 +26,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
         return self.model_admin.has_view_permission(request, obj=obj)
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet:
         """Return queryset based on ModelAdmin.get_search_results()."""
         qs = self.model_admin.get_queryset(self.request)
         if hasattr(self.source_field, "get_limit_choices_to"):
@@ -36,7 +36,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
             qs = qs.distinct()
         return qs
 
-    def process_request(self, request):  # noqa C901
+    def process_request(self, request: HttpRequest):  # noqa C901
         """
         Overridden to handle Proxy Models
         """
@@ -92,7 +92,7 @@ def force_tenant(view_func):
     Decorator that adds headers to a response so that it will never be cached.
     """
 
-    def _view_wrapper(request, *args, **kwargs):
+    def _view_wrapper(request: HttpRequest, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect("workspace:login")
         if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
@@ -124,7 +124,7 @@ class TenantAdminSite(admin.AdminSite):
     def urls(self):
         return self.get_urls(), self.namespace, self.name
 
-    def _build_app_dict(self, request, label=None):
+    def _build_app_dict(self, request: HttpRequest, label=None):
         """
         Build the app dictionary. The optional `label` parameter filters models
         of a specific app.
@@ -213,7 +213,7 @@ class TenantAdminSite(admin.AdminSite):
     def has_permission(self, request: "HttpRequest") -> bool:
         return request.user.is_active
 
-    def admin_view(self, view, cacheable=False):
+    def admin_view(self, view, cacheable: bool = False):
         return force_tenant(super().admin_view(view, cacheable))
 
     def get_urls(self) -> "list[URLResolver | URLPattern]":

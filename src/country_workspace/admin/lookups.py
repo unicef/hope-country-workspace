@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.http import HttpResponseRedirect
+from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import reverse
 
 from admin_extra_buttons.decorators import button
@@ -15,12 +15,12 @@ class RelationshipAdmin(ExtraButtonsMixin, admin.ModelAdmin):
     search_fields = ("code", "label")
 
     @button()
-    def sync_from_hope(self, request):
+    def sync_from_hope(self, request: HttpRequest) -> None:
         num = sync_relationship()
         self.message_user(request, f"Synced from Hope. {num} records updated or created")
 
     @button()
-    def view_linked_field(self, request):
+    def view_linked_field(self, request: HttpRequest) -> HttpResponseRedirect:
         fd = Relationship.get_field_definition()
         url = reverse("admin:hope_flex_fields_fielddefinition_change", args=(fd.pk,))
         return HttpResponseRedirect(url)

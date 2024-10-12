@@ -36,6 +36,7 @@ dependencies = [
     "hope-smart-export>=0.3.0",
     "hope-smart-import>=0.2.0",
     "psycopg2-binary>=2.9.9",
+    "pytricia>=1.0.2",
     "redis",
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
@@ -52,6 +53,7 @@ dev-dependencies = [
     "flake8>=7.1.0",
     "freezegun>=1.5.1",
     "isort>=5.13.2",
+    "mypy>=1.11.2",
     "pdbpp>=0.10.3",
     "pre-commit>=3.7.1",
     "pyquery>=2.0.1",
@@ -64,6 +66,8 @@ dev-dependencies = [
     "pytest-xdist>=3.6.1",
     "pytest>=8.2.2",
     "responses>=0.25.3",
+    "types-python-dateutil>=2.9.0.20241003",
+    "types-requests>=2.31.0.6",
     "vcrpy>=6.0.2",
 ]
 

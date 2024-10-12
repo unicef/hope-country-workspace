@@ -1,4 +1,7 @@
+from typing import Any
+
 from django import forms
+from django.db.models import QuerySet
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -17,7 +20,7 @@ from ..options import WorkspaceModelAdmin
 class SelectColumnsForm(forms.Form):
     columns = forms.MultipleChoiceField(choices=(), widget=forms.CheckboxSelectMultiple)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         self.checker: "DataChecker" = kwargs.pop("checker")
         self.checker_fields = {}
         super().__init__(*args, **kwargs)
@@ -55,10 +58,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     form = ProgramForm
     ordering = ("name",)
 
-    def get_queryset(self, request):
+    def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
         return CountryProgram.objects.filter(country_office=state.tenant)
 
-    def has_add_permission(self, request):
+    def has_add_permission(self, request: HttpResponse) -> bool:
         return False
 
     @link(
@@ -78,10 +81,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         btn.href = f"{base}?program__exact={obj.pk}"
 
     @button()
-    def sync(self, request) -> None:
+    def sync(self, request: HttpResponse) -> None:
         sync_programs(state.tenant)
 
-    def _configure_columns(self, request, context) -> "HttpResponse":
+    def _configure_columns(self, request: HttpResponse, context: dict[str, Any]) -> "HttpResponse":
 
         program: "CountryProgram" = context["original"]
         checker: DataChecker = context["checker"]
@@ -110,7 +113,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/configure_columns.html", context)
 
     @button()
-    def household_columns(self, request, pk) -> "HttpResponse | HttpResponseRedirect":
+    def household_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Household columns")
         program: "CountryProgram" = context["original"]
         context["checker"]: "DataChecker" = program.household_checker
@@ -118,7 +121,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return self._configure_columns(request, context)
 
     @button()
-    def individual_columns(self, request, pk) -> "HttpResponse | HttpResponseRedirect":
+    def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Individual columns")
         program: "CountryProgram" = context["original"]
         context["checker"]: "DataChecker" = program.individual_checker

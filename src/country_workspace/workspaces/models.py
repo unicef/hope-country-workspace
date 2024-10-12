@@ -2,13 +2,12 @@ from django.db import models
 
 from hope_flex_fields.models import DataChecker
 
-from country_workspace import models as global_models
-from country_workspace.models import Office
+from country_workspace.models import Household, Individual, Office, Program
 
 __all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual"]
 
 
-class CountryHousehold(global_models.Household):
+class CountryHousehold(Household):
     class Meta:
         proxy = True
         verbose_name = "Country Household"
@@ -16,13 +15,13 @@ class CountryHousehold(global_models.Household):
         # app_label = "country_workspace"
 
 
-class CountryIndividual(global_models.Individual):
+class CountryIndividual(Individual):
     class Meta:
         proxy = True
         # app_label = "country_workspace"
 
 
-class CountryProgram(global_models.Program):
+class CountryProgram(Program):
     class Meta:
         proxy = True
         # app_label = "country_workspace"
