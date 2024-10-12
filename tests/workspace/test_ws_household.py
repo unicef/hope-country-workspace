@@ -97,3 +97,21 @@ def test_hh_delete(app: "DjangoTestApp", household: "CountryHousehold") -> None:
     assert res.status_code == 200
     with pytest.raises(ObjectDoesNotExist):
         household.refresh_from_db()
+
+
+def test_hh_validate_single(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+    res = app.get("/").follow()
+    res.forms["select-tenant"]["tenant"] = household.country_office.pk
+    res.forms["select-tenant"].submit()
+    url = reverse("workspace:workspaces_countryhousehold_validate_single", args=[household.pk])
+    res = app.get(url).follow()
+    assert res.status_code == 200
+
+
+def test_hh_validate_program(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+    res = app.get("/").follow()
+    res.forms["select-tenant"]["tenant"] = household.country_office.pk
+    res.forms["select-tenant"].submit()
+    url = reverse("workspace:workspaces_countryhousehold_validate_program")
+    res = app.get(url).follow()
+    assert res.status_code == 200

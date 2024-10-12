@@ -33,6 +33,7 @@ def program(office):
     return CountryProgramFactory(
         country_office=office,
         household_checker=DataCheckerFactory(fields=["collect_individual_data"]),
+        individual_checker=DataCheckerFactory(fields=["gender"]),
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
     )
@@ -60,7 +61,7 @@ def app(
     yield django_app
 
 
-def test_configure_columns(app, household: "CountryHousehold"):
+def test_configure_hh_columns(app, household: "CountryHousehold"):
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     program: "CountryProgram" = household.program
     res = app.get(url).follow()
@@ -76,3 +77,21 @@ def test_configure_columns(app, household: "CountryHousehold"):
     hh_list = reverse("workspace:workspaces_countryhousehold_changelist")
     res = app.get(f"{hh_list}?program__exact={program.pk}")
     assert "collect_individual_data" in res.text
+
+
+def test_configure_ind_columns(app, household: "CountryHousehold"):
+    url = reverse("workspace:workspaces_countryhousehold_changelist")
+    program: "CountryProgram" = household.program
+    res = app.get(url).follow()
+    res.forms["select-tenant"]["tenant"] = program.country_office.pk
+    res.forms["select-tenant"].submit()
+    res = app.get(program.get_change_url())
+    res = res.click("Individual Columns")
+    form = res.forms["configure-columns"]
+    form["columns"] = ["name", "gender"]
+    form.submit().follow()
+    program.refresh_from_db()
+    assert program.individual_columns == "name\nflex_fields__gender"
+    hh_list = reverse("workspace:workspaces_countryindividual_changelist")
+    res = app.get(f"{hh_list}?program__exact={program.pk}")
+    assert "gender" in res.text

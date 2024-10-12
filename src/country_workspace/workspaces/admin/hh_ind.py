@@ -1,8 +1,10 @@
 from typing import TYPE_CHECKING, Any, Optional
+from urllib.parse import parse_qs
 
-from django.contrib import messages
+from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
+from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
@@ -11,8 +13,8 @@ from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.workspaces.filters import ProgramFilter
-from country_workspace.workspaces.options import WorkspaceModelAdmin
+from ..filters import ProgramFilter
+from ..options import WorkspaceModelAdmin
 
 if TYPE_CHECKING:
     from ...models.base import Validable
@@ -21,14 +23,36 @@ if TYPE_CHECKING:
 
 class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
     list_filter = (("program", ProgramFilter),)
+    actions = ["validate_queryset"]
 
     @button(label=_("Validate"))
-    def validate_with_checker(self, request: HttpRequest, pk: str) -> "HttpResponse":
+    def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: "Validable" = self.get_object(request, pk)
         if obj.validate_with_checker():
             self.message_user(request, _("Validation successful!"))
         else:
             self.message_user(request, _("Validation failed!"), messages.ERROR)
+
+    @button(label=_("Validate Program"), visible=lambda b: "program__exact" in b.context["request"].GET)
+    def validate_program(self, request: HttpRequest) -> "HttpResponse":
+        from .program import CountryProgram
+
+        if cl_flt := request.GET.get("_changelist_filters", ""):
+            if prg := parse_qs(cl_flt).get("program__exact"):
+                self._selected_program = CountryProgram.objects.get(pk=prg[0])
+                qs = self.get_queryset(request).filter(program=self._selected_program)
+                self.validate_queryset(request, qs)
+
+    @admin.action(description="Validate selected")
+    def validate_queryset(self, request: HttpRequest, queryset: QuerySet) -> None:
+        n = v = i = 0
+        for n, entry in enumerate(queryset.all(), 1):
+            entry.validate_with_checker()
+            if entry.validate_with_checker():
+                v += 1
+            else:
+                i += 1
+        self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (n, v, i)))
 
     def is_valid(self, obj: "Validable") -> bool | None:
         if not obj.last_checked:

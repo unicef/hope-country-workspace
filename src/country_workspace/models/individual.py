@@ -8,7 +8,7 @@ from .household import Household
 
 
 class Individual(Validable, BaseModel):
-    household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True)
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
 
     def __str__(self) -> str:

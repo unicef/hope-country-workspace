@@ -2,19 +2,22 @@ from typing import Any
 
 from django import forms
 from django.db.models import QuerySet
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton
 from hope_flex_fields.models import DataChecker
+from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.state import state
 
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
+from .forms import ImportFileForm
 
 
 class SelectColumnsForm(forms.Form):
@@ -55,8 +58,30 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         "individual_columns",
         "household_columns",
     )
-    form = ProgramForm
+    # form = ProgramForm
     ordering = ("name",)
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("name", "programme_code"),
+                    ("status", "sector", "active"),
+                )
+            },
+        ),
+        (_("Validators"), {"fields": ("beneficiary_validator", ("household_checker", "individual_checker"))}),
+        (
+            _("Columns"),
+            {
+                "fields": (
+                    "household_columns",
+                    "individual_columns",
+                ),
+            },
+        ),
+        # (_("Important dates"), {"fields": ("last_login", "date_joined")}),
+    )
 
     def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
         return CountryProgram.objects.filter(country_office=state.tenant)
@@ -127,3 +152,37 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["checker"]: "DataChecker" = program.individual_checker
         context["storage_field"] = "individual_columns"
         return self._configure_columns(request, context)
+
+    @button(label=_("Import File"))
+    def import_rdi(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        context = self.get_common_context(request, pk)
+        program: "CountryProgram" = context["original"]
+        hh_ids = {}
+        if request.method == "POST":
+            form = ImportFileForm(request.POST, request.FILES)
+            if form.is_valid():
+                hh_id_col = form.cleaned_data["pk_column_name"]
+                for sheet_index, sheet_generator in open_xls_multi(form.cleaned_data["file"], sheets=[0, 1]):
+                    for line, record in enumerate(sheet_generator, 1):
+                        if record[hh_id_col]:
+                            try:
+                                if sheet_index == 0:
+                                    hh = program.households.create(
+                                        country_office=program.country_office, flex_fields=record
+                                    )
+                                    hh_ids[record[hh_id_col]] = hh.pk
+                                elif sheet_index == 1:
+                                    program.individuals.create(
+                                        country_office=program.country_office,
+                                        household_id=hh_ids[record[hh_id_col]],
+                                        flex_fields=record,
+                                    )
+                            except Exception as e:
+                                raise Exception("Error processing sheet %s line %s: %s" % (1 + sheet_index, line, e))
+                # hh_validator.set_primary_key_col("household_id")
+                # ind_validator.set_master(hh_validator, "household_id")
+
+        else:
+            form = ImportFileForm()
+        context["form"] = form
+        return render(request, "workspace/program/import_rdi.html", context)
