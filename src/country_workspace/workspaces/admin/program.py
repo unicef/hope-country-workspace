@@ -6,6 +6,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from django.utils.translation import ngettext
 
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton
@@ -41,6 +42,10 @@ class ProgramForm(forms.ModelForm):
     class Meta:
         model = CountryProgram
         exclude = ("country_office",)
+
+
+def clean_field_name(v):
+    return v.replace("_h_c", "").replace("_h_f", "").replace("_i_c", "").replace("_i_f", "").lower()
 
 
 class CountryProgramAdmin(WorkspaceModelAdmin):
@@ -162,8 +167,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = ImportFileForm(request.POST, request.FILES)
             if form.is_valid():
                 hh_id_col = form.cleaned_data["pk_column_name"]
+                total_hh = total_ind = 0
                 for sheet_index, sheet_generator in open_xls_multi(form.cleaned_data["file"], sheets=[0, 1]):
-                    for line, record in enumerate(sheet_generator, 1):
+                    for line, raw_record in enumerate(sheet_generator, 1):
+                        record = {}
+                        for k, v in raw_record.items():
+                            record[clean_field_name(k)] = v
                         if record[hh_id_col]:
                             try:
                                 if sheet_index == 0:
@@ -171,16 +180,20 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                                         country_office=program.country_office, flex_fields=record
                                     )
                                     hh_ids[record[hh_id_col]] = hh.pk
+                                    total_hh += 1
                                 elif sheet_index == 1:
                                     program.individuals.create(
                                         country_office=program.country_office,
                                         household_id=hh_ids[record[hh_id_col]],
                                         flex_fields=record,
                                     )
+                                    total_ind += 1
                             except Exception as e:
                                 raise Exception("Error processing sheet %s line %s: %s" % (1 + sheet_index, line, e))
-                # hh_validator.set_primary_key_col("household_id")
-                # ind_validator.set_master(hh_validator, "household_id")
+                hh_msg = ngettext("%(c)d Household", "%(c)d Households", total_hh) % {"c": total_hh}
+                ind_msg = ngettext("%(c)d Individual", "%(c)d Individuals", total_ind) % {"c": total_ind}
+                self.message_user(request, _("Imported {0} and {1}").format(hh_msg, ind_msg))
+                context["form"] = form
 
         else:
             form = ImportFileForm()

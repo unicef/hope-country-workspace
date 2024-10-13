@@ -32,7 +32,7 @@ class ProgramAdmin(BaseModelAdmin):
     def population(self, btn: "LinkButton") -> None:
         base = reverse("admin:country_workspace_individual_changelist")
         obj = btn.context["original"]
-        btn.href = f"{base}?household__exact={obj.pk}"
+        btn.href = f"{base}?program__exact={obj.pk}&country_office__exact={obj.country_office.pk}"
 
     @button()
     def zap(self, request: HttpRequest, pk: str) -> None:

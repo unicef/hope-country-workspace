@@ -1,17 +1,17 @@
-{% extends "admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
-{% block breadcrumbs %}
-    <div class="breadcrumbs">
-        <a href="{% url 'workspace:index' %}">{% translate 'Home' %}</a>
-        &rsaquo; <a
-            href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
-        &rsaquo; {% if has_view_permission %}{% url opts|workspace_urlname:'changelist' as wcl %}
-        <a href="{% add_preserved_filters wcl %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}
-        {{ opts.verbose_name_plural|capfirst }}{% endif %}
-        &rsaquo;
-        {% if add %}{% blocktranslate with name=opts.verbose_name %}Add {{ name }}{% endblocktranslate %}{% else %}
-            {{ original|truncatewords:"18" }}{% endif %}
-    </div>
-{% endblock %}
+{% extends "workspace/admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
+{#{% block breadcrumbs %}#}
+{#    <div class="breadcrumbs">#}
+{#        <a href="{% url 'workspace:index' %}">{% translate 'Home' %}</a>#}
+{#        &rsaquo; <a#}
+{#            href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>#}
+{#        &rsaquo; {% if has_view_permission %}{% url opts|workspace_urlname:'changelist' as wcl %}#}
+{#        <a href="{% add_preserved_filters wcl %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}#}
+{#        {{ opts.verbose_name_plural|capfirst }}{% endif %}#}
+{#        &rsaquo;#}
+{#        {% if add %}{% blocktranslate with name=opts.verbose_name %}Add {{ name }}{% endblocktranslate %}{% else %}#}
+{#            {{ original|truncatewords:"18" }}{% endif %}#}
+{#    </div>#}
+{#{% endblock %}#}
 {% block pretitle %}
 {#    <h1><a href="{% url "workspace:workspaces_countryprogram_change" original.pk %}">{{ original }}</a></h1>#}
 {% endblock %}

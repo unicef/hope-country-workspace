@@ -1,0 +1,11 @@
+{% extends "workspace/admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
+{% block content %}
+    <table>
+        {% for name, value in original.flex_fields.items %}
+            <tr>
+                <th>{{ name }}</th>
+                <td>{{ value }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+{% endblock %}

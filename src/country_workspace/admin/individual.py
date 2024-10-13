@@ -1,5 +1,8 @@
 from django.contrib import admin
+from django.urls import reverse
 
+from admin_extra_buttons.buttons import LinkButton
+from admin_extra_buttons.decorators import link
 from adminfilters.autocomplete import LinkedAutoCompleteFilter
 
 from ..models import Individual
@@ -15,3 +18,10 @@ class IndividualAdmin(BaseModelAdmin):
         ("country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("program", LinkedAutoCompleteFilter.factory(parent="country_office")),
     )
+
+    @link(change_list=True, change_form=False)
+    def view_in_workspace(self, btn: "LinkButton") -> None:
+        if "request" in btn.context:
+            req = btn.context["request"]
+            base = reverse("workspace:workspaces_countryindividual_changelist")
+            btn.href = f"{base}?%s" % req.META["QUERY_STRING"]

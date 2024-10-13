@@ -1,6 +1,23 @@
-
 {% if has_change_permission %}
-    {{ form.as_table }}
+    {% for field in form %}
+        <tr>
+            <th>{{ field.label }}</th>
+            <th>{{ field }}
+                <br>
+            <span class="helptext">{{ field.field.flex_field.attrs.help_text }}</span>
+            </th>
+            <th>
+                {% if perms.hope_flex_fields.can_change_flexfield %}
+
+                    <a target="_admin" href="{% url "admin:hope_flex_fields_flexfield_change" field.field.flex_field.pk %}">
+                    Rules
+{#                    {{ field.field.flex_field.name }} ({{ field.field.flex_field.field.name }})#}
+                {% endif %}
+                </a>
+            </th>
+        </tr>
+    {% endfor %}
+    {#    {{ form.as_table }}#}
 {% else %}
     {% for k,v in fields.items %}
         <tr>
@@ -9,4 +26,3 @@
         </tr>
     {% endfor %}
 {% endif %}
-</table>

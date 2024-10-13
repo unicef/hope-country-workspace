@@ -6,6 +6,7 @@ from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
 from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
@@ -53,6 +54,11 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
             else:
                 i += 1
         self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (n, v, i)))
+
+    @button()
+    def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        context = self.get_common_context(request, pk)
+        return render(request, "workspace/raw_data.html", context)
 
     def is_valid(self, obj: "Validable") -> bool | None:
         if not obj.last_checked:
