@@ -1,0 +1,19 @@
+<h1>
+
+    {% if program %}
+        <a href="{% url "workspace:workspaces_countryprogram_change" program.pk %}">{{ program }}</a>
+
+        {% if perms.country_workspace.change_program %}
+            <a class="icon icon-cogs small" target="_admin"
+               href="{% url "admin:country_workspace_program_change" program.pk %}"></a>
+        {% endif %}
+        {% if household %}
+            <a href="{% url "workspace:workspaces_countryhousehold_change" household.pk %}">{{ household }}</a>
+            {% if perms.country_workspace.change_household %}
+                <a class="icon icon-cogs small" target="_admin"
+                   href="{% url "admin:country_workspace_household_change" selected_household.pk %}"></a>
+            {% endif %}
+
+        {% endif %}
+    {% endif %}
+</h1>

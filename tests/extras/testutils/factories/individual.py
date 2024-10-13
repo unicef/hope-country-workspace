@@ -7,6 +7,7 @@ from country_workspace.models import Individual
 from country_workspace.workspaces.models import CountryIndividual
 
 from .base import AutoRegisterModelFactory
+from .batch import BatchFactory
 from .household import HouseholdFactory
 from .office import OfficeFactory
 from .program import ProgramFactory
@@ -15,11 +16,6 @@ fake = Faker()
 
 
 def get_ind_fields(individual: "CountryIndividual"):
-    from country_workspace.models import Relationship
-
-    from .lookups import RelationshipFactory
-
-    RelationshipFactory()
     return {
         "alternate_collector_id": "",
         "birth_date": "",
@@ -36,11 +32,12 @@ def get_ind_fields(individual: "CountryIndividual"):
         "phone_no": "",
         "photo": "",
         "primary_collector_id": "",
-        "relationship": Relationship.objects.order_by("?").first().code,
+        "relationship": choice(["HEAD", "SON_DAUGHTER", "BROTHER_SISTER", "FOSTER_CHILD"]),
     }
 
 
 class IndividualFactory(AutoRegisterModelFactory):
+    batch = factory.SubFactory(BatchFactory)
     country_office = factory.SubFactory(OfficeFactory)
     program = factory.SubFactory(ProgramFactory)
     household = factory.SubFactory(HouseholdFactory)

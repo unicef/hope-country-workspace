@@ -10,7 +10,6 @@ from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
-from .lookups import RelationshipFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .smart_fields import DataCheckerFactory, FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory  # noqa

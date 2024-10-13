@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
-    list_filter = (("program", ProgramFilter),)
+    list_filter = (("program", ProgramFilter), "batch")
     actions = ["validate_queryset"]
 
     @button(label=_("Validate"))
@@ -45,15 +45,21 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
                 self.validate_queryset(request, qs)
 
     @admin.action(description="Validate selected")
-    def validate_queryset(self, request: HttpRequest, queryset: QuerySet) -> None:
-        n = v = i = 0
-        for n, entry in enumerate(queryset.all(), 1):
-            entry.validate_with_checker()
-            if entry.validate_with_checker():
-                v += 1
-            else:
-                i += 1
-        self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (n, v, i)))
+    def validate_queryset(self, request: HttpRequest, queryset: QuerySet) -> HttpResponseRedirect | None:
+        try:
+            n = v = i = 0
+            for n, entry in enumerate(queryset.all(), 1):
+                entry.validate_with_checker()
+                if entry.validate_with_checker():
+                    v += 1
+                else:
+                    i += 1
+            self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (n, v, i)))
+        except AttributeError:
+            self.message_user(
+                request, _("Required datachecker not found. Please check your Program configuration."), messages.ERROR
+            )
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
     @button()
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
@@ -77,11 +83,13 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def get_selected_program(self, request: HttpRequest) -> "CountryProgram | None":
+    def get_selected_program(self, request: HttpRequest, obj: "Optional[Validable]" = None) -> "CountryProgram | None":
         from country_workspace.workspaces.models import CountryProgram
 
         self._selected_program = None
-        if "program__exact" in request.GET:
+        if obj:
+            self._selected_program = obj.program
+        elif "program__exact" in request.GET:
             self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
         return self._selected_program
 
@@ -98,8 +106,10 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         raise Http404("No Household checkers available")
 
     def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
-        kwargs["selected_program"] = self.get_selected_program(request)
-        return super().get_common_context(request, pk, **kwargs)
+        ret = super().get_common_context(request, pk, **kwargs)
+
+        ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
+        return ret
 
     def _changeform_view(
         self, request: HttpRequest, object_id: str, form_url: str, extra_context: dict[str, Any]
@@ -108,7 +118,14 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         add = object_id is None
         obj = self.get_object(request, unquote(object_id))
         dc: "DataChecker" = self.get_checker(request, obj)
-        form_class = dc.get_form()
+        try:
+            form_class = dc.get_form()
+        except AttributeError:
+            self.message_user(
+                request, _("Required datachecker not found. Please check your Program configuration."), messages.ERROR
+            )
+            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+
         if request.method == "POST":
             if not self.has_change_permission(request, obj):
                 raise PermissionDenied

@@ -44,6 +44,8 @@ class Program(BaseModel):
     status = models.CharField(max_length=10, choices=STATUS_CHOICE, db_index=True)
     sector = models.CharField(max_length=50, choices=SECTOR_CHOICE, db_index=True)
     active = models.BooleanField(default=False)
+
+    # Local Fields
     beneficiary_validator = StrategyField(
         registry=beneficiary_validator_registry, default=fqn(NoopValidator), blank=True, null=True
     )
@@ -54,6 +56,9 @@ class Program(BaseModel):
     individual_checker = models.ForeignKey(
         DataChecker, blank=True, null=True, on_delete=models.CASCADE, related_name="+"
     )
+
+    household_search = models.TextField(default="name", help_text="Fields to use for searches")
+    individual_search = models.TextField(default="name", help_text="Fields to use for searches")
     household_columns = models.TextField(default="name\nid", help_text="Columns to display ib the Admin table")
     individual_columns = models.TextField(default="name\nid", help_text="Columns to display ib the Admin table")
 

@@ -33,7 +33,7 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    if not config.option.enable_selenium and "selenium" not in getattr(config.option, "markexpr"):
+    if not config.option.enable_selenium and ("selenium" not in getattr(config.option, "markexpr")):
         setattr(config.option, "markexpr", "not selenium")
     os.environ.update(DJANGO_SETTINGS_MODULE="country_workspace.config.settings")
     os.environ.setdefault("STATIC_URL", "/static/")
@@ -93,3 +93,25 @@ def reporters(db, afghanistan, user):
 
     setup_workspace_group()
     return Group.objects.get(name=settings.ANALYST_GROUP_NAME)
+
+
+@pytest.fixture(scope="function")
+def active_marks(request):
+
+    # Collect all the marks for this node (test)
+    current_node = request.node
+    marks = []
+    while current_node:
+        marks += [mark.name for mark in current_node.iter_markers()]
+        current_node = current_node.parent
+
+    # Get the mark expression - what was passed to -m
+    markExpr = request.config.option.markexpr
+
+    # Compile the mark expression
+    from _pytest.mark.expression import Expression
+
+    compiledMarkExpr = Expression.compile(markExpr)
+
+    # Return a sequence of markers that match
+    return [mark for mark in marks if compiledMarkExpr.evaluate(lambda candidate: candidate == mark)]

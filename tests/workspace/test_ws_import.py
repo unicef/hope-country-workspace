@@ -22,15 +22,32 @@ def office():
 
 
 @pytest.fixture()
-def program(office):
+def force_migrated_records(request, active_marks):
+    if request.config.option.enable_selenium or "selenium" in active_marks:
+        from django.apps import apps
+
+        from hope_flex_fields.apps import sync_content_types
+        from hope_flex_fields.utils import create_default_fields
+
+        from country_workspace.versions.utils import create_hope_core_fieldset, create_hope_field_definitions
+
+        # we need to recreate these records because with selenium they are not available
+        create_default_fields(apps, None)
+        sync_content_types(None)
+        create_hope_field_definitions(apps, None)
+        create_hope_core_fieldset(apps, None)
+
+
+@pytest.fixture()
+def program(request, office, force_migrated_records):
     from testutils.factories import CountryProgramFactory
 
     return CountryProgramFactory(
         country_office=office,
         household_checker=DataChecker.objects.get(name=HOUSEHOLD_CHECKER_NAME),
         individual_checker=DataChecker.objects.get(name=INDIVIDUAL_CHECKER_NAME),
-        household_columns="__str__\nid\nxx",
-        individual_columns="__str__\nid\nxx",
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
     )
 
 

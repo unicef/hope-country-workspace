@@ -1,10 +1,7 @@
 {% extends "workspace/change_form.html" %}
 {% load i18n  static admin_modify workspace_urls workspace_modify %}
 {% block pretitle %}
-    {#    {% if selected_program  %}#}
-    <h1><a href="{% url "workspace:workspaces_countryprogram_change" original.program.pk %}">{{ original.program }}</a>
-    </h1>
-    {#    {% endif %}#}
+    {% include "workspace/includes/program_title.html" with program=selected_program %}
 {% endblock %}
 {% block content_title %}{% endblock %}
 {% block coltype %}colMX{% endblock %}

@@ -1,11 +1,12 @@
 from typing import Optional
 
+from django.utils import timezone
+
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import Office, Program, Relationship, SyncLog
+from country_workspace.models import Office, Program, SyncLog
 
 from .. import constants
-from ..models.lookups import LookupMixin, MaritalStatus, ObservedDisability, ResidenceStatus
 from .client import HopeClient
 
 
@@ -59,45 +60,23 @@ def sync_programs(limit_to_office: "Optional[Office]" = None) -> int:
     return i
 
 
-def _sync_lookup_model(model: type[LookupMixin], url: str) -> int:
+def sync_lookup(sl: SyncLog):
+    fd = sl.content_object
     client = HopeClient()
-    record = client.get_lookup(url)
+    record = client.get_lookup(sl.data["remote_url"])
     choices = []
     for k, v in record.items():
-        model.objects.get_or_create(code=k, defaults={"label": v})
         choices.append((k, v))
-    SyncLog.objects.register_sync(model)
-    if fd := model.get_field_definition():
-        fd.attrs["choices"] = choices
-        fd.save()
-    return len(choices)
 
-
-def sync_maritalstatus() -> int:
-    return _sync_lookup_model(MaritalStatus, "lookups/maritalstatus")
-
-
-def sync_observeddisability() -> int:
-    return _sync_lookup_model(ObservedDisability, "lookups/observeddisability")
-
-
-def sync_relationship() -> int:
-    return _sync_lookup_model(Relationship, "lookups/relationship")
-
-
-def sync_residencestatus() -> int:
-    return _sync_lookup_model(ResidenceStatus, "lookups/residencestatus")
-
-
-def sync_areas() -> None:
-    pass
+    fd.attrs["choices"] = choices
+    fd.save()
+    sl.last_update_date = timezone.now()
+    sl.save()
 
 
 def sync_all() -> bool:
     sync_offices()
     sync_programs()
-    sync_maritalstatus()
-    sync_observeddisability()
-    sync_relationship()
-    sync_residencestatus()
+    for sl in SyncLog.objects.filter(object_id__gt=0):
+        sync_lookup(sl)
     return True

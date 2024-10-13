@@ -13,7 +13,10 @@
 {#    </div>#}
 {#{% endblock %}#}
 {% block pretitle %}
-{#    <h1><a href="{% url "workspace:workspaces_countryprogram_change" original.pk %}">{{ original }}</a></h1>#}
+    {% include "workspace/includes/program_title.html" with program=selected_program %}
+{#    <h1><a href="{% url "workspace:workspaces_countryprogram_change" original.pk %}">{{ original }}</a>#}
+{#            {% if user.is_superuser %}<a class="icon icon-cogs" href="{% url "admin:country_workspace_program_change" selected_program.pk %}"></a>{% endif %}#}
+{#    </h1>#}
 {% endblock %}
 {% block content %}
     <form method="post" id="import-file" enctype="multipart/form-data">

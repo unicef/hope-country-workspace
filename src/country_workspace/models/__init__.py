@@ -1,7 +1,7 @@
+from .batch import Batch  # noqa
 from .household import Household  # noqa
 from .individual import Individual  # noqa
 from .locations import Area, AreaType, Country  # noqa
-from .lookups import MaritalStatus, ObservedDisability, Relationship, ResidenceStatus  # noqa
 from .office import Office  # noqa
 from .program import Program  # noqa
 from .role import UserRole  # noqa

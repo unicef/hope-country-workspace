@@ -2,9 +2,11 @@ from typing import Any
 
 from django import forms
 from django.db.models import QuerySet
+from django.db.transaction import atomic
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
@@ -15,6 +17,7 @@ from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.state import state
 
+from ...models import Batch
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -87,22 +90,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         ),
         # (_("Important dates"), {"fields": ("last_login", "date_joined")}),
     )
+    change_form_template = "workspace/program/change_form.html"
 
     def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
         return CountryProgram.objects.filter(country_office=state.tenant)
 
     def has_add_permission(self, request: HttpResponse) -> bool:
         return False
-
-    @link(
-        change_list=False,
-        html_attrs={"class": "superuser-only"},
-        visible=lambda o: o.context["request"].user.is_superuser,
-    )
-    def view_in_admin(self, btn: LinkButton) -> None:
-        obj = btn.context["original"]
-        base = reverse("admin:country_workspace_program_change", args=[obj.pk])
-        btn.href = base
 
     @link(change_list=False)
     def population(self, btn: LinkButton) -> None:
@@ -162,34 +156,43 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def import_rdi(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk)
         program: "CountryProgram" = context["original"]
+        context["selected_program"] = context["original"]
         hh_ids = {}
         if request.method == "POST":
             form = ImportFileForm(request.POST, request.FILES)
             if form.is_valid():
-                hh_id_col = form.cleaned_data["pk_column_name"]
-                total_hh = total_ind = 0
-                for sheet_index, sheet_generator in open_xls_multi(form.cleaned_data["file"], sheets=[0, 1]):
-                    for line, raw_record in enumerate(sheet_generator, 1):
-                        record = {}
-                        for k, v in raw_record.items():
-                            record[clean_field_name(k)] = v
-                        if record[hh_id_col]:
-                            try:
-                                if sheet_index == 0:
-                                    hh = program.households.create(
-                                        country_office=program.country_office, flex_fields=record
+                with atomic():
+                    batch_name = form.cleaned_data["batch_name"]
+                    batch, __ = Batch.objects.get_or_create(
+                        label=batch_name or ("Batch %s" % timezone.now()), imported_by=request.user
+                    )
+                    hh_id_col = form.cleaned_data["pk_column_name"]
+                    total_hh = total_ind = 0
+                    for sheet_index, sheet_generator in open_xls_multi(form.cleaned_data["file"], sheets=[0, 1]):
+                        for line, raw_record in enumerate(sheet_generator, 1):
+                            record = {}
+                            for k, v in raw_record.items():
+                                record[clean_field_name(k)] = v
+                            if record[hh_id_col]:
+                                try:
+                                    if sheet_index == 0:
+                                        hh = program.households.create(
+                                            batch=batch, country_office=program.country_office, flex_fields=record
+                                        )
+                                        hh_ids[record[hh_id_col]] = hh.pk
+                                        total_hh += 1
+                                    elif sheet_index == 1:
+                                        program.individuals.create(
+                                            batch=batch,
+                                            country_office=program.country_office,
+                                            household_id=hh_ids[record[hh_id_col]],
+                                            flex_fields=record,
+                                        )
+                                        total_ind += 1
+                                except Exception as e:
+                                    raise Exception(
+                                        "Error processing sheet %s line %s: %s" % (1 + sheet_index, line, e)
                                     )
-                                    hh_ids[record[hh_id_col]] = hh.pk
-                                    total_hh += 1
-                                elif sheet_index == 1:
-                                    program.individuals.create(
-                                        country_office=program.country_office,
-                                        household_id=hh_ids[record[hh_id_col]],
-                                        flex_fields=record,
-                                    )
-                                    total_ind += 1
-                            except Exception as e:
-                                raise Exception("Error processing sheet %s line %s: %s" % (1 + sheet_index, line, e))
                 hh_msg = ngettext("%(c)d Household", "%(c)d Households", total_hh) % {"c": total_hh}
                 ind_msg = ngettext("%(c)d Individual", "%(c)d Individuals", total_ind) % {"c": total_ind}
                 self.message_user(request, _("Imported {0} and {1}").format(hh_msg, ind_msg))

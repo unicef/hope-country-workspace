@@ -1,3 +1,4 @@
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Model
@@ -19,7 +20,9 @@ class SyncManager(BaseManager):
 
 class SyncLog(BaseModel):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    last_update_date = models.DateTimeField()
+    object_id = models.PositiveIntegerField(blank=True, null=True)
+    content_object = GenericForeignKey("content_type", "object_id")
+    last_update_date = models.DateTimeField(null=True, blank=True)
     last_id = models.CharField(max_length=255, null=True)
-
+    data = models.JSONField(default=dict, blank=True)
     objects = SyncManager()

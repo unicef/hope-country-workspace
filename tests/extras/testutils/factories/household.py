@@ -10,6 +10,7 @@ from country_workspace.models import Household
 from country_workspace.workspaces.models import CountryHousehold
 
 from .base import AutoRegisterModelFactory
+from .batch import BatchFactory
 from .office import OfficeFactory
 from .program import ProgramFactory
 
@@ -60,11 +61,9 @@ def get_hh_fields(household: "CountryHousehold"):
         "zip_code": fake.zipcode(),
     }
 
-    #         "hh_electricity_h_f": bool(getrandbits(1)),
-    #         "hh_latrine_h_f": bool(getrandbits(1)),
-
 
 class HouseholdFactory(AutoRegisterModelFactory):
+    batch = factory.SubFactory(BatchFactory)
     country_office = factory.SubFactory(OfficeFactory)
     program = factory.SubFactory(ProgramFactory)
     name = factory.Faker("last_name")
@@ -80,6 +79,7 @@ class HouseholdFactory(AutoRegisterModelFactory):
 
         for i in range(self.flex_fields["size"]):
             IndividualFactory(
+                batch=self.batch,
                 country_office=self.country_office,
                 program=self.program,
                 household=self,
