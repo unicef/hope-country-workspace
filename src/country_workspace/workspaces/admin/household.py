@@ -7,6 +7,7 @@ from django.urls import reverse
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 
+from ...state import state
 from .hh_ind import CountryHouseholdIndividualBaseAdmin
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ class CountryHouseholdAdmin(CountryHouseholdIndividualBaseAdmin):
         ]
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryHousehold]":
-        return super().get_queryset(request)
+        return super().get_queryset(request).filter(batch__country_office=state.tenant)
 
     @link(change_list=False)
     def members(self, btn: LinkButton) -> None:

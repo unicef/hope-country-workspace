@@ -142,7 +142,6 @@ class TenantAdminSite(admin.AdminSite):
 
         for model, model_admin in models.items():
             app_label = model._meta.app_label
-
             has_module_perms = model_admin.has_module_permission(request)
             if not has_module_perms:
                 continue

@@ -1,4 +1,7 @@
+from typing import cast
+
 from django.db import models
+from django.utils.functional import cached_property
 
 from hope_flex_fields.models import DataChecker
 
@@ -19,6 +22,14 @@ class CountryHousehold(Household):
         proxy = True
         verbose_name = "Country Household"
         verbose_name_plural = "Country Households"
+
+    @cached_property
+    def program(self) -> "CountryProgram":
+        return cast(CountryProgram, self.batch.program)
+
+    @cached_property
+    def country_office(self) -> "DataChecker":
+        return self.batch.program.country_office
 
 
 class CountryIndividual(Individual):

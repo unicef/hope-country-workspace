@@ -3,12 +3,11 @@ from django.utils import timezone
 import factory
 
 from country_workspace.models.batch import Batch
+from country_workspace.workspaces.models import CountryBatch
 
 from .base import AutoRegisterModelFactory
+from .program import ProgramFactory
 from .user import UserFactory
-
-# from .office import OfficeFactory
-# from .program import ProgramFactory
 
 
 class BatchFactory(AutoRegisterModelFactory):
@@ -16,8 +15,19 @@ class BatchFactory(AutoRegisterModelFactory):
     import_date = factory.LazyFunction(timezone.now)
     name = factory.Sequence(lambda n: f"Batch {n}")
 
-    country_office = factory.SubFactory("testutils.factories.OfficeFactory")
-    program = factory.SubFactory("testutils.factories.ProgramFactory")
+    # country_office = factory.SubFactory("testutils.factories.OfficeFactory")
+    program = factory.SubFactory(ProgramFactory)
 
     class Meta:
         model = Batch
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        kwargs["country_office"] = kwargs["program"].country_office
+        return super()._create(model_class, *args, **kwargs)
+
+
+class CountryBatchFactory(BatchFactory):
+    class Meta:
+        model = CountryBatch
+        django_get_or_create = ("name",)

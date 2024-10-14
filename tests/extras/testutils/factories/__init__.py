@@ -6,7 +6,7 @@ from factory.django import DjangoModelFactory
 from pytest_factoryboy import register
 
 from .base import AutoRegisterModelFactory, TAutoRegisterModelFactory, factories_registry
-from .batch import BatchFactory  # noqa
+from .batch import BatchFactory, CountryBatchFactory  # noqa
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa

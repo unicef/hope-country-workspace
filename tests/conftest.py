@@ -34,7 +34,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     if not config.option.enable_selenium and ("selenium" not in getattr(config.option, "markexpr")):
-        setattr(config.option, "markexpr", "not selenium")
+        if config.option.markexpr:
+            config.option.markexpr += " and not selenium"
+        else:
+            config.option.markexpr = "not selenium"
     os.environ.update(DJANGO_SETTINGS_MODULE="country_workspace.config.settings")
     os.environ.setdefault("STATIC_URL", "/static/")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")

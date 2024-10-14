@@ -4,6 +4,7 @@ from django.contrib.admin import AdminSite
 from django.db.models import Model
 from django.http import HttpRequest
 
+from ...state import state
 from ..filters import HouseholdFilter, ProgramFilter
 from ..models import CountryHousehold, CountryIndividual, CountryProgram
 from .hh_ind import CountryHouseholdIndividualBaseAdmin
@@ -32,6 +33,9 @@ class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
     def __init__(self, model: Model, admin_site: AdminSite):
         self._selected_household = None
         super().__init__(model, admin_site)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(batch__country_office=state.tenant)
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         program: CountryProgram | None

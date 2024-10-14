@@ -33,7 +33,7 @@ def program(office, worker_id):
 def household(program):
     from testutils.factories import CountryHouseholdFactory
 
-    return CountryHouseholdFactory(program=program, country_office=program.country_office)
+    return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
 
 
 @pytest.mark.selenium
@@ -69,7 +69,7 @@ def test_list_household(selenium, user, household: "CountryHousehold"):
         assert "Please select a program on the left" in selenium.page_source
         selenium.wait_for(
             By.CSS_SELECTOR,
-            "#program__exact_program__isnull .select2-selection.select2-selection--single",
+            "#batch__program__exact_batch__program__isnull .select2-selection.select2-selection--single",
         ).click()
         el = selenium.wait_for(By.CSS_SELECTOR, ".select2-search__field")
         el.send_keys(household.program.name)
@@ -84,7 +84,7 @@ def test_list_household(selenium, user, household: "CountryHousehold"):
             By.CSS_SELECTOR,
             "a.closelink",
         ).click()
-        selenium.wait_for_url(f"/workspaces/countryhousehold/?program__exact={household.program.pk}")
+        selenium.wait_for_url(f"/workspaces/countryhousehold/?batch__program__exact={household.program.pk}")
 
 
 @pytest.mark.selenium

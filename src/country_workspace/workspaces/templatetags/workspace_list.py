@@ -124,7 +124,7 @@ def result_headers(cl: "WorkspaceChangeList"):  # noqa
             o_list_primary.insert(0, make_qs_param(new_order_type, i))
 
         yield {
-            "text": text,
+            "text": text.replace("flex_fields__", ""),
             "sortable": True,
             "sorted": is_sorted,
             "ascending": order_type == "asc",

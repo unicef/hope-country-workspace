@@ -70,13 +70,15 @@ def test_configure_hh_columns(app, household: "CountryHousehold"):
     res = app.get(program.get_change_url())
     res = res.click("Household Columns")
     form = res.forms["configure-columns"]
-    form["columns"] = ["name", "collect_individual_data"]
+    form["columns"] = ["name", "flex_fields__collect_individual_data"]
     form.submit().follow()
     program.refresh_from_db()
     assert program.household_columns == "name\nflex_fields__collect_individual_data"
     hh_list = reverse("workspace:workspaces_countryhousehold_changelist")
-    res = app.get(f"{hh_list}?program__exact={program.pk}")
-    assert "collect_individual_data" in res.text
+    res = app.get(f"{hh_list}?batch__program__exact={program.pk}")
+    assert not res.pyquery("div.text a:contains('flex_fields__collect_individual_data')")
+    assert res.pyquery("div.text a:contains('Collect_individual_data')")
+    # assert "collect_individual_data" in res.text
 
 
 def test_configure_ind_columns(app, household: "CountryHousehold"):
@@ -88,10 +90,10 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
     res = app.get(program.get_change_url())
     res = res.click("Individual Columns")
     form = res.forms["configure-columns"]
-    form["columns"] = ["name", "gender"]
+    form["columns"] = ["name", "flex_fields__gender"]
     form.submit().follow()
     program.refresh_from_db()
     assert program.individual_columns == "name\nflex_fields__gender"
     hh_list = reverse("workspace:workspaces_countryindividual_changelist")
-    res = app.get(f"{hh_list}?program__exact={program.pk}")
+    res = app.get(f"{hh_list}?batch__program__exact={program.pk}")
     assert "gender" in res.text

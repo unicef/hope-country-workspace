@@ -134,13 +134,14 @@ def record(db: Any, program, request: "FixtureRequest") -> Model:
         factory: type[AutoRegisterModelFactory[Any]] = get_factory_for_model(model_admin.model)
         try:
             kwargs: dict[str, Any] = {}
-
             if "program" in model_admin.model._meta.fields:
                 kwargs["program"] = program
                 kwargs["country_office"] = program.country_office
             elif "country_office" in model_admin.model._meta.fields:
                 kwargs["country_office"] = program.country_office
             instance = factory(**kwargs)
+            # if hasattr(instance, "batch"):
+            state.tenant = instance.country_office
         except Exception as e:
             raise Exception(f"Error creating fixture for {factory} using {KWARGS}") from e
     return instance

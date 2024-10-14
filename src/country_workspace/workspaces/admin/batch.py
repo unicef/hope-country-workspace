@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
+from ...state import state
 from ..options import WorkspaceModelAdmin
 
 if TYPE_CHECKING:
@@ -18,4 +19,7 @@ class CountryBatchAdmin(WorkspaceModelAdmin):
     ordering = ("name",)
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryBatch]":
-        return super().get_queryset(request)
+        return super().get_queryset(request).filter(country_office=state.tenant)
+
+    def has_add_permission(self, request, obj=None):
+        return False

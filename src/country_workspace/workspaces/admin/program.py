@@ -131,10 +131,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 columns = []
                 for s in form.cleaned_data["columns"]:
                     columns.append(s)
-                    # if s in form.model_core_fields:
-                    #     columns.append(s)
-                    # else:
-                    #     columns.append("flex_fields__%s" % s)
                 setattr(program, context["storage_field"], "\n".join(columns))
                 program.save()
                 return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))

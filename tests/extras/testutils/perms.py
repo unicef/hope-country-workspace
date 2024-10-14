@@ -7,7 +7,7 @@ from django.contrib.auth.models import Group, Permission
 
 from faker import Faker
 
-from country_workspace.models import Office, UserRole
+from country_workspace.models import Office, Program, UserRole
 from country_workspace.state import state
 
 from .factories import GroupFactory
@@ -132,6 +132,7 @@ class user_grant_permissions(ContextDecorator):  # noqa
         "_officepermissionchecker",
         "_perm_cache",
         "_dss_acl_cache",
+        "_tenant_cache",
     ]
 
     def __init__(self, user, permissions=None, country_office_or_program=None, group_name=None):
@@ -144,23 +145,23 @@ class user_grant_permissions(ContextDecorator):  # noqa
         if isinstance(country_office_or_program, Office):
             self.country_office = country_office_or_program
             self.program = None
-        else:
+        elif isinstance(country_office_or_program, Program):
             self.country_office = country_office_or_program.country_office
             self.program = country_office_or_program
+        else:
+            raise ValueError(country_office_or_program)
 
     def __enter__(self):
         for cache in self.caches:
             if hasattr(self.user, cache):
                 delattr(self.user, cache)
-        if self.country_office:
-            cache_name = "_power_query_%s_perm_cache" % self.country_office.pk
-            if hasattr(self.user, cache_name):
-                delattr(self.user, cache_name)
 
         self.group = get_group(name=self.group_name, permissions=self.permissions or [])
-        self.user.groups.add(self.group)
+        # self.user.groups.add(self.group)
         if self.country_office:
-            UserRole.objects.get_or_create(country_office=self.country_office, user=self.user, group=self.group)
+            UserRole.objects.get_or_create(
+                country_office=self.country_office, program=self.program, user=self.user, group=self.group
+            )
         return self
 
     def __exit__(self, e_typ, e_val, trcbak):

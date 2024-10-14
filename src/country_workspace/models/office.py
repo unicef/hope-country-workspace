@@ -13,5 +13,7 @@ class Office(BaseModel):
     slug = models.SlugField(max_length=100, blank=True, null=True, db_index=True)
     active = models.BooleanField(default=False)
 
+    extra_fields = models.JSONField(default=dict, blank=True, null=False)
+
     def __str__(self) -> str:
         return str(self.name)

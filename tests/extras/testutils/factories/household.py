@@ -10,7 +10,7 @@ from country_workspace.models import Household
 from country_workspace.workspaces.models import CountryHousehold
 
 from .base import AutoRegisterModelFactory
-from .batch import BatchFactory
+from .batch import CountryBatchFactory
 
 fake = Faker()
 
@@ -61,7 +61,7 @@ def get_hh_fields(household: "CountryHousehold"):
 
 
 class HouseholdFactory(AutoRegisterModelFactory):
-    batch = factory.SubFactory(BatchFactory)
+    batch = factory.SubFactory(CountryBatchFactory)
     # country_office = factory.SubFactory(OfficeFactory)
     # program = factory.SubFactory(ProgramFactory)
     name = factory.Faker("last_name")

@@ -8,6 +8,9 @@ from .base import BaseModel, Validable
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
+    from .office import Office
+    from .program import Program
+
 
 class Household(Validable, BaseModel):
     system_fields = models.JSONField(default=dict, blank=True)
@@ -23,9 +26,9 @@ class Household(Validable, BaseModel):
         return self.program.household_checker
 
     @cached_property
-    def program(self) -> "DataChecker":
+    def program(self) -> "Program":
         return self.batch.program
 
     @cached_property
-    def country_office(self) -> "DataChecker":
+    def country_office(self) -> "Office":
         return self.batch.program.country_office
