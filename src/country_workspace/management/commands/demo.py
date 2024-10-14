@@ -53,10 +53,10 @@ class Command(BaseCommand):
 
         import vcr
         from hope_flex_fields.models import FieldDefinition
-        from testutils.factories import HouseholdFactory
+        from testutils.factories import BatchFactory, HouseholdFactory
         from vcr.record_mode import RecordMode
 
-        from country_workspace.models import Batch
+        from country_workspace.models import Batch, Household
         from country_workspace.sync.office import sync_all
 
         ct = ContentType.objects.get_for_model(FieldDefinition)
@@ -73,6 +73,8 @@ class Command(BaseCommand):
                 sync_all()
 
         Batch.objects.all().delete()
+        Household.objects.all().delete()
         for co in Office.objects.filter(active=True):
             for p in co.programs.filter():
-                HouseholdFactory.create_batch(10, country_office=co, program=p)
+                b = BatchFactory(country_office=co, name=f"Batch {p}", program=p)
+                HouseholdFactory.create_batch(10, batch=b)

@@ -1,3 +1,4 @@
+from .batch import BatchAdmin  # noqa
 from .household import HouseholdAdmin  # noqa
 from .individual import IndividualAdmin  # noqa
 from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin  # noqa

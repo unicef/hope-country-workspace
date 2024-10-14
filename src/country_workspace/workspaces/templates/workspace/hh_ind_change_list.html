@@ -3,6 +3,7 @@
 
 {% block coltype %}{% endblock %}
 {% block pretitle %}
+    {{ selected_program }}
     {% include "workspace/includes/program_title.html" with program=selected_program %}
 {% endblock %}
 {% block content %}

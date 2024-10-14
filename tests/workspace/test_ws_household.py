@@ -42,7 +42,7 @@ def program(office):
 def household(program):
     from testutils.factories import CountryHouseholdFactory
 
-    return CountryHouseholdFactory(program=program, country_office=program.country_office)
+    return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
 
 
 @pytest.fixture()
@@ -69,7 +69,7 @@ def test_hh_changelist(app: "DjangoTestApp", household: "CountryHousehold") -> N
     assert res.status_code == 200, res.location
     assert f"Add {household._meta.verbose_name}" not in res.text
     # filter by program
-    res = app.get(f"{url}?program__exact={household.program.pk}")
+    res = app.get(f"{url}?batch__program__exact={household.program.pk}")
     assert res.status_code == 200, res.location
 
 

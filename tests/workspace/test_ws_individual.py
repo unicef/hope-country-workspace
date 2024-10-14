@@ -4,7 +4,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.urls import reverse
 
 import pytest
-from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
 
 from country_workspace.state import state
@@ -42,15 +41,13 @@ def program(office):
 def individual(program):
     from testutils.factories import CountryIndividualFactory
 
-    return CountryIndividualFactory(program=program, country_office=program.country_office)
+    return CountryIndividualFactory(
+        household__batch__program=program, household__batch__country_office=program.country_office
+    )
 
 
 @pytest.fixture()
-def app(
-    django_app_factory: "MixinWithInstanceVariables",
-    mocked_responses: "RequestsMock",
-    settings: SettingsWrapper,
-) -> "DjangoTestApp":
+def app(django_app_factory: "MixinWithInstanceVariables", mocked_responses: "RequestsMock") -> "DjangoTestApp":
     from testutils.factories import SuperUserFactory
 
     django_app = django_app_factory(csrf_checks=False)
@@ -69,7 +66,7 @@ def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -
     assert res.status_code == 200, res.location
     assert f"Add {individual._meta.verbose_name}" not in res.text
     # filter by program
-    res = app.get(f"{url}?program__exact={individual.program.pk}")
+    res = app.get(f"{url}?batch__program__exact={individual.program.pk}")
     assert res.status_code == 200, res.location
 
 

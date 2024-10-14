@@ -1,5 +1,4 @@
 <h1>
-
     {% if program %}
         <a href="{% url "workspace:workspaces_countryprogram_change" program.pk %}">{{ program }}</a>
 
@@ -11,7 +10,7 @@
             <a href="{% url "workspace:workspaces_countryhousehold_change" household.pk %}">{{ household }}</a>
             {% if perms.country_workspace.change_household %}
                 <a class="icon icon-cogs small" target="_admin"
-                   href="{% url "admin:country_workspace_household_change" selected_household.pk %}"></a>
+                   href="{% url "admin:country_workspace_household_change" household.pk %}"></a>
             {% endif %}
 
         {% endif %}

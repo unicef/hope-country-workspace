@@ -26,19 +26,19 @@ from .forms import ImportFileForm
 
 class SelectColumnsForm(forms.Form):
     columns = forms.MultipleChoiceField(choices=(), widget=forms.CheckboxSelectMultiple)
+    model_core_fields = [("name", "name"), ("id", "id")]
 
     def __init__(self, *args: Any, **kwargs: Any):
         self.checker: "DataChecker" = kwargs.pop("checker")
-        self.checker_fields = {}
         super().__init__(*args, **kwargs)
-        columns: list[tuple[str, str]] = [("name", "name"), ("id", "id")]
+        columns: list[tuple[str, str]] = []
         for k, f in self.checker.get_form().declared_fields.items():
-            columns.append((k, f.label))
-            self.checker_fields[k] = f
-        self.fields["columns"].choices = columns
-        # columns = [(k, f.label) for k, f in self.checker.get_form().declared_fields.items()]
-        # self.fields["columns"].choices = columns
-        # self.checker_fields = {k:v for k, v in self.checker.get_fields()}
+            columns.append((f"flex_fields__{k}", f.label))
+        self.fields["columns"].choices = self.model_core_fields + sorted(columns)
+
+
+class SelectIndividualColumnsForm(SelectColumnsForm):
+    model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
 
 
 class ProgramForm(forms.ModelForm):
@@ -102,21 +102,27 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def population(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryhousehold_changelist")
         obj = btn.context["original"]
-        btn.href = f"{base}?program__exact={obj.pk}"
+        btn.href = f"{base}?batch__program__exact={obj.pk}"
 
     @button()
     def sync(self, request: HttpResponse) -> None:
         sync_programs(state.tenant)
 
-    def _configure_columns(self, request: HttpResponse, context: dict[str, Any]) -> "HttpResponse":
+    def _configure_columns(
+        self,
+        request: HttpResponse,
+        form_class: "type[SelectColumnsForm|SelectIndividualColumnsForm]",
+        context: dict[str, Any],
+    ) -> "HttpResponse":
 
         program: "CountryProgram" = context["original"]
         checker: DataChecker = context["checker"]
 
-        initials = [s.replace("flex_fields__", "") for s in getattr(program, context["storage_field"]).split("\n")]
+        # initials = [s.replace("flex_fields__", "") for s in getattr(program, context["storage_field"]).split("\n")]
+        initials = [s for s in getattr(program, context["storage_field"]).split("\n")]
 
         if request.method == "POST":
-            form = SelectColumnsForm(
+            form = form_class(
                 request.POST,
                 checker=checker,
                 initial={"columns": initials},
@@ -124,16 +130,18 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             if form.is_valid():
                 columns = []
                 for s in form.cleaned_data["columns"]:
-                    if s in ["name", "id"]:
-                        columns.append(s)
-                    else:
-                        columns.append("flex_fields__%s" % s)
+                    columns.append(s)
+                    # if s in form.model_core_fields:
+                    #     columns.append(s)
+                    # else:
+                    #     columns.append("flex_fields__%s" % s)
                 setattr(program, context["storage_field"], "\n".join(columns))
                 program.save()
                 return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
         else:
-            form = SelectColumnsForm(checker=checker, initial={"columns": initials})
+            form = form_class(checker=checker, initial={"columns": initials})
         context["form"] = form
+
         return render(request, "workspace/program/configure_columns.html", context)
 
     @button()
@@ -142,7 +150,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         program: "CountryProgram" = context["original"]
         context["checker"]: "DataChecker" = program.household_checker
         context["storage_field"] = "household_columns"
-        return self._configure_columns(request, context)
+        return self._configure_columns(request, SelectColumnsForm, context)
 
     @button()
     def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
@@ -150,7 +158,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         program: "CountryProgram" = context["original"]
         context["checker"]: "DataChecker" = program.individual_checker
         context["storage_field"] = "individual_columns"
-        return self._configure_columns(request, context)
+        return self._configure_columns(request, SelectIndividualColumnsForm, context)
 
     @button(label=_("Import File"))
     def import_rdi(self, request: HttpRequest, pk: str) -> "HttpResponse":
@@ -164,7 +172,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 with atomic():
                     batch_name = form.cleaned_data["batch_name"]
                     batch, __ = Batch.objects.get_or_create(
-                        label=batch_name or ("Batch %s" % timezone.now()), imported_by=request.user
+                        name=batch_name or ("Batch %s" % timezone.now()),
+                        program=program,
+                        country_office=program.country_office,
+                        imported_by=request.user,
                     )
                     hh_id_col = form.cleaned_data["pk_column_name"]
                     total_hh = total_ind = 0
@@ -176,15 +187,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                             if record[hh_id_col]:
                                 try:
                                     if sheet_index == 0:
-                                        hh = program.households.create(
-                                            batch=batch, country_office=program.country_office, flex_fields=record
-                                        )
+                                        hh = program.households.create(batch=batch, flex_fields=record)
                                         hh_ids[record[hh_id_col]] = hh.pk
                                         total_hh += 1
                                     elif sheet_index == 1:
                                         program.individuals.create(
                                             batch=batch,
-                                            country_office=program.country_office,
                                             household_id=hh_ids[record[hh_id_col]],
                                             flex_fields=record,
                                         )

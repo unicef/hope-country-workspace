@@ -11,10 +11,10 @@ from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
 from admin_extra_buttons.decorators import button
+from adminfilters.autocomplete import LinkedAutoCompleteFilter
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
 
-from ..filters import ProgramFilter
 from ..options import WorkspaceModelAdmin
 
 if TYPE_CHECKING:
@@ -23,7 +23,10 @@ if TYPE_CHECKING:
 
 
 class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
-    list_filter = (("program", ProgramFilter), "batch")
+    list_filter = (
+        ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
+        ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+    )
     actions = ["validate_queryset"]
 
     @button(label=_("Validate"))
@@ -34,12 +37,12 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         else:
             self.message_user(request, _("Validation failed!"), messages.ERROR)
 
-    @button(label=_("Validate Program"), visible=lambda b: "program__exact" in b.context["request"].GET)
+    @button(label=_("Validate Program"), visible=lambda b: "batch__program__exact" in b.context["request"].GET)
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         from .program import CountryProgram
 
         if cl_flt := request.GET.get("_changelist_filters", ""):
-            if prg := parse_qs(cl_flt).get("program__exact"):
+            if prg := parse_qs(cl_flt).get("batch__program__exact"):
                 self._selected_program = CountryProgram.objects.get(pk=prg[0])
                 qs = self.get_queryset(request).filter(program=self._selected_program)
                 self.validate_queryset(request, qs)
@@ -88,9 +91,9 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
 
         self._selected_program = None
         if obj:
-            self._selected_program = obj.program
-        elif "program__exact" in request.GET:
-            self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
+            self._selected_program = obj.batch.program
+        elif "batch__program__exact" in request.GET:
+            self._selected_program = CountryProgram.objects.get(pk=request.GET["batch__program__exact"])
         return self._selected_program
 
     def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:

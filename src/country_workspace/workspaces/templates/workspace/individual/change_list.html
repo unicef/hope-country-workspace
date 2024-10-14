@@ -1,17 +1,5 @@
 {% extends "workspace/hh_ind_change_list.html" %}
 {% load i18n admin_urls static admin_list workspace_urls workspace_list  %}
 {% block pretitle %}
-        <h1>
-    {% if selected_program  %}
-            <a href="{% url "workspace:workspaces_countryprogram_change" selected_program.pk %}">{{ selected_program }}</a>
-            {% if user.is_superuser %}<a class="icon icon-cogs" href="{% url "admin:country_workspace_program_change" selected_program.pk %}"></a>{% endif %}
-
-    {% endif %}
-    {% if selected_household  %}
-            <a href="{% url "workspace:workspaces_countryprogram_change" selected_household.pk %}">{{ selected_household }}</a>
-            {% if user.is_superuser %}<a class="icon icon-cogs" href="{% url "admin:country_workspace_program_change" selected_household.pk %}"></a>{% endif %}
-
-    {% endif %}
-        </h1>
-
+    {% include "workspace/includes/program_title.html" with program=selected_program household=selected_household %}
 {% endblock %}

@@ -21,3 +21,11 @@ class Household(Validable, BaseModel):
     @cached_property
     def checker(self) -> "DataChecker":
         return self.program.household_checker
+
+    @cached_property
+    def program(self) -> "DataChecker":
+        return self.batch.program
+
+    @cached_property
+    def country_office(self) -> "DataChecker":
+        return self.batch.program.country_office

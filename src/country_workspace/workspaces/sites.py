@@ -66,6 +66,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
                 remote_model = source_field.model
             except AttributeError as e:
                 raise PermissionDenied from e
+        model_admin = None
         try:
             model_admin = self.admin_site._registry[remote_model]
         except KeyError as e:
@@ -76,6 +77,9 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
                     raise PermissionDenied from e
 
         # Validate suitability of objects.
+        if not model_admin:
+            raise ValueError("%s is not registered" % remote_model.__qualname__)
+
         if not model_admin.get_search_fields(request):
             raise Http404("%s must have search_fields for the autocomplete_view." % type(model_admin).__qualname__)
 

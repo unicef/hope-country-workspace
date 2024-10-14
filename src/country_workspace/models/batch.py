@@ -1,14 +1,15 @@
 from django.db import models
 
-from . import User
 from .base import BaseModel
+from .user import User
 
 
 class Batch(BaseModel):
-    label = models.CharField(max_length=255, blank=True, null=True)
-
+    country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
+    program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
+    name = models.CharField(max_length=255, blank=True, null=True)
     import_date = models.DateTimeField(auto_now=True)
     imported_by = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = (("import_date", "label"),)
+        unique_together = (("import_date", "name"),)

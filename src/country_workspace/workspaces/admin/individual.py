@@ -10,16 +10,19 @@ from .hh_ind import CountryHouseholdIndividualBaseAdmin
 
 
 class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
-    list_display = ["name", "program", "household", "country_office"]
+    list_display = [
+        "name",
+        "household",
+    ]
     search_fields = ("name",)
     list_filter = (
-        ("program", ProgramFilter),
+        ("batch__program", ProgramFilter),
         ("household", HouseholdFilter),
     )
     exclude = [
         "household",
-        "country_office",
-        "program",
+        # "country_office",
+        # "program",
         "user_fields",
     ]
     change_list_template = "workspace/individual/change_list.html"

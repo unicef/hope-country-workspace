@@ -2,9 +2,16 @@ from django.db import models
 
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import Household, Individual, Office, Program
+from country_workspace.models import Batch, Household, Individual, Office, Program
 
 __all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual"]
+
+
+class CountryBatch(Batch):
+    class Meta:
+        proxy = True
+        verbose_name = "Country Batch"
+        verbose_name_plural = "Country Batches"
 
 
 class CountryHousehold(Household):
@@ -12,19 +19,16 @@ class CountryHousehold(Household):
         proxy = True
         verbose_name = "Country Household"
         verbose_name_plural = "Country Households"
-        # app_label = "country_workspace"
 
 
 class CountryIndividual(Individual):
     class Meta:
         proxy = True
-        # app_label = "country_workspace"
 
 
 class CountryProgram(Program):
     class Meta:
         proxy = True
-        # app_label = "country_workspace"
 
 
 class CountryChecker(DataChecker):

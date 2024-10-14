@@ -69,6 +69,18 @@ class Program(BaseModel):
         verbose_name = _("Programme")
         verbose_name_plural = _("Programmes")
 
+    @property
+    def households(self):
+        from country_workspace.models import Household
+
+        return Household.objects.filter(batch__program=self)
+
+    @property
+    def individuals(self):
+        from country_workspace.models import Individual
+
+        return Individual.objects.filter(batch__program=self)
+
     def get_checker_for(self, m: Union[type[Validable], Validable]) -> DataChecker:
         from country_workspace.models import Household, Individual
 

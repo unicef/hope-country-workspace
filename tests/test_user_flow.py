@@ -35,7 +35,7 @@ def user():
 def data(program):
     from testutils.factories import HouseholdFactory
 
-    return HouseholdFactory.create_batch(10, program=program, country_office=program.country_office)
+    return HouseholdFactory.create_batch(10, batch__program=program, batch__country_office=program.country_office)
 
 
 @pytest.fixture()
@@ -82,7 +82,7 @@ def test_login(app, user, program, data):
         ],
         program.country_office,
     ):
-        hh = program.country_office.households.first()
+        hh = program.country_office.programs.first().households.first()
         res = app.get(reverse("workspace:select_tenant"), user=user)
         res.forms["select-tenant"]["tenant"] = program.country_office.pk
         res = res.forms["select-tenant"].submit()
@@ -91,7 +91,7 @@ def test_login(app, user, program, data):
         res = res.click("Country Households")
         assert "Please select a program on the left" in res.text
         base_url = reverse("workspace:workspaces_countryhousehold_changelist")
-        res = app.get(f"{base_url}?program__exact={hh.program.id}", user=user)
+        res = app.get(f"{base_url}?batch__program__exact={hh.program.id}", user=user)
         res = res.click(hh.name)
         res = res.click("Close", verbose=True)
 

@@ -11,12 +11,12 @@ from .base import BaseModelAdmin
 
 @admin.register(Individual)
 class IndividualAdmin(BaseModelAdmin):
-    list_display = ("name", "country_office")
-    readonly_fields = ("country_office",)
+    list_display = ("name", "batch")
+    # readonly_fields = ("country_office",)
     search_fields = ("name",)
     list_filter = (
-        ("country_office", LinkedAutoCompleteFilter.factory(parent=None)),
-        ("program", LinkedAutoCompleteFilter.factory(parent="country_office")),
+        ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
+        ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
     )
 
     @link(change_list=True, change_form=False)

@@ -11,8 +11,6 @@ from country_workspace.workspaces.models import CountryHousehold
 
 from .base import AutoRegisterModelFactory
 from .batch import BatchFactory
-from .office import OfficeFactory
-from .program import ProgramFactory
 
 fake = Faker()
 
@@ -64,14 +62,21 @@ def get_hh_fields(household: "CountryHousehold"):
 
 class HouseholdFactory(AutoRegisterModelFactory):
     batch = factory.SubFactory(BatchFactory)
-    country_office = factory.SubFactory(OfficeFactory)
-    program = factory.SubFactory(ProgramFactory)
+    # country_office = factory.SubFactory(OfficeFactory)
+    # program = factory.SubFactory(ProgramFactory)
     name = factory.Faker("last_name")
     flex_fields = factory.LazyAttribute(get_hh_fields)
 
     class Meta:
         model = Household
         django_get_or_create = ("name",)
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+
+        # kwargs["country_office"] = kwargs["batch"].country_office
+        # kwargs["program"] = kwargs["batch"].program
+        return super()._create(model_class, *args, **kwargs)
 
     @factory.post_generation
     def individuals(self, create, extracted, **kwargs):
@@ -80,8 +85,8 @@ class HouseholdFactory(AutoRegisterModelFactory):
         for i in range(self.flex_fields["size"]):
             IndividualFactory(
                 batch=self.batch,
-                country_office=self.country_office,
-                program=self.program,
+                # country_office=self.country_office,
+                # program=self.program,
                 household=self,
             )
 

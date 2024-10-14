@@ -14,6 +14,7 @@ class Config(AppConfig):
         from . import admin
         from .sites import workspace
 
+        workspace.register(models.CountryBatch, admin.CountryBatchAdmin)
         workspace.register(models.CountryHousehold, admin.CountryHouseholdAdmin)
         workspace.register(models.CountryIndividual, admin.CountryIndividualAdmin)
         workspace.register(models.CountryProgram, admin.CountryProgramAdmin)

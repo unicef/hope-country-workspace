@@ -14,29 +14,13 @@
     <form method="post" id="configure-columns">
         {% csrf_token %}
         <table>
-            <tr>
-                <td><input type="checkbox"
-                           name="columns" {% if "name" in form.initial.columns %}checked="checked"{% endif %}value="name"
-                           id="id_columns_name"></td>
-                <td><label for="id_columns_name">record title</label></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td><input type="checkbox"
-                           name="columns" {% if "id" in form.initial.columns %}checked="checked"{% endif %}value="id"
-                           id="id_columns_id"></td>
-                <td><label for="id_columns_id">record id</label></td>
-                <td></td>
-                <td></td>
-            </tr>
-            {% for l,f in form.checker_fields.items %}
+            {% for l,n in form.fields.columns.choices %}
                 <tr>
                     <td><input type="checkbox"
                                name="columns"
                                {% if l in form.initial.columns %}checked="checked"{% endif %}value="{{ l }}"
                                id="id_columns_{{ l }}"></td>
-                    <td><label for="id_columns_{{ l }}">{{ l }}</label></td>
+                    <td><label for="id_columns_{{ l }}">{{ n }}</label></td>
                     <td>{{ f.flex_field.field }}</td>
                     <td>{{ f.flex_field.field.description }}</td>
                 </tr>

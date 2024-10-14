@@ -4,18 +4,15 @@ from django.urls import reverse
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 
-from ..models import Household
+from ..models import Batch
 from .base import BaseModelAdmin
 
 
-@admin.register(Household)
-class HouseholdAdmin(BaseModelAdmin):
-    list_display = ("name", "batch")
-    # list_filter = (
-    #     ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
-    #     ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
-    # )
-    # readonly_fields = ("country_office", "program")
+@admin.register(Batch)
+class BatchAdmin(BaseModelAdmin):
+    list_display = ("name", "import_date", "imported_by")
+
+    readonly_fields = ("country_office", "program")
     search_fields = ("name",)
 
     @link(change_list=False)
