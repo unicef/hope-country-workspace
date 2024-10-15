@@ -67,8 +67,11 @@ class Command(BaseCommand):
             )
 
         if settings.HOPE_API_TOKEN:
-            sync_all()
+            print("Syncing online")
+            with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.ALL):
+                sync_all()
         else:
+            print("Syncing using cassette")
             with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.NONE):
                 sync_all()
 

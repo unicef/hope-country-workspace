@@ -18,6 +18,7 @@ from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
 
 from ..options import WorkspaceModelAdmin
+from . import actions
 
 if TYPE_CHECKING:
     from ...models.base import Validable
@@ -64,7 +65,7 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
         # ("batch", BatchFilter),
     )
-    actions = ["validate_queryset"]
+    actions = ["validate_queryset", actions.mass_update]
 
     @button(label=_("Validate"))
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":

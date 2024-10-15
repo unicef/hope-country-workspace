@@ -1,24 +1,4 @@
-{% extends "workspace/admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
-
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-{% block breadcrumbs-items %}
-<a href="{% url 'workspace:index' %}">{% translate 'Workspaces' %}</a>
-&rsaquo; <a href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
-&rsaquo; {% if has_view_permission %}
-    {% url opts|workspace_urlname:'changelist' as cl_url %}
-    <a href="{% add_preserved_filters cl_url %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}{{ opts.verbose_name_plural|capfirst }}{% endif %}
-
-    {% url opts|workspace_urlname:'change' original.pk as cf_url %}
-{#    &rsaquo; <a href="{% add_preserved_filters cf_url %}">{{ original }}</a>#}
-    &rsaquo; <a href="{{ cf_url }}?_changelist_filters={{ preserved_filters }}">{{ original }}</a>
-
-{#    &rsaquo; {% if add %}{% blocktranslate with name=opts.verbose_name %}Add {{ name }}{% endblocktranslate %}{% else %}{{ original|truncatewords:"18" }}{% endif %}#}
-
-    {% block breadcrumbs-active %}&rsaquo; {{ title }}{% endblock %}
-{% endblock %}
-</div>
-{% endblock %}
+{% extends "workspace//action_page.html" %}{% load i18n workspace_urls workspace_modify %}
 
 {% block content %}
     <table>
