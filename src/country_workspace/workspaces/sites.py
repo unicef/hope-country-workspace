@@ -26,6 +26,12 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
         return self.model_admin.has_view_permission(request, obj=obj)
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        params = {
+            k: v for k, v in self.request.GET.items() if k not in ["app_label", "model_name", "field_name", "term"]
+        }
+        return queryset.filter(**params)
+
     def get_queryset(self) -> QuerySet:
         """Return queryset based on ModelAdmin.get_search_results()."""
         qs = self.model_admin.get_queryset(self.request)
@@ -34,7 +40,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
         qs, search_use_distinct = self.model_admin.get_search_results(self.request, qs, self.term)
         if search_use_distinct:
             qs = qs.distinct()
-        return qs
+        return self.filter_queryset(qs)
 
     def process_request(self, request: HttpRequest):  # noqa C901
         """

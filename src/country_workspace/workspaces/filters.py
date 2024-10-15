@@ -13,21 +13,30 @@ class ProgramFilter(LinkedAutoCompleteFilter):
         if self.lookup_val:
             p = state.tenant.programs.get(pk=self.lookup_val)
             # if request.usser.has_perm()
-            queryset = super().queryset(request, queryset)
+            queryset = super().queryset(request, queryset).filter(batch__program=p)
             state.program = p
         return queryset
 
 
 class BatchFilter(LinkedAutoCompleteFilter):
-    # def has_output(self) -> bool:
-    #     return bool("batch__program__exact" in self.request.GET)
+    def has_output(self) -> bool:
+        return bool("batch__program__exact" in self.request.GET)
+
+    # def get_url(self):
+    #     url = reverse("%s:autocomplete" % self.admin_site.name)
+    #     # if self.parent_lookup_kwarg in self.request.GET:
+    #     #     flt = self.parent_lookup_kwarg.split("__")[-2]
+    #     if self.has_output():
+    #         oid = self.request.GET["batch__program__exact"]
+    #         return f"{url}?program__exact={oid}"
+    #     return url
 
     def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
         if self.lookup_val:
-            p = state.tenant.programs.get(pk=self.lookup_val)
+            # p = state.tenant.programs.get(pk=self.lookup_val)
             # if request.usser.has_perm()
-            queryset = super().queryset(request, queryset)
-            state.program = p
+            queryset = super().queryset(request, queryset).filter(batch=self.lookup_val)
+            # state.program = p
         return queryset
 
 

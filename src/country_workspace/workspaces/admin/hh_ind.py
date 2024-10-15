@@ -8,9 +8,11 @@ from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.utils.translation import gettext as _
 
-from admin_extra_buttons.decorators import button
+from admin_extra_buttons.buttons import LinkButton
+from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import LinkedAutoCompleteFilter
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from hope_flex_fields.models import DataChecker
@@ -22,10 +24,45 @@ if TYPE_CHECKING:
     from .program import CountryProgram
 
 
-class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, WorkspaceModelAdmin):
+class SelectedProgramMixin(WorkspaceModelAdmin):
+
+    def get_selected_program(self, request: HttpRequest, obj: "Optional[Validable]" = None) -> "CountryProgram | None":
+        from country_workspace.workspaces.models import CountryProgram
+
+        self._selected_program = None
+        if obj:
+            self._selected_program = obj.batch.program
+        elif "program__exact" in request.GET:
+            self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
+        elif "batch__program__exact" in request.GET:
+            self._selected_program = CountryProgram.objects.get(pk=request.GET["batch__program__exact"])
+        return self._selected_program
+
+    def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+        ret = super().get_common_context(request, pk, **kwargs)
+
+        ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
+        ret["preserved_filters"] = request.GET.get("_changelist_filters", "")
+        return ret
+
+    def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:
+        context = self.get_common_context(request, title="")
+        context.update(extra_context or {})
+        return super().changelist_view(request, context)
+
+    @link()
+    def import_rdi(self, btn: LinkButton) -> None:
+        btn.visible = False
+        if prg := self.get_selected_program(btn.context["request"]):
+            btn.href = reverse("workspace:workspaces_countryprogram_import_rdi", args=[prg.pk])
+            btn.visible = True
+
+
+class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
     list_filter = (
         ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+        # ("batch", BatchFilter),
     )
     actions = ["validate_queryset"]
 
@@ -66,7 +103,7 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
 
     @button()
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
-        context = self.get_common_context(request, pk)
+        context = self.get_common_context(request, pk, title="Raw Data")
         return render(request, "workspace/raw_data.html", context)
 
     def is_valid(self, obj: "Validable") -> bool | None:
@@ -80,26 +117,15 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         from ..changelist import FlexFieldsChangeList
 
         if program := self.get_selected_program(request):
-            return type("FlexFieldsChangeList", (FlexFieldsChangeList,), {"checker": program.household_checker})
+            return type(
+                "FlexFieldsChangeList",
+                (FlexFieldsChangeList,),
+                {"checker": program.household_checker, "selected_program": self.get_selected_program(request)},
+            )
         return FlexFieldsChangeList
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
-
-    def get_selected_program(self, request: HttpRequest, obj: "Optional[Validable]" = None) -> "CountryProgram | None":
-        from country_workspace.workspaces.models import CountryProgram
-
-        self._selected_program = None
-        if obj:
-            self._selected_program = obj.batch.program
-        elif "batch__program__exact" in request.GET:
-            self._selected_program = CountryProgram.objects.get(pk=request.GET["batch__program__exact"])
-        return self._selected_program
-
-    def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:
-        context = self.get_common_context(request, title="")
-        context.update(extra_context or {})
-        return super().changelist_view(request, context)
 
     def get_checker(self, request: HttpRequest, obj: Optional[str] = None) -> "DataChecker":
         if obj:
@@ -107,12 +133,6 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Workspac
         elif p := self.get_selected_program(request):
             return p.household_checker
         raise Http404("No Household checkers available")
-
-    def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
-        ret = super().get_common_context(request, pk, **kwargs)
-
-        ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
-        return ret
 
     def _changeform_view(
         self, request: HttpRequest, object_id: str, form_url: str, extra_context: dict[str, Any]

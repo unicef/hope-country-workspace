@@ -11,6 +11,15 @@
 
 {% block content %}
     <h2>{{ checker }}</h2>
+        {% block object-tools %}
+{% if change and not is_popup %}
+  <ul class="object-tools">
+    {% block object-tools-items %}
+        {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+    {% endblock %}
+  </ul>
+{% endif %}
+{% endblock %}
     <form method="post" id="configure-columns">
         {% csrf_token %}
         <table>

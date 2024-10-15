@@ -37,7 +37,10 @@
 {% endif %}
 
 {% block coltype %}{% endblock %}
-
+{% block content_title %}{% endblock %}
+{% block pretitle %}
+    {% include "workspace/includes/program_title.html" with program=selected_program %}
+{% endblock %}
 {% block content %}
   <div id="content-main">
     {% block object-tools %}

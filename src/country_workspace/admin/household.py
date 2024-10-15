@@ -23,3 +23,10 @@ class HouseholdAdmin(BaseModelAdmin):
         base = reverse("admin:country_workspace_individual_changelist")
         obj = button.context["original"]
         button.href = f"{base}?household__exact={obj.pk}"
+
+    @link(change_list=True, change_form=False)
+    def view_in_workspace(self, btn: "LinkButton") -> None:
+        if "request" in btn.context:
+            req = btn.context["request"]
+            base = reverse("workspace:workspaces_countryhousehold_changelist")
+            btn.href = f"{base}?%s" % req.META["QUERY_STRING"]

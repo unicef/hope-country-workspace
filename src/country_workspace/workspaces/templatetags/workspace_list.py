@@ -2,6 +2,7 @@ import datetime
 from typing import TYPE_CHECKING
 
 from django.contrib.admin import ModelAdmin
+from django.contrib.admin.templatetags import admin_list
 from django.contrib.admin.templatetags.admin_list import ResultList as DjangoResultList
 from django.contrib.admin.templatetags.admin_list import _coerce_field_name, result_hidden_fields
 from django.contrib.admin.utils import display_for_field, display_for_value, label_for_field, lookup_field
@@ -37,6 +38,17 @@ def flex_field_lookup_field(field_name: str, result, model_admin: "ModelAdmin") 
     dict_key = field_name.replace("flex_fields__", "")
     f, attr, value = lookup_field(lambda o: o.flex_fields.get(dict_key), result, model_admin)
     return f, attr, value
+
+
+@register.tag(name="search_form")
+def search_form_tag(parser, token):
+    return WorkspaceInclusionAdminNode(
+        parser,
+        token,
+        func=admin_list.search_form,
+        template_name="w_search_form.html",
+        takes_context=False,
+    )
 
 
 def result_headers(cl: "WorkspaceChangeList"):  # noqa

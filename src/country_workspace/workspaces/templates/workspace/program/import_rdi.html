@@ -19,6 +19,15 @@
 {#    </h1>#}
 {% endblock %}
 {% block content %}
+    {% block object-tools %}
+{% if change and not is_popup %}
+  <ul class="object-tools">
+    {% block object-tools-items %}
+        {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+    {% endblock %}
+  </ul>
+{% endif %}
+{% endblock %}
     <form method="post" id="import-file" enctype="multipart/form-data">
         {% csrf_token %}
         <table>

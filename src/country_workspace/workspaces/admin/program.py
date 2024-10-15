@@ -158,7 +158,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(label=_("Import File"))
     def import_rdi(self, request: HttpRequest, pk: str) -> "HttpResponse":
-        context = self.get_common_context(request, pk)
+        context = self.get_common_context(request, pk, title="Import RDI file")
         program: "CountryProgram" = context["original"]
         context["selected_program"] = context["original"]
         hh_ids = {}
