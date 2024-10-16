@@ -1,10 +1,45 @@
-FROM python:3.12-slim-bookworm
-COPY uv.lock pyproject.toml
-COPY conf /conf
-COPY bin /usr/local/bin/
+FROM python:3.12-slim-bookworm as python_base
 
-RUN pip imstall uv \
-    && uv sync
+FROM python_base AS builder
+RUN set -x \
+    && buildDeps="build-essential \
+        cmake \
+        curl \
+        gcc \
+        git \
+        libssl-dev \
+        libxml2-dev  \
+        python3-dev \
+        zlib1g-dev  \
+    " \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends $buildDeps \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install uwsgi uv
+
+
+COPY docker/conf /conf/
+COPY docker/bin /usr/local/bin/
+
+WORKDIR /app
+COPY . /app/
+
+RUN uv venv \
+    && uv sync --no-dev --no-editable --frozen \
+    && uv pip install . \
+    && ls -al /app/.venv/
+
+FROM python_base
+
+
+FROM python_base
+ENV PATH=/app/.venv/bin:$PATH
+
+COPY docker/conf /conf/
+COPY docker/bin /usr/local/bin/
+COPY --chown=user:app --from=builder /app/.venv /app/.venv
+
 
 EXPOSE 8000
 ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"

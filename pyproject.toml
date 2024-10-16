@@ -14,7 +14,7 @@ dependencies = [
     "deepdiff>=8.0.1",
     "django-admin-extra-buttons>=1.6.0",
     "django-adminactions>=2.3.0",
-    "django-adminfilters>=2.4.3",
+    "django-adminfilters>=2.5.0",
     "django-celery-beat>=2.6.0",
     "django-celery-results>=2.5.1",
     "django-constance>=3.1.0",
@@ -41,7 +41,6 @@ dependencies = [
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
     "unicef-security>=1.5.1",
-    "uwsgi",
 ]
 
 [tool.uv]

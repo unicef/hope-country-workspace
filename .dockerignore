@@ -2,7 +2,7 @@
 !docker/bin
 !docker/conf
 !pyproject.toml
-!pdm.lock
+!uv.lock
 !src
 !LICENSE
 !README.md

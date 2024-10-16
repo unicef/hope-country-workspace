@@ -45,8 +45,10 @@ class Validable(models.Model):
         errors = self.checker.validate([self.flex_fields])
         if errors:
             self.errors = errors[1]
-            self.last_checked = timezone.now()
-            self.save(update_fields=["last_checked", "errors"])
+        else:
+            self.errors = {}
+        self.last_checked = timezone.now()
+        self.save(update_fields=["last_checked", "errors"])
         return not bool(errors)
 
 

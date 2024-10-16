@@ -75,27 +75,27 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
         else:
             self.message_user(request, _("Validation failed!"), messages.ERROR)
 
-    @button(label=_("Validate Program"), visible=lambda b: "batch__program__exact" in b.context["request"].GET)
+    @button(label=_("Validate Programme"), visible=lambda b: "batch__program__exact" in b.context["request"].GET)
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         from .program import CountryProgram
 
         if cl_flt := request.GET.get("_changelist_filters", ""):
             if prg := parse_qs(cl_flt).get("batch__program__exact"):
                 self._selected_program = CountryProgram.objects.get(pk=prg[0])
-                qs = self.get_queryset(request).filter(program=self._selected_program)
+                qs = self.get_queryset(request).filter(batch__program=self._selected_program)
                 self.validate_queryset(request, qs)
 
     @admin.action(description="Validate selected")
     def validate_queryset(self, request: HttpRequest, queryset: QuerySet) -> HttpResponseRedirect | None:
         try:
-            n = v = i = 0
-            for n, entry in enumerate(queryset.all(), 1):
+            num = valid = invalid = 0
+            for num, entry in enumerate(queryset.all(), 1):
                 entry.validate_with_checker()
                 if entry.validate_with_checker():
-                    v += 1
+                    valid += 1
                 else:
-                    i += 1
-            self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (n, v, i)))
+                    invalid += 1
+            self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (num, valid, invalid)))
         except AttributeError:
             self.message_user(
                 request, _("Required datachecker not found. Please check your Program configuration."), messages.ERROR

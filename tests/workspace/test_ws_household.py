@@ -4,14 +4,14 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.urls import reverse
 
 import pytest
-from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
+from testutils.perms import user_grant_permissions
 
 from country_workspace.state import state
 
 if TYPE_CHECKING:
-    from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
+    from testutils.types import CWTestApp
 
     from country_workspace.workspaces.models import CountryHousehold
 
@@ -46,11 +46,7 @@ def household(program):
 
 
 @pytest.fixture()
-def app(
-    django_app_factory: "MixinWithInstanceVariables",
-    mocked_responses: "RequestsMock",
-    settings: SettingsWrapper,
-) -> "DjangoTestApp":
+def app(django_app_factory: "MixinWithInstanceVariables", mocked_responses: "RequestsMock") -> "CWTestApp":
     from testutils.factories import SuperUserFactory
 
     django_app = django_app_factory(csrf_checks=False)
@@ -60,7 +56,7 @@ def app(
     yield django_app
 
 
-def test_hh_changelist(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+def test_hh_changelist(app: "CWTestApp", household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
@@ -73,7 +69,7 @@ def test_hh_changelist(app: "DjangoTestApp", household: "CountryHousehold") -> N
     assert res.status_code == 200, res.location
 
 
-def test_hh_change(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+def test_hh_change(app: "CWTestApp", household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
@@ -85,7 +81,7 @@ def test_hh_change(app: "DjangoTestApp", household: "CountryHousehold") -> None:
     assert res.status_code == 302, res.location
 
 
-def test_hh_delete(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+def test_hh_delete(app: "CWTestApp", household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
@@ -99,7 +95,7 @@ def test_hh_delete(app: "DjangoTestApp", household: "CountryHousehold") -> None:
         household.refresh_from_db()
 
 
-def test_hh_validate_single(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+def test_hh_validate_single(app: "CWTestApp", household: "CountryHousehold") -> None:
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
     res.forms["select-tenant"].submit()
@@ -108,10 +104,13 @@ def test_hh_validate_single(app: "DjangoTestApp", household: "CountryHousehold")
     assert res.status_code == 200
 
 
-def test_hh_validate_program(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+def test_hh_validate_program(app: "CWTestApp", household: "CountryHousehold") -> None:
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
     res.forms["select-tenant"].submit()
-    url = reverse("workspace:workspaces_countryhousehold_validate_program")
-    res = app.get(url).follow()
-    assert res.status_code == 200
+    with user_grant_permissions(app._user, ["workspaces.change_countryhousehold"], household.program):
+        url = reverse("workspace:workspaces_countryhousehold_changelist")
+        res = app.get(f"{url}?batch__program__exact={household.program.pk}")
+        res.click("Validate Programme").follow()
+        household.refresh_from_db()
+        assert household.last_checked
