@@ -128,10 +128,14 @@ def force_migrated_records(request, active_marks):
         from hope_flex_fields.apps import sync_content_types
         from hope_flex_fields.utils import create_default_fields
 
-        from country_workspace.versions.utils import create_hope_core_fieldset, create_hope_field_definitions
+        from country_workspace.versioning.api import run_scripts
+        from country_workspace.versioning.checkers import create_hope_core_fieldset, create_hope_field_definitions
+        from country_workspace.versioning.synclog import create_default_synclog
 
         # we need to recreate these records because with selenium they are not available
         create_default_fields(apps, None)
         sync_content_types(None)
-        create_hope_field_definitions(apps, None)
-        create_hope_core_fieldset(apps, None)
+        create_hope_field_definitions()
+        create_hope_core_fieldset()
+        create_default_synclog()
+        run_scripts()

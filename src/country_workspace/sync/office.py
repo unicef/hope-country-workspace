@@ -62,21 +62,29 @@ def sync_programs(limit_to_office: "Optional[Office]" = None) -> int:
 
 def sync_lookup(sl: SyncLog):
     fd = sl.content_object
+    if not fd:
+        return
     client = HopeClient()
     record = client.get_lookup(sl.data["remote_url"])
     choices = []
     for k, v in record.items():
         choices.append((k, v))
-
+    if not fd.attrs:
+        fd.attrs = {}
     fd.attrs["choices"] = choices
     fd.save()
     sl.last_update_date = timezone.now()
     sl.save()
 
 
+def sync_lookups() -> bool:
+    for sl in SyncLog.objects.filter(object_id__gt=0).exclude(content_type__isnull=True):
+        sync_lookup(sl)
+    return True
+
+
 def sync_all() -> bool:
     sync_offices()
     sync_programs()
-    for sl in SyncLog.objects.filter(object_id__gt=0):
-        sync_lookup(sl)
+    sync_lookups()
     return True

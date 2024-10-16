@@ -24,14 +24,7 @@ if TYPE_CHECKING:
 
 
 class OperationManager:
-    COMMON = [
-        ("set", None),
-        ("set null", lambda old_value: None),
-    ]
-
-    def __init__(
-        self,
-    ):
+    def __init__(self):
         self._dict: dict[str, "Operation"] = dict()
         self._cache = {}
 
@@ -54,7 +47,10 @@ class OperationManager:
 
 operations = OperationManager()
 operations.register(forms.Field, "set", lambda old_value, new_value: new_value)
-operations.register(forms.Field, "set null", lambda old_value, new_value: None)
+# operations.register(forms.Field, "set null", lambda old_value, new_value: None)
+operations.register(forms.CharField, "upper", lambda old_value, new_value: old_value.upper())
+operations.register(forms.CharField, "lower", lambda old_value, new_value: old_value.lower())
+operations.register(forms.BooleanField, "toggle", lambda old_value, new_value: not old_value)
 
 
 class MassUpdateWidget(widgets.MultiWidget):
@@ -63,8 +59,7 @@ class MassUpdateWidget(widgets.MultiWidget):
 
     def __init__(self, field: FlexFormMixin, attrs=None):
         _widgets = (
-            widgets.CheckboxInput(),
-            widgets.Select(choices=operations.get_choices_for_target(field.flex_field.field.field_type)),
+            widgets.Select(choices=[("", "-")] + operations.get_choices_for_target(field.flex_field.field.field_type)),
             field.widget,
         )
         super().__init__(_widgets, attrs)
@@ -80,7 +75,7 @@ class MassUpdateField(MultiValueField):
 
     def __init__(self, *, field, **kwargs):
         field.required = False
-        fields = (forms.BooleanField(required=False), forms.CharField(required=False), field)
+        fields = (forms.CharField(required=False), field)
         self.widget = MassUpdateWidget(field)
         super().__init__(fields, require_all_fields=False, required=False, **kwargs)
 
@@ -97,13 +92,13 @@ class MassUpdateForm(forms.Form):
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
         for name, fld in checker.get_form()().fields.items():
-            self.fields[f"flex_fields__{name}"] = MassUpdateField(field=fld)
+            self.fields[f"flex_fields__{name}"] = MassUpdateField(label=fld.label, field=fld)
 
     def get_selected(self) -> "FormOperations":
         ret = {}
         for k, v in self.cleaned_data.items():
-            if k.startswith("flex_fields__") and v[0]:
-                ret[k.replace("flex_fields__", "")] = v[1:]
+            if k.startswith("flex_fields__") and v and v[0] != "":
+                ret[k.replace("flex_fields__", "")] = v[0:]
         return ret
 
 

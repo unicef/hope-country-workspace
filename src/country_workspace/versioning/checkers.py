@@ -1,28 +1,23 @@
-from typing import TYPE_CHECKING
-
 from django import forms
 from django.conf import settings
 from django.utils.text import slugify
 
+from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
+
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 
-if TYPE_CHECKING:
-    from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
 
-
-def create_hope_field_definitions(apps, schema_editor):
-    fd: "FieldDefinition" = apps.get_model("hope_flex_fields", "FieldDefinition")
-
+def create_hope_field_definitions():
     for m in settings.LOOKUPS:
         n = f"HOPE HH {m}"
-        fd.objects.get_or_create(name=n, slug=slugify(n), field_type=forms.ChoiceField)
-    fd.objects.get_or_create(
+        FieldDefinition.objects.get_or_create(name=n, slug=slugify(n), field_type=forms.ChoiceField)
+    FieldDefinition.objects.get_or_create(
         name="HOPE IND Gender",
         slug=slugify("HOPE IND Gender"),
         attrs={"choices": [["FEMALE", "FEMALE"], ["MALE", "MALE"], ["UNKNOWN", "UNKNOWN"]]},
         field_type=forms.ChoiceField,
     )
-    fd.objects.get_or_create(
+    FieldDefinition.objects.get_or_create(
         name="HOPE IND Disability",
         slug=slugify("HOPE IND Disability"),
         field_type=forms.ChoiceField,
@@ -30,22 +25,18 @@ def create_hope_field_definitions(apps, schema_editor):
     )
 
 
-def create_hope_core_fieldset(apps, schema_editor):
-    dc: "DataChecker" = apps.get_model("hope_flex_fields", "DataChecker")
-    fs: "Fieldset" = apps.get_model("hope_flex_fields", "Fieldset")
-    fd: "FieldDefinition" = apps.get_model("hope_flex_fields", "FieldDefinition")
+def create_hope_core_fieldset():
+    _char = FieldDefinition.objects.get(field_type=forms.CharField)
+    _date = FieldDefinition.objects.get(field_type=forms.DateField)
+    _bool = FieldDefinition.objects.get(field_type=forms.BooleanField)
+    _int = FieldDefinition.objects.get(field_type=forms.IntegerField)
 
-    _char = fd.objects.get(field_type=forms.CharField)
-    _date = fd.objects.get(field_type=forms.DateField)
-    _bool = fd.objects.get(field_type=forms.BooleanField)
-    _int = fd.objects.get(field_type=forms.IntegerField)
+    _h_relationship = FieldDefinition.objects.get(slug="hope-hh-relationship")
+    _h_residence = FieldDefinition.objects.get(slug="hope-hh-residencestatus")
+    _i_gender = FieldDefinition.objects.get(slug="hope-ind-gender")
+    _i_disability = FieldDefinition.objects.get(slug="hope-ind-disability")
 
-    _h_relationship = fd.objects.get(slug="hope-hh-relationship")
-    _h_residence = fd.objects.get(slug="hope-hh-residencestatus")
-    _i_gender = fd.objects.get(slug="hope-ind-gender")
-    _i_disability = fd.objects.get(slug="hope-ind-disability")
-
-    hh_fs, __ = fs.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
+    hh_fs, __ = Fieldset.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_fs.fields.get_or_create(
         name="address",
         attrs={"label": "Household ID", "required": True},
@@ -144,7 +135,7 @@ def create_hope_core_fieldset(apps, schema_editor):
     # hh_fs.fields.get_or_create(field=_bf, name="hh_latrine_h_f", attrs={"label": "Latrine"})
     # hh_fs.fields.get_or_create(field=_bf, name="hh_electricity_h_f")
 
-    ind_fs, __ = fs.objects.get_or_create(name="HOPE individual core")
+    ind_fs, __ = Fieldset.objects.get_or_create(name="HOPE individual core")
     ind_fs.fields.get_or_create(
         name="address",
         attrs={"label": "Household ID", "required": True},
@@ -228,7 +219,7 @@ def create_hope_core_fieldset(apps, schema_editor):
         field=_h_relationship,
     )
 
-    hh_dc, __ = dc.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
+    hh_dc, __ = DataChecker.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_dc.fieldsets.add(hh_fs)
-    ind_dc, __ = dc.objects.get_or_create(name=INDIVIDUAL_CHECKER_NAME)
+    ind_dc, __ = DataChecker.objects.get_or_create(name=INDIVIDUAL_CHECKER_NAME)
     ind_dc.fieldsets.add(ind_fs)

@@ -85,9 +85,8 @@ def test_mass_update(app: "DjangoTestApp", household: "CountryHousehold") -> Non
     res = form.submit()
 
     form = res.forms["mass-update-form"]
-    form["flex_fields__address_0"].checked = True
-    form["flex_fields__address_1"].select(text="set")
-    form["flex_fields__address_2"] = "__NEW VALUE__"
+    form["flex_fields__address_0"].select(text="set")
+    form["flex_fields__address_1"] = "__NEW VALUE__"
     res = form.submit("_apply")
 
     household.refresh_from_db()
