@@ -13,7 +13,8 @@ case "$1" in
       django-admin check --deploy
       django-admin upgrade
 	    set -- tini -- "$@"
-  		set -- gosu user:app uwsgi --ini /conf/uwsgi.ini
+	    uwsgi --http :8000 --module country_workspace.config.wsgi --uid user --gid app
+#  		set -- gosu user:app uwsgi --ini /conf/uwsgi.ini
 	    ;;
 esac
 
