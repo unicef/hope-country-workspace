@@ -3,9 +3,11 @@
 !docker/bin
 !docker/conf
 !src/country_workspace/**/*
+!tests/*
 
 !pyproject.toml
 !uv.lock
+!pytest.ini
 
 !LICENSE
 !README.md

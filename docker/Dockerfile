@@ -45,14 +45,18 @@ COPY src /app/src
 
 WORKDIR /app
 RUN uv sync --no-dev --no-editable --frozen
-#RUN ls -al .venv/lib/python3.12/site-packages/country_workspace/workspaces/
 
-#RUN uv export --no-dev --no-editable --frozen --no-sources --no-hashes -o requirement.txt \
-#    && python -m venv .venv \
-#    && .venv/bin/pip install -r requirement.txt
+FROM builder AS test
+ENV PATH=/app/.venv/bin:$PATH \
+    DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+    UWSGI_PROCESSES=4
+WORKDIR /app
+RUN uv sync --no-editable --frozen
+COPY pytest.ini /app/
+COPY tests /app/tests
 
-#
-FROM python_base
+
+FROM python_base as prod
 ENV PATH=/app/.venv/bin:$PATH \
     DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
     UWSGI_PROCESSES=4
@@ -60,8 +64,6 @@ ENV PATH=/app/.venv/bin:$PATH \
 COPY docker/conf /conf/
 COPY docker/bin/* /usr/local/bin/
 COPY --chown=user:app --from=builder /app/.venv /app/.venv
-#COPY --chown=user:app --from=builder /usr/local/bin/uwsgi /usr/local/bin/uwsgi
-
 
 EXPOSE 8000
 ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
