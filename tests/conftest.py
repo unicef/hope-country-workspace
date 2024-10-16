@@ -122,20 +122,20 @@ def active_marks(request):
 
 @pytest.fixture()
 def force_migrated_records(request, active_marks):
+    from django.apps import apps
+
+    from hope_flex_fields.apps import sync_content_types
+    from hope_flex_fields.utils import create_default_fields
+
+    from country_workspace.versioning.api import run_scripts
+    from country_workspace.versioning.checkers import create_hope_core_fieldset, create_hope_field_definitions
+    from country_workspace.versioning.synclog import create_default_synclog
+
     if request.config.option.enable_selenium or "selenium" in active_marks:
-        from django.apps import apps
-
-        from hope_flex_fields.apps import sync_content_types
-        from hope_flex_fields.utils import create_default_fields
-
-        from country_workspace.versioning.api import run_scripts
-        from country_workspace.versioning.checkers import create_hope_core_fieldset, create_hope_field_definitions
-        from country_workspace.versioning.synclog import create_default_synclog
-
         # we need to recreate these records because with selenium they are not available
         create_default_fields(apps, None)
         sync_content_types(None)
-        create_hope_field_definitions()
-        create_hope_core_fieldset()
-        create_default_synclog()
-        run_scripts()
+    create_hope_field_definitions()
+    create_hope_core_fieldset()
+    create_default_synclog()
+    run_scripts()

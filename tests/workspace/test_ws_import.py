@@ -45,7 +45,7 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     yield django_app
 
 
-def test_import_rdi(app, program):
+def test_import_rdi(force_migrated_records, app, program):
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()

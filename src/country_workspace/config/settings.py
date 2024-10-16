@@ -41,6 +41,7 @@ INSTALLED_APPS = (
     "hope_flex_fields",
     "hope_smart_import",
     "hope_smart_export",
+    "smart_env",
     "country_workspace.security",
     "country_workspace.apps.Config",
     "country_workspace.workspaces.apps.Config",

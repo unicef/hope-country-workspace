@@ -23,32 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-#      - name: Restore cached venv
-#        id: cache-venv-restore
-#        uses: actions/cache/restore@v4
-#        with:
-#          path: |
-#            .cache-uv/
-#            .venv/
-#          key: ${{ matrix.python-version }}-${{matrix.django-version}}-venv
-#
-#      - uses: yezz123/setup-uv@v4
       - name: Build Doc
         run: |
             pip install "mkdocs>=1.6.1" "markdown-include" "mkdocs-material>=9.5.36" \
                           "mkdocs-awesome-pages-plugin>=2.9.3" "mkdocstrings-python" "mdx-gh-links>=0.4"
             mkdocs build -d ./docs-output
-
-#      - name: Cache venv
-#        if: steps.cache-venv-restore.outputs.cache-hit != 'true'
-#        id: cache-venv-save
-#        uses: actions/cache/save@v4
-#        with:
-#          path: |
-#            .cache-uv/
-#            .venv/
-#          key: ${{ matrix.python-version }}-${{matrix.django-version}}-venv
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

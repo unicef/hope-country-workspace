@@ -92,13 +92,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - uses: yezz123/setup-uv@v4
       - name: Run tests
         run: |          
           apt-get update
           apt-get install python3-dev
-          pip install uv
-          uv venv
-          uv sync
+          uv sync --frozen
           uv run pytest tests/
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

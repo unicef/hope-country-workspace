@@ -2,7 +2,7 @@ x-common: &common
   build:
     context: .
     dockerfile: docker/Dockerfile
-    target: python_dev_deps
+    target: builder
   platform: linux/amd64
   environment:
     - DEBUG=true
@@ -18,7 +18,7 @@ x-common: &common
     - SECRET_KEY=sensitive-secret-key
     - STATIC_ROOT=/var/country_workspace/static
   volumes:
-    - .:/code
+    - .:/app
     - /var/run/docker.sock:/var/run/docker.sock
   restart: always
   depends_on:
