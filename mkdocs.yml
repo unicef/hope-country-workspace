@@ -6,7 +6,7 @@ repo_url: https://github.com/unicef/hope-country-workspace
 site_author: HOPE Team
 site_description: ""
 site_dir: ./~build/docs
-site_name: Django Country Workspace
+site_name: HOPE Country Workspace
 site_url: https://unicef.github.io/unicef/hope-country-workspace/
 strict: false
 

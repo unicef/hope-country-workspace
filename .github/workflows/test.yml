@@ -95,8 +95,8 @@ jobs:
       - uses: yezz123/setup-uv@v4
       - name: Run tests
         run: |          
-          apt-get update
-          apt-get install python3-dev
+          sudo apt-get update
+          sudo apt-get install python3-dev
           uv sync --frozen
           uv run pytest tests/
       - name: Upload coverage to Codecov
