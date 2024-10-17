@@ -117,6 +117,8 @@ jobs:
             type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{raw}}
+      - id: last_commit
+        uses: ./.github/actions/last_commit
       - name: Build and push
         if: (steps.image_status.outputs.updated != 'true' || inputs.rebuild == 'true')
         id: build_push
@@ -127,10 +129,15 @@ jobs:
           tags: unicef/hope-country-workspace:test-${{env.BRANCH}}
           platforms: linux/amd64
           target: test
-          push: false
+          push: true
           cache-from: type=registry,ref=unicef/hope-country-workspace:test-${{env.BRANCH}},ref=unicef/hope-country-workspace:${{env.BRANCH}}
           cache-to: type=registry,ref=unicef/hope-country-workspace:${{env.BRANCH}}-cache,mode=max,image-manifest=true
+          build-args: |
+              GITHUB_SERVER_URL=${{ github.server_url }}
+              GITHUB_REPOSITORY=${{ github.repository }}
+              SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
 
+#              BUILD_DATE=${{ env.BUILD_DATE }}
 #          labels: "${{ steps.meta.outputs.labels }}\nchecksum=${{ inputs.code_checksum }}\ndistro=${{ inputs.target }}"
 #          annotations: "${{ steps.meta.outputs.annotations }}\nchecksum=${{ inputs.code_checksum }}\ndistro=${{ inputs.target }}"
 #          target: ${{ inputs.target }}
