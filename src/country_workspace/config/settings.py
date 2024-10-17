@@ -38,6 +38,7 @@ INSTALLED_APPS = (
     "jsoneditor",
     "django_celery_beat",
     "django_celery_results",
+    "django_celery_boost",
     "hope_flex_fields",
     "hope_smart_import",
     "hope_smart_export",

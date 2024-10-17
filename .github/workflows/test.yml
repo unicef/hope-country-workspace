@@ -117,6 +117,11 @@ jobs:
             type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{raw}}
+      - name: DockerHub login
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: last_commit
         uses: ./.github/actions/last_commit
       - name: Build and push
@@ -129,13 +134,13 @@ jobs:
           tags: unicef/hope-country-workspace:test-${{env.BRANCH}}
           platforms: linux/amd64
           target: test
-          push: true
-          cache-from: type=registry,ref=unicef/hope-country-workspace:test-${{env.BRANCH}},ref=unicef/hope-country-workspace:${{env.BRANCH}}
-          cache-to: type=registry,ref=unicef/hope-country-workspace:${{env.BRANCH}}-cache,mode=max,image-manifest=true
           build-args: |
               GITHUB_SERVER_URL=${{ github.server_url }}
               GITHUB_REPOSITORY=${{ github.repository }}
               SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
+#          push: true
+#          cache-from: type=registry,ref=unicef/hope-country-workspace:test-${{env.BRANCH}},ref=unicef/hope-country-workspace:${{env.BRANCH}}
+#          cache-to: type=registry,ref=unicef/hope-country-workspace:${{env.BRANCH}}-cache,mode=max,image-manifest=true
 
 #              BUILD_DATE=${{ env.BUILD_DATE }}
 #          labels: "${{ steps.meta.outputs.labels }}\nchecksum=${{ inputs.code_checksum }}\ndistro=${{ inputs.target }}"

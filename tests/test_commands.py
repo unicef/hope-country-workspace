@@ -24,12 +24,19 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture()
 def environment() -> dict[str, str]:
     return {
-        "CACHE_URL": "test",
+        "ADMIN_EMAIL": "test@example.com",
+        "ADMIN_PASSWORD": "test",
+        "ALLOWED_HOSTS": "test",
+        "CSRF_COOKIE_SECURE": "test",
+        "CSRF_TRUSTED_ORIGINS": "test",
+        "HOPE_API_TOKEN": "test",
         "CELERY_BROKER_URL": "",
+        "CACHE_URL": "",
         "DATABASE_URL": "",
         "SECRET_KEY": "",
         "MEDIA_ROOT": "/tmp/media",
         "STATIC_ROOT": "/tmp/static",
+        "DJANGO_SETTINGS_MODULE": "country_workspace.config.settings",
         "SECURE_SSL_REDIRECT": "1",
         "SESSION_COOKIE_SECURE": "1",
     }

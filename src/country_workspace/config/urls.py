@@ -16,3 +16,7 @@ urlpatterns = [
     path(r"__debug__/", include(debug_toolbar.urls)),
     path(r"", workspace.urls),
 ]
+
+admin.site.site_header = "Workspace Admin"
+admin.site.site_title = "Workspace Admin Portal"
+admin.site.index_title = "Welcome to HOPE Workspace"

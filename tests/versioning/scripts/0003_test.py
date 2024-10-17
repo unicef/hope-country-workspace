@@ -6,7 +6,7 @@ def back():
     pass
 
 
-class Version:
+class Scripts:
     operations = [
         forward,
     ]

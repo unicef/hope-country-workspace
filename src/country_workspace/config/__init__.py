@@ -31,7 +31,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
         list,
         [],
         [],
-        True,
+        False,
         "list of emails that will automatically created as superusers",
     ),
     "ADMIN_EMAIL": (str, "", "admin", True, "Initial user created at first deploy"),

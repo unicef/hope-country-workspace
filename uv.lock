@@ -491,6 +491,20 @@ wheels = [
 ]
 
 [[package]]
+name = "django-celery-boost"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "celery" },
+    { name = "django-admin-extra-buttons" },
+    { name = "django-concurrency" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/b4/624ac88995441acd310bc1c268706e0cc8d851c8fe11364967304893c0cd/django_celery_boost-0.2.0.tar.gz", hash = "sha256:7399a46d4c361abbe96acb1f00f53bc96eaec4f1928f3f83fd0de85c0984ebda", size = 10977 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/38/4952bee610a9fae92a431898ac3cebd869e7e4a37add3a44fc441e27d2c7/django_celery_boost-0.2.0-py3-none-any.whl", hash = "sha256:a229a71b2a5bd1be1ba338005a64af81a3e1c159f5e553b8a211a47aa11ead1d", size = 7770 },
+]
+
+[[package]]
 name = "django-celery-results"
 version = "2.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -501,6 +515,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/75/24/a13ad6a276f62385da6d83a1995ded452d173841b6e0a83a899c3b75062e/django_celery_results-2.5.1.tar.gz", hash = "sha256:3ecb7147f773f34d0381bac6246337ce4cf88a2ea7b82774ed48e518b67bb8fd", size = 80944 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/2e/aa82857354d5227922c2ae6e83e5214537d8f108184bfeea6704d0b045d8/django_celery_results-2.5.1-py3-none-any.whl", hash = "sha256:0da4cd5ecc049333e4524a23fcfc3460dfae91aa0a60f1fae4b6b2889c254e01", size = 36293 },
+]
+
+[[package]]
+name = "django-concurrency"
+version = "2.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/a6/c3d75900363ec8b723eb0b062a3c5f38db736a71d57d7198e6da8c28b8f4/django_concurrency-2.6.0.tar.gz", hash = "sha256:f5c4133d6497da91a8c2640f443e216160a38398b6c8506fe551770691fe2a1d", size = 61512 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/84/ac13c62f90ceb83da90d89f46da9eef490aac7db4f47b9de8be3c6d6331d/django_concurrency-2.6.0-py3-none-any.whl", hash = "sha256:eed723272c5450f102c0e7d03fbb1ab1253bcf853073d7ba356591eab88ecc9b", size = 27162 },
 ]
 
 [[package]]
@@ -891,6 +914,7 @@ dependencies = [
     { name = "django-adminactions" },
     { name = "django-adminfilters" },
     { name = "django-celery-beat" },
+    { name = "django-celery-boost" },
     { name = "django-celery-results" },
     { name = "django-constance" },
     { name = "django-csp" },
@@ -955,6 +979,7 @@ requires-dist = [
     { name = "django-adminactions", specifier = ">=2.3.0" },
     { name = "django-adminfilters", specifier = ">=2.5.0" },
     { name = "django-celery-beat", specifier = ">=2.6.0" },
+    { name = "django-celery-boost", specifier = ">=0.2.0" },
     { name = "django-celery-results", specifier = ">=2.5.1" },
     { name = "django-constance", specifier = ">=3.1.0" },
     { name = "django-csp" },

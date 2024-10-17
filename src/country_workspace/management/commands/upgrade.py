@@ -166,6 +166,7 @@ class Command(BaseCommand):
                 ),
                 name=settings.TENANT_HQ,
             )
+            call_command("upgradescripts", ["apply"])
             echo("Upgrade completed", style_func=self.style.SUCCESS)
         except ValidationError as e:
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))

@@ -17,7 +17,7 @@ def removes_hope_core_fieldset():
     DataChecker.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
 
 
-class Version:
+class Scripts:
     operations = [
         (create_hope_field_definitions, removes_hope_field_definitions),
         (create_hope_core_fieldset, removes_hope_core_fieldset),

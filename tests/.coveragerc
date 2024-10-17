@@ -7,6 +7,7 @@ omit =
     */migrations/*,
     src/country_workspace/management/commands/demo.py
     src/country_workspace/security/backends.py
+    src/country_workspace/versioning/scripts/*
     */wsgi.py,
 
 
@@ -23,11 +24,13 @@ exclude_lines =
     raise AssertionError
     raise NotImplementedError
     except ImportError
+    raise CommandError
     # Don't complain if non-runnable code isn't run:
     #if 0:
     if __name__ == .__main__.:
     if TYPE_CHECKING:
     if settings.DEBUG:
+
 
 #fail_under = 95
 
