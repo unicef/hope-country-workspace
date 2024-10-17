@@ -51,6 +51,7 @@ def regex_update_impl(records: "QuerySet[Beneficiary]", config: dict[str, Any]) 
         for record in records:
             old_value = record.flex_fields.get(field_name, "")
             new_value = config["regex"].sub(config["subst"], old_value, 1)
+
             record.flex_fields[field_name] = new_value
             record.save()
 
