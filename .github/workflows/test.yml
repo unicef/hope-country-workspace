@@ -73,7 +73,7 @@ jobs:
       redis:
         image: redis
         ports:
-          - 6379:6379
+          - 16379:6379
       db:
         image: postgres:14
         env:
@@ -81,7 +81,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USERNAME: postgres
         ports:
-          - 5432:5432
+          - 15432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -89,15 +89,87 @@ jobs:
           --health-retries 5
     env:
       DOCKER_DEFAULT_PLATFORM: linux/amd64
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/country_workspace
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
+      CELERY_BROKER_URL: redis://localhost:16379/0"
+      CACHE_URL: redis://localhost:16379/0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - uses: yezz123/setup-uv@v4
+      - name: Hack container for local development
+        if: ${{ env.ACT }}
+        run: |
+          echo /home/runner/externals/node20/bin >> $GITHUB_PATH
+      - name: Hack container for local development
+        run: |
+          echo BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
+#      - uses: yezz123/setup-uv@v4
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: "unicef/hope-country-workspace"
+          flavor: |
+            prefix=test
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{raw}}
+      - name: Build and push
+        if: (steps.image_status.outputs.updated != 'true' || inputs.rebuild == 'true')
+        id: build_push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          tags: unicef/hope-country-workspace:test-${{env.BRANCH}}
+          platforms: linux/amd64
+          target: test
+          push: false
+          cache-from: type=registry,ref=unicef/hope-country-workspace:test-${{env.BRANCH}},ref=unicef/hope-country-workspace:${{env.BRANCH}}
+          cache-to: type=registry,ref=unicef/hope-country-workspace:${{env.BRANCH}}-cache,mode=max,image-manifest=true
+
+#          labels: "${{ steps.meta.outputs.labels }}\nchecksum=${{ inputs.code_checksum }}\ndistro=${{ inputs.target }}"
+#          annotations: "${{ steps.meta.outputs.annotations }}\nchecksum=${{ inputs.code_checksum }}\ndistro=${{ inputs.target }}"
+#          target: ${{ inputs.target }}
+#          file: ./docker/Dockerfile
+#          platforms: linux/amd64
+#          push: ${{ inputs.push }}
+#          sbom: true
+#          provenance: true
+#          cache-from: type=registry,ref=${{ steps.image_name.outputs.name }}-cache,ref=${{ steps.image_name.outputs.test_name }}-cache
+#          cache-to: type=registry,ref=${{ steps.image_name.outputs.name }}-cache,mode=max,image-manifest=true
+#          build-args: |
+#              GITHUB_SERVER_URL=${{ github.server_url }}
+#              GITHUB_REPOSITORY=${{ github.repository }}
+#              BUILD_DATE=${{ env.BUILD_DATE }}
+#              DISTRO=${{ inputs.target }}
+#              CHECKSUM=${{ steps.checksum.outputs.checksum }}
+#              VERSION=${{ steps.meta.outputs.version }}
+#              SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
       - name: Run tests
         run: |
-            cd docker 
-            make build
+            #            cd docker
+            #            export BUILD_DATE=`date +%Y%M%D`
+            #            export VERSION=
+            #            export BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+            #            docker build \
+            #              --build-arg BUILD_DATE=${BUILD_DATE} \
+            #              --target test \
+            #              -t unicef/hope-country-workspace:${BRANCH} \
+            #              -f docker/Dockerfile .
+            docker run --rm \
+                    -e CACHE_URL=redis://localhost:16379/0 \
+                    -e CELERY_BROKER_URL=redis://localhost:16379/0 \
+                    -e DATABASE_URL=postgres://postgres:postgres@localhost:15432/country_workspace \
+                    -e DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+                    --network host \
+                    -v $PWD:/app \
+                    -w /app \
+                    -t unicef/hope-country-workspace:${BRANCH} \
+                    pytest tests -vv --create-db --maxfail=10 --cov -n auto --cov-report xml:coverage.xml
 #          sudo apt-get update
 #          sudo apt-get install python3-dev libxml2
 #          uv sync --frozen

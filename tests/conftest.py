@@ -38,7 +38,7 @@ def pytest_configure(config):
             config.option.markexpr += " and not selenium"
         else:
             config.option.markexpr = "not selenium"
-    os.environ.update(DJANGO_SETTINGS_MODULE="country_workspace.config.settings")
+    os.environ["DJANGO_SETTINGS_MODULE"] = "country_workspace.config.settings"
     os.environ.setdefault("STATIC_URL", "/static/")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")
     os.environ.setdefault("STATIC_ROOT", "/tmp/media/")

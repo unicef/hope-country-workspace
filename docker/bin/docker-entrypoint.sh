@@ -4,7 +4,7 @@
 export MEDIA_ROOT="${MEDIA_ROOT:-/var/run/app/media}"
 export STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}"
 export UWSGI_PROCESSES="${UWSGI_PROCESSES:-"4"}"
-#export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-"country_workspace.config.settings"}"
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-"country_workspace.config.settings"}"
 
 ls -al /app/
 
@@ -13,7 +13,10 @@ case "$1" in
       django-admin check --deploy
       django-admin upgrade
 	    set -- tini -- "$@"
-	    uwsgi --http :8000 --module country_workspace.config.wsgi --uid user --gid app
+	    uwsgi --http :8000 \
+	          --module country_workspace.config.wsgi \
+	          --uid user \
+	          --gid app
 #  		set -- gosu user:app uwsgi --ini /conf/uwsgi.ini
 	    ;;
 esac
