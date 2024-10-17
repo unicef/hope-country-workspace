@@ -28,7 +28,7 @@ def environment() -> dict[str, str]:
         "ADMIN_PASSWORD": "test",
         "ALLOWED_HOSTS": "test",
         "CSRF_COOKIE_SECURE": "test",
-        "CSRF_TRUSTED_ORIGINS": "test",
+        "CSRF_TRUSTED_ORIGINS": "http://testserver/,",
         "HOPE_API_TOKEN": "test",
         "CELERY_BROKER_URL": "",
         "CACHE_URL": "",

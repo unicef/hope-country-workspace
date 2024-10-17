@@ -5,10 +5,6 @@ from pathlib import Path
 import pytest
 import responses
 
-# import django
-
-# from constance import config
-
 here = Path(__file__).parent
 sys.path.insert(0, str(here / "../src"))
 sys.path.insert(0, str(here / "extras"))
@@ -51,7 +47,7 @@ def pytest_configure(config):
     os.environ["SOCIAL_AUTH_REDIRECT_IS_HTTPS"] = "0"
     os.environ["CELERY_TASK_ALWAYS_EAGER"] = "0"
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
-    os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
+    # os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
 
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
     import django
@@ -60,7 +56,10 @@ def pytest_configure(config):
     settings.ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
     settings.SIGNING_BACKEND = "testutils.signers.PlainSigner"
     settings.SECRET_KEY = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
-    settings.CSRF_TRUSTED_ORIGINS = "http://testserver"
+    settings.CSRF_TRUSTED_ORIGINS = [
+        "http://testserver",
+    ]
+    settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
     django.setup()
 
 
@@ -127,16 +126,6 @@ def active_marks(request):
 
 @pytest.fixture()
 def force_migrated_records(request, active_marks):
-    from django.apps import apps
-
-    from hope_flex_fields.apps import sync_content_types
-    from hope_flex_fields.utils import create_default_fields
-
     from country_workspace.versioning.management.manager import Manager
-
-    if request.config.option.enable_selenium or "selenium" in active_marks:
-        # we need to recreate these records because with selenium they are not available
-        create_default_fields(apps, None)
-        sync_content_types(None)
 
     Manager().force_apply()
