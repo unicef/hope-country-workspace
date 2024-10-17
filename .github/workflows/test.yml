@@ -136,8 +136,8 @@ jobs:
              docker build \
                 --target tests \
                 -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
-                --cache-from "type=local,src=/xxx, tag=${{env.BRANCH}}" \
-                --cache-to "type=local,dest=/xxx, tag=${{env.BRANCH}}" \
+                --cache-from "type=gha" \
+                --cache-to "type=gha,mode=max" \
                 -f docker/Dockerfile .
       - run: |
             docker run --rm \
