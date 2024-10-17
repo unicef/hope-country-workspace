@@ -28,46 +28,46 @@ permissions:
 
 
 jobs:
-  changes:
-    if: (github.event_name != 'pull_request' 
-            || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) 
-            || github.event_name == 'create'
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      run_tests: ${{ steps.changes.outputs.run_tests }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.1.7
-      - id: changes
-        name: Check for file changes
-        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
-        with:
-          base: ${{ github.ref }}
-          token: ${{ github.token }}
-          filters: .github/file-filters.yml
-      - name: info
-        shell: bash
-        run: |
-          force_build="${{ contains(github.event.head_commit.message, 'ci:build') || contains(github.event.head_commit.message, 'ci:release')}}"
-          force_scan="${{ contains(github.event.head_commit.message, 'ci:scan') }}"
-          force_test="${{ contains(github.event.head_commit.message, 'ci:test') }}"
-          
-          if [[ $force_build == "true" ]]; then
-            echo "::notice:: Forced build docker due to commit message"
-          elif [[ $force_test == "true" ]]; then
-            echo "::notice:: Forced python tests due to commit message"
-          elif [[ $force_scan == "true" ]]; then
-            echo "::notice:: Forced trivy scan due to commit message"
-          fi
-          if [[ $force_build == "true" || "${{needs.changes.outputs.run_tests}}" == "true" ]]; then 
-              echo "BUILD=true" >> $GITHUB_ENV
-          fi
+#  changes:
+#    if: (github.event_name != 'pull_request'
+#            || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)
+#            || github.event_name == 'create'
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 1
+#    defaults:
+#      run:
+#        shell: bash
+#    outputs:
+#      run_tests: ${{ steps.changes.outputs.run_tests }}
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4.1.7
+#      - id: changes
+#        name: Check for file changes
+#        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+#        with:
+#          base: ${{ github.ref }}
+#          token: ${{ github.token }}
+#          filters: .github/file-filters.yml
+#      - name: info
+#        shell: bash
+#        run: |
+#          force_build="${{ contains(github.event.head_commit.message, 'ci:build') || contains(github.event.head_commit.message, 'ci:release')}}"
+#          force_scan="${{ contains(github.event.head_commit.message, 'ci:scan') }}"
+#          force_test="${{ contains(github.event.head_commit.message, 'ci:test') }}"
+#
+#          if [[ $force_build == "true" ]]; then
+#            echo "::notice:: Forced build docker due to commit message"
+#          elif [[ $force_test == "true" ]]; then
+#            echo "::notice:: Forced python tests due to commit message"
+#          elif [[ $force_scan == "true" ]]; then
+#            echo "::notice:: Forced trivy scan due to commit message"
+#          fi
+#          if [[ $force_build == "true" || "${{needs.changes.outputs.run_tests}}" == "true" ]]; then
+#              echo "BUILD=true" >> $GITHUB_ENV
+#          fi
   test:
-    needs: [ changes ]
+#    needs: [ changes ]
     runs-on: ubuntu-latest
     services:
       redis:
@@ -93,6 +93,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
       CELERY_BROKER_URL: redis://localhost:16379/0"
       CACHE_URL: redis://localhost:16379/0
+      DOCKER_BUILDKIT: 1
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,20 +125,45 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: last_commit
         uses: ./.github/actions/last_commit
-      - name: Build and push
-        if: (steps.image_status.outputs.updated != 'true' || inputs.rebuild == 'true')
-        id: build_push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          tags: unicef/hope-country-workspace:test-${{env.BRANCH}}
-          platforms: linux/amd64
-          target: test
-          build-args: |
-              GITHUB_SERVER_URL=${{ github.server_url }}
-              GITHUB_REPOSITORY=${{ github.repository }}
-              SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
+      - id: calc
+        shell: bash
+        run: |
+          set -x
+          LOCK_SHA=$(sha1sum uv.lock docker/bin/* docker/conf/* docker/Dockerfile | sha1sum | awk '{print $1}' | cut -c 1-8)
+          echo "checksum=$LOCK_SHA" >> "$GITHUB_ENV"
+
+      - run: |
+             docker build \
+                --target tests \
+                -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
+                --cache-from "type=local,src=/xxx, tag=${{env.BRANCH}}" \
+                --cache-to "type=local,dest=/xxx, tag=${{env.BRANCH}}" \
+                -f docker/Dockerfile .
+      - run: |
+            docker run --rm \
+              -it \
+              --network host \
+              -e PYTHONPATH=/app/src \
+              -e DATABASE_URL=${DATABASE_URL} \
+              -v "./src/:/app/src" \
+              -v "./tests:/app/tests" \
+              -v "./pytest.ini:/app/pytest.ini" \
+              -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
+              pytest -c /app/pytest.ini  tests/ -v -x --maxfail=5 --migrations --cov
+#      - name: Build and push
+#        if: (steps.image_status.outputs.updated != 'true' || inputs.rebuild == 'true')
+#        id: build_push
+#        uses: docker/build-push-action@v6
+#        with:
+#          context: .
+#          file: ./docker/Dockerfile
+#          tags: unicef/hope-country-workspace:test-${{env.BRANCH}}
+#          platforms: linux/amd64
+#          target: tests
+#          build-args: |
+#              GITHUB_SERVER_URL=${{ github.server_url }}
+#              GITHUB_REPOSITORY=${{ github.repository }}
+#              SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
 #          push: true
 #          cache-from: type=registry,ref=unicef/hope-country-workspace:test-${{env.BRANCH}},ref=unicef/hope-country-workspace:${{env.BRANCH}}
 #          cache-to: type=registry,ref=unicef/hope-country-workspace:${{env.BRANCH}}-cache,mode=max,image-manifest=true
@@ -161,40 +187,40 @@ jobs:
 #              CHECKSUM=${{ steps.checksum.outputs.checksum }}
 #              VERSION=${{ steps.meta.outputs.version }}
 #              SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
-      - name: Run tests
-        run: |
-            #            cd docker
-            #            export BUILD_DATE=`date +%Y%M%D`
-            #            export VERSION=
-            #            export BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-            #            docker build \
-            #              --build-arg BUILD_DATE=${BUILD_DATE} \
-            #              --target test \
-            #              -t unicef/hope-country-workspace:${BRANCH} \
-            #              -f docker/Dockerfile .
-            docker run --rm \
-                    -e CACHE_URL=redis://localhost:16379/0 \
-                    -e CELERY_BROKER_URL=redis://localhost:16379/0 \
-                    -e DATABASE_URL=postgres://postgres:postgres@localhost:15432/country_workspace \
-                    -e DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
-                    --network host \
-                    -v $PWD:/app \
-                    -w /app \
-                    -t unicef/hope-country-workspace:${BRANCH} \
-                    pytest tests -vv --create-db --maxfail=10 --cov -n auto --cov-report xml:coverage.xml
+#      - name: Run tests
+#        run: |
+#            #            cd docker
+#            #            export BUILD_DATE=`date +%Y%M%D`
+#            #            export VERSION=
+#            #            export BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+#            #            docker build \
+#            #              --build-arg BUILD_DATE=${BUILD_DATE} \
+#            #              --target test \
+#            #              -t unicef/hope-country-workspace:${BRANCH} \
+#            #              -f docker/Dockerfile .
+#            docker run --rm \
+#                    -e CACHE_URL=redis://localhost:16379/0 \
+#                    -e CELERY_BROKER_URL=redis://localhost:16379/0 \
+#                    -e DATABASE_URL=postgres://postgres:postgres@localhost:15432/country_workspace \
+#                    -e DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+#                    --network host \
+#                    -v $PWD:/app \
+#                    -w /app \
+#                    -t unicef/hope-country-workspace:${{env.BRANCH}}-test \
+#                    pytest tests -vv --create-db --maxfail=10 --cov -n auto --cov-report xml:coverage.xml
 #          sudo apt-get update
 #          sudo apt-get install python3-dev libxml2
 #          uv sync --frozen
 #          uv run pytest tests/
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          env_vars: OS,PYTHON
-          fail_ci_if_error: true
-          files: coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: false
-          name: codecov-${{env.GITHUB_REF_NAME}}
+#      - name: Upload coverage to Codecov
+#        uses: codecov/codecov-action@v4
+#        with:
+#          env_vars: OS,PYTHON
+#          fail_ci_if_error: true
+#          files: coverage.xml
+#          token: ${{ secrets.CODECOV_TOKEN }}
+#          verbose: false
+#          name: codecov-${{env.GITHUB_REF_NAME}}
 #
 #  build:
 #    needs: [ changes ]

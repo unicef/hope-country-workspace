@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -8,6 +9,16 @@ from country_workspace.models.base import BaseManager, BaseModel
 
 
 class SyncManager(BaseManager):
+    def create_lookups(self):
+        from hope_flex_fields.models import FieldDefinition
+
+        ct = ContentType.objects.get_for_model(FieldDefinition)
+        for m in settings.LOOKUPS:
+            fd = FieldDefinition.objects.get(name="HOPE HH {m}".format(m=m))
+            SyncLog.objects.get_or_create(
+                content_type=ct, object_id=fd.pk, data={"remote_url": "lookups/%s" % m.lower()}
+            )
+
     def register_sync(self, model: "type[Model]") -> None:
         ct = ContentType.objects.get_for_model(model)
         SyncLog.objects.update_or_create(
@@ -25,4 +36,5 @@ class SyncLog(BaseModel):
     last_update_date = models.DateTimeField(null=True, blank=True)
     last_id = models.CharField(max_length=255, null=True)
     data = models.JSONField(default=dict, blank=True)
+
     objects = SyncManager()

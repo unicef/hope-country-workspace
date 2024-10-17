@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from country_workspace import VERSION
+from country_workspace.versioning.exceptions import ScriptException
 from country_workspace.versioning.models import Version
 
 regex = re.compile(r"(\d+).*")
@@ -61,6 +62,26 @@ class Manager:
     def zero(self, out=sys.stdout):
         self.backward(0, out=out)
 
+    def _process_file(self, entry: Path):
+        funcs = get_funcs(entry, direction="forward")
+        for func in funcs:
+            try:
+                func()
+            except Exception as e:
+                raise ScriptException(f"Error executing {entry.stem}.{func.__name__}") from e
+        return funcs
+
+    def force_apply(self):
+        for entry in self.existing:
+            if entry.name not in self.applied:
+                self._process_file(entry)
+                # funcs = get_funcs(entry, direction="forward")
+                # for func in funcs:
+                #     try:
+                #         func()
+                #     except Exception as e:
+                #         raise ScriptException(f"Error executing {entry.stem}.{func.__name__}") from e
+
     def forward(
         self, to_num=None, fake: bool = False, out=sys.stdout
     ) -> list[tuple[Path, list[Callable[[None], None]]]]:
@@ -72,13 +93,18 @@ class Manager:
             if get_version(entry.stem) > to_num:
                 break
             if entry.name not in self.applied:
-                funcs = get_funcs(entry, direction="forward")
+                # funcs = get_funcs(entry, direction="forward")
                 if fake:
                     out.write(f"   Applying {entry.stem} (fake)\n")
                 else:
                     out.write(f"   Applying {entry.stem}\n")
-                    for func in funcs:
-                        func()
+                funcs = self._process_file(entry)
+
+                # for func in funcs:
+                #     try:
+                #         func()
+                #     except Exception as e:
+                #         raise ScriptException(f"Error executing {entry.stem}.{func.__name__}") from e
                 Version.objects.create(name=entry.name, version=VERSION)
                 processed.append((entry, funcs))
         self.applied = list(Version.objects.order_by("name").values_list("name", flat=True))

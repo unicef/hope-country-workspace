@@ -49,23 +49,15 @@ class Command(BaseCommand):
         test_utils_dir = Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
         assert test_utils_dir.exists(), str(test_utils_dir.absolute()) + " does not exist"  # nosec B101
         sys.path.append(str(test_utils_dir.absolute()))
-        from django.contrib.contenttypes.models import ContentType
 
         import vcr
-        from hope_flex_fields.models import FieldDefinition
         from testutils.factories import BatchFactory, HouseholdFactory
         from vcr.record_mode import RecordMode
 
         from country_workspace.models import Batch, Household
         from country_workspace.sync.office import sync_all
 
-        ct = ContentType.objects.get_for_model(FieldDefinition)
-        for m in settings.LOOKUPS:
-            fd = FieldDefinition.objects.get(name="HOPE HH {m}".format(m=m))
-            SyncLog.objects.get_or_create(
-                content_type=ct, object_id=fd.pk, data={"remote_url": "lookups/%s" % m.lower()}
-            )
-
+        SyncLog.objects.create_lookups()
         if settings.HOPE_API_TOKEN:
             print("Syncing online")
             with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.ALL):

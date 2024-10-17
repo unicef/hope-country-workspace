@@ -65,7 +65,7 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
         # ("batch", BatchFilter),
     )
-    actions = ["validate_queryset", actions.mass_update]
+    actions = ["validate_queryset", actions.mass_update, actions.regex_update]
 
     @button(label=_("Validate"))
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":

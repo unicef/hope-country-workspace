@@ -24,15 +24,218 @@ interactions:
       Content-Length:
       - '276'
       Content-Security-Policy-Report-Only:
-      - 'frame-ancestors ''none''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
-        style-src ''self'' ''unsafe-inline'' ''unsafe-eval''; manifest-src ''self'';
-        default-src ''self''; connect-src gov-bam.nr-data.net cdn.jsdelivr.net; img-src
-        ''self'' data:; media-src ''self''; script-src ''self'' ''unsafe-inline''
+      - 'frame-ancestors ''none''; img-src ''self'' data:; font-src ''self'' data:
+        fonts.gstatic.com maxcdn.bootstrapcdn.com; script-src ''self'' ''unsafe-inline''
+        ''unsafe-eval''; connect-src gov-bam.nr-data.net cdn.jsdelivr.net; style-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval''; media-src ''self''; default-src
+        ''self''; manifest-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 17 Oct 2024 11:25:19 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/relationship/
+  response:
+    body:
+      string: '{"UNKNOWN":"Unknown","AUNT_UNCLE":"Aunt / Uncle","BROTHER_SISTER":"Brother
+        / Sister","COUSIN":"Cousin","DAUGHTERINLAW_SONINLAW":"Daughter-in-law / Son-in-law","GRANDDAUGHER_GRANDSON":"Granddaughter
+        / Grandson","GRANDMOTHER_GRANDFATHER":"Grandmother / Grandfather","HEAD":"Head
+        of household (self)","MOTHER_FATHER":"Mother / Father","MOTHERINLAW_FATHERINLAW":"Mother-in-law
+        / Father-in-law","NEPHEW_NIECE":"Nephew / Niece","NON_BENEFICIARY":"Not a
+        Family Member. Can only act as a recipient.","OTHER":"Other","SISTERINLAW_BROTHERINLAW":"Sister-in-law
+        / Brother-in-law","SON_DAUGHTER":"Son / Daughter","WIFE_HUSBAND":"Wife / Husband","FOSTER_CHILD":"Foster
+        child","FREE_UNION":"Free union"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '688'
+      Content-Security-Policy-Report-Only:
+      - 'frame-ancestors ''none''; img-src ''self'' data:; style-src ''self'' ''unsafe-inline''
+        ''unsafe-eval''; manifest-src ''self''; font-src ''self'' data: fonts.gstatic.com
+        maxcdn.bootstrapcdn.com; default-src ''self''; media-src ''self''; connect-src
+        gov-bam.nr-data.net cdn.jsdelivr.net; script-src ''self'' ''unsafe-inline''
         ''unsafe-eval'''
       Content-Type:
       - application/json
       Date:
-      - Tue, 15 Oct 2024 19:43:22 GMT
+      - Thu, 17 Oct 2024 11:25:19 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/role/
+  response:
+    body:
+      string: '{"NO_ROLE":"None","ALTERNATE":"Alternate collector","PRIMARY":"Primary
+        collector"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '82'
+      Content-Security-Policy-Report-Only:
+      - 'media-src ''self''; img-src ''self'' data:; manifest-src ''self''; connect-src
+        gov-bam.nr-data.net cdn.jsdelivr.net; frame-ancestors ''none''; script-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval''; default-src ''self''; font-src
+        ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; style-src ''self''
+        ''unsafe-inline'' ''unsafe-eval'''
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 17 Oct 2024 11:25:19 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/maritalstatus/
+  response:
+    body:
+      string: '{"":"None","DIVORCED":"Divorced","MARRIED":"Married","SEPARATED":"Separated","SINGLE":"Single","WIDOWED":"Widowed"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '115'
+      Content-Security-Policy-Report-Only:
+      - 'frame-ancestors ''none''; img-src ''self'' data:; font-src ''self'' data:
+        fonts.gstatic.com maxcdn.bootstrapcdn.com; script-src ''self'' ''unsafe-inline''
+        ''unsafe-eval''; connect-src gov-bam.nr-data.net cdn.jsdelivr.net; style-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval''; media-src ''self''; default-src
+        ''self''; manifest-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 17 Oct 2024 11:25:20 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - DENY
+      X-Hope-Backend-Version:
+      - 2.11.0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://hope.unicef.org/api/rest/lookups/observeddisability/
+  response:
+    body:
+      string: '{"NONE":"None","SEEING":"Difficulty seeing (even if wearing glasses)","HEARING":"Difficulty
+        hearing (even if using a hearing aid)","WALKING":"Difficulty walking or climbing
+        steps","MEMORY":"Difficulty remembering or concentrating","SELF_CARE":"Difficulty
+        with self care (washing, dressing)","COMMUNICATING":"Difficulty communicating
+        (e.g understanding or being understood)"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '374'
+      Content-Security-Policy-Report-Only:
+      - 'manifest-src ''self''; frame-ancestors ''none''; connect-src gov-bam.nr-data.net
+        cdn.jsdelivr.net; media-src ''self''; img-src ''self'' data:; style-src ''self''
+        ''unsafe-inline'' ''unsafe-eval''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval'';
+        default-src ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com'
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 17 Oct 2024 11:25:20 GMT
       Referrer-Policy:
       - same-origin
       Server:

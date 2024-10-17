@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm as python_base
+FROM python:3.12-slim-bookworm AS python_base
 ARG GOSU_VERSION=1.17
 ARG GOSU_SHA256=bbc4136d03ab138b1ad66fa4fc051bafc6cc7ffae632b069a53657279a450de3
 
@@ -21,6 +21,7 @@ RUN groupadd --gid 1024 app \
     && adduser --disabled-login --disabled-password --no-create-home --ingroup app -q user
 
 
+# ------- builder -------
 FROM python_base AS builder
 
 RUN set -x \
@@ -41,24 +42,30 @@ RUN set -x \
 RUN pip install uv
 
 COPY pyproject.toml uv.lock AUTHORS LICENSE README.md MANIFEST.in /app/
-COPY src /app/src
+#COPY src /app/src
 
 WORKDIR /app
 RUN uv sync --no-dev --no-editable --frozen
 
-FROM builder AS test
-ENV PATH=/app/.venv/bin:$PATH \
+
+# ------- tests -------
+FROM builder AS tests
+ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+    PYTHONPATH=""\
     UWSGI_PROCESSES=4
 WORKDIR /app
-RUN uv sync --no-editable --frozen
-COPY pytest.ini /app/
-COPY tests /app/tests
+RUN uv sync --no-editable --frozen \
+    && rm -fr build hope_country_workspace.egg-info
+#COPY pytest.ini /app/
+#COPY tests /app/tests
 
 
-FROM python_base as prod
-ENV PATH=/app/.venv/bin:$PATH \
+# ------- dist -------
+FROM python_base AS dist
+ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+    PYTHONPATH=""\
     UWSGI_PROCESSES=4
 
 COPY docker/conf /conf/
@@ -70,16 +77,16 @@ ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
 CMD ["run"]
 
 
-LABEL distro="final"
-LABEL maintainer="hope@unicef.org"
-LABEL org.opencontainers.image.authors="hope@unicef.org"
+#LABEL distro="final"
+#LABEL maintainer="hope@unicef.org"
+#LABEL org.opencontainers.image.authors="hope@unicef.org"
 #LABEL org.opencontainers.image.created="$BUILD_DATE"
-LABEL org.opencontainers.image.description="Hope Country Workspace"
-LABEL org.opencontainers.image.documentation="https://github.com/unicef/hope-country-workspace/"
-LABEL org.opencontainers.image.licenses="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${SOURCE_COMMIT:-master}/LICENSE"
-LABEL org.opencontainers.image.revision=$SOURCE_COMMIT
-LABEL org.opencontainers.image.source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${SOURCE_COMMIT:-master}/"
-LABEL org.opencontainers.image.title="Hope Country Workspace"
-LABEL org.opencontainers.image.version="$VERSION"
+#LABEL org.opencontainers.image.description="Hope Country Workspace"
+#LABEL org.opencontainers.image.documentation="https://github.com/unicef/hope-country-workspace/"
+#LABEL org.opencontainers.image.licenses="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${SOURCE_COMMIT:-master}/LICENSE"
+#LABEL org.opencontainers.image.revision=$SOURCE_COMMIT
+#LABEL org.opencontainers.image.source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${SOURCE_COMMIT:-master}/"
+#LABEL org.opencontainers.image.title="Hope Country Workspace"
+#LABEL org.opencontainers.image.version="$VERSION"
 #LABEL org.opencontainers.image.url="https://app.io/"
 #LABEL org.opencontainers.image.vendor="App ltd"

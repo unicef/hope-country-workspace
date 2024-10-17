@@ -46,9 +46,14 @@ def test_sync_all():
 
 
 def test_sync_programs():
+    from country_workspace.models import Office
+
     with my_vcr.use_cassette(Path(__file__).parent / "sync_programs.yaml"):
         assert sync_offices()
         assert sync_programs()
+    office = Office.objects.first()
+    with my_vcr.use_cassette(Path(__file__).parent / "sync_office.yaml"):
+        assert sync_programs(office)
 
 
 def test_sync_lookup(force_migrated_records):

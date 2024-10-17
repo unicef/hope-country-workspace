@@ -2,11 +2,12 @@ import os
 import sys
 from pathlib import Path
 
-import django
-
 import pytest
 import responses
-from constance import config
+
+# import django
+
+# from constance import config
 
 here = Path(__file__).parent
 sys.path.insert(0, str(here / "../src"))
@@ -53,15 +54,19 @@ def pytest_configure(config):
     os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
 
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
+    import django
     from django.conf import settings
 
     settings.ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
     settings.SIGNING_BACKEND = "testutils.signers.PlainSigner"
+    settings.SECRET_KEY = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
+    settings.CSRF_TRUSTED_ORIGINS = "http://testserver"
     django.setup()
 
 
 @pytest.fixture(autouse=True)
 def setup(db):
+    from constance import config
     from testutils.factories import GroupFactory
 
     GroupFactory(name=config.NEW_USER_DEFAULT_GROUP)
@@ -127,15 +132,11 @@ def force_migrated_records(request, active_marks):
     from hope_flex_fields.apps import sync_content_types
     from hope_flex_fields.utils import create_default_fields
 
-    from country_workspace.versioning.api import run_scripts
-    from country_workspace.versioning.checkers import create_hope_core_fieldset, create_hope_field_definitions
-    from country_workspace.versioning.synclog import create_default_synclog
+    from country_workspace.versioning.management.manager import Manager
 
     if request.config.option.enable_selenium or "selenium" in active_marks:
         # we need to recreate these records because with selenium they are not available
         create_default_fields(apps, None)
         sync_content_types(None)
-    create_hope_field_definitions()
-    create_hope_core_fieldset()
-    create_default_synclog()
-    run_scripts()
+
+    Manager().force_apply()
