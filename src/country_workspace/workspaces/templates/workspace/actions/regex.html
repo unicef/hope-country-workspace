@@ -7,7 +7,7 @@
     <form method="post" id="regex-update-form">
         {% csrf_token %}
         {{ form.action }}{{ form.select_across }}
-        <input type="text" name="_selected_action" value="2" required="" id="id__selected_action">
+        <input type="hidden" name="_selected_action" value="2" required="" id="id__selected_action">
         <table>
             <tr>
                 <td>

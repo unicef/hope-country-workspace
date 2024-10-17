@@ -49,7 +49,7 @@ def regex_update_impl(records: "QuerySet[Beneficiary]", config: dict[str, Any]) 
 
     with transaction.atomic():
         for record in records:
-            old_value = record.flex_fields[field_name]
+            old_value = record.flex_fields.get(field_name, "")
             new_value = config["regex"].sub(config["subst"], old_value, 1)
             record.flex_fields[field_name] = new_value
             record.save()
@@ -62,6 +62,7 @@ def regex_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, qu
         form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
             regex_update_impl(queryset.all(), form.cleaned_data)
+            model_admin.message_user(request, "Records updated successfully")
     else:
         form = RegexUpdateForm(request.POST, checker=checker)
 

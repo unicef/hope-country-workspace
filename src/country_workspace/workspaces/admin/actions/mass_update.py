@@ -120,4 +120,5 @@ def mass_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, que
     if "_apply" in request.POST:
         if form.is_valid():
             mass_update_impl(queryset.all(), form.get_selected())
+            model_admin.message_user(request, "Records updated successfully")
     return render(request, "workspace/actions/mass_update.html", ctx)
