@@ -141,7 +141,6 @@ jobs:
                 -f docker/Dockerfile .
       - run: |
             docker run --rm \
-              -it \
               --network host \
               -e PYTHONPATH=/app/src \
               -e DATABASE_URL=${DATABASE_URL} \
