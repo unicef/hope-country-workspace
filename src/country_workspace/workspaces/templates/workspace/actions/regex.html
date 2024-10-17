@@ -1,0 +1,29 @@
+{% extends "workspace/actions/base.html" %}{% load i18n %}
+{% block content %}
+    <div>
+        All selected records will be updated based on the following Regular Expression.<br/>
+        See https://regex101.com/ for help.
+    </div>
+    <form method="post" id="regex-update-form">
+        {% csrf_token %}
+        {{ form.action }}{{ form.select_across }}
+        <input type="text" name="_selected_action" value="2" required="" id="id__selected_action">
+        <table>
+            <tr>
+                <td>
+                    {{ form.field }}
+                </td>
+                <td>
+                    {{ form.regex }}
+                </td>
+                <td>
+                    {{ form.subst }}
+                </td>
+            </tr>
+        </table>
+        {% load i18n admin_urls workspace_urls %}
+        <div class="submit-row float-right">
+            <input type="submit" value="{% translate 'Preview' %}" class="default float-right" name="_preview">
+        </div>
+    </form>
+{% endblock %}

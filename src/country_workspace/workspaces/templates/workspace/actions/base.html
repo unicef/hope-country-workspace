@@ -1,0 +1,17 @@
+{% extends "workspace/admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+{% block breadcrumbs-items %}
+<a href="{% url 'workspace:index' %}">{% translate 'Workspaces' %}</a>
+&rsaquo; <a href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; {% if has_view_permission %}
+    <a href="">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}{{ opts.verbose_name_plural|capfirst }}{% endif %}
+    {% block breadcrumbs-active %}&rsaquo; {{ title }}{% endblock %}
+{% endblock %}
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% endblock %}

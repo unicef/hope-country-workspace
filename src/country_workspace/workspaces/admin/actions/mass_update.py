@@ -11,6 +11,8 @@ from django.utils.translation import gettext as _
 from hope_flex_fields.fields import FlexFormMixin
 from strategy_field.utils import fqn
 
+from .base import BaseActionForm
+
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
@@ -54,7 +56,7 @@ operations.register(forms.BooleanField, "toggle", lambda old_value, new_value: n
 
 
 class MassUpdateWidget(widgets.MultiWidget):
-    template_name = "actions/massupdatewidget.html"
+    template_name = "workspace/actions/massupdatewidget.html"
     is_required = False
 
     def __init__(self, field: FlexFormMixin, attrs=None):
@@ -83,10 +85,7 @@ class MassUpdateField(MultiValueField):
         return data_list
 
 
-class MassUpdateForm(forms.Form):
-    action = forms.CharField()
-    select_across = forms.BooleanField()
-    _selected_action = forms.CharField()
+class MassUpdateForm(BaseActionForm):
 
     def __init__(self, *args, **kwargs):
         checker: "DataChecker" = kwargs.pop("checker")
@@ -121,4 +120,4 @@ def mass_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, que
     if "_apply" in request.POST:
         if form.is_valid():
             mass_update_impl(queryset.all(), form.get_selected())
-    return render(request, "actions/mass_update.html", ctx)
+    return render(request, "workspace/actions/mass_update.html", ctx)

@@ -1,10 +1,13 @@
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Any
 
 from django import forms
 from django.db import transaction
 from django.db.models import QuerySet
 from django.shortcuts import render
 from django.utils.translation import gettext as _
+
+from .base import BaseActionForm
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -16,11 +19,20 @@ if TYPE_CHECKING:
     RegexRules = list(RegexRule)
 
 
-class RegexUpdateForm(forms.Form):
-    action = forms.CharField(widget=forms.HiddenInput)
-    select_across = forms.BooleanField(widget=forms.HiddenInput)
-    _selected_action = forms.CharField(widget=forms.HiddenInput)
+class RegexFormField(forms.CharField):
+    def clean(self, value: Any) -> Any:
+        super().clean(value)
+        try:
+            re.compile(value)
+            return value
+        except Exception:
+            raise forms.ValidationError("Invalid regex")
+
+
+class RegexUpdateForm(BaseActionForm):
     field = forms.ChoiceField(choices=[])
+    regex = RegexFormField()
+    subst = forms.CharField()
 
     def __init__(self, *args, **kwargs):
         checker: "DataChecker" = kwargs.pop("checker")
@@ -29,24 +41,29 @@ class RegexUpdateForm(forms.Form):
         self.fields["field"].choices = zip(field_names, field_names)
 
 
-def regex_update_impl(records: "QuerySet[Beneficiary]", config: "RegexRules") -> None:
+def regex_update_impl(records: "QuerySet[Beneficiary]", config: dict[str, Any]) -> None:
+    if isinstance(config["regex"], str):
+        config["regex"] = re.compile(config["regex"])
+
+    field_name = config["field"]
+
     with transaction.atomic():
         for record in records:
-            pass
-    # for field_name, attrs in config.items():
-    #     op, new_value = attrs
-    #     old_value = record.flex_fields[field_name]
-    #     func = operations.get_function_by_id(op)
-    #     record.flex_fields[field_name] = func(old_value, new_value)
-    # record.save()
+            old_value = record.flex_fields[field_name]
+            new_value = config["regex"].sub(config["subst"], old_value, 1)
+            record.flex_fields[field_name] = new_value
+            record.save()
 
 
 def regex_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, queryset):
-    ctx = model_admin.get_common_context(request, title=_("Mass update"))
+    ctx = model_admin.get_common_context(request, title=_("Regex update"))
     ctx["checker"] = checker = model_admin.get_checker(request)
-    form = RegexUpdateForm(request.POST, checker=checker)
-    ctx["form"] = form
-    if "_apply" in request.POST:
+    if "_preview" in request.POST:
+        form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
-            regex_update_impl(queryset.all(), form.get_selected())
-    return render(request, "actions/mass_update.html", ctx)
+            regex_update_impl(queryset.all(), form.cleaned_data)
+    else:
+        form = RegexUpdateForm(request.POST, checker=checker)
+
+    ctx["form"] = form
+    return render(request, "workspace/actions/regex.html", ctx)
