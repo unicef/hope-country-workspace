@@ -152,7 +152,7 @@ jobs:
               -v "./tests:/app/tests" \
               -v "./pytest.ini:/app/pytest.ini" \
               -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
-              pytest -c /app/pytest.ini  tests/ -v --maxfail=5 --migrations --cov --cov-report xml:/app/coverage.xml
+              pytest -c /app/pytest.ini  tests/ -v --maxfail=5 --migrations --cov --cov-report xml:output/coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -160,7 +160,7 @@ jobs:
         with:
           env_vars: OS,PYTHON
           fail_ci_if_error: true
-          files: /output/coverage.xml
+          files: /app/output/coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: false
           name: codecov-${{env.GITHUB_REF_NAME}}

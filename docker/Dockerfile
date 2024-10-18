@@ -42,7 +42,6 @@ RUN set -x \
 RUN pip install uv
 
 COPY pyproject.toml uv.lock AUTHORS LICENSE README.md MANIFEST.in /app/
-#COPY src /app/src
 
 WORKDIR /app
 RUN uv sync --no-dev --no-editable --frozen
@@ -57,9 +56,17 @@ ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
 WORKDIR /app
 RUN uv sync --no-editable --frozen \
     && rm -fr build hope_country_workspace.egg-info
-#COPY pytest.ini /app/
-#COPY tests /app/tests
 
+# ------- package -------
+FROM builder AS package
+ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
+    DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
+    PYTHONPATH=""\
+    UWSGI_PROCESSES=4
+WORKDIR /app
+COPY src/ /app/src/
+COPY pyproject.toml uv.lock AUTHORS LICENSE README.md MANIFEST.in /app/
+RUN uv sync --no-dev --no-editable --frozen
 
 # ------- dist -------
 FROM python_base AS dist
@@ -68,9 +75,10 @@ ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     PYTHONPATH=""\
     UWSGI_PROCESSES=4
 
+WORKDIR /app
 COPY docker/conf /conf/
 COPY docker/bin/* /usr/local/bin/
-COPY --chown=user:app --from=builder /app/.venv /app/.venv
+COPY --chown=user:app --from=package /app/.venv /app/.venv
 
 EXPOSE 8000
 ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
