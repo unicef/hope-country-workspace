@@ -2,7 +2,6 @@ $admin-main: rgb(55, 176, 248);
 $tenant-main: rgb(30, 58, 138);
 html[data-theme],
 :root {
-  //--primary: rgb(55, 176, 248);
   --header-bg: #37B0F8FF;
   --accent: white;
   --header-color: #e8e8e8;
@@ -25,29 +24,16 @@ html[data-tenant="yes"][data-theme],
   //--header-bg: #1E3A8AFF;
   //--breadcrumbs-bg: var(--secondary);
 }
+html, body
+{
+  min-height: 100vh;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
 
 body {
 
-  //#header {
-  //  //background-color: $admin-main;
-  //  color: white;
-  //
-  //  #branding h1 a {
-  //    color: white;
-  //  }
-  //}
-  //
-  //nav {
-  //  .breadcrumbs {
-  //    background-color: rgb(31 41 55);
-  //  }
-  //}
-  //
-  //.theme-toggle {
-  //  svg.theme-icon-when-auto, svg.theme-icon-when-dark, svg.theme-icon-when-light {
-  //    color: $admin-main;
-  //  }
-  //}
 }
 
 body.tenant {
@@ -167,6 +153,20 @@ body.tenant {
   }
 }
 
+.center {
+  margin: auto;
+  width: 50%;
+  padding: 10px;
+}
+
 .colMX{
     margin-right: 400px;
+}
+
+#footer{
+  position:sticky;
+  top:95vh;
+  text-align: right;
+  margin-right: 10px;
+  bottom: 20px;
 }

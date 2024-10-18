@@ -5,6 +5,7 @@
 
 {% block extrastyle %}{{ block.super }}
     <link rel="stylesheet" type="text/css" href="{% static "workspace/css/dashboard.css" %}">
+    <link rel="stylesheet" href="{% static "workspace/css/login.css" %}">
 {% endblock %}
 
 {% block coltype %}colMS{% endblock %}
@@ -16,15 +17,18 @@
 {% block select_ba_form %}{% endblock %}
 
 
-{% block content %}
-    <div id="content-main" class="">
+{% block main %}
+    <div _id="content-main" class="center">
     {% if  form.fields.tenant.queryset.exists %}
-        <form id="select-tenant" method="post">
+        <form id="select-tenant" method="post" class="center">
             <table>
                 {% csrf_token %}
                 {{ form }}
             </table>
+            <div  class="center">
             <input type="submit">
+
+            </div>
         </form>
     {% else %}
             Seems you do not have any tenant enabled.

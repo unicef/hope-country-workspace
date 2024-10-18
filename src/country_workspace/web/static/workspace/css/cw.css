@@ -16,6 +16,13 @@ html[data-tenant=yes][data-theme],
   //--secondary: #417690;
 }
 
+html, body {
+  min-height: 100vh;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
 body.tenant {
   --primary: rgb(30, 58, 138);
   --link-fg: rgb(30, 58, 138);
@@ -118,8 +125,22 @@ body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle sv
   background-color: var(--delete-button-bg);
 }
 
+.center {
+  margin: auto;
+  width: 50%;
+  padding: 10px;
+}
+
 .colMX {
   margin-right: 400px;
+}
+
+#footer {
+  position: sticky;
+  top: 95vh;
+  text-align: right;
+  margin-right: 10px;
+  bottom: 20px;
 }
 
 /*# sourceMappingURL=cw.css.map */

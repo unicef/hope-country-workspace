@@ -91,6 +91,7 @@
     {% endif %}
 
     <div class="main" id="main">
+    {% block main %}
         {% if not is_popup and is_nav_sidebar_enabled %}
             {% block nav-sidebar %}
                 {% include "workspace/nav_sidebar.html" %}
@@ -122,6 +123,7 @@
             {% block footer %}
                 <div id="footer"></div>{% endblock %}
         </div>
+    {% endblock %}
     </div>
 </div>
 <!-- END Container -->

@@ -41,21 +41,19 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         elif cl_flt := request.GET.get("_changelist_filters", ""):
             if prg := parse_qs(cl_flt).get("batch__program__exact"):
                 selected_program = CountryProgram.objects.get(pk=prg[0])
+            elif prg := parse_qs(cl_flt).get("program__exact"):
+                selected_program = CountryProgram.objects.get(pk=prg[0])
+
         if not request.user.has_perm("workspaces.view_countryhousehold", selected_program):
             raise PermissionDenied
         return selected_program
 
     def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
         ret = super().get_common_context(request, pk, **kwargs)
-        ret["datachecker"] = self.get_checker(request, ret.get("original"))
+        # ret["datachecker"] = self.get_checker(request, ret.get("original"))
         ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
-        ret["preserved_filters"] = request.GET.get("_changelist_filters", "")
+        # ret["preserved_filters"] = request.GET.get("_changelist_filters", "")
         return ret
-
-    def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:
-        context = self.get_common_context(request, title="")
-        context.update(extra_context or {})
-        return super().changelist_view(request, context)
 
     def get_checker(self, request: HttpRequest, obj: "Optional[Beneficiary]" = None) -> "DataChecker":
         if p := self.get_selected_program(request, obj=obj):
@@ -63,6 +61,26 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         else:
             checker = None
         return checker
+
+    def delete_queryset(self, request, queryset):
+        queryset.filter().delete()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+
+    def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:
+        context = self.get_common_context(request, title="")
+        context.update(extra_context or {})
+        return super().changelist_view(request, context)
+
+
+class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
+    list_filter = (
+        ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
+        ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+        # ("batch", BatchFilter),
+    )
+    actions = ["validate_queryset", actions.mass_update, actions.regex_update]
 
     @link()
     def import_rdi(self, btn: LinkButton) -> None:
@@ -79,20 +97,12 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         else:
             return qs
 
-    def delete_queryset(self, request, queryset):
-        queryset.filter().delete()
-
-    def delete_model(self, request, obj):
-        super().delete_model(request, obj)
-
-
-class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
-    list_filter = (
-        ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
-        ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
-        # ("batch", BatchFilter),
-    )
-    actions = ["validate_queryset", actions.mass_update, actions.regex_update]
+    def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+        ret = super().get_common_context(request, pk, **kwargs)
+        ret["datachecker"] = self.get_checker(request, ret.get("original"))
+        # ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
+        # ret["preserved_filters"] = request.GET.get("_changelist_filters", "")
+        return ret
 
     @button(label=_("Validate"), enabled=lambda btn: btn.context["original"].checker)
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
