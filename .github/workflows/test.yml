@@ -162,12 +162,10 @@ jobs:
           name: codecov-${{env.GITHUB_REF_NAME}}
       - name: Build Distro
         run: |
-            docker run --rm \
-              --network host \
-              -e PYTHONPATH=/app/src \
-              -e DATABASE_URL=${DATABASE_URL} \
-              -v "./src/:/app/src" \
-              -v "./tests:/app/tests" \
-              -v "./pytest.ini:/app/pytest.ini" \
-              -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
-              pytest -c /app/pytest.ini  tests/ -v --maxfail=5 --migrations --cov
+             docker build \
+                --target dist \
+                -t "unicef/hope-country-workspace:${{env.BRANCH}}" \
+                --cache-from "type=gha" \
+                --cache-to "type=gha,mode=max" \
+                -f docker/Dockerfile .
+            docker push "unicef/hope-country-workspace:${{env.BRANCH}}"
