@@ -28,46 +28,46 @@ permissions:
 
 
 jobs:
-#  changes:
-#    if: (github.event_name != 'pull_request'
-#            || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)
-#            || github.event_name == 'create'
-#    runs-on: ubuntu-latest
-#    timeout-minutes: 1
-#    defaults:
-#      run:
-#        shell: bash
-#    outputs:
-#      run_tests: ${{ steps.changes.outputs.run_tests }}
-#    steps:
-#      - name: Checkout code
-#        uses: actions/checkout@v4.1.7
-#      - id: changes
-#        name: Check for file changes
-#        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
-#        with:
-#          base: ${{ github.ref }}
-#          token: ${{ github.token }}
-#          filters: .github/file-filters.yml
-#      - name: info
-#        shell: bash
-#        run: |
-#          force_build="${{ contains(github.event.head_commit.message, 'ci:build') || contains(github.event.head_commit.message, 'ci:release')}}"
-#          force_scan="${{ contains(github.event.head_commit.message, 'ci:scan') }}"
-#          force_test="${{ contains(github.event.head_commit.message, 'ci:test') }}"
-#
-#          if [[ $force_build == "true" ]]; then
-#            echo "::notice:: Forced build docker due to commit message"
-#          elif [[ $force_test == "true" ]]; then
-#            echo "::notice:: Forced python tests due to commit message"
-#          elif [[ $force_scan == "true" ]]; then
-#            echo "::notice:: Forced trivy scan due to commit message"
-#          fi
-#          if [[ $force_build == "true" || "${{needs.changes.outputs.run_tests}}" == "true" ]]; then
-#              echo "BUILD=true" >> $GITHUB_ENV
-#          fi
+  changes:
+    if: (github.event_name != 'pull_request'
+            || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)
+            || github.event_name == 'create'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      run_tests: ${{ steps.changes.outputs.run_tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.7
+      - id: changes
+        name: Check for file changes
+        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+        with:
+          base: ${{ github.ref }}
+          token: ${{ github.token }}
+          filters: .github/file-filters.yml
+      - name: info
+        shell: bash
+        run: |
+          force_build="${{ contains(github.event.head_commit.message, 'ci:build') || contains(github.event.head_commit.message, 'ci:release')}}"
+          force_scan="${{ contains(github.event.head_commit.message, 'ci:scan') }}"
+          force_test="${{ contains(github.event.head_commit.message, 'ci:test') }}"
+
+          if [[ $force_build == "true" ]]; then
+            echo "::notice:: Forced build docker due to commit message"
+          elif [[ $force_test == "true" ]]; then
+            echo "::notice:: Forced python tests due to commit message"
+          elif [[ $force_scan == "true" ]]; then
+            echo "::notice:: Forced trivy scan due to commit message"
+          fi
+          if [[ $force_build == "true" || "${{needs.changes.outputs.run_tests}}" == "true" ]]; then
+              echo "BUILD=true" >> $GITHUB_ENV
+          fi
   test:
-#    needs: [ changes ]
+    needs: [ changes ]
     runs-on: ubuntu-latest
     services:
       redis:
