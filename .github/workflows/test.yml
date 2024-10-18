@@ -132,14 +132,16 @@ jobs:
           LOCK_SHA=$(sha1sum uv.lock docker/bin/* docker/conf/* docker/Dockerfile | sha1sum | awk '{print $1}' | cut -c 1-8)
           echo "checksum=$LOCK_SHA" >> "$GITHUB_ENV"
 
-      - run: |
+      - name: Build Test Image
+        run: |
              docker build \
                 --target tests \
                 -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
                 --cache-from "type=gha" \
                 --cache-to "type=gha,mode=max" \
                 -f docker/Dockerfile .
-      - run: |
+      - name: Run Test suite
+        run: |
             docker run --rm \
               --network host \
               -e PYTHONPATH=/app/src \
@@ -158,3 +160,14 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: false
           name: codecov-${{env.GITHUB_REF_NAME}}
+      - name: Build Distro
+        run: |
+            docker run --rm \
+              --network host \
+              -e PYTHONPATH=/app/src \
+              -e DATABASE_URL=${DATABASE_URL} \
+              -v "./src/:/app/src" \
+              -v "./tests:/app/tests" \
+              -v "./pytest.ini:/app/pytest.ini" \
+              -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
+              pytest -c /app/pytest.ini  tests/ -v --maxfail=5 --migrations --cov

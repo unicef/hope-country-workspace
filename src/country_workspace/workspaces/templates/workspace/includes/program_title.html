@@ -1,13 +1,20 @@
-<h1>
+{% load workspace_urls %}<h1>
     {% if program %}
-       &rsaquo;  <a href="{% url "workspace:workspaces_countryprogram_change" program.pk %}">{{ program }}</a>
+    {%  url "workspace:workspaces_countryprogram_change" program.pk as purl %}
+    &rsaquo; <a href="{{ purl }}">{{ program }}</a>
+
+{#       &rsaquo;  <a href="{% url "workspace:workspaces_countryprogram_change" program.pk %}">{{ program }}</a>#}
 
         {% if perms.country_workspace.change_program %}
             <a class="icon icon-cogs small" target="_admin"
                href="{% url "admin:country_workspace_program_change" program.pk %}"></a>
         {% endif %}
         {% if household %}
-          &rsaquo;   <a href="{% url "workspace:workspaces_countryhousehold_change" household.pk %}">{{ household }}</a>
+{#          &rsaquo;   <a href="{% url "workspace:workspaces_countryhousehold_change" household.pk %}">{{ household }}</a>#}
+    {%  url "workspace:workspaces_countryhousehold_change" household.pk as hurl %}
+    &rsaquo; <a href="{{ hurl }}?batch__program__exact={{ program.pk }}">{{ household }}</a>
+
+
             {% if perms.country_workspace.change_household %}
                 <a class="icon icon-cogs small" target="_admin"
                    href="{% url "admin:country_workspace_household_change" household.pk %}"></a>

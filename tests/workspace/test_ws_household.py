@@ -7,6 +7,7 @@ import pytest
 from responses import RequestsMock
 from testutils.perms import user_grant_permissions
 
+from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 from country_workspace.state import state
 
 if TYPE_CHECKING:
@@ -29,12 +30,13 @@ def office():
 
 @pytest.fixture()
 def program(office):
-    from testutils.factories import CountryProgramFactory
+    from testutils.factories import CountryProgramFactory, DataCheckerFactory
 
     return CountryProgramFactory(
-        country_office=office,
-        household_columns="__str__\nid\nxx",
-        individual_columns="__str__\nid\nxx",
+        household_checker=DataCheckerFactory(name=HOUSEHOLD_CHECKER_NAME),
+        individual_checker=DataCheckerFactory(name=INDIVIDUAL_CHECKER_NAME),
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
     )
 
 
@@ -74,7 +76,8 @@ def test_hh_change(app: "CWTestApp", household: "CountryHousehold") -> None:
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
     res.forms["select-tenant"].submit()
-    res = app.get(url)
+
+    res = app.get(f"{url}?batch__program__exact={household.program.pk}")
     assert res.status_code == 200, res.location
     assert f"Change {household._meta.verbose_name}" in res.text
     res = res.forms["countryhousehold_form"].submit()
@@ -86,7 +89,7 @@ def test_hh_delete(app: "CWTestApp", household: "CountryHousehold") -> None:
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
     res.forms["select-tenant"].submit()
-    res = app.get(url)
+    res = app.get(f"{url}?batch__program__exact={household.program.pk}")
     assert res.status_code == 200, res.location
     res = res.click("Delete")
     res = res.forms[1].submit().follow()
@@ -99,9 +102,12 @@ def test_hh_validate_single(app: "CWTestApp", household: "CountryHousehold") -> 
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = household.country_office.pk
     res.forms["select-tenant"].submit()
-    url = reverse("workspace:workspaces_countryhousehold_validate_single", args=[household.pk])
-    res = app.get(url).follow()
-    assert res.status_code == 200
+    with user_grant_permissions(app._user, ["workspaces.change_countryhousehold"], household.program):
+        url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
+        res = app.get(f"{url}?batch__program__exact={household.program.pk}")
+        res = res.click("Validate")
+        res = res.follow()
+        assert res.status_code == 200
 
 
 def test_hh_validate_program(app: "CWTestApp", household: "CountryHousehold") -> None:

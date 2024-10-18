@@ -89,6 +89,8 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
     form["regex"] = ".*"
     form["subst"] = "__NEW VALUE__"
     form.submit("_preview")
+    form = res.forms["regex-update-form"]
+    form.submit("_apply")
 
     household.refresh_from_db()
     assert household.flex_fields["address"] == "__NEW VALUE__"

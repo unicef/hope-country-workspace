@@ -14,7 +14,6 @@ class ProgramFilter(LinkedAutoCompleteFilter):
             p = state.tenant.programs.get(pk=self.lookup_val)
             # if request.usser.has_perm()
             queryset = super().queryset(request, queryset).filter(batch__program=p)
-            state.program = p
         return queryset
 
 

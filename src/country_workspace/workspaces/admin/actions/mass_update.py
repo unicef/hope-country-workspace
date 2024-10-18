@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
     from country_workspace.types import Beneficiary
-    from country_workspace.workspaces.admin.hh_ind import CountryHouseholdIndividualBaseAdmin
+    from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
     MassUpdateFunc = Callable[[Any, Any], Any]
     FormOperations = dict[str, tuple[str, str]]
@@ -112,7 +112,7 @@ def mass_update_impl(records: "QuerySet[Beneficiary]", config: "FormOperations")
             record.save()
 
 
-def mass_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, queryset):
+def mass_update(model_admin: "BeneficiaryBaseAdmin", request, queryset):
     ctx = model_admin.get_common_context(request, title=_("Mass update"))
     ctx["checker"] = checker = model_admin.get_checker(request)
     form = MassUpdateForm(request.POST, checker=checker)

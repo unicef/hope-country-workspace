@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
     from country_workspace.types import Beneficiary
-    from country_workspace.workspaces.admin.hh_ind import CountryHouseholdIndividualBaseAdmin
+    from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
     RegexRule = tuple[str, str]
     RegexRules = list(RegexRule)
@@ -41,25 +41,39 @@ class RegexUpdateForm(BaseActionForm):
         self.fields["field"].choices = zip(field_names, field_names)
 
 
-def regex_update_impl(records: "QuerySet[Beneficiary]", config: dict[str, Any]) -> None:
+def regex_update_impl(
+    records: "QuerySet[Beneficiary]", config: dict[str, Any], save=True
+) -> list[tuple[str, str, str]]:
     if isinstance(config["regex"], str):
         config["regex"] = re.compile(config["regex"])
 
     field_name = config["field"]
-
+    ret = []
     with transaction.atomic():
         for record in records:
             old_value = record.flex_fields.get(field_name, "")
             new_value = config["regex"].sub(config["subst"], old_value, 1)
 
             record.flex_fields[field_name] = new_value
-            record.save()
+            if save:
+                record.save()
+            else:
+                ret.append((record.pk, old_value, new_value))
+    return ret
 
 
-def regex_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, queryset):
+def regex_update(model_admin: "BeneficiaryBaseAdmin", request, queryset):
     ctx = model_admin.get_common_context(request, title=_("Regex update"))
     ctx["checker"] = checker = model_admin.get_checker(request)
+    ctx["queryset"] = queryset
+    ctx["opts"] = model_admin.model._meta
+
     if "_preview" in request.POST:
+        form = RegexUpdateForm(request.POST, checker=checker)
+        if form.is_valid():
+            changes = regex_update_impl(queryset.all()[:10], form.cleaned_data, save=False)
+            ctx["changes"] = changes
+    elif "_apply" in request.POST:
         form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
             regex_update_impl(queryset.all(), form.cleaned_data)
@@ -69,3 +83,7 @@ def regex_update(model_admin: "CountryHouseholdIndividualBaseAdmin", request, qu
 
     ctx["form"] = form
     return render(request, "workspace/actions/regex.html", ctx)
+
+
+# regex_update.allowed_permissions = []
+# regex_update.short_description = []

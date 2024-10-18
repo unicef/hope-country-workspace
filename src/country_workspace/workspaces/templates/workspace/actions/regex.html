@@ -1,29 +1,38 @@
 {% extends "workspace/actions/base.html" %}{% load i18n %}
 {% block content %}
     <div>
-        All selected records will be updated based on the following Regular Expression.<br/>
+        All selected {{ opts.verbose_name_plural }} will be updated based on the following Regular Expression.<br/>
         See https://regex101.com/ for help.
     </div>
+    <style>
+        ul {
+            list-style: none;
+            gap: 15px;
+            display: flex;
+        }
+    </style>
     <form method="post" id="regex-update-form">
         {% csrf_token %}
-        {{ form.action }}{{ form.select_across }}
-        <input type="hidden" name="_selected_action" value="2" required="" id="id__selected_action">
-        <table>
-            <tr>
-                <td>
-                    {{ form.field }}
-                </td>
-                <td>
-                    {{ form.regex }}
-                </td>
-                <td>
-                    {{ form.subst }}
-                </td>
-            </tr>
-        </table>
-        {% load i18n admin_urls workspace_urls %}
+        <ul>
+            {{ form.as_ul }}
+        </ul>
+        <div></div>
         <div class="submit-row float-right">
             <input type="submit" value="{% translate 'Preview' %}" class="default float-right" name="_preview">
+        </div>
+        {% if changes %}
+            <table>
+                {% for pk, old, new in changes %}
+                    <tr>
+                        <td>{{ pk }}</td>
+                        <td>{{ old }}</td>
+                        <td>{{ new }}</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        {% endif %}
+        <div class="submit-row float-right">
+            <input type="submit" value="{% translate 'Apply' %}" class="default float-right" name="_apply">
         </div>
     </form>
 {% endblock %}

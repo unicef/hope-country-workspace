@@ -1,68 +1,80 @@
 {% extends "workspace/change_list.html" %}
-{% load i18n admin_urls static admin_list workspace_urls workspace_list  %}
+{% load i18n admin_urls static admin_list workspace_urls workspace_list %}
 
 {% block coltype %}{% endblock %}
 {% block pretitle %}
     {% include "workspace/includes/program_title.html" with program=selected_program %}
 {% endblock %}
-
+{% block messages %}
+    {% if selected_program and not datachecker %}
+        <ul class="messagelist">
+            <li class="error">No checker found. Please check your Program configuration.</li>
+        </ul>
+    {% endif %}
+{% endblock messages %}
 
 {% block content %}
-  <div id="content-main">
-    {% block object-tools %}
-        <ul class="object-tools">
-          {% block object-tools-items %}
-            {% change_list_object_tools %}
-          {% endblock %}
-        {% include "admin_extra_buttons/includes/change_list_buttons.html" %}
-        </ul>
-    {% endblock %}
-    {% if cl.formset and cl.formset.errors %}
-        <p class="errornote">
-        {% blocktranslate count counter=cl.formset.total_error_count %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}
-        </p>
-        {{ cl.formset.non_form_errors }}
-    {% endif %}
-    <div class="module{% if cl.has_filters %} filtered{% endif %}" id="changelist">
-
-        <div class="changelist-form-container">
-          {% if selected_program %}
-        {% block search %}{% search_form cl %}{% endblock %}
-        {% block date_hierarchy %}{% if cl.date_hierarchy %}{% date_hierarchy cl %}{% endif %}{% endblock %}
-
-        <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate>{% csrf_token %}
-        {% if cl.formset %}
-          <div>{{ cl.formset.management_form }}</div>
-        {% endif %}
-
-        {% block result_list %}
-          {% if action_form and actions_on_top and cl.show_admin_actions %}{% admin_actions %}{% endif %}
-          {% result_list cl %}
-          {% if action_form and actions_on_bottom and cl.show_admin_actions %}{% admin_actions %}{% endif %}
+    <div id="content-main">
+        {% block object-tools %}
+            <ul class="object-tools">
+                {% block object-tools-items %}
+                    {% change_list_object_tools %}
+                {% endblock %}
+                {% include "admin_extra_buttons/includes/change_list_buttons.html" %}
+            </ul>
         {% endblock %}
-        {% block pagination %}{% pagination cl %}{% endblock %}
-        </form>
-              {% else %}
-              Please select a program on the left
-    {% endif %}
-      </div>
-      {% block filters %}
-        {% if cl.has_filters %}
-          <nav id="changelist-filter" aria-labelledby="changelist-filter-header">
-            <h2 id="changelist-filter-header">{% translate 'Filter' %}</h2>
-            {% if cl.is_facets_optional or cl.has_active_filters %}<div id="changelist-filter-extra-actions">
-              {% if cl.is_facets_optional %}<h3>
-                {% if cl.add_facets %}<a href="{{ cl.remove_facet_link }}" class="hidelink">{% translate "Hide counts" %}</a>
-                {% else %}<a href="{{ cl.add_facet_link }}" class="viewlink">{% translate "Show counts" %}</a>{% endif %}
-              </h3>{% endif %}
-              {% if cl.has_active_filters %}<h3>
-                <a href="{{ cl.clear_all_filters_qs }}">&#10006; {% translate "Clear all filters" %}</a>
-              </h3>{% endif %}
-            </div>{% endif %}
-            {% for spec in cl.filter_specs %}{% admin_list_filter cl spec %}{% endfor %}
-          </nav>
+        {% if cl.formset and cl.formset.errors %}
+            <p class="errornote">
+                {% blocktranslate count counter=cl.formset.total_error_count %}Please correct the error below.
+                    {% plural %}Please correct the errors below.{% endblocktranslate %}
+            </p>
+            {{ cl.formset.non_form_errors }}
         {% endif %}
-      {% endblock %}
+        <div class="module{% if cl.has_filters %} filtered{% endif %}" id="changelist">
+
+            <div class="changelist-form-container">
+                {% if selected_program %}
+                    {% block search %}{% search_form cl %}{% endblock %}
+                    {% block date_hierarchy %}{% if cl.date_hierarchy %}{% date_hierarchy cl %}{% endif %}{% endblock %}
+                    <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %}
+                          enctype="multipart/form-data"{% endif %} novalidate>{% csrf_token %}
+                        {% if cl.formset %}
+                            <div>{{ cl.formset.management_form }}</div>
+                        {% endif %}
+
+                        {% block result_list %}
+                            {% if action_form and actions_on_top and cl.show_admin_actions %}
+                                {% admin_actions %}{% endif %}
+                            {% result_list cl %}
+                            {% if action_form and actions_on_bottom and cl.show_admin_actions %}
+                                {% admin_actions %}{% endif %}
+                        {% endblock %}
+                        {% block pagination %}{% pagination cl %}{% endblock %}
+                    </form>
+                {% else %}
+                    Please select a program on the left
+                {% endif %}
+            </div>
+            {% block filters %}
+                {% if cl.has_filters %}
+                    <nav id="changelist-filter" aria-labelledby="changelist-filter-header">
+                        <h2 id="changelist-filter-header">{% translate 'Filter' %}</h2>
+                        {% if cl.is_facets_optional or cl.has_active_filters %}
+                            <div id="changelist-filter-extra-actions">
+                                {% if cl.is_facets_optional %}<h3>
+                                    {% if cl.add_facets %}<a href="{{ cl.remove_facet_link }}"
+                                                             class="hidelink">{% translate "Hide counts" %}</a>
+                                    {% else %}<a href="{{ cl.add_facet_link }}"
+                                                 class="viewlink">{% translate "Show counts" %}</a>{% endif %}
+                                </h3>{% endif %}
+                                {% if cl.has_active_filters %}<h3>
+                                    <a href="{{ cl.clear_all_filters_qs }}">&#10006; {% translate "Clear all filters" %}</a>
+                                </h3>{% endif %}
+                            </div>{% endif %}
+                        {% for spec in cl.filter_specs %}{% admin_list_filter cl spec %}{% endfor %}
+                    </nav>
+                {% endif %}
+            {% endblock %}
+        </div>
     </div>
-  </div>
 {% endblock %}

@@ -26,13 +26,9 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
     delete_confirmation_template = "workspace/delete_confirmation.html"
     preserve_filters = True
     default_url_filters = {}
-    actions_selection_counter = False
+    actions_selection_counter = True
     show_facets = ShowFacets.NEVER
     show_full_result_count = False
-
-    def __init__(self, model, admin_site):
-        self._selected_program = None
-        super().__init__(model, admin_site)
 
     def get_preserved_filters(self, request):
         """

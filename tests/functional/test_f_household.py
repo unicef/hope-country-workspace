@@ -95,6 +95,9 @@ def test_edit_household(selenium, user, household: "CountryHousehold"):
     with user_grant_permissions(
         user,
         [
+            "workspaces.view_countryhousehold",
+            "workspaces.view_countryindividual",
+            "workspaces.view_countryprogram",
             "workspaces.change_countryhousehold",
             "workspaces.change_countryindividual",
             "workspaces.change_countryprogram",

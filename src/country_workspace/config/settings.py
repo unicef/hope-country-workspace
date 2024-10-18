@@ -62,6 +62,7 @@ MIDDLEWARE = (
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # "unicef_security.middleware.UNICEFSocialAuthExceptionMiddleware",
     "country_workspace.middleware.state.StateClearMiddleware",
+    "country_workspace.middleware.exception.ExceptionMiddleware",
 )
 
 AUTHENTICATION_BACKENDS = (

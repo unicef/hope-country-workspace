@@ -111,3 +111,11 @@ def force_login(user, driver, base_url):
         }
     )
     driver.refresh()
+
+
+@contextlib.contextmanager
+def select_office(app, country_office):
+    res = app.get("/").follow()
+    res.forms["select-tenant"]["tenant"] = country_office.pk
+    res.forms["select-tenant"].submit()
+    yield

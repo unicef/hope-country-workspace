@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from django.urls import reverse
 
 import pytest
@@ -6,7 +8,11 @@ from django_webtest.pytest_plugin import MixinWithInstanceVariables
 from pytest_django.fixtures import SettingsWrapper
 from responses import RequestsMock
 
+from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 from country_workspace.state import state
+
+if TYPE_CHECKING:
+    from country_workspace.models import Household
 
 
 @pytest.fixture()
@@ -19,9 +25,14 @@ def office():
 
 @pytest.fixture()
 def program(office):
-    from testutils.factories import ProgramFactory
+    from testutils.factories import CountryProgramFactory, DataCheckerFactory
 
-    return ProgramFactory()
+    return CountryProgramFactory(
+        household_checker=DataCheckerFactory(name=HOUSEHOLD_CHECKER_NAME),
+        individual_checker=DataCheckerFactory(name=INDIVIDUAL_CHECKER_NAME),
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
+    )
 
 
 @pytest.fixture()
@@ -50,9 +61,10 @@ def app(
     yield django_app
 
 
-def test_login(app, user, program, data):
+def test_login(app, user, data: "list[Household]"):
     from testutils.perms import user_grant_permissions, user_grant_role
 
+    program = data[0].program
     home = reverse("workspace:index")
     res = app.get(home)
     assert res.status_code == 302

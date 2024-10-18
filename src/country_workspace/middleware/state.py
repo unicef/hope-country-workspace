@@ -10,8 +10,6 @@ from country_workspace.workspaces.utils import RequestHandler
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from country_workspace.types.http import AuthHttpRequest
-
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,7 @@ class StateSetMiddleware:
         self.get_response = get_response
         self.handler = RequestHandler()
 
-    def __call__(self, request: "AuthHttpRequest") -> "HttpResponse":
+    def __call__(self, request: "HttpRequest") -> "HttpResponse":
         state = self.handler.process_request(request)
         with configure_scope() as scope:
             scope.set_tag("state:cookie", state.tenant_cookie)
@@ -36,7 +34,7 @@ class StateClearMiddleware:
         self.get_response = get_response
         self.handler = RequestHandler()
 
-    def __call__(self, request: "AuthHttpRequest") -> "HttpResponse":
+    def __call__(self, request: "HttpRequest") -> "HttpResponse":
         response = self.get_response(request)
         self.handler.process_response(request, response)
 

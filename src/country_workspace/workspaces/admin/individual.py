@@ -7,10 +7,10 @@ from django.http import HttpRequest
 from ...state import state
 from ..filters import HouseholdFilter, ProgramFilter
 from ..models import CountryHousehold, CountryIndividual, CountryProgram
-from .hh_ind import CountryHouseholdIndividualBaseAdmin
+from .hh_ind import BeneficiaryBaseAdmin
 
 
-class CountryIndividualAdmin(CountryHouseholdIndividualBaseAdmin):
+class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     list_display = [
         "name",
         "household",

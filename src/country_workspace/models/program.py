@@ -84,10 +84,11 @@ class Program(BaseModel):
 
     def get_checker_for(self, m: Union[type[Validable], Validable]) -> DataChecker:
         from country_workspace.models import Household, Individual
+        from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-        if isinstance(m, Household) or m == Household:
+        if isinstance(m, (Household, CountryHousehold)) or m in (Household, CountryHousehold):
             return self.household_checker
-        elif isinstance(m, Individual) or m == Individual:
+        elif isinstance(m, (Individual, CountryIndividual)) or m in (Individual, CountryIndividual):
             return self.individual_checker
         else:
             raise ValueError(m)

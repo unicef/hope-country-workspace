@@ -6,6 +6,7 @@ from django.urls import reverse
 import pytest
 from responses import RequestsMock
 
+from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 from country_workspace.state import state
 
 if TYPE_CHECKING:
@@ -28,12 +29,13 @@ def office():
 
 @pytest.fixture()
 def program(office):
-    from testutils.factories import CountryProgramFactory
+    from testutils.factories import CountryProgramFactory, DataCheckerFactory
 
     return CountryProgramFactory(
-        country_office=office,
-        household_columns="__str__\nid\nxx",
-        individual_columns="__str__\nid\nxx",
+        household_checker=DataCheckerFactory(name=HOUSEHOLD_CHECKER_NAME),
+        individual_checker=DataCheckerFactory(name=INDIVIDUAL_CHECKER_NAME),
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
     )
 
 
@@ -71,11 +73,12 @@ def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -
 
 
 def test_ind_change(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
-    url = reverse("workspace:workspaces_countryindividual_change", args=[individual.pk])
+    url = reverse("workspace:workspaces_countryindividual_changelist")
     res = app.get(url).follow()
     res.forms["select-tenant"]["tenant"] = individual.country_office.pk
     res.forms["select-tenant"].submit()
-    res = app.get(url)
+    res = app.get(f"{url}?batch__program__exact={individual.program.pk}")
+    res = res.click(individual.name)
     assert res.status_code == 200, res.location
     assert f"Change {individual._meta.verbose_name}" in res.text
     res = res.forms["countryindividual_form"].submit()

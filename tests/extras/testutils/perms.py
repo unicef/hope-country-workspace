@@ -9,6 +9,7 @@ from faker import Faker
 
 from country_workspace.models import Office, Program, UserRole
 from country_workspace.state import state
+from country_workspace.workspaces.models import CountryProgram
 
 from .factories import GroupFactory
 
@@ -142,10 +143,11 @@ class user_grant_permissions(ContextDecorator):  # noqa
         self.permissions = permissions
         self.group_name = group_name
         self.group = None
+
         if isinstance(country_office_or_program, Office):
             self.country_office = country_office_or_program
             self.program = None
-        elif isinstance(country_office_or_program, Program):
+        elif isinstance(country_office_or_program, (Program, CountryProgram)):
             self.country_office = country_office_or_program.country_office
             self.program = country_office_or_program
         else:

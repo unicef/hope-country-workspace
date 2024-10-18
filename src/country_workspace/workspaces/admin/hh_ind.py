@@ -5,7 +5,7 @@ from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -22,6 +22,7 @@ from . import actions
 
 if TYPE_CHECKING:
     from ...models.base import Validable
+    from ...types import Beneficiary
     from .program import CountryProgram
 
 
@@ -30,18 +31,23 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
     def get_selected_program(self, request: HttpRequest, obj: "Optional[Validable]" = None) -> "CountryProgram | None":
         from country_workspace.workspaces.models import CountryProgram
 
-        self._selected_program = None
+        selected_program = None
         if obj:
-            self._selected_program = obj.batch.program
+            selected_program = obj.batch.program
         elif "program__exact" in request.GET:
-            self._selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
+            selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
         elif "batch__program__exact" in request.GET:
-            self._selected_program = CountryProgram.objects.get(pk=request.GET["batch__program__exact"])
-        return self._selected_program
+            selected_program = CountryProgram.objects.get(pk=request.GET["batch__program__exact"])
+        elif cl_flt := request.GET.get("_changelist_filters", ""):
+            if prg := parse_qs(cl_flt).get("batch__program__exact"):
+                selected_program = CountryProgram.objects.get(pk=prg[0])
+        if not request.user.has_perm("workspaces.view_countryhousehold", selected_program):
+            raise PermissionDenied
+        return selected_program
 
     def get_common_context(self, request: HttpRequest, pk: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
         ret = super().get_common_context(request, pk, **kwargs)
-
+        ret["datachecker"] = self.get_checker(request, ret.get("original"))
         ret["selected_program"] = self.get_selected_program(request, ret.get("original"))
         ret["preserved_filters"] = request.GET.get("_changelist_filters", "")
         return ret
@@ -51,15 +57,36 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         context.update(extra_context or {})
         return super().changelist_view(request, context)
 
+    def get_checker(self, request: HttpRequest, obj: "Optional[Beneficiary]" = None) -> "DataChecker":
+        if p := self.get_selected_program(request, obj=obj):
+            checker = p.get_checker_for(self.model)
+        else:
+            checker = None
+        return checker
+
     @link()
     def import_rdi(self, btn: LinkButton) -> None:
         btn.visible = False
         if prg := self.get_selected_program(btn.context["request"]):
             btn.href = reverse("workspace:workspaces_countryprogram_import_rdi", args=[prg.pk])
-            btn.visible = True
+            btn.visible = self.get_checker(btn.context.get("request"), btn.context.get("original"))
+
+    def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
+        qs = super().get_queryset(request)
+        # TODO: make program filter mandatory by url
+        if prg := self.get_selected_program(request):
+            return qs.filter(batch__program=prg)
+        else:
+            return qs
+
+    def delete_queryset(self, request, queryset):
+        queryset.filter().delete()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
 
 
-class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
+class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
     list_filter = (
         ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
@@ -67,23 +94,20 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
     )
     actions = ["validate_queryset", actions.mass_update, actions.regex_update]
 
-    @button(label=_("Validate"))
+    @button(label=_("Validate"), enabled=lambda btn: btn.context["original"].checker)
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
-        obj: "Validable" = self.get_object(request, pk)
+        obj: "Beneficiary" = self.get_object(request, pk)
         if obj.validate_with_checker():
             self.message_user(request, _("Validation successful!"))
         else:
             self.message_user(request, _("Validation failed!"), messages.ERROR)
+        # return HttpResponseRedirect(obj.get_change_url())
 
     @button(label=_("Validate Programme"), visible=lambda b: "batch__program__exact" in b.context["request"].GET)
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
-        from .program import CountryProgram
-
-        if cl_flt := request.GET.get("_changelist_filters", ""):
-            if prg := parse_qs(cl_flt).get("batch__program__exact"):
-                self._selected_program = CountryProgram.objects.get(pk=prg[0])
-                qs = self.get_queryset(request).filter(batch__program=self._selected_program)
-                self.validate_queryset(request, qs)
+        if prg := self.get_selected_program(request):
+            qs = self.get_queryset(request).filter(batch__program=prg)
+            self.validate_queryset(request, qs)
 
     @admin.action(description="Validate selected")
     def validate_queryset(self, request: HttpRequest, queryset: QuerySet) -> HttpResponseRedirect | None:
@@ -97,9 +121,6 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
                     invalid += 1
             self.message_user(request, _("%s validated. Found:  %s valid - %s invalid." % (num, valid, invalid)))
         except AttributeError:
-            self.message_user(
-                request, _("Required datachecker not found. Please check your Program configuration."), messages.ERROR
-            )
             return HttpResponseRedirect(request.META["HTTP_REFERER"])
 
     @button()
@@ -121,19 +142,12 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
             return type(
                 "FlexFieldsChangeList",
                 (FlexFieldsChangeList,),
-                {"checker": program.household_checker, "selected_program": self.get_selected_program(request)},
+                {"checker": self.get_checker(request), "selected_program": program},
             )
         return FlexFieldsChangeList
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
-
-    def get_checker(self, request: HttpRequest, obj: Optional[str] = None) -> "DataChecker":
-        if obj:
-            return obj.program.get_checker_for(obj)
-        elif p := self.get_selected_program(request):
-            return p.household_checker
-        raise Http404("No Household checkers available")
 
     def _changeform_view(
         self, request: HttpRequest, object_id: str, form_url: str, extra_context: dict[str, Any]
@@ -148,7 +162,9 @@ class CountryHouseholdIndividualBaseAdmin(AdminAutoCompleteSearchMixin, Selected
             self.message_user(
                 request, _("Required datachecker not found. Please check your Program configuration."), messages.ERROR
             )
-            return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            return HttpResponseRedirect(
+                reverse("workspace:workspaces_%s_view_raw_data" % self.model._meta.model_name, args=[object_id])
+            )
 
         if request.method == "POST":
             if not self.has_change_permission(request, obj):

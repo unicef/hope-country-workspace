@@ -30,12 +30,16 @@ class Validable(models.Model):
     last_checked = models.DateTimeField(default=None, null=True, blank=True)
     errors = models.JSONField(default=dict, blank=True, editable=False)
     flex_fields = models.JSONField(default=dict, blank=True)
-    # country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
-    # program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
+
     name = models.CharField(_("Name"), max_length=255)
+    removed = models.BooleanField(_("Removed"), default=False)
+    history = models.JSONField(default=dict, blank=True, editable=False)
 
     class Meta:
         abstract = True
+
+    def __str__(self) -> str:
+        return self.name or "%s %s" % (self._meta.verbose_name, self.id)
 
     @cached_property
     def checker(self) -> "DataChecker":

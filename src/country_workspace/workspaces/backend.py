@@ -83,19 +83,17 @@ class TenantBackend(BaseBackend):
         return app_label in self.get_available_modules(user)
 
     def get_allowed_tenants(self, request: "HttpRequest|None" = None) -> "Optional[QuerySet[Model]]":
-        from .config import conf
-
         request = request or state.request
         allowed_tenants: "Optional[QuerySet[Model]]"
         if request.user.is_superuser:
-            allowed_tenants = conf.tenant_model.objects.filter(active=True)
+            allowed_tenants = Office.objects.filter(active=True)
         elif request.user.is_authenticated:
             allowed_tenants = (
-                conf.tenant_model.objects.filter(userrole__user=request.user)
+                Office.objects.filter(userrole__user=request.user)
                 .filter(Q(userrole__expires=None) | Q(userrole__expires__gt=today()))
                 .distinct()
             )
         else:
-            allowed_tenants = conf.tenant_model.objects.none()
+            allowed_tenants = Office.objects.none()
 
         return allowed_tenants

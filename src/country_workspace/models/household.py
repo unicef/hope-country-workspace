@@ -18,9 +18,6 @@ class Household(Validable, BaseModel):
     class Meta:
         verbose_name = "Household"
 
-    def __str__(self) -> str:
-        return self.name or "Household %s" % self.id
-
     @cached_property
     def checker(self) -> "DataChecker":
         return self.program.household_checker

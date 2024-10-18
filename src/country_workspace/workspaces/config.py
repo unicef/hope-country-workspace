@@ -5,7 +5,7 @@ from django.core.signals import setting_changed
 from django.db.models import Model
 
 if TYPE_CHECKING:
-    from typing import Any, Union
+    from typing import Any
 
     from .backend import TenantBackend
 
@@ -16,7 +16,6 @@ class AppSettings:
     # STRATEGY: "BaseTenantStrategy"
     AUTH: "TenantBackend"
     defaults = {
-        "TENANT_MODEL": None,
         "NAMESPACE": "tenant_admin",
         "COOKIE_NAME": "selected_tenant",
         "STRATEGY": "country_workspace.workspaces.strategy.DefaultStrategy",
@@ -47,13 +46,14 @@ class AppSettings:
         return TenantBackend()
         # return import_string(self.AUTH)()  # type: ignore[no-any-return]
 
-    @cached_property
-    def tenant_model(self) -> "Union[Model, type]":
-        from django.apps import apps
-
-        if not self.TENANT_MODEL:
-            raise ValueError(f"Please set settings.{self.prefix}_TENANT_MODEL")
-        return apps.get_model(self.TENANT_MODEL)  # type ignore [return-value,attr-defined]
+    #
+    # @cached_property
+    # def tenant_model(self) -> "Union[Model, type]":
+    #     from django.apps import apps
+    #
+    #     if not self.TENANT_MODEL:
+    #         raise ValueError(f"Please set settings.{self.prefix}_TENANT_MODEL")
+    #     return apps.get_model(self.TENANT_MODEL)  # type ignore [return-value,attr-defined]
 
     def _on_setting_changed(self, sender: "Model", setting: str, value: "Any", **kwargs: "Any") -> None:
         if setting.startswith(self.prefix):

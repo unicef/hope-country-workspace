@@ -40,7 +40,7 @@ def is_tenant_valid() -> bool:
     return bool(get_selected_tenant())
 
 
-def get_tenant_cookie_from_request(request: "AuthHttpRequest") -> str | None:
+def get_tenant_cookie_from_request(request: "HttpRequest") -> str | None:
     if request and request.user.is_authenticated:
         if request.user.roles.exists() or request.user.is_superuser:
             signer = get_cookie_signer()
@@ -51,14 +51,14 @@ def get_tenant_cookie_from_request(request: "AuthHttpRequest") -> str | None:
 
 
 class RequestHandler:
-    def process_request(self, request: "AuthHttpRequest") -> State:
+    def process_request(self, request: "HttpRequest") -> State:
         state.reset()
         state.request = request
         state.tenant_cookie = get_tenant_cookie_from_request(request)
         state.tenant = get_selected_tenant()
         return state
 
-    def process_response(self, request: "AuthHttpRequest", response: "HttpResponse|None") -> None:
+    def process_response(self, request: "HttpRequest", response: "HttpResponse|None") -> None:
         if response:
             state.set_cookies(response)
         state.reset()

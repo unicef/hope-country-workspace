@@ -31,7 +31,12 @@ class RegexList(_RegexList):  # type: ignore[misc]
             self.append(e)
 
 
-GLOBAL_EXCLUDED_MODELS = RegexList([])
+GLOBAL_EXCLUDED_MODELS = RegexList(
+    [
+        "countryhouseold",
+        "countryindividual",
+    ]
+)
 
 GLOBAL_EXCLUDED_BUTTONS = RegexList(
     [
