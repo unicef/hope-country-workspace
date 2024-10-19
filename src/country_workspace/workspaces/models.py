@@ -7,7 +7,7 @@ from hope_flex_fields.models import DataChecker
 
 from country_workspace.models import Batch, Household, Individual, Office, Program
 
-__all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual"]
+__all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual", "CountryBatch"]
 
 
 class CountryBatch(Batch):

@@ -1,0 +1,81 @@
+on:
+  release:
+    types:
+      - published
+      - unpublished
+      - created
+      - edited
+      - deleted
+      - prereleased
+      - released
+# Trigger the action manually from the UI
+#  workflow_dispatch:
+#    inputs:
+#      branch:
+#        description: 'Branch'
+#        required: true
+#        default: 'develop'
+#        type: choice
+#        options:
+#          - develop
+#          - staging
+#          - master
+#      tag:
+#        description: 'Version Tag'
+#        required: true
+#        default: 'warning'
+jobs:
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: "unicef/hope-country-workspace"
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{raw}}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      - run: |
+          echo "Log level: $TAG"
+          echo "Environment: $ENVIRONMENT"
+          echo "${{ toJSON(github.event) }}"
+        env:
+          LEVEL: ${{ inputs.tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+      - if: github.event_name == 'release' && github.event.action == 'created'
+        run: echo "version=${{ steps.meta.outputs.version }}dev" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'release' && github.event.action == 'prereleased'
+        run: echo "version=${{ steps.meta.outputs.version }}rc" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'release' && github.event.action == 'published'
+        run: echo "version=${{ steps.meta.outputs.version }}" >> "$GITHUB_OUTPUT"
+      - run: echo "Build ... unicef/hope-country-workspace:${{ steps.meta.outputs.version }}-${{ env.version }}"
+
+#        if: github.event_name == 'release' && github.event.action == 'published'
+#
+
+#          Build ... "unicef/hope-country-workspace:${{ steps.meta.outputs.version }}"
+#
+#          docker build \
+#             --target dist \
+#             -t "unicef/hope-country-workspace:${{ steps.meta.outputs.version }}" \
+#             --cache-from "type=gha" \
+#             --cache-to "type=gha,mode=max" \
+#             -f docker/Dockerfile .
+#          docker push "unicef/hope-country-workspace:${{ steps.meta.outputs.version }}"
+#          docker inspect --format='{{index .Id}}' "unicef/hope-country-workspace:${{ steps.meta.outputs.version }}"
+#
+#      - name: Generate artifact attestation
+#        uses: actions/attest-build-provenance@v1
+#        with:
+#          subject-name: unicef/hope-country-workspace
+#          subject-digest: ${{ steps.push.outputs.digest }}
+#          push-to-registry: true
