@@ -3,6 +3,7 @@ from django.urls import reverse
 
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
+from adminfilters.autocomplete import LinkedAutoCompleteFilter
 
 from ..models import Household
 from .base import BaseModelAdmin
@@ -10,11 +11,12 @@ from .base import BaseModelAdmin
 
 @admin.register(Household)
 class HouseholdAdmin(BaseModelAdmin):
-    list_display = ("name", "batch")
-    # list_filter = (
-    #     ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
-    #     ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
-    # )
+    list_display = ("name", "country_office", "program", "batch")
+    list_filter = (
+        ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
+        ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
+        ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+    )
     # readonly_fields = ("country_office", "program")
     search_fields = ("name",)
 

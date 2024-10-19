@@ -7,7 +7,46 @@ from adminfilters.autocomplete import LinkedAutoCompleteFilter
 from country_workspace.state import state
 
 
-class ProgramFilter(LinkedAutoCompleteFilter):
+class CWLinkedAutoCompleteFilter(LinkedAutoCompleteFilter):
+    def __init__(self, field, request, params, model, model_admin, field_path):
+        self.dependants = []
+        if self.parent and not self.parent_lookup_kwarg:
+            self.parent_lookup_kwarg = f"{self.parent}__exact"
+        super().__init__(field, request, params, model, model_admin, field_path)
+        for pos, entry in enumerate(model_admin.list_filter):
+            if isinstance(entry, (list, tuple)):
+                if (
+                    len(entry) == 2
+                    and entry[0] != self.field_path
+                    and entry[1].__name__ == type(self).__name__
+                    and entry[1].parent == self.field_path
+                ):
+                    kwarg = f"{entry[0]}__exact"
+                    if entry[1].parent:
+                        if kwarg not in self.dependants:
+                            self.dependants.extend(entry[1].dependants)
+                            self.dependants.append(kwarg)
+
+    def get_url(self):
+        url = reverse("%s:autocomplete" % self.admin_site.name)
+        if self.parent_lookup_kwarg in self.request.GET:
+            flt = self.parent_lookup_kwarg.split("__")[-2]
+            oid = self.request.GET[self.parent_lookup_kwarg]
+            return f"{url}?{flt}={oid}"
+        return url
+
+    # @classmethod
+    # def factory(cls, **kwargs):
+    #     kwargs.setdefault(**{
+    #         "filter_title": None,
+    #         "lookup_name": "exact",
+    #     })
+    #     # kwargs["filter_title"] = title
+    #     # kwargs["lookup_name"] = lookup_name
+    #     return type("LinkedAutoCompleteFilter", (cls,), kwargs)
+
+
+class ProgramFilter(CWLinkedAutoCompleteFilter):
 
     def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
         if self.lookup_val:
@@ -17,7 +56,7 @@ class ProgramFilter(LinkedAutoCompleteFilter):
         return queryset
 
 
-class BatchFilter(LinkedAutoCompleteFilter):
+class BatchFilter(CWLinkedAutoCompleteFilter):
     def has_output(self) -> bool:
         return bool("batch__program__exact" in self.request.GET)
 
@@ -39,12 +78,12 @@ class BatchFilter(LinkedAutoCompleteFilter):
         return queryset
 
 
-class HouseholdFilter(LinkedAutoCompleteFilter):
+class HouseholdFilter(CWLinkedAutoCompleteFilter):
     fk_name = "name"
 
-    def __init__(self, field: str, request: HttpRequest, params, model, model_admin, field_path):
-        self.request = request
-        super().__init__(field, request, params, model, model_admin, field_path)
+    # def __init__(self, field: str, request: HttpRequest, params, model, model_admin, field_path):
+    #     self.request = request
+    #     super().__init__(field, request, params, model, model_admin, field_path)
 
     def has_output(self) -> bool:
         return bool(self.selected_program())

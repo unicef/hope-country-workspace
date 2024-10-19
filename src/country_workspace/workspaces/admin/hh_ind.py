@@ -34,6 +34,8 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         selected_program = None
         if obj:
             selected_program = obj.batch.program
+        if "program" in request.GET:
+            selected_program = CountryProgram.objects.get(pk=request.GET["program"])
         elif "program__exact" in request.GET:
             selected_program = CountryProgram.objects.get(pk=request.GET["program__exact"])
         elif "batch__program__exact" in request.GET:
@@ -76,8 +78,11 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
 
 class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
     list_filter = (
+        # ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+        # ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
+        # ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
         # ("batch", BatchFilter),
     )
     actions = ["validate_queryset", actions.mass_update, actions.regex_update]

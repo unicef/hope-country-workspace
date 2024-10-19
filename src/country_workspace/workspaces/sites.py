@@ -5,7 +5,7 @@ from typing import Any
 from django.apps import apps
 from django.contrib import admin
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
-from django.db.models import Model, QuerySet
+from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -23,8 +23,8 @@ from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
     #
-    def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
-        return self.model_admin.has_view_permission(request, obj=obj)
+    # def has_perm(self, request: "HttpRequest", obj: "Model|None" = None) -> bool:
+    #     return self.model_admin.has_view_permission(request, obj=obj)
 
     def filter_queryset(self, queryset: QuerySet) -> QuerySet:
         params = {

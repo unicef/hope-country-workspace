@@ -6,9 +6,9 @@ from django.urls import reverse
 
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
-from adminfilters.autocomplete import LinkedAutoCompleteFilter
 
 from ...state import state
+from ..filters import CWLinkedAutoCompleteFilter
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
 from .hh_ind import SelectedProgramMixin
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     pass
 
 
-class ProgramBatchFilter(LinkedAutoCompleteFilter):
+class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
 
     def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
         if self.lookup_val:
