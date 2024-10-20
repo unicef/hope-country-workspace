@@ -1,9 +1,8 @@
-from pathlib import Path
+import mkdocs_gen_files
 
 from country_workspace.config import env
 
-MD_HEADER = """
-# Setttings
+MD_HEADER = """# Setttings
 
 """
 MD_LINE = """
@@ -17,8 +16,8 @@ DEV_LINE = """
 __Suggested value for development__: `{develop_value}`
 """
 
-with (Path(__file__).parent.parent / "src" / "settings.md").open("w") as f:
-
+OUTFILE = "settings.md"
+with mkdocs_gen_files.open(OUTFILE, "w") as f:
     f.write(MD_HEADER)
     for entry, cfg in sorted(env.config.items()):
         f.write(
@@ -35,3 +34,4 @@ with (Path(__file__).parent.parent / "src" / "settings.md").open("w") as f:
                     help=cfg["help"],
                 )
             )
+mkdocs_gen_files.set_edit_path(OUTFILE, "get_settings.py")

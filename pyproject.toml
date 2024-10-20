@@ -37,12 +37,10 @@ dependencies = [
     "hope-smart-export>=0.3.0",
     "hope-smart-import>=0.3.0",
     "psycopg2-binary>=2.9.9",
-    "pytricia>=1.0.2",
     "redis",
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
     "unicef-security>=1.5.1",
-    "uwsgi>=2.0.27",
 ]
 [project.optional-dependencies]
 docs = [
@@ -51,6 +49,11 @@ docs = [
     "mkdocs-awesome-pages-plugin>=2.9.3",
     "mkdocstrings-python",
     "mkdocs-gen-files>=0.5.0",
+]
+
+distribution = [
+    "pytricia>=1.0.2",
+    "uwsgi>=2.0.27",
 ]
 
 [tool.uv]

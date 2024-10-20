@@ -19,6 +19,11 @@ exclude_docs: |
 markdown_extensions:
   - admonition
   - pymdownx.magiclink
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 theme:
   name: "material"
@@ -73,3 +78,6 @@ plugins:
         - docs/_scripts/get_settings.py
 watch:
   - src/
+
+hooks:
+  - docs/_hooks/hooks.py

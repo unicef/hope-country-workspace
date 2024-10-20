@@ -49,25 +49,9 @@ jobs:
           base: ${{ github.ref }}
           token: ${{ github.token }}
           filters: .github/file-filters.yml
-      - name: info
-        shell: bash
-        run: |
-          force_build="${{ contains(github.event.head_commit.message, 'ci:build') || contains(github.event.head_commit.message, 'ci:release')}}"
-          force_scan="${{ contains(github.event.head_commit.message, 'ci:scan') }}"
-          force_test="${{ contains(github.event.head_commit.message, 'ci:test') }}"
-
-          if [[ $force_build == "true" ]]; then
-            echo "::notice:: Forced build docker due to commit message"
-          elif [[ $force_test == "true" ]]; then
-            echo "::notice:: Forced python tests due to commit message"
-          elif [[ $force_scan == "true" ]]; then
-            echo "::notice:: Forced trivy scan due to commit message"
-          fi
-          if [[ $force_build == "true" || "${{needs.changes.outputs.run_tests}}" == "true" ]]; then
-              echo "BUILD=true" >> $GITHUB_ENV
-          fi
   test:
     needs: [ changes ]
+    if: needs.changes.outputs.run_tests == 'true'
     runs-on: ubuntu-latest
     services:
       redis:
@@ -104,7 +88,6 @@ jobs:
       - name: Hack container for local development
         run: |
           echo BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
-#      - uses: yezz123/setup-uv@v4
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5.5.1
@@ -131,6 +114,8 @@ jobs:
           set -x
           LOCK_SHA=$(sha1sum uv.lock docker/bin/* docker/conf/* docker/Dockerfile | sha1sum | awk '{print $1}' | cut -c 1-8)
           echo "checksum=$LOCK_SHA" >> "$GITHUB_ENV"
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date +"%Y-%m-%d %H:%M" )" >> $GITHUB_ENV
 
       - name: Build Test Image
         run: |
@@ -140,6 +125,7 @@ jobs:
                 --cache-from "type=gha" \
                 --cache-to "type=gha,mode=max" \
                 -f docker/Dockerfile .
+
       - name: Run Test suite
         run: |
             mkdir output
@@ -169,8 +155,12 @@ jobs:
         run: |
              docker build \
                 --target dist \
-                -t "unicef/hope-country-workspace:${{env.BRANCH}}" \
                 --cache-from "type=gha" \
                 --cache-to "type=gha,mode=max" \
+                --build-arg "VERSION=${{env.sha_short}}" \
+                --build-arg "BUILD_DATE=${{env.BUILD_DATE}}" \
+                --build-arg "BRANCH=${{env.BRANCH}}" \
+                -t "unicef/hope-country-workspace:${{env.BRANCH}}" \
                 -f docker/Dockerfile .
               docker push "unicef/hope-country-workspace:${{env.BRANCH}}"
+              docker inspect unicef/hope-country-workspace:${{env.BRANCH}} | jq -r '.[0].Config.Labels'
