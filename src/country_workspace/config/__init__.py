@@ -32,7 +32,10 @@ CONFIG: "Dict[str, ConfigItem]" = {
         [],
         [],
         False,
-        "list of emails that will automatically created as superusers",
+        """"list of emails/or usernames that will automatically granted superusers privileges
+ ONLY the first time they are created. This is designed to be used in dev/qa environments deployed by CI,
+ where database can be empty.
+        """,
     ),
     "ADMIN_EMAIL": (str, "", "admin", True, "Initial user created at first deploy"),
     "ADMIN_PASSWORD": (
@@ -54,7 +57,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
         [],
         [],
         False,
-        setting("authentication-backends"),
+        "Extra authentications backends enabled to add. Es. `country_workspace.security.backends.AnyUserAuthBackend`",
     ),
     "CACHE_URL": (str, "", "redis://localhost:6379/0", True, setting("cache-url")),
     "CELERY_BROKER_URL": (
@@ -69,21 +72,21 @@ CONFIG: "Dict[str, ConfigItem]" = {
         False,
         True,
         False,
-        f"{celery_doc}#std-setting-task_always_eager",
+        celery_doc("#std-setting-task_always_eager"),
     ),
     "CELERY_TASK_EAGER_PROPAGATES": (
         bool,
         True,
         True,
         False,
-        f"{celery_doc}#task-eager-propagates",
+        celery_doc("#task-eager-propagates"),
     ),
     "CELERY_VISIBILITY_TIMEOUT": (
         int,
         1800,
         1800,
         False,
-        f"{celery_doc}#broker-transport-options",
+        celery_doc("#broker-transport-options"),
     ),
     "CSRF_COOKIE_SECURE": (bool, True, False, True, setting("csrf-cookie-secure")),
     "CSRF_TRUSTED_ORIGINS": (list, "localhost", "", True, ""),

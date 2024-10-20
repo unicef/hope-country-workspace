@@ -9,10 +9,16 @@ site_dir: ./~build/docs
 site_name: HOPE Country Workspace
 site_url: https://unicef.github.io/unicef/hope-country-workspace/
 strict: false
-
+exclude_docs: |
+  _docs/*
+  _hooks/*
+  _includes/*
+  _scripts/*
+  ~*
 
 markdown_extensions:
   - admonition
+  - pymdownx.magiclink
 
 theme:
   name: "material"
@@ -62,7 +68,8 @@ plugins:
       default_handler: python
   - awesome-pages
   - search
-
+  - gen-files:
+      scripts:
+        - docs/_scripts/get_settings.py
 watch:
-  - docs/
   - src/
