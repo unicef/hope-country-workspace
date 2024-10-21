@@ -28,8 +28,10 @@ def app(
     yield django_app
 
 
-def test_login_enable_superuser(app: "DjangoTestApp") -> None:
+def test_login_enable_superuser(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
     from country_workspace.models import User
+
+    settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
 
     url = reverse("workspace:login")
     res = app.get(url)
@@ -45,8 +47,10 @@ def test_login_enable_superuser(app: "DjangoTestApp") -> None:
     ).exists()
 
 
-def test_login_usse(app: "DjangoTestApp") -> None:
+def test_login_usse(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
     from country_workspace.models import User
+
+    settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
 
     url = reverse("workspace:login")
     res = app.get(url)

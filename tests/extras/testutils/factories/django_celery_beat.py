@@ -35,7 +35,7 @@ class ClockedScheduleFactory(AutoRegisterModelFactory):
 class PeriodicTaskFactory(AutoRegisterModelFactory):
     name = factory.Sequence(lambda n: "PeriodicTask%03d" % n)
     interval = factory.SubFactory(IntervalScheduleFactory)
-    task = "hope_dedup_engine.tasks.process"
+    task = ""
 
     class Meta:
         model = PeriodicTask

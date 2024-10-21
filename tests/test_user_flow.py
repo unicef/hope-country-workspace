@@ -61,8 +61,10 @@ def app(
     yield django_app
 
 
-def test_login(app, user, data: "list[Household]"):
+def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper"):
     from testutils.perms import user_grant_permissions, user_grant_role
+
+    settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
 
     program = data[0].program
     home = reverse("workspace:index")
