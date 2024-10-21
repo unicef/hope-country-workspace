@@ -112,7 +112,7 @@ ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     UWSGI_PROCESSES=4
 RUN <<EOF cat> /RELEASE
 {"version": "$VERSION",
- "commit": "GIT_SHA",
+ "commit": "$GIT_SHA",
  "date": "$BUILD_DATE",
 }
 EOF
