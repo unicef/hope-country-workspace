@@ -18,7 +18,9 @@ from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.state import state
 
-from ...models import AsyncJob, Batch
+from ...contrib.aurora.client import AuroraClient
+from ...contrib.aurora.forms import ImportAuroraForm
+from ...models import AsyncJob, Batch, Individual
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -234,3 +236,75 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = BulkUpdateImportForm()
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
+
+    @button(label=_("Import from Aurora"))
+    def import_aurora(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        context = self.get_common_context(request, pk, title="Import from Aurora")
+        program: "CountryProgram" = context["original"]
+        context["selected_program"] = context["original"]
+        client = AuroraClient()
+        if request.method == "POST":
+            form = ImportAuroraForm(request.POST)
+            if form.is_valid():
+                total_hh = total_ind = 0
+                with atomic():
+                    batch_name = form.cleaned_data["batch_name"]
+                    batch, __ = Batch.objects.get_or_create(
+                        name=batch_name or ("Batch %s" % timezone.now()),
+                        program=program,
+                        country_office=program.country_office,
+                        imported_by=request.user,
+                    )
+                    total_hh = total_ind = 0
+
+                    for i, record in enumerate(client.get("record")):
+                        for f_name, f_value in record["fields"].items():
+                            try:
+                                individuals = []
+                                if f_name == "household":
+                                    hh = program.households.create(
+                                        batch=batch, flex_fields={clean_field_name(k): v for k, v in f_value[0].items()}
+                                    )
+                                    total_hh += 1
+                                elif f_name == "individuals":
+                                    for individual in f_value:
+                                        relationship = next(
+                                            (
+                                                k
+                                                for k in individual
+                                                # TODO: use a constant for the relationship instead of hardcoding it
+                                                if k.startswith("relationship") and individual[k] == "head"
+                                            ),
+                                            None,
+                                        )
+                                        # TODO: define rule to populate the fullname
+                                        fullname = next((k for k in individual if k.startswith("given_name")), None)
+                                        for k, v in individual.items():
+                                            if (
+                                                relationship
+                                                and clean_field_name(k) == form.cleaned_data["household_name_column"]
+                                            ):
+                                                program.households.filter(pk=hh.pk).update(name=v)
+                                        individuals.append(
+                                            Individual(
+                                                batch=batch,
+                                                household_id=hh.pk,
+                                                name=individual.get(fullname, ""),
+                                                flex_fields={clean_field_name(k): v for k, v in individual.items()},
+                                            )
+                                        )
+                                        total_ind += 1
+                                program.individuals.bulk_create(individuals)
+                            except Exception as e:
+                                raise Exception("Error processing record %s: %s" % (i, e))
+
+                hh_msg = ngettext("%(c)d Household", "%(c)d Households", total_hh) % {"c": total_hh}
+                ind_msg = ngettext("%(c)d Individual", "%(c)d Individuals", total_ind) % {"c": total_ind}
+                self.message_user(request, _("Imported {0} and {1}").format(hh_msg, ind_msg))
+                context["form"] = form
+
+        else:
+            form = ImportAuroraForm()
+        context["form"] = form
+        return render(request, "workspace/program/import_rdi.html", context)
+        # return render(request, "workspace/program/import_aurora.html", context)

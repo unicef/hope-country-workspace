@@ -1,4 +1,4 @@
-from ..settings import NEW_USER_DEFAULT_GROUP
+from ..settings import NEW_USER_DEFAULT_GROUP, env
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 
@@ -48,6 +48,7 @@ CONSTANCE_CONFIG = {
     "AURORA_API_TOKEN": ("", "Aurora API Access Token", "write_only_input"),
     "KOBO_API_URL": ("", "Kobo API Server address", str),
     "KOBO_API_TOKEN": ("", "Kobo API Access Token", "write_only_input"),
+    # "AURORA_API_URL": (env("AURORA_API_URL"), "", str),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {

@@ -46,6 +46,7 @@ INSTALLED_APPS = (
     "country_workspace.security",
     "country_workspace.apps.Config",
     "country_workspace.workspaces.apps.Config",
+    "country_workspace.contrib.aurora.apps.Config",
     "country_workspace.versioning",
 )
 
@@ -211,6 +212,7 @@ EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=False)
 EMAIL_USE_SSL = env("EMAIL_USE_SSL", default=False)
 
 from .fragments.app import *  # noqa
+from .fragments.aurora import *  # noqa
 from .fragments.celery import *  # noqa
 from .fragments.constance import *  # noqa
 from .fragments.csp import *  # noqa

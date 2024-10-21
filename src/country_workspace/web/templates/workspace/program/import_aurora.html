@@ -1,0 +1,43 @@
+{% extends "workspace/admin_extra_buttons/action_page.html" %}{% load i18n workspace_urls workspace_modify %}
+{#{% block breadcrumbs %}#}
+{#    <div class="breadcrumbs">#}
+{#        <a href="{% url 'workspace:index' %}">{% translate 'Home' %}</a>#}
+{#        &rsaquo; <a#}
+{#            href="{% url 'workspace:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>#}
+{#        &rsaquo; {% if has_view_permission %}{% url opts|workspace_urlname:'changelist' as wcl %}#}
+{#        <a href="{% add_preserved_filters wcl %}">{{ opts.verbose_name_plural|capfirst }}</a>{% else %}#}
+{#        {{ opts.verbose_name_plural|capfirst }}{% endif %}#}
+{#        &rsaquo;#}
+{#        {% if add %}{% blocktranslate with name=opts.verbose_name %}Add {{ name }}{% endblocktranslate %}{% else %}#}
+{#            {{ original|truncatewords:"18" }}{% endif %}#}
+{#    </div>#}
+{#{% endblock %}#}
+{% block pretitle %}
+    {% include "workspace/includes/program_title.html" with program=selected_program %}
+{#    <h1><a href="{% url "workspace:workspaces_countryprogram_change" original.pk %}">{{ original }}</a>#}
+{#            {% if user.is_superuser %}<a class="icon icon-cogs" href="{% url "admin:country_workspace_program_change" selected_program.pk %}"></a>{% endif %}#}
+{#    </h1>#}
+{% endblock %}
+{% block content %}
+    {% block object-tools %}
+{% if change and not is_popup %}
+  <ul class="object-tools">
+    {% block object-tools-items %}
+        {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+    {% endblock %}
+  </ul>
+{% endif %}
+{% endblock %}
+    <form method="post" id="import-aurora">
+        {% csrf_token %}
+        <table>
+            {{ form.as_table }}
+        </table>
+
+        <div class="submit-row">
+            <input type="submit" value="{% translate 'Import' %}" class="default" name="_save">
+            {% url opts|workspace_urlname:'change' original.pk as changelist_url %}
+            <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
+        </div>
+    </form>
+{% endblock %}
