@@ -3,20 +3,20 @@ repos:
     rev: 5.13.2
     hooks:
       - id: isort
-        stages: [pre-commit]
+        stages: [commit]
   - repo: https://github.com/ambv/black
     rev: 24.4.2
     hooks:
       - id: black
         args: [--config=pyproject.toml]
         exclude: "migrations|snapshots"
-        stages: [pre-commit]
+        stages: [commit]
   - repo: https://github.com/PyCQA/flake8
     rev: 7.1.0
     hooks:
       - id: flake8
         args: [--config=.flake8]
-        stages: [ pre-commit ]
+        stages: [ commit ]
   - repo: https://github.com/PyCQA/bandit
     rev: '1.7.9' # Update me!
     hooks:
@@ -33,14 +33,14 @@ repos:
       - id: check-missed-migrations
         args:
           - src
-        stages: [ pre-commit ]
+        stages: [ commit ]
         additional_dependencies: [ setuptools ]
 
       - id: check-untracked
         args:
           - src
           - tests
-        stages: [ pre-push ]
+        stages: [ push ]
 
       - id: check-forbidden
         args:
@@ -48,5 +48,5 @@ repos:
           - /\.showbrowser\(/
           - -p
           - /print\(111/
-        stages: [ pre-commit ]
+        stages: [ commit ]
         additional_dependencies: [ setuptools ]

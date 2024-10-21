@@ -17,11 +17,12 @@ from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.state import state
 
+from ...contrib.aurora.client import AuroraClient
 from ...models import Batch
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
-from .forms import ImportFileForm
+from .forms import ImportAuroraForm, ImportFileForm
 
 
 class SelectColumnsForm(forms.Form):
@@ -204,5 +205,54 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         else:
             form = ImportFileForm()
+        context["form"] = form
+        return render(request, "workspace/program/import_rdi.html", context)
+
+    @button(label=_("Import from Aurora"))
+    def import_aurora(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        context = self.get_common_context(request, pk, title="Import from Aurora")
+        program: "CountryProgram" = context["original"]
+        context["selected_program"] = context["original"]
+        client = AuroraClient()
+        if request.method == "POST":
+            form = ImportAuroraForm(request.POST)
+            if form.is_valid():
+                total_hh = total_ind = 0
+                with atomic():
+                    batch_name = form.cleaned_data["batch_name"]
+                    batch, __ = Batch.objects.get_or_create(
+                        name=batch_name or ("Batch %s" % timezone.now()),
+                        program=program,
+                        country_office=program.country_office,
+                        imported_by=request.user,
+                    )
+                    total_hh = total_ind = 0
+
+                    for i, record in enumerate(client.get("record")):
+                        for field, f_value in record["fields"].items():
+                            try:
+                                if field == "household":
+                                    hh = program.households.create(
+                                        batch=batch, flex_fields={clean_field_name(k): v for k, v in f_value[0].items()}
+                                    )
+                                    total_hh += 1
+                                elif field == "individuals":
+                                    for value in f_value:
+                                        program.individuals.create(
+                                            batch=batch,
+                                            household_id=hh.pk,
+                                            flex_fields={clean_field_name(k): v for k, v in value.items()},
+                                        )
+                                        total_ind += 1
+                            except Exception as e:
+                                raise Exception("Error processing record %s: %s" % (i, e))
+
+                hh_msg = ngettext("%(c)d Household", "%(c)d Households", total_hh) % {"c": total_hh}
+                ind_msg = ngettext("%(c)d Individual", "%(c)d Individuals", total_ind) % {"c": total_ind}
+                self.message_user(request, _("Imported {0} and {1}").format(hh_msg, ind_msg))
+                context["form"] = form
+
+        else:
+            form = ImportAuroraForm()
         context["form"] = form
         return render(request, "workspace/program/import_rdi.html", context)

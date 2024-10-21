@@ -25,6 +25,9 @@ def office():
 def program(request, office, force_migrated_records):
     from testutils.factories import CountryProgramFactory
 
+    DataChecker.objects.create(name=HOUSEHOLD_CHECKER_NAME)
+    DataChecker.objects.create(name=INDIVIDUAL_CHECKER_NAME)
+
     return CountryProgramFactory(
         country_office=office,
         household_checker=DataChecker.objects.get(name=HOUSEHOLD_CHECKER_NAME),

@@ -30,3 +30,7 @@ class ImportFileForm(forms.Form):
     first_line = forms.IntegerField(required=True, initial=0, help_text="First line to process")
     fail_if_alien = forms.BooleanField(required=False)
     file = forms.FileField(validators=[ValidatableFileValidator()])
+
+
+class ImportAuroraForm(ImportFileForm):
+    pk_column_name = description_column_name = first_line = file = None

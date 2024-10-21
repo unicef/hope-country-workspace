@@ -1,4 +1,4 @@
-from ..settings import NEW_USER_DEFAULT_GROUP
+from ..settings import NEW_USER_DEFAULT_GROUP, env
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 
@@ -29,4 +29,5 @@ CONSTANCE_CONFIG = {
         "group_select",
     ),
     "HOPE_API_URL": ("https://hope.unicef.org/api/rest/", "", str),
+    "AURORA_API_URL": (env("AURORA_API_URL"), "", str),
 }
