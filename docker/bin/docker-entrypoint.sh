@@ -4,7 +4,7 @@
 export MEDIA_ROOT="${MEDIA_ROOT:-/var/run/app/media}"
 export STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}"
 export UWSGI_PROCESSES="${UWSGI_PROCESSES:-"4"}"
-export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-"country_workspace.config.settings"}"
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-country_workspace.config.settings}"
 
 case "$1" in
     run)
@@ -21,10 +21,12 @@ case "$1" in
 	          $MAPPING
 	    ;;
     worker)
-      exec celery -A country_workspace.celery worker -E --loglevel=ERROR --concurrency=4
+      set -- tini -- "$@"
+      set -- gosu user:app celery -A country_workspace.config.celery worker -E --loglevel=ERROR --concurrency=4
       ;;
     beat)
-      exec celery -A country_workspace.celery beat -E --loglevel=ERROR ---scheduler django_celery_beat.schedulers:DatabaseScheduler
+      set -- tini -- "$@"
+      set -- gosu user:app celery -A country_workspace.config.celery beat --loglevel=ERROR --scheduler django_celery_beat.schedulers:DatabaseScheduler
       ;;
 esac
 

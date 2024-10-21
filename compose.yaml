@@ -2,22 +2,8 @@ x-common: &common
   build:
     context: .
     dockerfile: docker/Dockerfile
-    target: tests
+    target: dist
   platform: linux/amd64
-  develop:
-    watch:
-      - action: sync
-        path: .
-        target: /app/
-        ignore:
-          - ./.venv/
-      - action: sync
-        path: ./src/country_workspace
-        target: /app/.venv/lib/python3.12/site-packages/country_workspace
-        ignore:
-          - ./.venv/
-      - action: rebuild
-        path: uv.lock
   environment:
     - DEBUG=true
     - ADMIN_EMAIL=adm@hcw.org
@@ -25,7 +11,7 @@ x-common: &common
     - ALLOWED_HOSTS=localhost
     - CSRF_COOKIE_SECURE=False
     - CSRF_TRUSTED_ORIGINS=http://localhost
-    - AUTHENTICATION_BACKENDS="country_workspace.security.backends.AnyUserAuthBackend"
+    - AUTHENTICATION_BACKENDS=country_workspace.security.backends.AnyUserAuthBackend
     - HOPE_API_TOKEN=${HOPE_API_TOKEN}
     - CACHE_URL=redis://redis:6379/1
     - CELERY_BROKER_URL=redis://redis:6379/9
@@ -52,16 +38,7 @@ services:
     <<: *common
     ports:
       - 8000:8000
-#    stdin_open: true # docker run -i
-#    tty: true        # docker run -t      -
-    command: ["ls", "-al", "/app/"]
-#    command: ["ls", "-al", "/app/.venv/lib/python3.12/site-packages/"]
-#    command: >
-#      bash -c "
-#        django-admin upgrade  &&
-#        django-admin demo &&
-#        django-admin runserver 0.0.0.0:8000
-#      "
+    command: run
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
       interval: 10s
@@ -99,23 +76,15 @@ services:
       interval: 5s
       timeout: 4s
       retries: 5
-#
-#  celery_worker:
-#    <<: *common
-#    # entrypoint: ["sh", "-c", "exec docker-entrypoint.sh \"$0\" \"$@\""]
-#    # command: worker
-#    command: >
-#      sh -c '
-#      gosu user:app celery -A country_workspace.config.celery worker -E --loglevel=INFO --concurrency=4
-#      '
-#
-#  celery-beat:
-#    <<: *common
-#    command: >
-#      sh -c '
-#      gosu user:app celery -A country_workspace.config.celery beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
-#      '
 
+  celery_worker:
+    <<: *common
+    # entrypoint: ["sh", "-c", "exec docker-entrypoint.sh \"$0\" \"$@\""]
+    command: worker
+
+  celery-beat:
+    <<: *common
+    command: beat
 
 volumes:
   postgres_data:
