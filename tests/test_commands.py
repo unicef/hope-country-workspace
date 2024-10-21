@@ -76,7 +76,7 @@ def test_upgrade_init(
             admin_password="123",
             migrate=migrate,
             stdout=out,
-            check=False,
+            checks=False,
             verbosity=verbosity,
         )
     assert "error" not in str(out.getvalue())
@@ -90,7 +90,7 @@ def test_upgrade(verbosity: int, migrate: int, monkeypatch: MonkeyPatch, environ
     out = StringIO()
     SuperUserFactory()
     with mock.patch.dict(os.environ, environment, clear=True):
-        call_command("upgrade", stdout=out, check=False, verbosity=verbosity)
+        call_command("upgrade", stdout=out, checks=False, verbosity=verbosity)
     assert "error" not in str(out.getvalue())
 
 
@@ -99,14 +99,14 @@ def test_upgrade_next(mocked_responses: RequestsMock) -> None:
 
     SuperUserFactory()
     out = StringIO()
-    call_command("upgrade", stdout=out, check=False)
+    call_command("upgrade", stdout=out, checks=False)
     assert "error" not in str(out.getvalue())
 
 
 def test_upgrade_check(mocked_responses: RequestsMock, admin_user: "User", environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
-        call_command("upgrade", stdout=out, check=True)
+        call_command("upgrade", stdout=out, checks=True)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -121,7 +121,7 @@ def test_upgrade_admin(mocked_responses: RequestsMock, environment: dict[str, st
 
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
-        call_command("upgrade", stdout=out, check=True, admin_email=email)
+        call_command("upgrade", stdout=out, checks=True, admin_email=email)
 
 
 @pytest.mark.django_db(transaction=True)
