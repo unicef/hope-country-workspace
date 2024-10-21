@@ -11,6 +11,7 @@ from django.core.management.base import CommandError, SystemCheckError
 from django.core.validators import validate_email
 from django.utils.text import slugify
 
+import country_workspace
 from country_workspace.config import env
 from country_workspace.security.utils import setup_workspace_group
 
@@ -26,18 +27,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: "ArgumentParser") -> None:
         parser.add_argument(
-            "--with-check",
+            "--with-checks",
             action="store_true",
-            dest="check",
+            dest="checks",
             default=False,
             help="Run checks",
-        )
-        parser.add_argument(
-            "--no-check",
-            action="store_false",
-            dest="check",
-            default=False,
-            help="Do not run checks",
         )
         parser.add_argument(
             "--no-migrate",
@@ -85,7 +79,7 @@ class Command(BaseCommand):
 
     def get_options(self, options: dict[str, Any]) -> None:
         self.verbosity = options["verbosity"]
-        self.run_check = options["check"]
+        self.run_check = options["checks"]
         self.prompt = not options["prompt"]
         self.static = options["static"]
         self.migrate = options["migrate"]
@@ -119,7 +113,7 @@ class Command(BaseCommand):
                 "verbosity": self.verbosity - 1,
                 "stdout": self.stdout,
             }
-            echo("Running upgrade", style_func=self.style.WARNING)
+            echo(f"Running upgrade of version {country_workspace.VERSION}", style_func=self.style.WARNING)
 
             if self.run_check:
                 call_command("check", deploy=True, verbosity=self.verbosity - 1)

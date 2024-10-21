@@ -45,3 +45,15 @@ Install [uv](https://docs.astral.sh/uv/)
         export AUTHENTICATION_BACKENDS="country_workspace.security.backends.AnyUserAuthBackend"
 
     It works only if `DEBUG=True`
+
+
+
+## Docker compose
+
+Alternatively you can use provided docker compose for development
+
+    docker compose up
+
+Alternatively you can use provided docker compose for development
+
+    docker compose up

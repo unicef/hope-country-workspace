@@ -18,21 +18,20 @@
 
 
 {% block main %}
-    <div _id="content-main" class="center">
-    {% if  form.fields.tenant.queryset.exists %}
-        <form id="select-tenant" method="post" class="center">
-            <table>
-                {% csrf_token %}
-                {{ form }}
-            </table>
-            <div  class="center">
-            <input type="submit">
-
-            </div>
-        </form>
-    {% else %}
+    <div id="login-main" class="center">
+        {% if form.fields.tenant.queryset.exists %}
+            <form id="select-tenant" method="post">
+                <table>
+                    {% csrf_token %}
+                    {{ form }}
+                </table>
+                <div class="submit-row">
+                    <input type="submit">
+                </div>
+            </form>
+        {% else %}
             Seems you do not have any tenant enabled.
-    {% endif %}
+        {% endif %}
     </div>
 {% endblock %}
 

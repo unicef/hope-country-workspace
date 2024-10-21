@@ -3,6 +3,7 @@ html[data-theme],
   --header-bg: #37B0F8FF;
   --accent: white;
   --header-color: #e8e8e8;
+  --unicef-blue: $unicef-blue;
 }
 
 html[data-tenant=yes][data-theme],
@@ -127,7 +128,6 @@ body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle sv
 
 .center {
   margin: auto;
-  width: 50%;
   padding: 10px;
 }
 
@@ -141,6 +141,23 @@ body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle sv
   text-align: right;
   margin-right: 10px;
   bottom: 20px;
+}
+
+.submit-row a, .submit-row input {
+  background-color: rgb(30, 58, 138);
+}
+
+#login-main {
+  width: 300px;
+  border: 1px solid rgb(30, 58, 138);
+  padding: 30px;
+}
+#login-main select {
+  width: 100%;
+}
+#login-main .submit-row {
+  margin-top: 15px;
+  text-align: center;
 }
 
 /*# sourceMappingURL=cw.css.map */

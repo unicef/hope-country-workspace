@@ -24,6 +24,8 @@ class Command(BaseCommand):
 
         from country_workspace.models import Office, User
 
+        print("Populating demo data")
+
         Site.objects.update_or_create(
             pk=settings.SITE_ID,
             defaults={

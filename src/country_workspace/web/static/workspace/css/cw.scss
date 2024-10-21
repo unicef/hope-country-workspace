@@ -1,10 +1,12 @@
 $admin-main: rgb(55, 176, 248);
 $tenant-main: rgb(30, 58, 138);
+$unicef-blue: #37B0F8FF;
 html[data-theme],
 :root {
   --header-bg: #37B0F8FF;
   --accent: white;
   --header-color: #e8e8e8;
+  --unicef-blue: $unicef-blue;
   //--header-bg: var(--primary);
   //--accent: white;
   //--link-fg: rgb(55, 176, 248);
@@ -155,7 +157,6 @@ body.tenant {
 
 .center {
   margin: auto;
-  width: 50%;
   padding: 10px;
 }
 
@@ -169,4 +170,21 @@ body.tenant {
   text-align: right;
   margin-right: 10px;
   bottom: 20px;
+}
+.submit-row{
+  a, input{
+    background-color: $tenant-main;
+  }
+}
+#login-main{
+  width: 300px;
+  border: 1px solid $tenant-main;
+  padding: 30px;
+  select{
+    width: 100%;
+  }
+  .submit-row{
+    margin-top: 15px;
+    text-align: center;
+  }
 }

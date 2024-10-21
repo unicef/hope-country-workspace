@@ -178,17 +178,12 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "SOCIAL_AUTH_LOGIN_URL": (str, "/login/", "", False, ""),
     "SOCIAL_AUTH_RAISE_EXCEPTIONS": (bool, False, True, False),
     "SOCIAL_AUTH_REDIRECT_IS_HTTPS": (bool, True, False, False, ""),
-    # "STATIC_FILE_STORAGE": (
-    #     str,
-    #     "django.core.files.storage.FileSystemStorage",
-    #     setting("storages"),
-    # ),
     "STATIC_ROOT": (str, "/var/static", "/tmp/static", True, setting("static-root")),  # nosec
     "STATIC_URL": (str, "/static/", "/static/", False, setting("static-url")),  # nosec
     "TIME_ZONE": (str, "UTC", "UTC", False, setting("std-setting-TIME_ZONE")),
-    # "AZURE_ACCOUNT_NAME": (str, ""),
-    # "AZURE_ACCOUNT_KEY": (str, ""),
-    # "AZURE_CUSTOM_DOMAIN": (str, ""),
+    "AZURE_CLIENT_SECRET": (str, "", "", False, "Azure client secret for SSO"),
+    "AZURE_TENANT_ID": (str, "", "", False, "Azure tenant ID for SSO"),
+    "AZURE_CLIENT_KEY": (str, "", "", False, "Azure client key for SSO"),
     # "AZURE_CONNECTION_STRING": (str, ""),
     # "CV2DNN_PATH": (str, ""),
 }
