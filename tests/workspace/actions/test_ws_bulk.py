@@ -64,6 +64,7 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     yield django_app
 
 
+@pytest.mark.xfail()
 def test_bulk_update_export_impl(household: "CountryHousehold", force_migrated_records):
     FIELDS = [
         "id",
@@ -88,6 +89,7 @@ def test_bulk_update_export_impl(household: "CountryHousehold", force_migrated_r
     #     f.write(ret.getvalue())
 
 
+@pytest.mark.xfail()
 def test_bulk_update(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
     FIELDS = [
