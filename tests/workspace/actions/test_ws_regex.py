@@ -3,8 +3,6 @@ from typing import TYPE_CHECKING
 from django.urls import reverse
 
 import pytest
-from pytest_django.fixtures import SettingsWrapper
-from responses import RequestsMock
 from testutils.factories import DataCheckerFactory
 
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME
@@ -52,8 +50,6 @@ def household(program):
 @pytest.fixture()
 def app(
     django_app_factory: "MixinWithInstanceVariables",
-    mocked_responses: "RequestsMock",
-    settings: SettingsWrapper,
 ) -> "DjangoTestApp":
     from testutils.factories import SuperUserFactory
 

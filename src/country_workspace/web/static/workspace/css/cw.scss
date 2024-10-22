@@ -159,11 +159,17 @@ body.tenant {
   margin: auto;
   padding: 10px;
 }
-
+.center-x {
+  margin-right: auto;
+  margin-left: auto;
+  padding: 10px;
+}
 .colMX{
     margin-right: 400px;
 }
-
+.boxed{
+  border: 1px solid $tenant-main;
+}
 #footer{
   position:sticky;
   top:95vh;
@@ -176,10 +182,12 @@ body.tenant {
     background-color: $tenant-main;
   }
 }
-#login-main{
+div.tenant{
   width: 300px;
-  border: 1px solid $tenant-main;
   padding: 30px;
+  position: relative;
+  top:50px;
+  height: 200px;
   select{
     width: 100%;
   }

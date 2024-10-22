@@ -85,7 +85,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         # ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
         # ("batch", BatchFilter),
     )
-    actions = ["validate_queryset", actions.mass_update, actions.regex_update]
+    actions = ["validate_queryset", actions.mass_update, actions.regex_update, actions.bulk_update_export]
 
     @link()
     def import_rdi(self, btn: LinkButton) -> None:

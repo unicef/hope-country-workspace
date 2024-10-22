@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 import responses
+import vcr
+from vcr.record_mode import RecordMode
 
 here = Path(__file__).parent
 sys.path.insert(0, str(here / "../src"))
@@ -126,6 +128,9 @@ def active_marks(request):
 
 @pytest.fixture()
 def force_migrated_records(request, active_marks):
+    from country_workspace.models import SyncLog
     from country_workspace.versioning.management.manager import Manager
 
     Manager().force_apply()
+    with vcr.VCR(record_mode=RecordMode.ONCE).use_cassette(Path(__file__).parent / "sync_lookups.yaml"):
+        SyncLog.objects.refresh()

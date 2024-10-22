@@ -1,40 +1,21 @@
 from django import forms
-from django.conf import settings
-from django.utils.text import slugify
 
 from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
 
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 
 
-def create_hope_field_definitions():
-    for m in settings.LOOKUPS:
-        n = f"HOPE HH {m}"
-        FieldDefinition.objects.get_or_create(name=n, slug=slugify(n), field_type=forms.ChoiceField)
-    FieldDefinition.objects.get_or_create(
-        name="HOPE IND Gender",
-        slug=slugify("HOPE IND Gender"),
-        attrs={"choices": [["FEMALE", "FEMALE"], ["MALE", "MALE"], ["UNKNOWN", "UNKNOWN"]]},
-        field_type=forms.ChoiceField,
-    )
-    FieldDefinition.objects.get_or_create(
-        name="HOPE IND Disability",
-        slug=slugify("HOPE IND Disability"),
-        field_type=forms.ChoiceField,
-        attrs={"choices": [["not disabled", "not disabled"], ["disabled", "disabled"]]},
-    )
-
-
-def create_hope_core_fieldset():
+def create_hope_checkers():
     _char = FieldDefinition.objects.get(field_type=forms.CharField)
     _date = FieldDefinition.objects.get(field_type=forms.DateField)
     _bool = FieldDefinition.objects.get(field_type=forms.BooleanField)
     _int = FieldDefinition.objects.get(field_type=forms.IntegerField)
 
-    _h_relationship = FieldDefinition.objects.get(slug="hope-hh-relationship")
     _h_residence = FieldDefinition.objects.get(slug="hope-hh-residencestatus")
     _i_gender = FieldDefinition.objects.get(slug="hope-ind-gender")
     _i_disability = FieldDefinition.objects.get(slug="hope-ind-disability")
+    _i_role = FieldDefinition.objects.get(slug="hope-ind-role")
+    _i_relationship = FieldDefinition.objects.get(slug="hope-ind-relationship")
 
     hh_fs, __ = Fieldset.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_fs.fields.get_or_create(
@@ -135,7 +116,7 @@ def create_hope_core_fieldset():
     # hh_fs.fields.get_or_create(field=_bf, name="hh_latrine_h_f", attrs={"label": "Latrine"})
     # hh_fs.fields.get_or_create(field=_bf, name="hh_electricity_h_f")
 
-    ind_fs, __ = Fieldset.objects.get_or_create(name="HOPE individual core")
+    ind_fs, __ = Fieldset.objects.get_or_create(name=INDIVIDUAL_CHECKER_NAME)
     ind_fs.fields.get_or_create(
         name="address",
         attrs={"label": "Household ID", "required": True},
@@ -216,10 +197,22 @@ def create_hope_core_fieldset():
     ind_fs.fields.get_or_create(
         name="relationship",
         attrs={"label": "Relationship"},
-        field=_h_relationship,
+        field=_i_relationship,
+    )
+    ind_fs.fields.get_or_create(
+        name="role",
+        attrs={"label": "Role"},
+        field=_i_role,
     )
 
     hh_dc, __ = DataChecker.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_dc.fieldsets.add(hh_fs)
     ind_dc, __ = DataChecker.objects.get_or_create(name=INDIVIDUAL_CHECKER_NAME)
     ind_dc.fieldsets.add(ind_fs)
+
+
+def removes_hope_checkers():
+    DataChecker.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
+    DataChecker.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
+    Fieldset.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
+    Fieldset.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()

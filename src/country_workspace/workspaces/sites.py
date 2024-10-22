@@ -3,7 +3,6 @@ from functools import update_wrapper, wraps
 from typing import Any
 
 from django.apps import apps
-from django.contrib import admin
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
 from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
@@ -16,6 +15,7 @@ from django.utils.translation import gettext_lazy
 from django.views.decorators.cache import never_cache
 
 from smart_admin.autocomplete import SmartAutocompleteJsonView
+from smart_admin.site import SmartAdminSite
 
 from .forms import SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
@@ -113,8 +113,8 @@ def force_tenant(view_func):
     return wraps(view_func)(_view_wrapper)
 
 
-# class TenantAdminSite(SmartAdminSite):
-class TenantAdminSite(admin.AdminSite):
+class TenantAdminSite(SmartAdminSite):
+    # class TenantAdminSite(admin.AdminSite):
     enable_nav_sidebar = False
     index_template = "workspace/index.html"
     app_index_template = "workspace/app_index.html"

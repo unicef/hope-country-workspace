@@ -36,6 +36,7 @@ dependencies = [
     "hope-flex-fields>=0.5.0",
     "hope-smart-export>=0.3.0",
     "hope-smart-import>=0.3.0",
+    "openpyxl>=3.1.5",
     "psycopg2-binary>=2.9.9",
     "redis",
     "sentry-sdk>=2.7.1",

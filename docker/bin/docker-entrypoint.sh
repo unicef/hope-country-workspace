@@ -22,7 +22,8 @@ case "$1" in
 	    ;;
     worker)
       set -- tini -- "$@"
-      set -- gosu user:app celery -A country_workspace.config.celery worker -E --loglevel=ERROR --concurrency=4
+      set -- gosu user:app
+      celery -A country_workspace.config.celery worker -E --loglevel=ERROR --concurrency=4
       ;;
     beat)
       set -- tini -- "$@"

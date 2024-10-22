@@ -31,7 +31,7 @@
         <a class="button" href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">Login with Azure</a>
     </div>
     {% if LOCAL_LOGIN %}
-        <div class="center">OR</div>
+        <div class="center-x">OR</div>
 
         {% if form.errors and not form.non_field_errors %}
             <p class="errornote">

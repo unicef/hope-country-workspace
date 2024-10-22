@@ -82,11 +82,10 @@ class HouseholdFactory(AutoRegisterModelFactory):
     def individuals(self, create, extracted, **kwargs):
         from .individual import IndividualFactory
 
+        self.flex_fields.setdefault("household_id", self.id)
         for i in range(self.flex_fields["size"]):
             IndividualFactory(
                 batch=self.batch,
-                # country_office=self.country_office,
-                # program=self.program,
                 household=self,
             )
 

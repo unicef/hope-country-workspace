@@ -131,8 +131,18 @@ body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle sv
   padding: 10px;
 }
 
+.center-x {
+  margin-right: auto;
+  margin-left: auto;
+  padding: 10px;
+}
+
 .colMX {
   margin-right: 400px;
+}
+
+.boxed {
+  border: 1px solid rgb(30, 58, 138);
 }
 
 #footer {
@@ -147,15 +157,17 @@ body.tenant .theme-toggle svg.theme-icon-when-auto, body.tenant .theme-toggle sv
   background-color: rgb(30, 58, 138);
 }
 
-#login-main {
+div.tenant {
   width: 300px;
-  border: 1px solid rgb(30, 58, 138);
   padding: 30px;
+  position: relative;
+  top: 50px;
+  height: 200px;
 }
-#login-main select {
+div.tenant select {
   width: 100%;
 }
-#login-main .submit-row {
+div.tenant .submit-row {
   margin-top: 15px;
   text-align: center;
 }

@@ -6,15 +6,25 @@ from django.db.models import Model
 from django.utils import timezone
 
 from country_workspace.models.base import BaseManager, BaseModel
+from country_workspace.sync.client import HopeClient
 
 
 class SyncManager(BaseManager):
+    def refresh(self):
+        for record in self.all():
+            record.refresh()
+
     def create_lookups(self):
         from hope_flex_fields.models import FieldDefinition
 
         ct = ContentType.objects.get_for_model(FieldDefinition)
-        for m in settings.LOOKUPS:
+        for m in settings.HH_LOOKUPS:
             fd = FieldDefinition.objects.get(name="HOPE HH {m}".format(m=m))
+            SyncLog.objects.get_or_create(
+                content_type=ct, object_id=fd.pk, data={"remote_url": "lookups/%s" % m.lower()}
+            )
+        for m in settings.IND_LOOKUPS:
+            fd = FieldDefinition.objects.get(name="HOPE IND {m}".format(m=m))
             SyncLog.objects.get_or_create(
                 content_type=ct, object_id=fd.pk, data={"remote_url": "lookups/%s" % m.lower()}
             )
@@ -38,3 +48,20 @@ class SyncLog(BaseModel):
     data = models.JSONField(default=dict, blank=True)
 
     objects = SyncManager()
+
+    def refresh(self):
+        fd = self.content_object
+        if not fd:
+            return
+        if "remote_url" in self.data:
+            client = HopeClient()
+            record = client.get_lookup(self.data["remote_url"])
+            choices = []
+            for k, v in record.items():
+                choices.append((k, v))
+            if not fd.attrs:
+                fd.attrs = {}
+            fd.attrs["choices"] = choices
+            fd.save()
+            self.last_update_date = timezone.now()
+            self.save()
