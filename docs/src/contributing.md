@@ -8,7 +8,7 @@ Install [uv](https://docs.astral.sh/uv/)
     uv venv .venv --python 3.12
     source .venv/bin/activate
     uv sync --all-extras
-    pre-commit install
+    pre-commit install --hook-type pre-commit --hook-type pre-push
 
 
 ## Run tests
