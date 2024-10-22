@@ -62,7 +62,6 @@ def app(
     yield django_app
 
 
-@pytest.mark.xfail()
 def test_mass_update_impl(household):
     from country_workspace.models import Household
 
@@ -72,7 +71,6 @@ def test_mass_update_impl(household):
     assert household.flex_fields["address"] == "__NEW VALUE__"
 
 
-@pytest.mark.xfail()
 def test_mass_update(app: "DjangoTestApp", household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     res = app.get(url).follow()
