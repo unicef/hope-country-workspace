@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from django.db.models import QuerySet
 from django.http import HttpRequest
@@ -41,11 +41,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return qs.filter(program=prg)
         else:
             return qs.none()
-
-    def get_changelist(self, request: HttpRequest, **kwargs: Any) -> type:
-        from ..changelist import WorkspaceChangeList
-
-        return WorkspaceChangeList
 
     def has_add_permission(self, request, obj=None):
         return False

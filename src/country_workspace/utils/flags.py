@@ -52,11 +52,6 @@ def debug(value: str, **kwargs: "Any") -> bool:
     return settings.DEBUG == parse_bool(value)
 
 
-@conditions.register("Server IP")
-def server_ip(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
-    return request.META.get("REMOTE_ADDR", "-1") in value.split(",")  #
-
-
 @conditions.register("hostname")
 def hostname(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
     return request.get_host().split(":")[0] in value.split(",")

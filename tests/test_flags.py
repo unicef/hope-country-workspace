@@ -6,7 +6,7 @@ from django.test.client import RequestFactory
 import pytest
 
 from country_workspace.state import state
-from country_workspace.utils.flags import client_ip, env_var, header_key
+from country_workspace.utils.flags import client_ip, debug, env_var, header_key, hostname
 
 
 @pytest.mark.parametrize(
@@ -55,3 +55,15 @@ def test_header_key(rf: "RequestFactory", value: str, result: str) -> None:
     request = rf.get("/", HTTP_CUSTOM_KEY="123")
     with state.configure(request=request):
         assert header_key(value) == result
+
+
+@pytest.mark.parametrize("value, result", [("localhost", True)])
+def test_hostname(rf: "RequestFactory", value: str, result: str) -> None:
+
+    request = rf.get("/", HTTP_HOST=value)
+    with state.configure(request=request):
+        assert hostname(value, request=request)
+
+
+def test_debug(rf: "RequestFactory") -> None:
+    assert debug(False)

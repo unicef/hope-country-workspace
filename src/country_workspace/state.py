@@ -35,15 +35,15 @@ class State(local):
         for k, v in pre.items():
             setattr(self, k, v)
 
-    @contextlib.contextmanager
-    def activate_tenant(self, country_office: "Office") -> "Iterator[None]":
-        _country_office = self.tenant
-        _tenant_cookie = self.tenant_cookie
-        self.tenant = country_office
-        self.tenant_cookie = country_office.slug
-        yield
-        self.tenant = _country_office
-        self.tenant_cookie = _tenant_cookie
+    # @contextlib.contextmanager
+    # def activate_tenant(self, country_office: "Office") -> "Iterator[None]":
+    #     _country_office = self.tenant
+    #     _tenant_cookie = self.tenant_cookie
+    #     self.tenant = country_office
+    #     self.tenant_cookie = country_office.slug
+    #     yield
+    #     self.tenant = _country_office
+    #     self.tenant_cookie = _tenant_cookie
 
     @contextlib.contextmanager
     def set(self, **kwargs: "Dict[str,Any]") -> "Iterator[None]":

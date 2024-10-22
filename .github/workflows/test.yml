@@ -138,18 +138,7 @@ jobs:
               -v "./tests:/app/tests" \
               -v "./pytest.ini:/app/pytest.ini" \
               -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
-              pytest -n auto tests/ -v --maxfail=5 --migrations --cov --cov-report xml:output/coverage.xml
-
-            docker run --rm \
-              --network host \
-              -e PYTHONPATH=/app/src \
-              -e DATABASE_URL=${DATABASE_URL} \
-              -v "./output/:/app/output" \
-              -v "./src/:/app/src" \
-              -v "./tests:/app/tests" \
-              -v "./pytest.ini:/app/pytest.ini" \
-              -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
-              pytest tests/ -v -m selenium --cov --cov-append --cov-report xml:output/coverage.xml
+              pytest tests/ --selenium -n auto -v --maxfail=5 --migrations --cov-report xml:./output/coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
