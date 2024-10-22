@@ -16,6 +16,8 @@ case "$1" in
 	    fi
 	    uwsgi --http :8000 \
 	          --module country_workspace.config.wsgi \
+	          --uid user \
+	          --gid app \
 	          $MAPPING
 	    ;;
     worker)

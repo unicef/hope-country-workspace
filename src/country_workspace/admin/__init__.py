@@ -1,8 +1,7 @@
 from django.contrib.admin import site
-from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 
-from smart_admin.smart_auth.admin import ContentTypeAdmin, PermissionAdmin
+from smart_admin.smart_auth.admin import ContentTypeAdmin
 
 from .batch import BatchAdmin  # noqa
 from .household import HouseholdAdmin  # noqa
@@ -15,4 +14,3 @@ from .sync import SyncLog  # noqa
 from .user import UserAdmin  # noqa
 
 site.register(ContentType, admin_class=ContentTypeAdmin)
-site.register(Permission, admin_class=PermissionAdmin)

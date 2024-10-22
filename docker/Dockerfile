@@ -109,7 +109,9 @@ ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
     STATIC_URL="/static/" \
     PYTHONPATH=""\
+    PGSSLCERT="/tmp/postgresql.crt" \
     UWSGI_PROCESSES=4
+
 RUN <<EOF cat> /RELEASE
 {"version": "$VERSION",
  "commit": "$GIT_SHA",
