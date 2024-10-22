@@ -46,13 +46,13 @@ services:
       retries: 5
 
   db:
-    image: postgres:16
+    image: postgres:14
     environment:
       - POSTGRES_USER=hcw
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=country_workspace
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      - postgres_data14:/var/lib/postgresql14/data/
 #    ports:
 #      - 5432:5432
     restart: always
@@ -87,4 +87,4 @@ services:
     command: beat
 
 volumes:
-  postgres_data:
+  postgres_data14:

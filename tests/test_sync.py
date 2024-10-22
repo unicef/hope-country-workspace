@@ -8,7 +8,7 @@ import pytest
 import vcr
 from vcr.record_mode import RecordMode
 
-from country_workspace.sync.office import sync_all, sync_lookups, sync_offices, sync_programs
+from country_workspace.sync.office import sync_all, sync_offices, sync_programs
 
 
 def scrub_string(response):
@@ -54,8 +54,3 @@ def test_sync_programs():
     office = Office.objects.first()
     with my_vcr.use_cassette(Path(__file__).parent / "sync_office.yaml"):
         assert sync_programs(office)
-
-
-def test_sync_lookup(force_migrated_records):
-    with my_vcr.use_cassette(Path(__file__).parent / "sync_lookups.yaml"):
-        assert sync_lookups()
