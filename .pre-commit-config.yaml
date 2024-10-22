@@ -40,7 +40,7 @@ repos:
         args:
           - src
           - tests
-        stages: [ push ]
+        stages: [ pre-push ]
 
       - id: check-forbidden
         args:
