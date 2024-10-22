@@ -111,6 +111,13 @@ def get_validation_for_field(fld: "FlexField"):
     return validate()
 
 
+def dc_get_field(dc: "DataChecker", name) -> "FlexField":
+    for fs in dc.members.all():
+        for field in fs.fieldset.fields.filter():
+            if field.name == name:
+                return field
+
+
 def create_xls_importer(queryset, dc: "DataChecker", columns: list[str]):
     import xlsxwriter
 
@@ -138,7 +145,7 @@ def create_xls_importer(queryset, dc: "DataChecker", columns: list[str]):
     worksheet.unprotect_range("B1:ZZ999", None)
 
     for i, fld_name in enumerate(columns):
-        fld = dc.get_field(fld_name)
+        fld = dc_get_field(dc, fld_name)
         if fld:
             worksheet.write(0, i, fld.name, header_format)
             f = None

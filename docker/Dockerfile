@@ -83,12 +83,6 @@ ENV PATH=/app/.venv/bin:/usr/local/bin/:/usr/bin:/bin \
     PYTHONPATH=""\
     UWSGI_PROCESSES=4
 WORKDIR /app
-#COPY src/ /app/src/
-#COPY pyproject.toml uv.lock AUTHORS LICENSE README.md MANIFEST.in /app/
-#RUN uv sync --no-dev --no-editable --frozen --extra distribution
-#RUN #--mount=type=cache,target=/root/.uv-cache \
-#    --mount=type=bind,source=.,target=/app/ \
-#    uv sync --no-dev --no-editable --frozen --extra distribution \
 
 RUN --mount=type=cache,target=/root/.uv-cache \
     --mount=type=bind,source=uv.lock,target=/app/uv.lock \
