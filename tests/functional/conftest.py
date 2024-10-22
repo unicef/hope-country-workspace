@@ -68,6 +68,7 @@ SELENIUM_DEFAULT_SCRIPT_TIMEOUT = 1
 
 @pytest.fixture
 def selenium(monkeypatch, live_server, settings, driver):
+    settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
 
     driver.with_timeouts = timeouts.__get__(driver)
     driver.set_input_value = set_input_value.__get__(driver)
