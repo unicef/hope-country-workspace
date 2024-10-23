@@ -138,6 +138,8 @@ jobs:
               --network host \
               -e PYTHONPATH=/app/src \
               -e DATABASE_URL=${DATABASE_URL} \
+              -e CELERY_BROKER_URL=${CELERY_BROKER_URL} \
+              -e CACHE_URL=${CACHE_URL} \
               -v "./output/:/app/output" \
               -v "./src/:/app/src" \
               -v "./tests:/app/tests" \
