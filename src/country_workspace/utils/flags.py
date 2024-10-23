@@ -1,15 +1,13 @@
-import contextlib
 import logging
 import os
 import re
-from typing import Any, Iterator
+from typing import Any
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 
 from adminfilters.utils import parse_bool
-from flags import state as flag_state
 from flags.conditions import conditions
 
 from country_workspace.state import state
@@ -19,15 +17,8 @@ from .http import get_client_ip
 logger = logging.getLogger(__name__)
 
 
-@contextlib.contextmanager
-def enable_flag(name: str) -> "Iterator[Any]":
-    flag_state.enable_flag(name)
-    yield
-    flag_state.disable_flag(name)
-
-
-def validate_bool(value: str) -> None:
-    if not value.lower() in [
+def validate_bool(value: Any) -> None:
+    if not str(value).lower() in [
         "true",
         "1",
         "yes",
@@ -40,6 +31,7 @@ def validate_bool(value: str) -> None:
         "n",
     ]:
         raise ValidationError("Enter a valid bool")
+    return parse_bool(value)
 
 
 @conditions.register("superuser", validator=validate_bool)

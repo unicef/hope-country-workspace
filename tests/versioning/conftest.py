@@ -21,26 +21,26 @@ def scripts(test_scripts_folder):
 
 @pytest.fixture()
 def version1(test_scripts_folder):
-    from testutils.factories import VersionFactory
+    from testutils.factories import ScriptFactory
 
     f = test_scripts_folder / "0001_test.py"
-    return VersionFactory(name=f.name, version=VERSION)
+    return ScriptFactory(name=f.name, version=VERSION)
 
 
 @pytest.fixture()
 def version2(test_scripts_folder):
-    from testutils.factories import VersionFactory
+    from testutils.factories import ScriptFactory
 
     f = test_scripts_folder / "0002_test.py"
-    return VersionFactory(name=f.name, version=VERSION)
+    return ScriptFactory(name=f.name, version=VERSION)
 
 
 @pytest.fixture()
 def version3(test_scripts_folder):
-    from testutils.factories import VersionFactory
+    from testutils.factories import ScriptFactory
 
     f = test_scripts_folder / "0003_test.py"
-    return VersionFactory(name=f.name, version=VERSION)
+    return ScriptFactory(name=f.name, version=VERSION)
 
 
 @pytest.fixture()

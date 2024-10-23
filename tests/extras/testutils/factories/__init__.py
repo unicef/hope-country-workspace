@@ -18,7 +18,7 @@ from .social import SocialAuthUserFactory  # noqa
 from .sync import SyncLogFactory  # noqa
 from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
-from .version import VersionFactory  # noqa
+from .version import ScriptFactory  # noqa
 from .workspaces import CountryChecker  # noqa
 
 for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):

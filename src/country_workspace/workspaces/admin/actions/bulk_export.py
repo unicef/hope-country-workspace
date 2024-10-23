@@ -28,44 +28,44 @@ class BulkUpdateForm(BaseActionForm):
         self.fields["fields"].choices = [(name, name) for name, fld in checker.get_form()().fields.items()]
 
 
-class Criteria:
-    pass
-
-
-class MinValueCriteria(Criteria):
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        # {"validate": "integer", "criteria": "<", "value": 10}
-        return {"criteria": ">", "value": self.value}
-
-
-class MaxValueCriteria(Criteria):
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        # {"validate": "integer", "criteria": "<", "value": 10}
-        return {"criteria": "<", "value": self.value}
-
-
-class MinMaxValueCriteria(Criteria):
-    def __init__(self, min_value, max_value):
-        self.min_value = min_value
-        self.max_value = max_value
-
-    def __str__(self):
-        # {"validate": "decimal", "criteria": "between", "minimum": 0.1, "maximum": 0.5},
-        return {"criteria": "between", "minimum": self.min_value, "maximum": self.max_value}
-
-
-class ChoiceValueCriteria(Criteria):
-    def __init__(self, values):
-        self.values = values
-
-    def __str__(self):
-        return {"validate": "list", "source": self.values}
+# class Criteria:
+#     pass
+#
+#
+# class MinValueCriteria(Criteria):
+#     def __init__(self, value):
+#         self.value = value
+#
+#     def __str__(self):
+#         # {"validate": "integer", "criteria": "<", "value": 10}
+#         return {"criteria": ">", "value": self.value}
+#
+#
+# class MaxValueCriteria(Criteria):
+#     def __init__(self, value):
+#         self.value = value
+#
+#     def __str__(self):
+#         # {"validate": "integer", "criteria": "<", "value": 10}
+#         return {"criteria": "<", "value": self.value}
+#
+#
+# class MinMaxValueCriteria(Criteria):
+#     def __init__(self, min_value, max_value):
+#         self.min_value = min_value
+#         self.max_value = max_value
+#
+#     def __str__(self):
+#         # {"validate": "decimal", "criteria": "between", "minimum": 0.1, "maximum": 0.5},
+#         return {"criteria": "between", "minimum": self.min_value, "maximum": self.max_value}
+#
+#
+# class ChoiceValueCriteria(Criteria):
+#     def __init__(self, values):
+#         self.values = values
+#
+#     def __str__(self):
+#         return {"validate": "list", "source": self.values}
 
 
 class XlsValidateRule:
@@ -80,6 +80,9 @@ class XlsValidateRule:
 
 class ValidateInteger(XlsValidateRule):
     validate = "integer"
+
+    def __call__(self):
+        return {"validate": "integer"}
 
 
 class ValidateBool(XlsValidateRule):

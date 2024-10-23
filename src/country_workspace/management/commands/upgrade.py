@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand, call_command
-from django.core.management.base import CommandError, SystemCheckError
 from django.core.validators import validate_email
 from django.utils.text import slugify
 
@@ -162,11 +161,9 @@ class Command(BaseCommand):
             )
             call_command("upgradescripts", ["apply"])
             echo("Upgrade completed", style_func=self.style.SUCCESS)
-        except ValidationError as e:
+        except ValidationError as e:  # pragma: no cover
             self.halt(Exception("\n- ".join(["Wrong argument(s):", *e.messages])))
-        except (CommandError, SystemCheckError) as e:
-            self.halt(e)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             self.stdout.write(str(e), style_func=self.style.ERROR)
             logger.exception(e)
             self.halt(e)

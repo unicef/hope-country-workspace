@@ -5,13 +5,13 @@ from django.urls import reverse
 
 import openpyxl
 import pytest
-from testutils.factories import DataCheckerFactory
+from testutils.factories import DataCheckerFactory, FlexFieldFactory
 from testutils.utils import select_office
 from webtest import Checkbox
 
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 from country_workspace.state import state
-from country_workspace.workspaces.admin.actions.bulk_export import bulk_update_export_impl
+from country_workspace.workspaces.admin.actions.bulk_export import TYPES, bulk_update_export_impl
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -62,6 +62,12 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     django_app.set_user(admin_user)
     django_app._user = admin_user
     yield django_app
+
+
+@pytest.mark.parametrize("field, validator", list(TYPES.items()))
+def test_validator(field, validator):
+    flex_field = FlexFieldFactory(field__field_type=field, field__attrs={"choices": [("a", "A")]})
+    assert validator(flex_field)()
 
 
 def test_bulk_update_export_impl(household: "CountryHousehold", force_migrated_records):

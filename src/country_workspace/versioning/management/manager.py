@@ -6,7 +6,7 @@ from typing import Callable
 
 from country_workspace import VERSION
 from country_workspace.versioning.exceptions import ScriptException
-from country_workspace.versioning.models import Version
+from country_workspace.versioning.models import Script
 
 regex = re.compile(r"(\d+).*")
 
@@ -45,7 +45,7 @@ class Manager:
     def __init__(self, folder: Path = ""):
         self.folder = folder or self.default_folder
         self.existing = []
-        self.applied = list(Version.objects.order_by("name").values_list("name", flat=True))
+        self.applied = list(Script.objects.order_by("name").values_list("name", flat=True))
         self.max_version = 0
         self.max_applied_version = 0
         for applied in self.applied:
@@ -93,21 +93,14 @@ class Manager:
             if get_version(entry.stem) > to_num:
                 break
             if entry.name not in self.applied:
-                # funcs = get_funcs(entry, direction="forward")
                 if fake:
                     out.write(f"   Applying {entry.stem} (fake)\n")
                 else:
                     out.write(f"   Applying {entry.stem}\n")
                 funcs = self._process_file(entry)
-
-                # for func in funcs:
-                #     try:
-                #         func()
-                #     except Exception as e:
-                #         raise ScriptException(f"Error executing {entry.stem}.{func.__name__}") from e
-                Version.objects.create(name=entry.name, version=VERSION)
+                Script.objects.create(name=entry.name, version=VERSION)
                 processed.append((entry, funcs))
-        self.applied = list(Version.objects.order_by("name").values_list("name", flat=True))
+        self.applied = list(Script.objects.order_by("name").values_list("name", flat=True))
         return processed
 
     def backward(self, to_num, out=sys.stdout) -> list[tuple[Path, list[Callable[[None], None]]]]:
@@ -121,7 +114,7 @@ class Manager:
             out.write(f"   Discharging {file_path.stem}\n")
             for func in funcs:
                 func()
-            Version.objects.get(name=file_path.name).delete()
+            Script.objects.get(name=file_path.name).delete()
             processed.append((entry, funcs))
-        self.applied = list(Version.objects.order_by("name").values_list("name", flat=True))
+        self.applied = list(Script.objects.order_by("name").values_list("name", flat=True))
         return processed
