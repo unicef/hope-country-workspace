@@ -1,15 +1,17 @@
 from typing import Any, Optional
 
-from django.contrib.admin import AdminSite
+from django.contrib.admin import AdminSite, register
 from django.db.models import Model
 from django.http import HttpRequest
 
 from ...state import state
 from ..filters import HouseholdFilter, ProgramFilter
 from ..models import CountryHousehold, CountryIndividual, CountryProgram
+from ..sites import workspace
 from .hh_ind import BeneficiaryBaseAdmin
 
 
+@register(CountryIndividual, site=workspace)
 class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     list_display = [
         "name",
@@ -30,7 +32,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     change_form_template = "workspace/individual/change_form.html"
     ordering = ("name",)
 
-    def __init__(self, model: Model, admin_site: AdminSite):
+    def __init__(self, model: Model, admin_site: "AdminSite"):
         self._selected_household = None
         super().__init__(model, admin_site)
 

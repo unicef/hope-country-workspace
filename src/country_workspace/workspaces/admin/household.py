@@ -11,7 +11,13 @@ from .hh_ind import BeneficiaryBaseAdmin
 if TYPE_CHECKING:
     from ..models import CountryProgram
 
+from django.contrib.admin import register
 
+from ..models import CountryHousehold
+from ..sites import workspace
+
+
+@register(CountryHousehold, site=workspace)
 class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     list_display = ["name", "batch"]
     search_fields = ("name",)

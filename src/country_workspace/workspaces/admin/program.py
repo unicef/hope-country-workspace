@@ -1,6 +1,7 @@
 from typing import Any
 
 from django import forms
+from django.contrib.admin import register
 from django.db.models import QuerySet
 from django.db.transaction import atomic
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -21,6 +22,7 @@ from ...models import AsyncJob, Batch
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
+from ..sites import workspace
 from .forms import ImportFileForm
 
 
@@ -55,6 +57,7 @@ def clean_field_name(v):
     return v.replace("_h_c", "").replace("_h_f", "").replace("_i_c", "").replace("_i_f", "").lower()
 
 
+@register(CountryProgram, site=workspace)
 class CountryProgramAdmin(WorkspaceModelAdmin):
     list_display = (
         "name",

@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+from django.contrib.admin import register
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
@@ -11,6 +12,7 @@ from ...state import state
 from ..filters import CWLinkedAutoCompleteFilter
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
+from ..sites import workspace
 from .hh_ind import SelectedProgramMixin
 
 if TYPE_CHECKING:
@@ -26,6 +28,7 @@ class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
         return queryset
 
 
+@register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ["name", "program", "country_office"]
     search_fields = ("label",)

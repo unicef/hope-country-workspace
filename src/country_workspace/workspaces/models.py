@@ -5,7 +5,7 @@ from django.utils.functional import cached_property
 
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import Batch, Household, Individual, Office, Program
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Office, Program
 
 __all__ = ["CountryProgram", "CountryHousehold", "CountryIndividual", "CountryBatch"]
 
@@ -44,6 +44,11 @@ class CountryProgram(Program):
 
 class CountryChecker(DataChecker):
     country_office = models.ForeignKey(Office, on_delete=models.CASCADE)
+
+
+class CountryJob(AsyncJob):
+    class Meta:
+        proxy = True
 
     # class Meta:
     #     app_label = "workspaces"
