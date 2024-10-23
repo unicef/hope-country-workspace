@@ -15,3 +15,10 @@ class AsyncJob(CeleryTaskModel, models.Model):
     config = models.JSONField(default=dict, blank=True)
 
     celery_task_name = "country_workspace.tasks.sync_job_task"
+
+    @property
+    def queue_position(self):
+        try:
+            return super().queue_position
+        except Exception:
+            return 0
