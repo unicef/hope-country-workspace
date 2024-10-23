@@ -53,6 +53,11 @@ jobs:
     needs: [ changes ]
     if: needs.changes.outputs.run_tests == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ env.IMAGE }}
+      commit: ${{env.sha_short}}
+      build_date: ${{env.BUILD_DATE}}
+      branch: ${{env.BRANCH}}
     services:
       redis:
         image: redis
@@ -93,8 +98,6 @@ jobs:
         uses: docker/metadata-action@v5.5.1
         with:
           images: "unicef/hope-country-workspace"
-          flavor: |
-            prefix=test
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -113,15 +116,17 @@ jobs:
         run: |
           set -x
           LOCK_SHA=$(sha1sum uv.lock docker/bin/* docker/conf/* docker/Dockerfile | sha1sum | awk '{print $1}' | cut -c 1-8)
+          IMAGE=$(echo '${{env.DOCKER_METADATA_OUTPUT_JSON}}' | jq '.tags[0]')
           echo "checksum=$LOCK_SHA" >> "$GITHUB_ENV"
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date +"%Y-%m-%d %H:%M" )" >> $GITHUB_ENV
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       - name: Build Test Image
         run: |
              docker build \
                 --target tests \
-                -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
+                -t ${{env.IMAGE}} \
                 --cache-from "type=gha" \
                 --cache-to "type=gha,mode=max" \
                 -f docker/Dockerfile .
@@ -137,7 +142,7 @@ jobs:
               -v "./src/:/app/src" \
               -v "./tests:/app/tests" \
               -v "./pytest.ini:/app/pytest.ini" \
-              -t "unicef/hope-country-workspace:${{env.BRANCH}}-test-${{env.checksum}}" \
+              -t ${{env.IMAGE}} \
               pytest tests/ --selenium -n auto -v --maxfail=5 --migrations --cov-report xml:./output/coverage.xml
 
       - name: Upload coverage to Codecov
@@ -151,16 +156,21 @@ jobs:
           verbose: false
           name: codecov-${{env.GITHUB_REF_NAME}}
 
+  release:
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    steps:
       - name: Build Distro
         run: |
-             docker build \
+            docker build \
                 --target dist \
                 --cache-from "type=gha" \
                 --cache-to "type=gha,mode=max" \
-                --build-arg "VERSION=${{env.sha_short}}" \
-                --build-arg "BUILD_DATE=${{env.BUILD_DATE}}" \
-                --build-arg "BRANCH=${{env.BRANCH}}" \
-                -t "unicef/hope-country-workspace:${{env.BRANCH}}" \
+                --build-arg "VERSION=${{needs.test.outputs.commit}}" \
+                --build-arg "BUILD_DATE=${{needs.test.outputs.build_date}}" \
+                --build-arg "BRANCH=${{needs.test.outputs.branch}}" \
+                -t ${{needs.test.outputs.image}} \
                 -f docker/Dockerfile .
-              docker push "unicef/hope-country-workspace:${{env.BRANCH}}"
-              docker inspect unicef/hope-country-workspace:${{env.BRANCH}} | jq -r '.[0].Config.Labels'
+            docker push ${{needs.test.outputs.image}}
+            docker inspect ${{needs.test.outputs.image}} | jq -r '.[0].Config.Labels'
+            echo "::debug::Image ${{needs.test.outputs.image}} built and pushed"
