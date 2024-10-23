@@ -47,7 +47,7 @@ def pytest_configure(config):
     os.environ["MAILJET_API_KEY"] = "11"
     os.environ["MAILJET_SECRET_KEY"] = "11"
     os.environ["SOCIAL_AUTH_REDIRECT_IS_HTTPS"] = "0"
-    os.environ["CELERY_TASK_ALWAYS_EAGER"] = "0"
+    os.environ["CELERY_TASK_ALWAYS_EAGER"] = "1"
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
     # os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
 
@@ -61,6 +61,7 @@ def pytest_configure(config):
     settings.CSRF_TRUSTED_ORIGINS = [
         "http://testserver",
     ]
+    settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
     django.setup()
 

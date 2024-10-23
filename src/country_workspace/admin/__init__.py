@@ -6,6 +6,7 @@ from smart_admin.smart_auth.admin import ContentTypeAdmin
 from .batch import BatchAdmin  # noqa
 from .household import HouseholdAdmin  # noqa
 from .individual import IndividualAdmin  # noqa
+from .job import AsyncJobAdmin  # noqa
 from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin  # noqa
 from .office import OfficeAdmin  # noqa
 from .program import ProgramAdmin  # noqa

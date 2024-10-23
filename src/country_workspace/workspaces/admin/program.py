@@ -17,7 +17,7 @@ from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.state import state
 
-from ...models import Batch
+from ...models import AsyncJob, Batch
 from ...sync.office import sync_programs
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -214,16 +214,18 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     @button(label=_("Import File Updates"))
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk, title="Import updates from file")
-        # program: "CountryProgram" = context["original"]
+        program: "CountryProgram" = context["original"]
         context["selected_program"] = context["original"]
         updated = 0
         if request.method == "POST":
             form = BulkUpdateImportForm(request.POST, request.FILES)
+
             if form.is_valid():
-                with atomic():
-                    pass
+                AsyncJob.objects.create(
+                    program=program, type=AsyncJob.JobType.BULK_UPDATE_IND, batch=None, file=request.FILES["file"]
+                )
                 self.message_user(request, _("Imported. {0} records updated").format(updated))
-                context["form"] = form
+                return HttpResponseRedirect(self.get_changelist_url())
 
         else:
             form = BulkUpdateImportForm()

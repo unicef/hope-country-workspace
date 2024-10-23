@@ -10,6 +10,7 @@ from .batch import BatchFactory, CountryBatchFactory  # noqa
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
+from .job import AsyncJobFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa

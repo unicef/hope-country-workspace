@@ -1,0 +1,50 @@
+{% extends "admin_extra_buttons/action_page.html" %}
+{% block action-content %}
+    <h1>{{ original }}</h1>
+    {{ original.curr_async_result_id }}
+    {% if flower_addr %}
+        <a class="button" target="flower" href="{{ flower_addr }}/task/{{ original.curr_async_result_id }}">Flower</a>
+    {% endif %}
+    <h3>Task Info</h3>
+    <table>
+        {% for k,v in original.task_info.items %}
+            <tr>
+                <th>{{ k }}</th>
+                <td>{{ v }}</td>
+            </tr>
+        {% endfor %}
+            <tr>
+                <th>Position in queue</th>
+                <td>{{ original.queue_position }}</td>
+            </tr>
+    </table>
+
+
+
+    <h3>Queue Info</h3>
+    <table>
+        {% for k,v in original.queue_info.items %}
+            {% if k == "headers" %}
+                <tr>
+                    <th>{{ k }}</th>
+                    <td>
+                        <table>
+                            {% for k1,v1 in original.queue_info.headers.items %}
+                                <tr>
+                                    <td>{{ k1 }}</td>
+                                    <td>{{ v1 }}</td>
+                                </tr>
+                            {% endfor %}
+                        </table>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <th>{{ k }}</th>
+                    <td>{{ v }}</td>
+                </tr>
+            {% endif %}
+        {% endfor %}
+    </table>
+
+{% endblock %}

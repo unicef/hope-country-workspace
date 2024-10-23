@@ -67,16 +67,15 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
         return self.default_url_filters
 
     def get_changelist_index_url(self, request):
-        bsse = self.get_changelist_url(request)
+        bsse = self.get_changelist_url()
         return f"{bsse}?{urlencode(self.get_default_url_filters(request))}"
 
-    def get_changelist_url(self, request):
+    def get_changelist_url(self):
         opts = self.model._meta
-        obj_url = reverse(
+        return reverse(
             "%s:%s_%s_changelist" % (self.admin_site.namespace, opts.app_label, opts.model_name),
             current_app=self.admin_site.name,
         )
-        return obj_url
 
     def get_change_url(self, request, obj):
         opts = self.model._meta
@@ -106,10 +105,10 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
     def _response_post_save(self, request, obj):
-        return HttpResponseRedirect(self.add_preserved_filters(request, self.get_changelist_url(request)))
+        return HttpResponseRedirect(self.add_preserved_filters(request, self.get_changelist_url()))
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(self.get_change_url(request, obj))
 
     def response_delete(self, request, obj_display, obj_id):
-        return HttpResponseRedirect(self.get_changelist_url(request))
+        return HttpResponseRedirect(self.get_changelist_url())
