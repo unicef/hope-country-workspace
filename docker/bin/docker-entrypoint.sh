@@ -29,6 +29,10 @@ case "$1" in
       set -- tini -- "$@"
       set -- gosu user:app celery -A country_workspace.config.celery beat --loglevel=ERROR --scheduler django_celery_beat.schedulers:DatabaseScheduler
       ;;
+    flower)
+      set -- tini -- "$@"
+      set -- gosu user:app celery -A country_workspace.config.celery flower
+      ;;
 esac
 
 exec "$@"

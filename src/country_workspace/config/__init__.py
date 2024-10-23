@@ -125,6 +125,7 @@ CONFIG: "Dict[str, ConfigItem]" = {
     "EMAIL_USE_TLS": (bool, False, False, False, setting("email-use-tls")),
     "EMAIL_USE_SSL": (bool, False, False, False, setting("email-use-ssl")),
     "EMAIL_TIMEOUT": (str, None, None, False, setting("email-timeout")),
+    "ENVIRONMENT": (str, "production", "develop", False, "Environment"),
     "LOGGING_LEVEL": (str, "CRITICAL", "DEBUG", False, setting("logging-level")),
     "FILE_STORAGE_DEFAULT": (
         str,
@@ -158,7 +159,6 @@ CONFIG: "Dict[str, ConfigItem]" = {
     # "SECURE_HSTS_SECONDS": (int, 60, setting("secure-hsts-seconds")),
     # "SECURE_SSL_REDIRECT": (bool, True, setting("secure-ssl-redirect"), False),
     "SENTRY_DSN": (str, "", "", False, "Sentry DSN"),
-    "SENTRY_ENVIRONMENT": (str, "production", "develop", False, "Sentry Environment"),
     "SENTRY_URL": (str, "", "", False, "Sentry server url"),
     # "SESSION_COOKIE_DOMAIN": (
     #     str,

@@ -33,6 +33,7 @@ dependencies = [
     "django-stubs-ext",
     "django>=5.1",
     "djangorestframework>=3.15.1",
+    "flower>=2.0.1",
     "hope-flex-fields>=0.5.0",
     "hope-smart-export>=0.3.0",
     "hope-smart-import>=0.3.0",
