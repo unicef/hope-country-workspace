@@ -180,4 +180,4 @@ jobs:
                 -f docker/Dockerfile .
             docker push ${{needs.test.outputs.image}}
             docker inspect ${{needs.test.outputs.image}} | jq -r '.[0].Config.Labels'
-            echo "::debug::Image ${{needs.test.outputs.image}} built and pushed"
+            echo "::notice::✅ Image ${{needs.test.outputs.image}} built and pushed"
