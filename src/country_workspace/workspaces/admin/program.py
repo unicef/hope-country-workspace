@@ -47,6 +47,10 @@ class ProgramForm(forms.ModelForm):
         exclude = ("country_office",)
 
 
+class BulkUpdateImportForm(forms.Form):
+    file = forms.FileField()
+
+
 def clean_field_name(v):
     return v.replace("_h_c", "").replace("_h_f", "").replace("_i_c", "").replace("_i_f", "").lower()
 
@@ -206,3 +210,22 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = ImportFileForm()
         context["form"] = form
         return render(request, "workspace/program/import_rdi.html", context)
+
+    @button(label=_("Import File Updates"))
+    def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        context = self.get_common_context(request, pk, title="Import updates from file")
+        # program: "CountryProgram" = context["original"]
+        context["selected_program"] = context["original"]
+        updated = 0
+        if request.method == "POST":
+            form = BulkUpdateImportForm(request.POST, request.FILES)
+            if form.is_valid():
+                with atomic():
+                    pass
+                self.message_user(request, _("Imported. {0} records updated").format(updated))
+                context["form"] = form
+
+        else:
+            form = BulkUpdateImportForm()
+        context["form"] = form
+        return render(request, "workspace/actions/bulk_update_import.html", context)

@@ -78,12 +78,8 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
 
 class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
     list_filter = (
-        # ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
-        # ("batch__program", LinkedAutoCompleteFilter.factory(parent=None)),
-        # ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
-        # ("batch", BatchFilter),
     )
     actions = ["validate_queryset", actions.mass_update, actions.regex_update, actions.bulk_update_export]
 
@@ -92,6 +88,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         btn.visible = False
         if prg := self.get_selected_program(btn.context["request"]):
             btn.href = reverse("workspace:workspaces_countryprogram_import_rdi", args=[prg.pk])
+            btn.visible = self.get_checker(btn.context.get("request"), btn.context.get("original"))
+
+    @link()
+    def import_file_updates(self, btn: LinkButton) -> None:
+        btn.visible = False
+        if prg := self.get_selected_program(btn.context["request"]):
+            btn.href = reverse("workspace:workspaces_countryprogram_import_file_updates", args=[prg.pk])
             btn.visible = self.get_checker(btn.context.get("request"), btn.context.get("original"))
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":

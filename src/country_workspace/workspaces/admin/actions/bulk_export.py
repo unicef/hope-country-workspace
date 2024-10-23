@@ -200,3 +200,7 @@ def bulk_update_export(model_admin: "BeneficiaryBaseAdmin", request, queryset):
             return response
 
     return render(request, "workspace/actions/bulk_update_export.html", ctx)
+
+
+def bulk_update_import(program, redis_key):
+    pass

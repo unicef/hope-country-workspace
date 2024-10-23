@@ -30,6 +30,7 @@ class Validable(models.Model):
     last_checked = models.DateTimeField(default=None, null=True, blank=True)
     errors = models.JSONField(default=dict, blank=True, editable=False)
     flex_fields = models.JSONField(default=dict, blank=True)
+    flex_files = models.BinaryField(null=True, blank=True)
 
     name = models.CharField(_("Name"), max_length=255)
     removed = models.BooleanField(_("Removed"), default=False)

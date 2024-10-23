@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.urls import reverse
@@ -7,7 +8,7 @@ import openpyxl
 import pytest
 from testutils.factories import DataCheckerFactory, FlexFieldFactory
 from testutils.utils import select_office
-from webtest import Checkbox
+from webtest import Checkbox, Upload
 
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 from country_workspace.state import state
@@ -94,7 +95,7 @@ def test_bulk_update_export_impl(household: "CountryHousehold", force_migrated_r
     #     f.write(ret.getvalue())
 
 
-def test_bulk_update(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
+def test_bulk_update_export(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
     FIELDS = [
         "birth_date",
@@ -125,3 +126,15 @@ def test_bulk_update(app: "DjangoTestApp", force_migrated_records, household: "C
         sheet = workbook.worksheets[0]
         headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
         assert headers == ["id"] + FIELDS
+
+
+@pytest.mark.xfail()
+def test_bulk_update_import(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, household.country_office):
+        data = Path(__file__).parent / "ind_updates.xlsx"
+        res = app.get(f"{url}?batch__program__exact={household.batch.program.pk}")
+        res = res.click("Import File Updates")
+        res.forms["bulk-update-form"]["file"] = Upload(data.name, data.read_bytes())
+        res = res.forms["bulk-update-form"].submit("_import")
+        assert False

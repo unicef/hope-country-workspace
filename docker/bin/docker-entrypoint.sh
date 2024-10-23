@@ -14,16 +14,19 @@ case "$1" in
 	    if [ "${STATIC_URL}" = "/static/" ]; then
 	      MAPPING="--static-map ${STATIC_URL}=${STATIC_ROOT}"
 	    fi
-	    uwsgi --http :8000 \
+      set -- tini -- "$@"
+	    set -- uwsgi --http :8000 \
 	          --module country_workspace.config.wsgi \
 	          --uid user \
 	          --gid app \
 	          $MAPPING
 	    ;;
+    upgrade)
+      django-admin upgrade --with-check
+      ;;
     worker)
       set -- tini -- "$@"
-      set -- gosu user:app
-      celery -A country_workspace.config.celery worker -E --loglevel=ERROR --concurrency=4
+      set -- gosu user:app celery -A country_workspace.config.celery worker -E --loglevel=ERROR --concurrency=4
       ;;
     beat)
       set -- tini -- "$@"
