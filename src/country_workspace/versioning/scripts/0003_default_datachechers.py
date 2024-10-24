@@ -6,11 +6,11 @@ from country_workspace.versioning.checkers import create_hope_checkers, removes_
 _script_for_version = Version("0.1.0")
 
 
-def forward():
+def forward() -> None:
     pass
 
 
-def backward():
+def backward() -> None:
     pass
 
 

@@ -17,7 +17,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
     celery_task_name = "country_workspace.tasks.sync_job_task"
 
     @property
-    def queue_position(self):
+    def queue_position(self) -> int:
         try:
             return super().queue_position
         except Exception:

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 from django import forms
 from django.db import transaction
 from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils.translation import gettext as _
 
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
     RegexRule = tuple[str, str]
-    RegexRules = list(RegexRule)
+    RegexRules = list[RegexRule]
 
 
 class RegexFormField(forms.CharField):
@@ -34,7 +35,7 @@ class RegexUpdateForm(BaseActionForm):
     regex = RegexFormField()
     subst = forms.CharField()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
         field_names = checker.get_form()().fields.keys()
@@ -42,7 +43,7 @@ class RegexUpdateForm(BaseActionForm):
 
 
 def regex_update_impl(
-    records: "QuerySet[Beneficiary]", config: dict[str, Any], save=True
+    records: "QuerySet[Beneficiary]", config: dict[str, Any], save: bool = True
 ) -> list[tuple[str, str, str]]:
     if isinstance(config["regex"], str):
         config["regex"] = re.compile(config["regex"])
@@ -62,7 +63,9 @@ def regex_update_impl(
     return ret
 
 
-def regex_update(model_admin: "BeneficiaryBaseAdmin", request, queryset):
+def regex_update(
+    model_admin: "BeneficiaryBaseAdmin", request: "HttpRequest", queryset: "QuerySet[Beneficiary]"
+) -> HttpResponse:
     ctx = model_admin.get_common_context(request, title=_("Regex update"))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["queryset"] = queryset

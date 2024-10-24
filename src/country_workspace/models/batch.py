@@ -14,5 +14,5 @@ class Batch(BaseModel):
     class Meta:
         unique_together = (("import_date", "name"),)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name or f"Batch self.pk ({self.country_office})"

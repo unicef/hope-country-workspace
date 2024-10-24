@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 from django.contrib.admin import AdminSite, register
-from django.db.models import Model
+from django.db.models import Model, QuerySet
 from django.http import HttpRequest
 
 from ...state import state
@@ -36,7 +36,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         self._selected_household = None
         super().__init__(model, admin_site)
 
-    def get_queryset(self, request):
+    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryIndividual]:
         return super().get_queryset(request).filter(batch__country_office=state.tenant)
 
     def get_list_display(self, request: HttpRequest) -> list[str]:

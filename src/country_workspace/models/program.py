@@ -1,6 +1,7 @@
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 from django.db import models
+from django.db.models import QuerySet
 from django.utils.translation import gettext as _
 
 from hope_flex_fields.models import DataChecker
@@ -10,6 +11,10 @@ from strategy_field.utils import fqn
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
 from .office import Office
+
+if TYPE_CHECKING:
+    from .household import Household
+    from .individual import Individual
 
 
 class Program(BaseModel):
@@ -71,13 +76,13 @@ class Program(BaseModel):
         verbose_name_plural = _("Programmes")
 
     @property
-    def households(self):
+    def households(self) -> "QuerySet[Household]":
         from country_workspace.models import Household
 
         return Household.objects.filter(batch__program=self)
 
     @property
-    def individuals(self):
+    def individuals(self) -> "QuerySet[Individual]":
         from country_workspace.models import Individual
 
         return Individual.objects.filter(batch__program=self)

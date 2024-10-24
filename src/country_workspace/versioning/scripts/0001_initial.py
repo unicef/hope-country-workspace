@@ -5,7 +5,7 @@ from hope_flex_fields.models import DataChecker, Fieldset
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 
 
-def removes_hope_core_fieldset():
+def removes_hope_core_fieldset() -> None:
     Fieldset.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
     DataChecker.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
 
@@ -13,7 +13,7 @@ def removes_hope_core_fieldset():
     DataChecker.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
 
 
-def create_default_fields_definitions():
+def create_default_fields_definitions() -> None:
     from hope_flex_fields.models import FieldDefinition
     from hope_flex_fields.registry import field_registry
     from hope_flex_fields.utils import get_default_attrs, get_kwargs_from_field_class
@@ -29,7 +29,7 @@ def create_default_fields_definitions():
         )
 
 
-def enable_local_login():
+def enable_local_login() -> None:
     enable_flag("LOCAL_LOGIN")
 
 

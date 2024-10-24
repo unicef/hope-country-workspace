@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING, Any
 
 from django import forms
 from django.db.models import QuerySet
-from django.http import HttpResponse
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils.translation import gettext as _
 
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
+from xlsxwriter import Workbook
 
 from country_workspace.models import Program
 from country_workspace.workspaces.admin.actions.base import BaseActionForm
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 class BulkUpdateForm(BaseActionForm):
     fields = forms.MultipleChoiceField(choices=[], widget=forms.CheckboxSelectMultiple())
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
         self.fields["fields"].choices = [(name, name) for name, fld in checker.get_form()().fields.items()]
@@ -71,31 +72,31 @@ class BulkUpdateForm(BaseActionForm):
 class XlsValidateRule:
     validate = ""
 
-    def __init__(self, field: FlexField):
+    def __init__(self, field: FlexField) -> None:
         self.field = field
 
-    def __call__(self):
+    def __call__(self) -> dict[str, Any]:
         return {}
 
 
 class ValidateInteger(XlsValidateRule):
     validate = "integer"
 
-    def __call__(self):
+    def __call__(self) -> dict[str, Any]:
         return {"validate": "integer"}
 
 
 class ValidateBool(XlsValidateRule):
     validate = "list"
 
-    def __call__(self):
+    def __call__(self) -> dict[str, Any]:
         return {"validate": "list", "source": ["", "True", "False"]}
 
 
 class ValidateList(XlsValidateRule):
     validate = "list"
 
-    def __call__(self):
+    def __call__(self) -> dict[str, Any]:
         ch = self.field.get_merged_attrs().get("choices", [])
         if ch:
             return {"validate": "list", "source": [c[0] for c in ch]}
@@ -109,23 +110,24 @@ TYPES = {
 }
 
 
-def get_validation_for_field(fld: "FlexField"):
+def get_validation_for_field(fld: "FlexField") -> dict[str, Any]:
     validate = TYPES.get(fld.field.field_type, XlsValidateRule)(fld)
     return validate()
 
 
-def dc_get_field(dc: "DataChecker", name) -> "FlexField":
+def dc_get_field(dc: "DataChecker", name: str) -> "FlexField | None":
     for fs in dc.members.all():
         for field in fs.fieldset.fields.filter():
             if field.name == name:
                 return field
 
 
-def create_xls_importer(queryset, dc: "DataChecker", columns: list[str]):
-    import xlsxwriter
+def create_xls_importer(
+    queryset: "QuerySet[Beneficiary]", dc: "DataChecker", columns: list[str]
+) -> [io.BytesIO, Workbook]:
 
     out = BytesIO()
-    workbook = xlsxwriter.Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"})
+    workbook = Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"})
 
     header_format = workbook.add_format(
         {
@@ -182,7 +184,9 @@ def bulk_update_export_impl(
     return create_xls_importer(records, dc, config["fields"])[0]
 
 
-def bulk_update_export(model_admin: "BeneficiaryBaseAdmin", request, queryset):
+def bulk_update_export(
+    model_admin: "BeneficiaryBaseAdmin", request: HttpRequest, queryset: "QuerySet[Beneficiary]"
+) -> HttpResponse:
     ctx = model_admin.get_common_context(request, title=_("Export data for bulk update"))
     ctx["checker"] = checker = model_admin.get_checker(request)
     form = BulkUpdateForm(request.POST, checker=checker)

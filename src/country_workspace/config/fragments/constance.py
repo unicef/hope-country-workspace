@@ -49,3 +49,15 @@ CONSTANCE_CONFIG = {
     "KOBO_API_URL": ("", "Kobo API Server address", str),
     "KOBO_API_TOKEN": ("", "Kobo API Access Token", "write_only_input"),
 }
+
+CONSTANCE_CONFIG_FIELDSETS = {
+    "New User Options": ("NEW_USER_IS_STAFF", "NEW_USER_DEFAULT_GROUP"),
+    "Remote System Tokens": (
+        "HOPE_API_URL",
+        "HOPE_API_TOKEN",
+        "AURORA_API_URL",
+        "AURORA_API_TOKEN",
+        "KOBO_API_URL",
+        "KOBO_API_TOKEN",
+    ),
+}

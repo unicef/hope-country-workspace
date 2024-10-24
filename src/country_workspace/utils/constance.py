@@ -1,9 +1,9 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from django.forms import ChoiceField, HiddenInput, Textarea, TextInput
 from django.template import Context, Template
-from django.utils.safestring import mark_safe
+from django.utils.safestring import SafeString, mark_safe
 
 from constance import config
 
@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 class ObfuscatedInput(HiddenInput):
 
-    def render(self, name, value, attrs=None, renderer=None):
+    def render(
+        self, name: str, value: Any, attrs: Optional[dict[str, str]] = None, renderer: Optional[Any] = None
+    ) -> "SafeString":
         context = self.get_context(name, value, attrs)
         context["value"] = str(value)
         context["label"] = "Set" if value else "Not Set"
@@ -22,11 +24,10 @@ class ObfuscatedInput(HiddenInput):
 
 
 class WriteOnlyWidget:
-    def format_value(self, value):
-        value = "***"
-        return super().format_value(value)
+    def format_value(self, value: Any) -> str:
+        return super().format_value("***")
 
-    def value_from_datadict(self, data, files, name):
+    def value_from_datadict(self, data: dict[str, Any], files: Any, name: str) -> Any:
         value = data.get(name)
         if value == "***":
             return getattr(config, name)

@@ -1,4 +1,5 @@
 import io
+from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 
@@ -9,13 +10,13 @@ from country_workspace.models import AsyncJob
 
 
 @app.task()
-def sync_job_task(pk, version):
+def sync_job_task(pk: int, version: int) -> dict[str, Any]:
     job: AsyncJob = AsyncJob.objects.select_related("program").get(pk=pk, version=version)
     if job.type == AsyncJob.JobType.BULK_UPDATE_IND:
         return bulk_update_individual(job)
 
 
-def bulk_update_individual(job: AsyncJob):
+def bulk_update_individual(job: AsyncJob) -> dict[str, Any]:
     ret = {"not_found": []}
     for e in open_xls(io.BytesIO(job.file.read()), start_at=0):
         try:

@@ -53,7 +53,7 @@ class BulkUpdateImportForm(forms.Form):
     file = forms.FileField()
 
 
-def clean_field_name(v):
+def clean_field_name(v: str) -> str:
     return v.replace("_h_c", "").replace("_h_f", "").replace("_i_c", "").replace("_i_f", "").lower()
 
 

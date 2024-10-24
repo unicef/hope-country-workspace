@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from django.contrib.admin import register
 from django.db.models import QuerySet
@@ -45,7 +45,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         else:
             return qs.none()
 
-    def has_add_permission(self, request, obj=None):
+    def has_add_permission(self, request: HttpRequest, obj: Optional[CountryBatch] = None) -> bool:
         return False
 
     @link(change_list=False)

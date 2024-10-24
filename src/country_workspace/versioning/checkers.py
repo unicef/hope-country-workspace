@@ -5,7 +5,7 @@ from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
 from country_workspace.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
 
 
-def create_hope_checkers():
+def create_hope_checkers() -> None:
     _char = FieldDefinition.objects.get(field_type=forms.CharField)
     _date = FieldDefinition.objects.get(field_type=forms.DateField)
     _bool = FieldDefinition.objects.get(field_type=forms.BooleanField)
@@ -211,7 +211,7 @@ def create_hope_checkers():
     ind_dc.fieldsets.add(ind_fs)
 
 
-def removes_hope_checkers():
+def removes_hope_checkers() -> None:
     DataChecker.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
     DataChecker.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
     Fieldset.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()

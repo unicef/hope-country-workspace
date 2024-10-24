@@ -86,7 +86,7 @@ except ImportError:
     logger.warning("pytricia not installed. 'client_ip' flag not registared ")
 
     def client_ip(value: str, **kwargs: Any) -> bool:
-        pass
+        return True
 
 
 conditions.register("User IP", client_ip)

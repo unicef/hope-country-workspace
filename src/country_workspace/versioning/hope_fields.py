@@ -7,7 +7,7 @@ from hope_flex_fields.models import FieldDefinition
 from country_workspace.models import SyncLog
 
 
-def create_hope_field_definitions():
+def create_hope_field_definitions() -> None:
     for m in settings.HH_LOOKUPS:
         n = f"HOPE HH {m}"
         FieldDefinition.objects.get_or_create(name=n, slug=slugify(n), field_type=forms.ChoiceField)
@@ -30,5 +30,5 @@ def create_hope_field_definitions():
     SyncLog.objects.create_lookups()
 
 
-def removes_hope_field_definitions():
+def removes_hope_field_definitions() -> None:
     FieldDefinition.objects.filter(name__startswith="HOPE ").delete()

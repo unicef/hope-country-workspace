@@ -21,6 +21,8 @@ from .base import WorkspaceInclusionAdminNode
 from .workspace_urls import add_preserved_filters
 
 if TYPE_CHECKING:
+    from typing import Generator
+
     from ..changelist import WorkspaceChangeList
 
 register = Library()
@@ -51,7 +53,7 @@ def search_form_tag(parser, token):
     )
 
 
-def result_headers(cl: "WorkspaceChangeList"):  # noqa
+def result_headers(cl: "WorkspaceChangeList") -> "Generator[dict[str, str]]":  # noqa
     """
     Overrides standard Django behaviour to silent error if wrong columns have been configured
     """

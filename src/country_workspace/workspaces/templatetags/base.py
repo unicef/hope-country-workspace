@@ -1,4 +1,5 @@
 from inspect import getfullargspec
+from typing import Any
 
 from django.template.library import InclusionNode, parse_bits
 
@@ -9,7 +10,7 @@ class WorkspaceInclusionAdminNode(InclusionNode):
     or globally.
     """
 
-    def __init__(self, parser, token, func, template_name: str, takes_context: bool = True):
+    def __init__(self, parser, token, func, template_name: str, takes_context: bool = True) -> None:
         self.template_name = template_name
         params, varargs, varkw, defaults, kwonly, kwonly_defaults, _ = getfullargspec(func)
         bits = token.split_contents()
@@ -27,7 +28,7 @@ class WorkspaceInclusionAdminNode(InclusionNode):
         )
         super().__init__(func, takes_context, args, kwargs, filename=None)
 
-    def render(self, context):
+    def render(self, context: dict[str, Any]) -> str:
         opts = context["opts"]
         app_label = opts.app_label.lower()
         object_name = opts.model_name

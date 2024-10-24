@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from functools import update_wrapper, wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from django.apps import apps
 from django.contrib import admin
@@ -19,6 +19,10 @@ from smart_admin.autocomplete import SmartAutocompleteJsonView
 
 from .forms import SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_tenant, is_tenant_valid, set_selected_tenant
+
+if TYPE_CHECKING:
+    from django.contrib.admin import ModelAdmin
+    from django.db.models import Field
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -42,7 +46,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
             qs = qs.distinct()
         return self.filter_queryset(qs)
 
-    def process_request(self, request: HttpRequest):  # noqa C901
+    def process_request(self, request: "HttpRequest") -> tuple[str, "ModelAdmin", "Field", str]:  # noqa C901
         """
         Overridden to handle Proxy Models
         """
@@ -97,12 +101,12 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
         return term, model_admin, source_field, to_field_name
 
 
-def force_tenant(view_func):
+def force_tenant(view_func: "Callable[...]") -> "Callable[...]":
     """
     Decorator that adds headers to a response so that it will never be cached.
     """
 
-    def _view_wrapper(request: HttpRequest, *args, **kwargs):
+    def _view_wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> "Callable[...]":
         if not request.user.is_authenticated:
             return redirect("workspace:login")
         if not is_tenant_valid() and "+select" not in request.path:  # TODO: Dry
@@ -131,10 +135,10 @@ class TenantAdminSite(admin.AdminSite):
     namespace = "workspace"
 
     @property
-    def urls(self):
+    def urls(self) -> tuple[list[URLResolver | URLPattern], str, str]:
         return self.get_urls(), self.namespace, self.name
 
-    def _build_app_dict(self, request: HttpRequest, label=None):
+    def _build_app_dict(self, request: HttpRequest, label: Optional[str] = None) -> dict[str, Any]:
         """
         Build the app dictionary. The optional `label` parameter filters models
         of a specific app.

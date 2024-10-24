@@ -7,10 +7,10 @@ class Script(models.Model):
     version = models.CharField(max_length=255)
     applied = models.DateTimeField(default=now)
 
-    def num(self):
+    def num(self) -> str:
         return self.name.split("_", 1)[0]
 
     num.ordering = ("name",)
 
-    def label(self):
+    def label(self) -> str:
         return self.name.split("_", 1)[1]

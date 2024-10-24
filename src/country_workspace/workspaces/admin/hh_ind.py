@@ -64,10 +64,10 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
             checker = None
         return checker
 
-    def delete_queryset(self, request, queryset):
+    def delete_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> None:
         queryset.filter().delete()
 
-    def delete_model(self, request, obj):
+    def delete_model(self, request: HttpRequest, obj: "Beneficiary") -> None:
         super().delete_model(request, obj)
 
     def changelist_view(self, request: HttpRequest, extra_context: Optional[dict[str, Any]] = None) -> HttpResponse:

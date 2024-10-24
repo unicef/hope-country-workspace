@@ -10,7 +10,7 @@ from django.utils.translation import gettext as _
 class ValidatableFileValidator(object):
     error_messages = {"invalid_file": _("Unsupported file format '%s'")}
 
-    def __call__(self, f):
+    def __call__(self, f: Path) -> None:
         if Path(f.name).suffix not in [".xlsx"]:
             raise ValidationError(self.error_messages["invalid_file"] % Path(f.name).suffix)
 

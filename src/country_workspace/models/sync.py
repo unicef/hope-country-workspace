@@ -10,11 +10,11 @@ from country_workspace.sync.client import HopeClient
 
 
 class SyncManager(BaseManager):
-    def refresh(self):
+    def refresh(self) -> None:
         for record in self.all():
             record.refresh()
 
-    def create_lookups(self):
+    def create_lookups(self) -> None:
         from hope_flex_fields.models import FieldDefinition
 
         ct = ContentType.objects.get_for_model(FieldDefinition)
@@ -49,7 +49,7 @@ class SyncLog(BaseModel):
 
     objects = SyncManager()
 
-    def refresh(self):
+    def refresh(self) -> None:
         fd = self.content_object
         if not fd:
             return
