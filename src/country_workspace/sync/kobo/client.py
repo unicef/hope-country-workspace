@@ -1,12 +1,12 @@
-from __future__ import annotations
-
+from collections.abc import Generator, Callable
 from functools import partial
+from typing import cast
 
 from requests import Session
 
 from country_workspace.sync.kobo.auth import Auth
 from country_workspace.sync.kobo.data import Asset, Datum
-from country_workspace.sync.kobo.raw_data import AssetListResponse, DataResponse
+from country_workspace.sync.kobo.raw_data import AssetListResponse, DataResponse, Response, AssetListItem
 
 
 class URLs:
@@ -18,6 +18,18 @@ class URLs:
         return f"{self._base_url}/api/v2/assets.json"
 
 
+def handle_paginated_response[T, U](session: Session,
+                                    url: str,
+                                    collection_mapper: Callable[[Response], list[T]],
+                                    item_mapper: Callable[[T], U]) -> Generator[U, None, None]:
+    while url:
+        response = session.get(url)
+        response.raise_for_status()
+        data: Response = response.json()
+        yield from map(item_mapper, collection_mapper(data))
+        url = data["next"]
+
+
 class Client:
     def __init__(self, urls: URLs, auth: Auth) -> None:
         self.urls = urls
@@ -25,14 +37,14 @@ class Client:
         self.session.auth = auth
 
     @property
-    def assets(self) -> tuple[Asset, ...]:
-        response = self.session.get(self.urls.asset_list)
-        response.raise_for_status()
-        data: AssetListResponse = response.json()
-        return tuple(Asset(raw, partial(self._data, raw["data"])) for raw in data["results"])
+    def assets(self) -> Generator[Asset, None, None]:
+        return handle_paginated_response(self.session,
+                                         self.urls.asset_list,
+                                         lambda r: cast(AssetListResponse, r)["results"],
+                                         lambda i: Asset(i, partial(self._get_asset_data, i)))
 
-    def _data(self, url: str) -> tuple[Datum, ...]:
-        response = self.session.get(url)
-        response.raise_for_status()
-        data: DataResponse = response.json()
-        return tuple(Datum(raw) for raw in data["results"])
+    def _get_asset_data(self, raw: AssetListItem) -> Generator[Datum, None, None]:
+        return handle_paginated_response(self.session,
+                                         raw["data"],
+                                         lambda r: cast(DataResponse, r)["results"],
+                                         Datum)
