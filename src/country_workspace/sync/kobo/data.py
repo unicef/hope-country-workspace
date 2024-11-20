@@ -1,18 +1,52 @@
-from collections.abc import Callable
+from collections import UserDict
+from collections.abc import Callable, Generator
 
-from country_workspace.sync.kobo.raw_data import AssetListItem, DataItem
+from country_workspace.sync.kobo.raw import asset as raw_asset
+from country_workspace.sync.kobo.raw import submission_list as raw_submission_list
 
 
-class Datum:
-    def __init__(self, raw: DataItem) -> None:
+class Raw[T]:
+    def __init__(self, raw: T) -> None:
         self._raw = raw
 
 
-class Asset:
-    def __init__(self, raw: AssetListItem, data_thunk: Callable[[], tuple[Datum, ...]]) -> None:
-        self._raw = raw
-        self._data_thunk = data_thunk
+class Question(Raw[raw_asset.Question]):
+    @property
+    def key(self) -> str:
+        return self._raw["$autoname"]
 
     @property
-    def data(self) -> tuple[Datum, ...]:
-        return self._data_thunk()
+    def label(self) -> list[str]:
+        return self._raw["label"]
+
+
+class Submission(Raw[raw_submission_list.Submission], UserDict):
+    def __init__(self, raw: raw_submission_list.Submission, questions: list[Question]) -> None:
+        Raw.__init__(self, raw)
+        UserDict.__init__(self, {question.key: raw[question.key] for question in questions})
+
+    @property
+    def id(self) -> int:
+        return self._raw["_id"]
+
+
+class Asset(Raw[raw_asset.Asset]):
+    def __init__(self, raw: raw_asset.Asset, submissions: Generator[Callable[[list[Question]], Submission], None, None]) -> None:
+        super().__init__(raw)
+        self._submissions = submissions
+
+    @property
+    def id(self) -> str:
+        return self._raw["uid"]
+
+    @property
+    def name(self) -> str:
+        return self._raw["name"]
+
+    @property
+    def questions(self) -> list[Question]:
+        return [Question(raw_question) for raw_question in self._raw["content"]["survey"] if "label" in raw_question]
+
+    @property
+    def submissions(self) -> Generator[Submission, None, None]:
+        return (submission(self.questions) for submission in self._submissions)
