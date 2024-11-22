@@ -1,8 +1,9 @@
 from collections import UserDict
 from collections.abc import Callable, Generator
+from uuid import UUID
 
-from country_workspace.sync.kobo.raw import asset as raw_asset
-from country_workspace.sync.kobo.raw import submission_list as raw_submission_list
+from country_workspace.contrib.kobo.raw import asset as raw_asset
+from country_workspace.contrib.kobo.raw import submission_list as raw_submission_list
 
 
 class Raw[T]:
@@ -26,8 +27,8 @@ class Submission(Raw[raw_submission_list.Submission], UserDict):
         UserDict.__init__(self, {question.key: raw[question.key] for question in questions})
 
     @property
-    def id(self) -> int:
-        return self._raw["_id"]
+    def uuid(self) -> UUID:
+        return UUID(self._raw["_uuid"])
 
 
 class Asset(Raw[raw_asset.Asset]):
@@ -36,7 +37,7 @@ class Asset(Raw[raw_asset.Asset]):
         self._submissions = submissions
 
     @property
-    def id(self) -> str:
+    def uid(self) -> str:
         return self._raw["uid"]
 
     @property

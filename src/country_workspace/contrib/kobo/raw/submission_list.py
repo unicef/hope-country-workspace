@@ -1,10 +1,10 @@
 from typing import TypedDict
 
-from country_workspace.sync.kobo.raw.common import ListResponse
+from country_workspace.contrib.kobo.raw.common import ListResponse
 
 
 class Submission(TypedDict):
-    _id: int
+    _uuid: str
 
 
 class SubmissionList(ListResponse):

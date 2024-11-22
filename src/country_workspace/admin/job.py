@@ -2,9 +2,10 @@ from typing import TYPE_CHECKING, Sequence
 
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
+from django.http import HttpRequest
 from django_celery_boost.admin import CeleryTaskModelAdmin
 
-from ..models import AsyncJob
+from ..models import AsyncJob, KoboSyncJob
 from .base import BaseModelAdmin
 from .filters import FailedFilter
 
@@ -26,5 +27,9 @@ class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
 
     def get_readonly_fields(self, request: "HttpRequest", obj: "AsyncJob | None" = None) -> Sequence[str]:
         if obj:
-            return ("program", "batch", "owner", "local_status", "type", "action", "sentry_id")
+            return "program", "batch", "owner", "local_status", "type", "action", "sentry_id"
         return super().get_readonly_fields(request, obj)
+
+@admin.register(KoboSyncJob)
+class DedupJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
+    pass
