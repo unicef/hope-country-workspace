@@ -17,7 +17,7 @@ class Question(Raw[raw_asset.Question]):
         return self._raw["$autoname"]
 
     @property
-    def label(self) -> list[str]:
+    def labels(self) -> list[str]:
         return self._raw["label"]
 
 

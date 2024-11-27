@@ -31,5 +31,5 @@ class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
         return super().get_readonly_fields(request, obj)
 
 @admin.register(KoboSyncJob)
-class DedupJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
+class KoboSyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
     pass

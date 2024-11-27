@@ -2,10 +2,13 @@ from requests.auth import AuthBase
 from requests.models import PreparedRequest
 
 
+TOKEN = "Token"
+AUTHORIZATION = 'Authorization'
+
 class Auth(AuthBase):
     def __init__(self, api_key: str) -> None:
-        self._auth_header = f"Token {api_key}"
+        self._auth_header = f"{TOKEN} {api_key}"
 
     def __call__(self, request: PreparedRequest) -> PreparedRequest:
-        request.headers["Authorization"] = self._auth_header
+        request.headers[AUTHORIZATION] = self._auth_header
         return request

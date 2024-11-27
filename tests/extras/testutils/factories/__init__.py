@@ -10,7 +10,7 @@ from .batch import BatchFactory, CountryBatchFactory  # noqa
 from .django_celery_beat import PeriodicTaskFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
-from .job import AsyncJobFactory  # noqa
+from .job import AsyncJobFactory, KoboSyncJobFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
@@ -22,6 +22,7 @@ from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
 from .version import ScriptFactory  # noqa
 from .workspaces import CountryChecker  # noqa
+from .kobo import KoboAssetFactory  # noqa
 
 for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):
     importlib.import_module(f".{name}", __package__)

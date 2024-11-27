@@ -63,7 +63,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
                 self.save(update_fields=["sentry_id"])
 
 class KoboSyncJob(CeleryTaskModel):
-    celery_task_name = "country_workspace.tasks.sync_kobo_assets"
+    celery_task_name = "country_workspace.tasks.sync_kobo_assets_task"
 
     def clean(self) -> None:
         if self.__class__.objects.exists() and not self.pk:

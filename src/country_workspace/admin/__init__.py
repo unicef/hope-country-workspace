@@ -16,7 +16,7 @@ from .program import ProgramAdmin  # noqa
 from .role import UserRoleAdmin  # noqa
 from .sync import SyncLog  # noqa
 from .user import UserAdmin  # noqa
-from .kobo import KoboAsset, KoboSubmission  # noqa
+from .kobo import KoboAsset  # noqa
 
 site.register(ContentType, admin_class=ContentTypeAdmin)
 site.register(Permission, admin_class=PermissionAdmin)
