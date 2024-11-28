@@ -44,4 +44,4 @@ def test_error_is_propagated() -> None:
     session = Mock(spec=Session)
     session.get.return_value.raise_for_status.side_effect = Timeout
     with raises(Timeout):
-        handle_paginated_response(session, SAMPLE_URL, identity, identity)
+        tuple(handle_paginated_response(session, SAMPLE_URL, identity, identity))

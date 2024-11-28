@@ -10,6 +10,7 @@ from country_workspace.config.celery import app
 from country_workspace.contrib.kobo.client import Client as KoboClient
 from country_workspace.models import AsyncJob, KoboAsset, KoboSubmission
 from country_workspace.models.jobs import KoboSyncJob
+from country_workspace.models.kobo import KoboQuestion
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,14 @@ def removed_expired_jobs(**kwargs: Any) -> None:
     AsyncJob.objects.filter(**kwargs).delete()
 
 @app.task
-def sync_kobo_assets(job_id: int, version: int) -> None:
+def sync_kobo_assets_task(job_id: int, version: int) -> None:
     _ = KoboSyncJob.objects.get(pk=job_id, version=version)
     client = KoboClient(base_url="https://kf-hope-stg.unitst.org", token="01f1a122ddad12d7e72f3b86e9d8a637c917bee8")
     for asset_data in client.assets:
-        asset_model = KoboAsset.objects.get_or_create(uid=asset_data.uid)
+        asset_model, _ = KoboAsset.objects.update_or_create(uid=asset_data.uid, defaults={"name": asset_data.name})
+
+        for question_data in asset_data.questions:
+            KoboQuestion.objects.update_or_create(asset=asset_model, key=question_data.key, labels=question_data.labels)
+
         for submission_data in asset_data.submissions:
-            KoboSubmission.objects.get_or_create(uuid=submission_data.uuid, asset=asset_model, data=submission_data.data)
+            KoboSubmission.objects.update_or_create(uuid=submission_data.uuid, asset=asset_model, data=submission_data.data)

@@ -1,10 +1,12 @@
 from factory import fuzzy
-from factory.declarations import SubFactory
 
-from testutils.factories import AutoRegisterModelFactory, ProgramFactory
+from country_workspace.models import KoboAsset
+from testutils.factories import AutoRegisterModelFactory
 
 
 class KoboAssetFactory(AutoRegisterModelFactory):
     uid = fuzzy.FuzzyText()
     name = fuzzy.FuzzyText()
-    program = SubFactory(ProgramFactory)
+
+    class Meta:
+        model = KoboAsset

@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.contrib import admin
 
 from .base import BaseModelAdmin
@@ -24,3 +26,12 @@ class KoboAssetAdmin(BaseModelAdmin):
     list_display = ("uid", "name")
     exclude = ("programs",)
     inlines = (KoboQuestionAdmin, KoboSubmissionAdmin)
+
+    def has_add_permission(self, *args: Any, **kwargs: Any) -> bool:
+        return False
+
+    def has_change_permission(self, *args: Any, **kwargs: Any) -> bool:
+        return False
+
+    def has_delete_permission(self, *args: Any, **kwargs: Any) -> bool:
+        return False
