@@ -2,6 +2,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING, Any, Generator
 
+from constance import config
 import sentry_sdk
 from django.core.cache import cache
 from redis_lock import Lock
@@ -68,7 +69,7 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 @app.task
 def sync_kobo_assets_task(job_id: int, version: int) -> None:
     _ = KoboSyncJob.objects.get(pk=job_id, version=version)
-    client = KoboClient(base_url="https://kf-hope-stg.unitst.org", token="01f1a122ddad12d7e72f3b86e9d8a637c917bee8")
+    client = KoboClient(base_url=config.KOBO_BASE_URL, token=config.KOBO_TOKEN)
     for asset_data in client.assets:
         asset_model, _ = KoboAsset.objects.update_or_create(uid=asset_data.uid, defaults={"name": asset_data.name})
 

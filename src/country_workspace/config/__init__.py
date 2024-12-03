@@ -185,6 +185,8 @@ CONFIG: "dict[str, ConfigItem]" = {
     "AZURE_CLIENT_SECRET": (str, "", "", False, "Azure client secret for SSO"),
     "AZURE_TENANT_ID": (str, "", "", False, "Azure tenant ID for SSO"),
     "AZURE_CLIENT_KEY": (str, "", "", False, "Azure client key for SSO"),
+    "KOBO_BASE_URL": (str, "", "", False, "Kobo API base URL"),
+    "KOBO_TOKEN": (str, "", "", False, "Kobo API token"),
 }
 
 env = SmartEnv(**CONFIG)
