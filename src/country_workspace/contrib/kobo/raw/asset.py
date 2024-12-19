@@ -1,12 +1,11 @@
 from typing import TypedDict
 
-
-class Question(TypedDict("Question", {"$autoname": str})):
-    label: list[str]
+class SurveyItem(TypedDict("SurveyItem", {"$xpath": str})):
+    type: str
 
 
 class Content(TypedDict):
-    survey: list[Question]
+    survey: list[SurveyItem]
 
 
 class Asset(TypedDict):

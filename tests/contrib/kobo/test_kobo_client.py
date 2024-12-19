@@ -6,7 +6,7 @@ from pytest import raises
 from requests.sessions import Session
 from requests.exceptions import Timeout
 
-from country_workspace.contrib.kobo.client import handle_paginated_response
+from country_workspace.contrib.kobo.client import _handle_paginated_response
 
 
 SAMPLE_URL = "https://example.com"
@@ -32,7 +32,7 @@ def test_all_data_is_fetched() -> None:
     session.get.return_value.json.side_effect = responses
     assert (
         tuple(
-            handle_paginated_response(
+            _handle_paginated_response(
                 session, urls[0], lambda x: x["results"], identity
             )
         )
@@ -44,4 +44,4 @@ def test_error_is_propagated() -> None:
     session = Mock(spec=Session)
     session.get.return_value.raise_for_status.side_effect = Timeout
     with raises(Timeout):
-        tuple(handle_paginated_response(session, SAMPLE_URL, identity, identity))
+        tuple(_handle_paginated_response(session, SAMPLE_URL, identity, identity))
