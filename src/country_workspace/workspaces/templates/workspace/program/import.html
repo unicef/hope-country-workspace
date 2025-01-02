@@ -32,10 +32,18 @@
                         </li>
                         <li class="me-2" role="presentation">
                             <button
-                                    data-tabs-target="#tab-kobo"
-                                    data-input-value="kobo"
+                                    data-tabs-target="#tab-kobo-assets"
+                                    data-input-value="kobo-assets"
                                     type="button" role="tab"
-                                    aria-selected="false">Kobo
+                                    aria-selected="false">Kobo Assets
+                            </button>
+                        </li>
+                        <li class="me-2" role="presentation">
+                            <button
+                                    data-tabs-target="#tab-kobo-data"
+                                    data-input-value="kobo-data"
+                                    type="button" role="tab"
+                                    aria-selected="false">Kobo Data
                             </button>
                         </li>
                     </ul>
@@ -48,8 +56,11 @@
                     <div class="hidden content" id="tab-aurora">
                         {% include "workspace/program/_import_aurora.html" %}
                     </div>
-                    <div class="hidden content" id="tab-kobo">
-                        Kobo
+                    <div class="hidden content" id="tab-kobo-assets">
+                        {% include "workspace/program/_import_kobo_assets.html" %}
+                    </div>
+                    <div class="hidden content" id="tab-kobo-data">
+                        {% include "workspace/program/_import_kobo_data.html" %}
                     </div>
                 </div>
             </div>

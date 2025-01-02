@@ -2,7 +2,6 @@ from typing import Any, Callable
 
 import sentry_sdk
 from django.apps import apps
-from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.module_loading import import_string
 from django_celery_boost.models import CeleryTaskModel
@@ -61,10 +60,3 @@ class AsyncJob(CeleryTaskModel, models.Model):
             if sid:
                 self.sentry_id = sid
                 self.save(update_fields=["sentry_id"])
-
-class KoboSyncJob(CeleryTaskModel):
-    celery_task_name = "country_workspace.tasks.sync_kobo_assets_task"
-
-    def clean(self) -> None:
-        if self.__class__.objects.exists() and not self.pk:
-            raise ValidationError(f"You can have only one {self.__class__.__name__} instance.")

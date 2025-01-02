@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 from requests.models import PreparedRequest
 
-from country_workspace.contrib.kobo.auth import Auth, AUTHORIZATION, TOKEN
+from country_workspace.contrib.kobo.api.auth import Auth, AUTHORIZATION, TOKEN
 
 
 def test_token_is_used() -> None:

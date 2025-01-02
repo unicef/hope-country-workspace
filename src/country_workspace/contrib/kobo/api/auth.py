@@ -2,8 +2,8 @@ from requests.auth import AuthBase
 from requests.models import PreparedRequest
 
 
-TOKEN = "Token"
-AUTHORIZATION = 'Authorization'
+TOKEN = "Token"  # noqa: S105
+AUTHORIZATION = "Authorization"
 
 class Auth(AuthBase):
     def __init__(self, api_key: str) -> None:

@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from country_workspace.contrib.kobo.raw.common import ListResponse
+from country_workspace.contrib.kobo.api.raw.common import ListResponse
 
 
 class Attachment(TypedDict):

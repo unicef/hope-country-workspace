@@ -7,8 +7,7 @@ from requests import Response
 from typing import Any
 from uuid import UUID
 
-from country_workspace.contrib.kobo.raw import asset as raw_asset
-from country_workspace.contrib.kobo.raw import submission_list as raw_submission_list
+from country_workspace.contrib.kobo.api.raw import asset as raw_asset, submission_list as raw_submission_list
 
 
 class SurveyItemType(StrEnum):
@@ -42,12 +41,11 @@ class Question(Raw[raw_asset.SurveyItem]):
                     roster[0][self.key] = in_.get(self.key)
                 else:
                     roster.append({self.key: in_.get(self.key)})
-            else:
-                if roster_key in in_:
-                    for i, item in enumerate(in_[roster_key]):
-                        if len(roster) < i + 1:
-                            roster.append({})
-                        roster[i][self.key] = item[self.key]
+            elif roster_key in in_:
+                for i, item in enumerate(in_[roster_key]):
+                    if len(roster) < i + 1:
+                        roster.append({})
+                    roster[i][self.key] = item[self.key]
             out[roster_key] = roster
         else:
             out[self.key] = in_.get(self.key)
@@ -59,6 +57,9 @@ class Question(Raw[raw_asset.SurveyItem]):
     @property
     def labels(self) -> list[str]:
         return self._raw["label"]
+
+    def __str__(self) -> str:
+        return f"Question: {' '.join(self.labels)}"
 
 
 InAndOut = tuple[raw_submission_list.Submission, dict[str, Any]]
@@ -132,3 +133,6 @@ class Asset(Raw[raw_asset.Asset]):
     @property
     def submissions(self) -> Generator[Submission, None, None]:
         yield from self._submissions(self.questions)
+
+    def __str__(self) -> str:
+        return f"Asset: {self.name}"

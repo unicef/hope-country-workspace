@@ -6,7 +6,7 @@ from pytest import raises
 from requests.sessions import Session
 from requests.exceptions import Timeout
 
-from country_workspace.contrib.kobo.client import _handle_paginated_response
+from country_workspace.contrib.kobo.api.client import _handle_paginated_response
 
 
 SAMPLE_URL = "https://example.com"

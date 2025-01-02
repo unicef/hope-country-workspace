@@ -4,12 +4,12 @@ from typing import cast
 from black.linegen import partial
 from requests import Session, Response
 
-from country_workspace.contrib.kobo.auth import Auth
-from country_workspace.contrib.kobo.data import Submission, Asset, Question
-from country_workspace.contrib.kobo.raw.common import ListResponse
-from country_workspace.contrib.kobo.raw import asset as raw_asset, asset_list as raw_asset_list, common as raw_common
-from country_workspace.contrib.kobo.raw import submission_list as raw_submission_list
-
+from country_workspace.contrib.kobo.api.auth import Auth
+from country_workspace.contrib.kobo.api.data import Submission, Asset, Question
+from country_workspace.contrib.kobo.api.raw.common import ListResponse
+from country_workspace.contrib.kobo.api.raw import asset_list as raw_asset_list
+from country_workspace.contrib.kobo.api.raw import asset as raw_asset, submission_list as raw_submission_list, \
+    common as raw_common
 
 DataGetter = Callable[[str], Response]
 

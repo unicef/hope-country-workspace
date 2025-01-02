@@ -1,0 +1,14 @@
+{% load i18n workspace_modify workspace_urls %}
+<form method="post" id="import-kobo" enctype="multipart/form-data">
+    <input type="hidden" name="_selected_tab" value="kobo_assets">
+    {% csrf_token %}
+    <table>
+        {{ form_kobo_assets.as_table }}
+    </table>
+    <div class="submit-row">
+        <input type="submit" value="{% translate 'Import' %}" class="default" name="_save">
+        {% url opts|workspace_urlname:'change' original.pk as changelist_url %}
+        <a href="{% add_preserved_filters changelist_url %}"
+           class="closelink">{% translate 'Close' %}</a>
+    </div>
+</form>
