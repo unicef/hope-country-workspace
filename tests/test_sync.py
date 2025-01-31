@@ -1,4 +1,5 @@
 import pytest
+from io import StringIO
 from django import forms
 
 from country_workspace.contrib.hope.sync.office import sync_all, sync_offices, sync_programs
@@ -11,10 +12,14 @@ def setup_definitions(db):
     FieldDefinitionFactory(field_type=forms.ChoiceField)
 
 
+@pytest.mark.default_cassette("test_sync_all.yaml")
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
-def test_sync_all():
-    assert sync_all()
+@pytest.mark.parametrize("stdout", [None, StringIO()])
+def test_sync_all(stdout):
+    assert sync_all(stdout)
+    if stdout:
+        assert "Fetching" in str(stdout.getvalue())
 
 
 @pytest.mark.vcr

@@ -61,7 +61,11 @@ class Command(BaseCommand):
         SyncLog.objects.create_lookups()
         if settings.HOPE_API_TOKEN:
             self.stdout.write("Syncing online")
-            with vcr.use_cassette(test_utils_dir.parent / "sync_all.yaml", record_mode=RecordMode.ALL):
+            with vcr.use_cassette(
+                test_utils_dir.parent / "sync_all.yaml",
+                record_mode=RecordMode.ALL,
+                filter_headers=["authorization"],
+            ):
                 sync_all()
         else:
             self.stdout.write("Syncing using cassette")
@@ -69,6 +73,7 @@ class Command(BaseCommand):
                 test_utils_dir.parent / "sync_all.yaml",
                 record_mode=RecordMode.NONE,
                 match_on=("path",),
+                filter_headers=["authorization"],
             ):
                 sync_all()
 

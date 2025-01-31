@@ -223,7 +223,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["selected_program"] = program = context["original"]
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
         form_rdi = ImportFileForm(prefix="rdi")
-        form_aurora = ImportAuroraForm(prefix="aurora")
+        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
 
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
@@ -264,8 +264,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return form
 
     def import_aurora(self, request: HttpRequest, program: "CountryProgram") -> "ImportAuroraForm|None":
-        form = ImportAuroraForm(request.POST, prefix="aurora")
+        form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
         if form.is_valid():
+            registration_reference_pk = getattr(form.cleaned_data["registration"], "reference_pk", None)
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
                 action=fqn(sync_aurora_job),
@@ -274,6 +275,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 owner=request.user,
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "registration_reference_pk": registration_reference_pk,
                     "household_name_column": form.cleaned_data["household_name_column"],
                 },
             )

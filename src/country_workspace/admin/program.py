@@ -61,4 +61,4 @@ class ProgramAdmin(BaseModelAdmin):
         from country_workspace.contrib.hope.sync.office import sync_programs
 
         totals = sync_programs()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated")
+        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skipped']} skipped")

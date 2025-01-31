@@ -1,46 +1,45 @@
-from json import JSONDecodeError
-from unittest.mock import Mock, patch
-
 import pytest
+import responses
 import requests
-from constance.test.unittest import override_config
-from django.conf import settings
+import re
+from typing import Callable
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.exceptions import RemoteError
 
 
-@pytest.mark.vcr(use_cassette="sync_aurora_4pages.yaml")
-def tests_aurora_client_successfully(mock_aurora_data):
-    aurora_client = AuroraClient()
-    with override_config(AURORA_API_URL=settings.AURORA_API_URL):
-        records = list(aurora_client.get("record"))
-        assert all(isinstance(record, dict) for record in records)
-
-
 @pytest.mark.parametrize(
-    "response",
+    ("error_case", "status_code", "body", "expected_error"),
     [
-        {"status_code": 404, "json": dict},
-        requests.RequestException(),
-        JSONDecodeError("Expecting value", "line 1 column 1 (char 0)", 0),
+        ("status", 404, {"results": []}, lambda url: f"Error 404 fetching {url}"),
+        ("status", 403, {"results": []}, lambda url: f"Error 403 fetching {url}"),
+        (
+            "request_exception",
+            None,
+            requests.RequestException("Connection error"),
+            lambda url: f"Remote Error fetching {url}",
+        ),
+        ("json_decode", 200, "invalid json", lambda url: f"Wrong JSON response fetching {url}"),
     ],
 )
-def test_aurora_client_exceptions(response):
-    aurora_client = AuroraClient()
-    if isinstance(response, Exception):
-        if isinstance(response, JSONDecodeError):
-            with patch("requests.get") as mock_get:
-                mock_get.return_value = Mock(status_code=200)
-                mock_get.return_value.json.side_effect = response
-                with pytest.raises(RemoteError):
-                    list(aurora_client.get("record"))
-        else:
-            with patch("requests.get", side_effect=response):
-                with pytest.raises(RemoteError):
-                    list(aurora_client.get("record"))
-    else:
-        with patch("requests.get") as mock_get:
-            mock_get.return_value = Mock(**response)
-            with pytest.raises(RemoteError):
-                list(aurora_client.get("record"))
+def test_client_exceptions(
+    mocked_responses: responses.RequestsMock,
+    error_case: str,
+    status_code: int,
+    body: dict | str,
+    expected_error: Callable[[str], str] | str,
+) -> None:
+    client = AuroraClient(token="dummy")
+    path = "dummy_path"
+    url = client._get_url(path)
+
+    mapping = {
+        "request_exception": lambda: {"body": body},
+        "json_decode": lambda: {"body": body, "status": status_code},
+        "status": lambda: {"json": body, "status": status_code},
+    }
+    mocked_responses.add(responses.GET, url, **mapping[error_case]())
+
+    expected_message = expected_error(url)
+    with pytest.raises(RemoteError, match=re.escape(expected_message)):
+        list(client.get(path))

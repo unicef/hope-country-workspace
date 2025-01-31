@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generator
 
 import sentry_sdk
 from django.core.cache import cache
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @contextlib.contextmanager
-def lock_job(job: AsyncJob) -> Lock:
+def lock_job(job: AsyncJob) -> Generator[Lock, None, None]:
     lock = None
     if job.group_key:
         lock_key = f"lock:{job.group_key}"
