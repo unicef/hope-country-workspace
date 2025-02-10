@@ -18,6 +18,7 @@ exclude_docs: |
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.magiclink
   - pymdownx.superfences:
       custom_fences:

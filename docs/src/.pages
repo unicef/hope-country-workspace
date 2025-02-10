@@ -5,3 +5,5 @@ nav:
   - settings.md
   - dev_helpers.md
   - flows
+  - Interfaces: interfaces.md
+  - Import Data: import_data
