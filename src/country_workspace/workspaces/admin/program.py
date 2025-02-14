@@ -23,7 +23,7 @@ from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
 from .forms import ImportFileForm
 from country_workspace.constants import BATCH_NAME_DEFAULT
-from country_workspace.contrib.aurora.sync import sync_aurora_job
+from country_workspace.contrib.aurora.pipeline import import_from_aurora
 from country_workspace.state import state
 
 if TYPE_CHECKING:
@@ -268,8 +268,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if form.is_valid():
             registration_reference_pk = getattr(form.cleaned_data["registration"], "reference_pk", None)
             job: AsyncJob = AsyncJob.objects.create(
+                description="Aurora importing",
                 type=AsyncJob.JobType.TASK,
-                action=fqn(sync_aurora_job),
+                action=fqn(import_from_aurora),
                 file=None,
                 program=program,
                 owner=request.user,
@@ -280,10 +281,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 },
             )
             job.queue()
-            self.message_user(
-                request,
-                _("The import task from Aurora has been successfully queued. Job #{0}.").format(job.id),
-                level=messages.SUCCESS,
-            )
+            self.message_user(request, _("Import scheduled"), messages.SUCCESS)
             return None
         return form

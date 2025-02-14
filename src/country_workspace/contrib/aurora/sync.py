@@ -1,162 +1,96 @@
-from typing import Any
-from django.db.transaction import atomic
+from urllib.parse import urlparse
+from django.core.cache import cache
 
+from country_workspace.models import SyncLog
+from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.fields import clean_field_name
 
 
-def sync_aurora_job(job: AsyncJob) -> dict[str, int]:
-    """Synchronize data from the Aurora system into the database for the given job within an atomic transaction.
-
-    Args:
-        job (AsyncJob): The job instance containing configuration and context for synchronization.
+def sync_projects() -> dict[str, int]:
+    """Synchronize projects from the Aurora system and updates the local database.
 
     Returns:
-        dict[str, int]: A dictionary with counts of households and individuals created.
+        dict[str, int]: A dictionary containing the number of projects added and updated:
+            - "add": Number of new projects created.
+            - "upd": Number of existing projects updated.
 
     """
-    total_hh = total_ind = 0
-    batch_name = job.config["batch_name"]
-    batch = Batch.objects.create(
-        name=batch_name,
-        program=job.program,
-        country_office=job.program.country_office,
-        imported_by=job.owner,
-        source=Batch.BatchSource.AURORA,
-    )
-
-    registration = job.config["registration_reference_pk"]
     client = AuroraClient()
-    with atomic():
-        for record in client.get(f"registration/{registration}/records/"):
-            hh = create_household(batch, record["flatten"])
-            total_hh += 1
-            total_ind += len(
-                create_individuals(
-                    household=hh,
-                    data=record["flatten"],
-                    household_name_column=job.config.get("household_name_column"),
-                )
+    totals = {"add": 0, "upd": 0}
+    with cache.lock("sync-projects"):
+        for record in client.get("project"):
+            __, created = Project.objects.get_or_create(
+                reference_pk=record["id"],
+                defaults={
+                    "name": record["name"],
+                },
             )
-
-    return {"households": total_hh, "individuals": total_ind}
-
-
-def create_household(batch: Batch, data: dict[str, Any]) -> Household:
-    """
-    Create a Household object from the given data.
-
-    Args:
-        batch (Batch): The batch associated with the household.
-        data (dict[str, Any]): The input data containing household details.
-
-    Returns:
-        Household: The created household instance.
-
-    Raises:
-        ValueError: If multiple households are found in the data.
-
-    """
-    flex_fields = _collect_by_prefix(data, prefix="household_")
-
-    if len(flex_fields) == 1:
-        flex_fields = next(iter(flex_fields.values()))
-    else:
-        raise ValueError("Multiple households found")
-
-    return batch.program.households.create(batch=batch, flex_fields=flex_fields)
+            totals["add" if created else "upd"] += 1
+        SyncLog.objects.register_sync(Project)
+        return totals
 
 
-def create_individuals(
-    household: Household,
-    data: dict[str, Any],
-    household_name_column: str,
-) -> list[Individual]:
-    """Create Individual objects associated with a given Household.
+def sync_registrations(limit_to_project: Project | None = None) -> dict[str, int]:
+    """Synchronize registrations from the Aurora system and update the local database.
 
     Args:
-        household (Household): The household to which individuals belong.
-        data (dict[str, Any]): The input data containing individual details.
-        household_name_column (str): The column used to identify the household head.
+        limit_to_project (Project | None, optional): If provided, only registrations
+            related to this project will be synchronized.
 
     Returns:
-        list[Individual]: A list of created Individual instances.
+        dict[str, int]: A dictionary with the number of registrations processed:
+            - "add": Number of new registrations created.
+            - "upd": Number of existing registrations updated.
+            - "skip": Number of registrations skipped due to a missing project or an invalid project reference.
 
     """
-    individuals = []
-    head_found = False
+    client = AuroraClient()
+    totals = {"add": 0, "upd": 0, "skip": 0}
 
-    individuals_data = _collect_by_prefix(data, prefix="individuals_")
-    for individual in individuals_data.values():
-        if not head_found:
-            head_found = _update_household_name_from_individual(household, individual, household_name_column)
-        fullname_field = next((k for k in individual if k.startswith("given_name")), None)
-        individuals.append(
-            Individual(
-                batch=household.batch,
-                household_id=household.pk,
-                name=individual.get(fullname_field, ""),
-                flex_fields=individual,
-            ),
-        )
+    with cache.lock("sync-registrations"):
+        resource = f"project/{limit_to_project.reference_pk}/registrations/" if limit_to_project else "registration"
 
-    return household.program.individuals.bulk_create(individuals)
+        for record in client.get(resource):
+            if limit_to_project:
+                project = limit_to_project
+            else:
+                extracted_id = _extract_related_id(record["project"])
+                if extracted_id is None:
+                    totals["skip"] += 1
+                    continue
+                try:
+                    project = Project.objects.get(reference_pk=extracted_id)
+                except Project.DoesNotExist:
+                    totals["skip"] += 1
+                    continue
 
-
-def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str, Any]]:
-    """Extract and group fields from a dictionary based on a given prefix.
-
-    Args:
-        data (dict[str, Any]): The input data containing multiple prefixed keys.
-        prefix (str): The prefix used to filter and group keys.
-
-    Returns:
-        dict[str, dict[str, Any]]: A dictionary where each key is an index extracted from the original keys,
-        and each value is a dictionary of the corresponding grouped fields (with normalized field names and,
-        for specific fields, values converted to uppercase).
-
-    Raises:
-        ValueError: If no matching data is found with the specified prefix.
-
-    """
-    to_uppercase = ("relationship", "gender", "disability", "role")
-    result = {}
-    for k, v in data.items():
-        if (stripped := k.removeprefix(prefix)) != k:
-            index, field = stripped.split("_", 1)
-            field_clean = clean_field_name(field)
-            result.setdefault(index, {})[field_clean] = (
-                v.upper() if isinstance(v, str) and field_clean in to_uppercase else v
+            _, created = project.registrations.get_or_create(
+                reference_pk=record["id"],
+                defaults={
+                    "name": record["name"],
+                    "active": record["active"],
+                },
             )
-    if not result:
-        raise ValueError(f"No data found with prefix '{prefix}'")
-    return result
+            totals["add" if created else "upd"] += 1
+
+        SyncLog.objects.register_sync(Registration)
+
+    return totals
 
 
-def _update_household_name_from_individual(
-    household: Household,
-    individual: dict[str, Any],
-    household_name_column: str,
-) -> bool:
-    """Update the household name based on an individual's relationship and name field.
-
-    This method checks if the individual is marked as the head of the household
-    and updates the household name accordingly.
+def _extract_related_id(url: str) -> int | None:
+    """Extract the related object ID from the given URL.
 
     Args:
-        household (Household): The household to update.
-        individual (dict[str, Any]): The individual data containing potential household name information.
-        household_name_column (str): The name of the column in household that contains the name of the individuals.
+        url (str): A URL string that is expected to end with the object's ID as its last path segment.
 
     Returns:
-        None
+        int | None: The extracted ID if successful, otherwise None.
 
     """
-    if any(individual.get(k) == "HEAD" for k in individual if k.startswith("relationship")):
-        for k, v in individual.items():
-            if clean_field_name(k) == household_name_column:
-                household.name = v
-                household.save()
-                return True
-    raise ValueError("No head found")
+    parsed_url = urlparse(url)
+    try:
+        related_id = parsed_url.path.rstrip("/").split("/")[-1]
+        return int(related_id)
+    except (ValueError, IndexError):
+        return None

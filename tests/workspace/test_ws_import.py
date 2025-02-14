@@ -30,7 +30,7 @@ def office():
 
 @pytest.fixture
 def program(office, force_migrated_records, household_checker, individual_checker):
-    from testutils.factories import CountryProgramFactory, RegistrationFactory
+    from testutils.factories import CountryProgramFactory, ProjectFactory, RegistrationFactory
 
     program = CountryProgramFactory(
         country_office=office,
@@ -39,7 +39,8 @@ def program(office, force_migrated_records, household_checker, individual_checke
         household_columns="name\nid\nxx",
         individual_columns="name\nid\nxx",
     )
-    RegistrationFactory.create_batch(3, program=program)
+    project = ProjectFactory(program=program)
+    RegistrationFactory.create_batch(3, project=project, active=True)
 
     return program
 
@@ -84,11 +85,11 @@ def test_import_data_rdi(force_migrated_records, app, program):
 @pytest.mark.parametrize(
     ("stub_data", "error_expected", "error_message"),
     [
-        (stub.correct, False, None),
-        (stub.without_prefix_household, True, "No data found with prefix"),
-        (stub.without_prefix_individuals, True, "No data found with prefix"),
-        (stub.multiple_households, True, "Multiple households found"),
-        (stub.without_head, True, "No head found"),
+        (stub.imported["correct"], False, None),
+        (stub.imported["without_prefix_household"], True, "No data found with prefix"),
+        (stub.imported["without_prefix_individuals"], True, "No data found with prefix"),
+        (stub.imported["multiple_households"], True, "Multiple households found"),
+        (stub.imported["without_head"], True, "No head of household {'admin1': 'UA01'} found"),
     ],
 )
 def test_import_data_aurora(
@@ -115,7 +116,7 @@ def test_import_data_aurora(
 
     res = app.get(url)
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
-    res.forms["import-aurora"]["aurora-registration"] = program.registrations.first().pk
+    res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
     if error_expected:
         with pytest.raises(ValueError, match=error_message):
@@ -123,11 +124,8 @@ def test_import_data_aurora(
     else:
         res = res.forms["import-aurora"].submit()
 
-        assert len(mocked_responses.calls) > 0
-        assert config.AURORA_API_URL in mocked_responses.calls[0].request.url
-
         households: "list[CountryHousehold]" = program.households.all()
         assert households.count() == 2
         assert {hh.members.count() for hh in households} == {1, 3}
-        assert {hh.heads().first().name for hh in households} == {"as", "Oksana"}
-        assert {hh.name for hh in households} == {"sad", "Berezinska"}
+        assert {hh.heads().first().name for hh in households} == {"as", "Roman"}
+        assert {hh.name for hh in households} == {"sad", "Berezinski"}

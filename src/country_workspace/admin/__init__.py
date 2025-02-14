@@ -12,7 +12,6 @@ from .job import AsyncJobAdmin  # noqa
 from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin  # noqa
 from .office import OfficeAdmin  # noqa
 from .program import ProgramAdmin  # noqa
-from .registration import RegistrationAdmin  # noqa
 from .role import UserRoleAdmin  # noqa
 from .sync import SyncLog  # noqa
 from .user import UserAdmin  # noqa

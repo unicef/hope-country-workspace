@@ -25,7 +25,7 @@ class ProgramAdmin(BaseModelAdmin):
 
     @button()
     def invalidate_cache(self, request: HttpRequest, pk: str) -> None:
-        obj: [Program] = Program.objects.select_related("country_office").get(pk=pk)
+        obj: Program = Program.objects.select_related("country_office").get(pk=pk)
         cache_manager.incr_cache_version(program=obj)
 
     @link(change_list=False)
@@ -61,4 +61,4 @@ class ProgramAdmin(BaseModelAdmin):
         from country_workspace.contrib.hope.sync.office import sync_programs
 
         totals = sync_programs()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skipped']} skipped")
+        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skip']} skipped")

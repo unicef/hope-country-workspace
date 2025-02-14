@@ -1,7 +1,7 @@
 from django import forms
 
 from country_workspace.models import Program
-from country_workspace.models import Registration
+from country_workspace.contrib.aurora.models import Registration
 
 
 class ImportAuroraForm(forms.Form):
@@ -25,4 +25,4 @@ class ImportAuroraForm(forms.Form):
     def __init__(self, *args: tuple, program: Program | None = None, **kwargs: dict) -> None:
         super().__init__(*args, **kwargs)
         if program:
-            self.fields["registration"].queryset = Registration.objects.filter(program=program)
+            self.fields["registration"].queryset = Registration.objects.filter(project__program=program, active=True)

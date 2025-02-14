@@ -11,13 +11,13 @@ from country_workspace.exceptions import RemoteError
 @pytest.mark.parametrize(
     ("error_case", "status_code", "body", "expected_error"),
     [
-        ("status", 404, {"results": []}, lambda url: f"Error 404 fetching {url}"),
-        ("status", 403, {"results": []}, lambda url: f"Error 403 fetching {url}"),
+        ("status", 404, {"results": []}, lambda url: f"404 Client Error: Not Found for url: {url}"),
+        ("status", 403, {"results": []}, lambda url: f"403 Client Error: Forbidden for url: {url}"),
         (
             "request_exception",
             None,
             requests.RequestException("Connection error"),
-            lambda url: f"Remote Error fetching {url}",
+            lambda url: f"Remote Error fetching {url}:",
         ),
         ("json_decode", 200, "invalid json", lambda url: f"Wrong JSON response fetching {url}"),
     ],
@@ -27,7 +27,7 @@ def test_client_exceptions(
     error_case: str,
     status_code: int,
     body: dict | str,
-    expected_error: Callable[[str], str] | str,
+    expected_error: Callable[[str], str],
 ) -> None:
     client = AuroraClient(token="dummy")
     path = "dummy_path"
