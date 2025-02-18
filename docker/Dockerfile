@@ -119,6 +119,7 @@ ARG GIT_SHA
 ARG BRANCH
 
 ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
+    DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
     BUILD_DATE=$BUILD_DATE \
     GIT_SHA=$GIT_SHA \
     VERSION=$VERSION \
