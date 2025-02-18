@@ -62,11 +62,11 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
-            "--no-sync",
-            action="store_false",
+            "--sync",
+            action="store_true",
             dest="sync_with_hope",
-            default=True,
-            help="Do not run HOPE synchronisation",
+            default=False,
+            help="Run HOPE synchronisation",
         )
 
         parser.add_argument(
