@@ -27,6 +27,7 @@ SOCIAL_AUTH_PIPELINE = (
     "social_core.pipeline.social_auth.load_extra_data",
     "social_core.pipeline.user.user_details",
     "country_workspace.social.pipeline.save_to_group",
+    "country_workspace.social.pipeline.set_superusers",
 )
 
 SOCIAL_AUTH_SANITIZE_REDIRECTS = False
