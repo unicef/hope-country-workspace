@@ -1,18 +1,37 @@
-from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from django import forms
-from django.core.exceptions import ValidationError
-from django.utils.deconstruct import deconstructible
-from django.utils.translation import gettext as _
+
+from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
+from country_workspace.workspaces.validators import ValidatableFileValidator
 
 
-@deconstructible
-class ValidatableFileValidator:
-    error_messages = {"invalid_file": _("Unsupported file format '%s'")}
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
 
-    def __call__(self, f: Path) -> None:
-        if Path(f.name).suffix not in [".xlsx"]:
-            raise ValidationError(self.error_messages["invalid_file"] % Path(f.name).suffix)
+
+class BulkUpdateExportForm(BaseActionForm):
+    fields = forms.MultipleChoiceField(choices=[], widget=forms.CheckboxSelectMultiple())
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        checker: "DataChecker" = kwargs.pop("checker")
+        super().__init__(*args, **kwargs)
+        self.fields["fields"].choices = [(name, name) for name, fld in checker.get_form()().fields.items()]
+
+
+class BulkUpdateImportForm(forms.Form):
+    description = forms.CharField(
+        required=False,
+        help_text="Description of the bulk update from file",
+    )
+    target = forms.ChoiceField(
+        choices=(("hh", "Household"), ("ind", "Individual")),
+        help_text="Which entity to update",
+    )
+    file = forms.FileField(
+        validators=[ValidatableFileValidator()],
+        help_text=".xlsx file with the updates",
+    )
 
 
 class ImportFileForm(forms.Form):
