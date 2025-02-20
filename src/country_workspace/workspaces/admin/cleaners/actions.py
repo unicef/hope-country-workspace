@@ -1,12 +1,13 @@
 from typing import TYPE_CHECKING
 
 from django.contrib import admin, messages
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.shortcuts import render
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import render, redirect
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from .bulk_update import BulkUpdateForm, bulk_update_export_template
+from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
+from .bulk_update import bulk_update_export_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
@@ -29,7 +30,7 @@ def validate_records(
 ) -> None:
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
-        description="Validate Queryset records for updates",
+        description=validate_records.short_description,
         type=AsyncJob.JobType.ACTION,
         owner=state.request.user,
         action=fqn(validate_queryset),
@@ -47,7 +48,7 @@ def mass_update(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> "HttpResponse":
-    ctx = model_admin.get_common_context(request, title=_("Mass update"))
+    ctx = model_admin.get_common_context(request, title=_(mass_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
     form = MassUpdateForm(request.POST, checker=checker)
@@ -57,7 +58,7 @@ def mass_update(
         opts = queryset.model._meta
 
         job = AsyncJob.objects.create(
-            description="Mass update record fields",
+            description=mass_update.short_description,
             type=AsyncJob.JobType.ACTION,
             owner=state.request.user,
             action=fqn(mass_update_impl),
@@ -82,7 +83,7 @@ def regex_update(
     request: "HttpRequest",
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    ctx = model_admin.get_common_context(request, title=_("Regex update"))
+    ctx = model_admin.get_common_context(request, title=_(regex_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["queryset"] = queryset
     ctx["opts"] = model_admin.model._meta
@@ -96,9 +97,8 @@ def regex_update(
         form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
             opts = queryset.model._meta
-
             job = AsyncJob.objects.create(
-                description="Mass update record fields",
+                description=regex_update.short_description,
                 type=AsyncJob.JobType.ACTION,
                 owner=state.request.user,
                 action=fqn(regex_update_impl),
@@ -125,22 +125,22 @@ def regex_update(
     return render(request, "workspace/actions/regex.html", ctx)
 
 
-@admin.action(description="Create XLS template for bulk updates", permissions=["export"])
+@admin.action(description="Export records as .xlsx for bulk updates", permissions=["export"])
 def bulk_update_export(
     model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    ctx = model_admin.get_common_context(request, title=_("Export data for bulk update"))
+    ctx = model_admin.get_common_context(request, title=_(bulk_update_export.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
-    form = BulkUpdateForm(request.POST, checker=checker)
+    form = BulkUpdateExportForm(request.POST, checker=checker)
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
-        columns = {"fields": ["id"] + sorted(form.cleaned_data["fields"])}
+        columns = ["id", "version"] + sorted(form.cleaned_data["fields"])
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
-            description="Mass update record fields",
+            description=bulk_update_export.short_description,
             type=AsyncJob.JobType.TASK,
             owner=state.request.user,
             action=fqn(bulk_update_export_template),
@@ -153,7 +153,7 @@ def bulk_update_export(
         )
         job.queue()
         model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-        return HttpResponseRedirect(".")
+        return redirect(".")
 
     return render(request, "workspace/actions/bulk_update_export.html", ctx)
 
@@ -166,7 +166,7 @@ def calculate_checksum(
 ) -> HttpResponse:
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
-        description="Calculate record checksum",
+        description=calculate_checksum.short_description,
         type=AsyncJob.JobType.ACTION,
         owner=state.request.user,
         action=fqn(calculate_checksum_impl),
@@ -178,4 +178,4 @@ def calculate_checksum(
     )
     job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-    return HttpResponseRedirect(".")
+    return redirect(".")

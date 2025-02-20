@@ -1,7 +1,7 @@
 {% extends "workspace/actions/base.html" %}{% load i18n %}
 {% block content %}
 
-<form method="post" id="bulk-update-form">
+<form method="post" id="bulk-update-form" enctype="multipart/form-data">
     <div class="submit-row">
         <input type="submit" value="{% translate 'Import' %}" class="default" name="_import">
     </div>

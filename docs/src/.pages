@@ -6,4 +6,5 @@ nav:
   - dev_helpers.md
   - flows
   - Interfaces: interfaces.md
+  - Data cleaning and updates: data_cleaning_updates.md
   - Import Data: import_data

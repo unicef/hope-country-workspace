@@ -21,7 +21,7 @@ from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
-from .forms import ImportFileForm
+from .forms import ImportFileForm, BulkUpdateImportForm
 from country_workspace.constants import BATCH_NAME_DEFAULT
 from country_workspace.contrib.aurora.pipeline import import_from_aurora
 from country_workspace.state import state
@@ -67,12 +67,6 @@ class ProgramForm(forms.ModelForm):
             "individual_columns",
             "extra_fields",
         )
-
-
-class BulkUpdateImportForm(forms.Form):
-    description = forms.CharField(widget=forms.Textarea)
-    target = forms.ChoiceField(choices=(("hh", "Household"), ("ind", "Individual")))
-    file = forms.FileField()
 
 
 @register(CountryProgram, site=workspace)
@@ -190,16 +184,15 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(label=_("Update Records"), permission="country_workspace.import_program_data")
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
-        context = self.get_common_context(request, pk, title="Import updates from file")
+        context = self.get_common_context(request, pk, title="Bulk update records via .xlsx import")
         program: "CountryProgram" = context["original"]
         context["selected_program"] = context["original"]
-        updated = 0
         function_map = {"hh": fqn(bulk_update_household), "ind": fqn(bulk_update_individual)}
         if request.method == "POST":
             form = BulkUpdateImportForm(request.POST, request.FILES)
             if form.is_valid():
                 job = AsyncJob.objects.create(
-                    description=form.cleaned_data["description"],
+                    description=form.cleaned_data["description"] or context["title"],
                     program=program,
                     owner=request.user,
                     type=AsyncJob.JobType.TASK,
@@ -209,8 +202,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     config={},
                 )
                 job.queue()
-                self.message_user(request, _("Import scheduled").format(updated))
-                return HttpResponseRedirect(self.get_changelist_url())
+                self.message_user(request, _("Import scheduled"), messages.SUCCESS)
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
 
         else:
             form = BulkUpdateImportForm()
