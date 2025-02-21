@@ -2,16 +2,18 @@ import pytest
 import responses
 import re
 
-from typing import Generator, Any
+from typing import Generator
 
 from contextlib import nullcontext
 
 from django.core.cache import cache
 from pytest_mock import MockerFixture
 from country_workspace.contrib.aurora.sync import (
+    sync_all,
     sync_projects,
     sync_registrations,
 )
+from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.models import Project
 from country_workspace.models import SyncLog
 from constance import config
@@ -22,11 +24,11 @@ from tests.contrib.aurora import stub
 @pytest.fixture
 def cache_setup_and_fake_lock(mocker: MockerFixture) -> Generator[None, None, None]:
     cache.clear()
-    mocker.patch(
+    patcher = mocker.patch(
         "country_workspace.contrib.aurora.sync.cache.lock",
         return_value=nullcontext(),
     )
-    yield
+    yield patcher
     cache.clear()
 
 
@@ -44,18 +46,35 @@ def project(force_migrated_records) -> Project:
     return ProjectFactory(reference_pk=1, name="Default Project")
 
 
-# Fixture that creates an existing registration when limit_provided is True.
 @pytest.fixture
-def existing_registration(project, limit_provided: bool) -> None:
-    if limit_provided:
-        from testutils.factories import RegistrationFactory
+def job():
+    from testutils.factories import AsyncJobFactory
 
-        RegistrationFactory(
-            project=project,
-            reference_pk=101,
-            name="Registration 101",
-            active=True,
-        )
+    return AsyncJobFactory()
+
+
+def test_sync_all(
+    mocker: MockerFixture,
+    mocked_responses: responses.RequestsMock,
+    cache_setup_and_fake_lock,
+) -> None:
+    expected_programs = {"add": 0, "upd": 0}
+    expected_projects = {"add": 1, "upd": 1}
+    expected_registrations = {"add": 1, "upd": 3}
+
+    with (
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_programs", return_value=expected_programs),
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_projects", return_value=expected_projects),
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_registrations", return_value=expected_registrations),
+    ):
+        totals = sync_all(job=job)
+
+    assert totals == {
+        "programs": expected_programs,
+        "projects": expected_projects,
+        "registrations": expected_registrations,
+    }
+    cache_setup_and_fake_lock.assert_called_once_with("sync-aurora")
 
 
 def test_sync_projects(
@@ -63,68 +82,52 @@ def test_sync_projects(
     mocked_responses: responses.RequestsMock,
     project: Project,
     clear_sync_logs,
-    cache_setup_and_fake_lock,
 ) -> None:
     # NOTE: This test is linked to the stub data in `tests/contrib/aurora/stub.py`
+    """The stub data contains 2 records:
+    - A project with id=6 and name "Lanka Project #1" - will be created,
+    - A project with id=1 and name "Default Project" - will be updated.
+    """
     expected = {"add": 1, "upd": 1}
     mocked_responses.add(
         responses.GET,
         re.compile(re.escape(config.AURORA_API_URL) + ".*"),
-        json=stub.project.get("correct", {}),
+        json=stub.project,
         status=200,
     )
 
-    totals = sync_projects()
+    totals = sync_projects(client=AuroraClient())
 
     assert totals == expected
     assert Project.objects.count() == 2
     assert SyncLog.objects.count() == 1
 
 
-@pytest.mark.parametrize(
-    ("limit_provided", "stub_data", "expected_totals", "expected_regs"),
-    [
-        # When limit_to_project is provided:
-        # - An existing registration with id 101 is created (will be updated)
-        # - The API stub returns 2 registrations for the project: id 101 and id 102.
-        # Expected: {"add": 1, "upd": 1, "skip": 0} and the project should have 2 registrations.
-        (True, stub.registration["with_limit"], {"add": 1, "upd": 1, "skip": 0}, 2),
-        # When limit_to_project is not provided:
-        # - The API stub returns 3 registrations:
-        #   * Registration with id 201 is valid (will be created),
-        #   * Registration with id 202 has an invalid URL (skipped),
-        #   * Registration with id 203 refers to a non-existent project (skipped).
-        # Expected: {"add": 1, "upd": 0, "skip": 2} and total registrations across projects should be 1.
-        (False, stub.registration["without_limit"], {"add": 1, "upd": 0, "skip": 2}, 1),
-    ],
-)
-@pytest.mark.django_db
 def test_sync_registrations(
-    mocked_responses: responses.RequestsMock,
     mocker: MockerFixture,
+    mocked_responses: responses.RequestsMock,
     project: Project,
-    existing_registration,
     clear_sync_logs,
-    cache_setup_and_fake_lock,
-    limit_provided: bool,
-    stub_data: Any,
-    expected_totals: dict[str, int],
-    expected_regs: int,
 ) -> None:
     # NOTE: This test is linked to the stub data in `tests/contrib/aurora/stub.py`
+    """The stub data contains 5 records:
+    - Record with id=1: valid registration for project 1 (will be created),
+    - Record with id=2: invalid URL (will be skipped),
+    - Record with id=3: valid registration for project 1 (will be created),
+    - Record with id=4: reference to a non-existent project (will be skipped),
+    - Record with id=1: duplicate registration for project 1 (will be updated).
+    """
+    expected = {"add": 2, "upd": 1, "skip": [2, 4]}
     mocked_responses.add(
         responses.GET,
         re.compile(re.escape(config.AURORA_API_URL) + ".*"),
-        json=stub_data,
+        json=stub.registration,
         status=200,
     )
-    totals = sync_registrations(limit_to_project=project if limit_provided else None)
-    assert totals == expected_totals
 
-    if limit_provided:
-        assert project.registrations.count() == expected_regs
-    else:
-        total_regs = sum(p.registrations.count() for p in Project.objects.all())
-        assert total_regs == expected_regs
+    totals = sync_registrations(client=AuroraClient())
 
+    assert totals == expected
+    assert Project.objects.count() == 1
+    assert project.registrations.count() == 2
     assert SyncLog.objects.count() == 1

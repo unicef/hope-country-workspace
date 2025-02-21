@@ -14,7 +14,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
         TASK = "TASK", "Task"
 
     type = models.CharField(max_length=50, choices=JobType.choices)
-    program = models.ForeignKey("Program", related_name="jobs", on_delete=models.CASCADE)
+    program = models.ForeignKey("Program", related_name="jobs", on_delete=models.CASCADE, null=True, blank=True)
     batch = models.ForeignKey("Batch", related_name="jobs", on_delete=models.CASCADE, null=True, blank=True)
     file = models.FileField(upload_to="updates", null=True, blank=True)
     config = models.JSONField(default=dict, blank=True)

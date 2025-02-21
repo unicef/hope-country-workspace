@@ -20,7 +20,7 @@ class ImportAuroraForm(forms.Form):
         help_text="Which Individual's column contains the Household's name.",
     )
 
-    fail_if_alien = forms.BooleanField(required=False, help_text="Fail if found fields dose not exists in validator.")
+    fail_if_alien = forms.BooleanField(required=False, help_text="Fail if found fields does not exists in validator.")
 
     def __init__(self, *args: tuple, program: Program | None = None, **kwargs: dict) -> None:
         super().__init__(*args, **kwargs)

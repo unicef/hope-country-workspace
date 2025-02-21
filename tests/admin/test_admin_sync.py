@@ -38,30 +38,6 @@ def app(
             {"add": 1, "upd": 2, "skip": 3},
             "1 created - 2 updated - 3 skipped",
         ),
-        (
-            "contrib.aurora.admin.ProjectAdmin",
-            "aurora.admin.project.sync_projects",
-            "aurora_project_sync",
-            [],
-            {"add": 1, "upd": 2},
-            "1 created - 2 updated",
-        ),
-        (
-            "contrib.aurora.admin.ProjectAdmin",
-            "aurora.admin.project.sync_registrations",
-            "aurora_project_sync_registrations",
-            ["1"],
-            {"add": 1, "upd": 2, "skip": 3},
-            "1 created - 2 updated - 3 skipped",
-        ),
-        (
-            "contrib.aurora.admin.RegistrationAdmin",
-            "aurora.admin.registration.sync_registrations",
-            "aurora_registration_sync",
-            [],
-            {"add": 1, "upd": 2, "skip": 3},
-            "1 created - 2 updated - 3 skipped",
-        ),
     ],
 )
 def test_admin_sync(

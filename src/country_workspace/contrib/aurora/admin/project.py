@@ -1,11 +1,13 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.http import HttpRequest
+from django.utils.translation import gettext as _
 
 from admin_extra_buttons.api import button
+from strategy_field.utils import fqn
 
 from country_workspace.admin.base import BaseModelAdmin
 from country_workspace.contrib.aurora.models import Project
-from country_workspace.contrib.aurora.sync import sync_projects, sync_registrations
+from country_workspace.models import AsyncJob
 
 
 @admin.register(Project)
@@ -27,11 +29,15 @@ class ProjectAdmin(BaseModelAdmin):
 
     @button()
     def sync(self, request: HttpRequest) -> None:
-        totals = sync_projects()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated")
-
-    @button()
-    def sync_registrations(self, request: HttpRequest, pk: str) -> None:
-        project: Project = self.get_object(request, pk)
-        totals = sync_registrations(limit_to_project=project)
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skip']} skipped")
+        job = AsyncJob.objects.create(
+            description="Sync with Aurora projects and registrations",
+            program=None,
+            owner=request.user,
+            type=AsyncJob.JobType.TASK,
+            action=fqn("country_workspace.contrib.aurora.sync.sync_all"),
+            batch=None,
+            file=None,
+            config={},
+        )
+        job.queue()
+        self.message_user(request, _("Synchronization is scheduled."), messages.SUCCESS)

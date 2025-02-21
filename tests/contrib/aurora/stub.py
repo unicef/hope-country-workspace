@@ -2,59 +2,53 @@ from typing import Final, Any
 
 
 project: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
-    "correct": {
-        "results": [
-            {
-                "id": 6,
-                "name": "Lanka Project #1",
-            },
-            {
-                "id": 1,
-                "name": "Default Project",
-            },
-        ]
-    },
+    "results": [
+        {
+            "id": 6,
+            "name": "Lanka Project #1",
+        },
+        {
+            "id": 1,
+            "name": "Default Project",
+        },
+    ]
 }
 
 
 registration: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
-    "with_limit": [
+    "results": [
         {
-            "id": 101,
-            "name": "Registration 101",
+            "id": 1,
+            "name": "Registration 1",
             "active": True,
             "project": "http://example.com/api/project/1/",
         },
         {
-            "id": 102,
-            "name": "Registration 102",
+            "id": 2,
+            "name": "Registration 2",
+            "active": True,
+            "project": "invalid_url",
+        },
+        {
+            "id": 3,
+            "name": "Registration 3",
+            "active": True,
+            "project": "http://example.com/api/project/1/",
+        },
+        {
+            "id": 4,
+            "name": "Registration 4",
+            "active": True,
+            "project": "http://example.com/api/project/9999/",
+        },
+        {
+            "id": 1,
+            "name": "Registration 5",
             "active": True,
             "project": "http://example.com/api/project/1/",
         },
     ],
-    "without_limit": {
-        "results": [
-            {
-                "id": 201,
-                "name": "Registration 201",
-                "active": True,
-                "project": "http://example.com/api/project/1/",
-            },
-            {
-                "id": 202,
-                "name": "Registration 202",
-                "active": True,
-                "project": "invalid_url",
-            },
-            {
-                "id": 203,
-                "name": "Registration 203",
-                "active": True,
-                "project": "http://example.com/api/project/9999/",
-            },
-        ],
-        "next": None,
-    },
+    "next": None,
 }
 
 imported: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {

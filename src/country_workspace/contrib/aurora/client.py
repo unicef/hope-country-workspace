@@ -51,8 +51,7 @@ class AuroraClient:
             path (str): The relative API path to fetch data from.
 
         Yields:
-            dict[str, Any]: Individual JSON records from the API. When the "results" key is present,
-                            each item in its list is yielded; otherwise, the whole JSON response is yielded.
+            dict[str, Any]: Individual JSON records from the API.
 
         Raises:
             RemoteError: If the HTTP request fails (non-200 status, network issues, etc.) or if the
@@ -72,9 +71,5 @@ class AuroraClient:
             except JSONDecodeError as e:
                 raise RemoteError(f"Wrong JSON response fetching {url}") from e
 
-            if "results" in data:
-                yield from data["results"]
-                url = data.get("next")
-            else:
-                yield from data
-                url = None
+            yield from data["results"]
+            url = data.get("next")
