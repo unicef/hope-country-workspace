@@ -14,6 +14,7 @@ from .job import AsyncJobFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
+from .aurora import ProjectFactory, RegistrationFactory  # noqa
 from .smart_fields import DataCheckerFactory, FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory  # noqa
 from .social import SocialAuthUserFactory  # noqa
 from .sync import SyncLogFactory  # noqa

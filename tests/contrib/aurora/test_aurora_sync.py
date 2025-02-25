@@ -1,115 +1,133 @@
-import json
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
-from constance.test.unittest import override_config
+import responses
+import re
 
+from typing import Generator
+
+from contextlib import nullcontext
+
+from django.core.cache import cache
+from pytest_mock import MockerFixture
 from country_workspace.contrib.aurora.sync import (
-    _create_household,
-    _create_individuals,
-    _update_household_name_from_individual,
-    sync_aurora_job,
+    sync_all,
+    sync_projects,
+    sync_registrations,
 )
-from country_workspace.models import Household
+from country_workspace.contrib.aurora.client import AuroraClient
+from country_workspace.contrib.aurora.models import Project
+from country_workspace.models import SyncLog
+from constance import config
+
+from tests.contrib.aurora import stub
 
 
-def test_create_household_success(mock_aurora_data, batch):
-    fields = mock_aurora_data["results"][0]["fields"]["household"][0]
-    household = _create_household(batch, fields)
-
-    assert isinstance(household, Household)
-    assert household.program == batch.program
-    assert household.batch == batch
-    assert household.country_office == batch.program.country_office
-    assert household.flex_fields == fields
-
-
-@pytest.mark.parametrize(
-    ("data", "expected_name_update"),
-    [
-        (
-            {"relationship_to_head": "head", "family_name": "Head Of Household Name"},
-            "Head Of Household Name",
-        ),
-        (
-            {"relationship_to_head": "child", "family_name": "Child Name"},
-            None,
-        ),
-        (
-            {"relationship_to_head": "head"},
-            None,
-        ),
-        (
-            {},
-            None,
-        ),
-    ],
-    ids=[
-        "Head with name update",
-        "Non-head individual",
-        "Head without name",
-        "Empty individual data",
-    ],
-)
-def test_update_household_name_from_individual(mock_aurora_data, household, data, expected_name_update):
-    initial_name = household.name
-
-    individual_data = mock_aurora_data["results"][0]["fields"]["individuals"][0].copy()
-    individual_data.update(data)
-    _update_household_name_from_individual(household, individual_data, household_name_column="family_name")
-    household.refresh_from_db()
-
-    if expected_name_update:
-        assert household.name == expected_name_update
-    else:
-        assert household.name == initial_name
+@pytest.fixture
+def cache_setup_and_fake_lock(mocker: MockerFixture) -> Generator[None, None, None]:
+    cache.clear()
+    patcher = mocker.patch(
+        "country_workspace.contrib.aurora.sync.cache.lock",
+        return_value=nullcontext(),
+    )
+    yield patcher
+    cache.clear()
 
 
-@pytest.mark.parametrize(
-    ("data", "expected_count"),
-    [
-        (
-            [
-                {"given_name": "John", "family_name": "Doe", "relationship_to_head": "head"},
-                {"given_name": "Jane", "family_name": "Doe", "relationship_to_head": "spouse"},
-            ],
-            2,
-        ),
-        (
-            [],
-            0,
-        ),
-    ],
-    ids=["filled_fields", "empty_fields"],
-)
-def test_create_individuals(mock_aurora_data, household, data, expected_count):
+@pytest.fixture(autouse=True)
+def clear_sync_logs(force_migrated_records) -> Generator[None, None, None]:
+    SyncLog.objects.all().delete()
+    yield
+    SyncLog.objects.all().delete()
+
+
+@pytest.fixture
+def project(force_migrated_records) -> Project:
+    from testutils.factories import ProjectFactory
+
+    return ProjectFactory(reference_pk=1, name="Default Project")
+
+
+@pytest.fixture
+def job():
+    from testutils.factories import AsyncJobFactory
+
+    return AsyncJobFactory()
+
+
+def test_sync_all(
+    mocker: MockerFixture,
+    mocked_responses: responses.RequestsMock,
+    cache_setup_and_fake_lock,
+) -> None:
+    expected_programs = {"add": 0, "upd": 0}
+    expected_projects = {"add": 1, "upd": 1}
+    expected_registrations = {"add": 1, "upd": 3}
+
     with (
-        patch(
-            "country_workspace.contrib.aurora.sync.clean_field_name", side_effect=lambda x: f"cleaned_{x}"
-        ) as mock_clean_field_name,
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_programs", return_value=expected_programs),
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_projects", return_value=expected_projects),
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_registrations", return_value=expected_registrations),
     ):
-        individuals = _create_individuals(household, data, household_name_column="family_name")
+        totals = sync_all(job=job)
 
-        assert len(individuals) == expected_count
-
-        if expected_count > 0:
-            for individual, d in zip(individuals, data, strict=False):
-                assert individual.household_id == household.pk
-                assert individual.batch == household.batch
-                assert individual.name == d.get("given_name", "")
-                assert individual.flex_fields == {f"cleaned_{k}": v for k, v in d.items()}
-                mock_clean_field_name.assert_any_call("given_name")
+    assert totals == {
+        "programs": expected_programs,
+        "projects": expected_projects,
+        "registrations": expected_registrations,
+    }
+    cache_setup_and_fake_lock.assert_called_once_with("sync-aurora")
 
 
-@override_config(AURORA_API_URL="https://api.aurora.io")
-def test_sync_aurora_job_success_new(mocked_responses, job):
+def test_sync_projects(
+    mocker: MockerFixture,
+    mocked_responses: responses.RequestsMock,
+    project: Project,
+    clear_sync_logs,
+) -> None:
+    # NOTE: This test is linked to the stub data in `tests/contrib/aurora/stub.py`
+    """The stub data contains 2 records:
+    - A project with id=6 and name "Lanka Project #1" - will be created,
+    - A project with id=1 and name "Default Project" - will be updated.
+    """
+    expected = {"add": 1, "upd": 1}
     mocked_responses.add(
-        mocked_responses.GET,
-        "https://api.aurora.io/record/",
-        json=json.loads((Path(__file__).parent / "aurora.json").read_text()),
+        responses.GET,
+        re.compile(re.escape(config.AURORA_API_URL) + ".*"),
+        json=stub.project,
         status=200,
     )
 
-    result = sync_aurora_job(job)
-    assert result == {"households": 2, "individuals": 3}
+    totals = sync_projects(client=AuroraClient())
+
+    assert totals == expected
+    assert Project.objects.count() == 2
+    assert SyncLog.objects.count() == 1
+
+
+def test_sync_registrations(
+    mocker: MockerFixture,
+    mocked_responses: responses.RequestsMock,
+    project: Project,
+    clear_sync_logs,
+) -> None:
+    # NOTE: This test is linked to the stub data in `tests/contrib/aurora/stub.py`
+    """The stub data contains 5 records:
+    - Record with id=1: valid registration for project 1 (will be created),
+    - Record with id=2: invalid URL (will be skipped),
+    - Record with id=3: valid registration for project 1 (will be created),
+    - Record with id=4: reference to a non-existent project (will be skipped),
+    - Record with id=1: duplicate registration for project 1 (will be updated).
+    """
+    expected = {"add": 2, "upd": 1, "skip": [2, 4]}
+    mocked_responses.add(
+        responses.GET,
+        re.compile(re.escape(config.AURORA_API_URL) + ".*"),
+        json=stub.registration,
+        status=200,
+    )
+
+    totals = sync_registrations(client=AuroraClient())
+
+    assert totals == expected
+    assert Project.objects.count() == 1
+    assert project.registrations.count() == 2
+    assert SyncLog.objects.count() == 1

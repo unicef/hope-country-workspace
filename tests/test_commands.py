@@ -122,6 +122,7 @@ def test_upgrade_admin(mocked_responses: RequestsMock, environment: dict[str, st
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.default_cassette("test_sync_all.yaml")
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
 def test_upgrade_sync(environment: dict[str, str]) -> None:
@@ -133,6 +134,7 @@ def test_upgrade_sync(environment: dict[str, str]) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.default_cassette("test_sync_all.yaml")
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
 def test_sync(environment: dict[str, str]) -> None:

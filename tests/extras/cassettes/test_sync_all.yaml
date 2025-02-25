@@ -1000,4 +1000,106 @@ interactions:
     status:
       code: 200
       message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://dev-hope.unitst.org/api/rest/systems/aurora/registrations/
+  response:
+    body:
+      string: '{"count":3,"next":null,"previous":null,"results":[{"organization":"ukraine","aurora_id":2,"project":"2","name":"registration_ukraine"},{"organization":"czech-republic","aurora_id":2,"project":"3","name":"registration_czech_republic"},{"organization":"sri-lanka","aurora_id":2,"project":"4","name":"registration_sri_lanka"}]}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '324'
+      Content-Security-Policy-Report-Only:
+      - 'media-src ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        img-src ''self'' data: cdn.datatables.net map1a.vis.earthdata.nasa.gov map1b.vis.earthdata.nasa.gov
+        map1c.vis.earthdata.nasa.gov; default-src ''self''; style-src ''self'' ''unsafe-inline''
+        ''unsafe-eval'' fonts.googleapis.com cdn.jsdelivr.net cdnjs.cloudflare.com
+        maxcdn.bootstrapcdn.com unpkg.com; manifest-src ''self''; connect-src sentry.io
+        gov-bam.nr-data.net cdn.jsdelivr.net; frame-ancestors ''none''; script-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval'' js-agent.newrelic.com cdn.jsdelivr.net
+        cdnjs.cloudflare.com unpkg.com'
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 30 Jan 2025 11:42:54 GMT
+      ETAG:
+      - 7773e609c48387f48ecd65037ecce8d0
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://dev-hope.unitst.org/api/rest/systems/aurora/registrations/
+  response:
+    body:
+      string: '{"count":3,"next":null,"previous":null,"results":[{"organization":"ukraine","aurora_id":2,"project":"2","name":"registration_ukraine"},{"organization":"czech-republic","aurora_id":2,"project":"3","name":"registration_czech_republic"},{"organization":"sri-lanka","aurora_id":2,"project":"4","name":"registration_sri_lanka"}]}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '324'
+      Content-Security-Policy-Report-Only:
+      - 'media-src ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        img-src ''self'' data: cdn.datatables.net map1a.vis.earthdata.nasa.gov map1b.vis.earthdata.nasa.gov
+        map1c.vis.earthdata.nasa.gov; default-src ''self''; style-src ''self'' ''unsafe-inline''
+        ''unsafe-eval'' fonts.googleapis.com cdn.jsdelivr.net cdnjs.cloudflare.com
+        maxcdn.bootstrapcdn.com unpkg.com; manifest-src ''self''; connect-src sentry.io
+        gov-bam.nr-data.net cdn.jsdelivr.net; frame-ancestors ''none''; script-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval'' js-agent.newrelic.com cdn.jsdelivr.net
+        cdnjs.cloudflare.com unpkg.com'
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 30 Jan 2025 11:50:06 GMT
+      ETAG:
+      - 7773e609c48387f48ecd65037ecce8d0
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
 version: 1

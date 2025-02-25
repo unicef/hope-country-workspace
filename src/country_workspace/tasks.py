@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generator
 
 import sentry_sdk
 from django.core.cache import cache
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @contextlib.contextmanager
-def lock_job(job: AsyncJob) -> Lock:
+def lock_job(job: AsyncJob) -> Generator[Lock, None, None]:
     lock = None
     if job.group_key:
         lock_key = f"lock:{job.group_key}"
@@ -46,8 +46,9 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
     with lock_job(job):
         try:
             scope = sentry_sdk.get_current_scope()
-            sentry_sdk.set_tag("business_area", job.program.country_office.slug)
-            sentry_sdk.set_tag("project", job.program.name)
+            if job.program:
+                sentry_sdk.set_tag("business_area", job.program.country_office.slug)
+                sentry_sdk.set_tag("project", job.program.name)
             sentry_sdk.set_user = {"id": job.owner.pk, "email": job.owner.email}
             return job.execute()
         except Exception:

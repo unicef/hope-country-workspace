@@ -51,27 +51,25 @@ class AuroraClient:
             path (str): The relative API path to fetch data from.
 
         Yields:
-            dict[str, Any]: Individual records from the API.
+            dict[str, Any]: Individual JSON records from the API.
 
         Raises:
-            RemoteError: If the API response has a non-200 status code,
-                         if there's an issue with the network request,
-                         or if the response contains invalid JSON.
+            RemoteError: If the HTTP request fails (non-200 status, network issues, etc.) or if the
+                        response cannot be decoded as valid JSON.
 
         """
         url = self._get_url(path)
         while url:
             try:
                 ret = requests.get(url, headers={"Authorization": f"Token {self.token}"}, timeout=10)
-                if ret.status_code != 200:
-                    raise RemoteError(f"Error {ret.status_code} fetching {url}")
-            except requests.RequestException:
-                raise RemoteError(f"Remote Error fetching {url}")
+                ret.raise_for_status()
+            except requests.RequestException as e:
+                raise RemoteError(f"Remote Error fetching {url}: {e}") from e
 
             try:
                 data = ret.json()
-            except JSONDecodeError:
-                raise RemoteError(f"Wrong JSON response fetching {url}")
+            except JSONDecodeError as e:
+                raise RemoteError(f"Wrong JSON response fetching {url}") from e
 
             yield from data["results"]
             url = data.get("next")

@@ -27,10 +27,7 @@ def sync_offices(stdout: TextIOBase | None = None) -> dict[str, int]:
                         "long_name": record["long_name"],
                     },
                 )
-                if created:
-                    totals["add"] += 1
-                else:
-                    totals["upd"] += 1
+                totals["add" if created else "upd"] += 1
         SyncLog.objects.register_sync(Office)
         return totals
 
@@ -41,7 +38,7 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
     client = HopeClient()
     hh_chk = DataChecker.objects.filter(name=constants.HOUSEHOLD_CHECKER_NAME).first()
     ind_chk = DataChecker.objects.filter(name=constants.INDIVIDUAL_CHECKER_NAME).first()
-    totals = {"add": 0, "upd": 0}
+    totals = {"add": 0, "upd": 0, "skip": 0}
     if limit_to_office:
         office = limit_to_office
     with cache.lock("sync-programs"):
@@ -70,7 +67,7 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
                 else:
                     totals["upd"] += 1
             except Office.DoesNotExist:
-                pass
+                totals["skip"] += 1
         SyncLog.objects.register_sync(Program)
     return totals
 
