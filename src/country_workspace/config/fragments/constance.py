@@ -72,3 +72,10 @@ CONSTANCE_CONFIG_FIELDSETS = {
     ),
     "Data consistency": ("CONCURRENCY_GUARD",),
 }
+
+# Mapping of config keys to masked default display values in the Constance admin UI.
+CONSTANCE_MASKED_DEFAULTS = {
+    "AURORA_API_TOKEN": "***",
+    "HOPE_API_TOKEN": "***",
+    "KOBO_API_TOKEN": "***",
+}
