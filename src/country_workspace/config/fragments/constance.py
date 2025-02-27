@@ -50,6 +50,13 @@ CONSTANCE_CONFIG = {
     "KOBO_API_URL": ("", "Kobo API Server address", str),
     "CACHE_TIMEOUT": (86400, "Cache Redis TTL", int),
     "CACHE_BY_VERSION": (False, "Invalidate Cache on CW version change", bool),
+    "CONCURRENCY_GUARD": (
+        True,
+        "Prevent updates if data has changed after export. When enabled, the system will reject updates to records"
+        " that were modified after they were exported. This helps maintain data consistency and prevents accidental"
+        " overwrites of newer information.",
+        bool,
+    ),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {
@@ -63,6 +70,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "KOBO_API_TOKEN",
         "KOBO_API_URL",
     ),
+    "Data consistency": ("CONCURRENCY_GUARD",),
 }
 
 # Mapping of config keys to masked default display values in the Constance admin UI.

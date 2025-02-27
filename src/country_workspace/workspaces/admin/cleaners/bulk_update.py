@@ -1,6 +1,6 @@
 import io
 from io import BytesIO
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from django import forms
 from django.apps import apps
@@ -8,26 +8,18 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.storage import default_storage
 from xlsxwriter import Workbook
 
+from constance import config as constance_config
+
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
 
 from country_workspace.models import AsyncJob, Program
-from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
     from country_workspace.types import Beneficiary
-
-
-class BulkUpdateForm(BaseActionForm):
-    fields = forms.MultipleChoiceField(choices=[], widget=forms.CheckboxSelectMultiple())
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        checker: "DataChecker" = kwargs.pop("checker")
-        super().__init__(*args, **kwargs)
-        self.fields["fields"].choices = [(name, name) for name, fld in checker.get_form()().fields.items()]
 
 
 """
@@ -130,12 +122,11 @@ def create_xls_importer(
     queryset: "QuerySet[Beneficiary]",
     program: Program,
     columns: list[str],
-) -> [io.BytesIO, Workbook]:
+) -> tuple[io.BytesIO, Workbook]:
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
 
     workbook = Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"})
-
     header_format = workbook.add_format(
         {
             "bold": False,
@@ -147,14 +138,13 @@ def create_xls_importer(
             "indent": 1,
         },
     )
-
     header_format.set_bg_color("#DDDDDD")
     header_format.set_locked(True)
     header_format.set_align("center")
     header_format.set_bottom_color("black")
     worksheet = workbook.add_worksheet()
     worksheet.protect()
-    worksheet.unprotect_range("B1:ZZ999", None)
+    worksheet.unprotect_range("C1:ZZ999", None)
 
     for i, fld_name in enumerate(columns):
         fld = dc_get_field(dc, fld_name)
@@ -179,39 +169,62 @@ def create_xls_importer(
     return out, workbook
 
 
-# def bulk_update_export_template(queryset, program_pk: str, columns: list[str], filename: str) -> bytes:
 def bulk_update_export_template(job: AsyncJob) -> bytes:
     model = apps.get_model(job.config["model_name"])
     queryset = model.objects.filter(pk__in=job.config["pks"])
     filename = "bulk_update_export_template/%s/%s/%s.xlsx" % (job.program.pk, job.owner.pk, job.config["model_name"])
-    out, __ = create_xls_importer(queryset.all(), job.program, job.config["columns"])
+    out, __ = create_xls_importer(queryset, job.program, job.config["columns"])
     path = default_storage.save(filename, out)
     job.file = path
     job.save()
     return path
 
 
-def bulk_update_individual(job: AsyncJob) -> dict[str, Any]:
-    ret = {"not_found": []}
-    for e in open_xls(io.BytesIO(job.file.read()), start_at=0):
+def bulk_update_collection(job: AsyncJob, collection_getter: Callable[[int], Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {"not_found": []}
+    version_check = constance_config.CONCURRENCY_GUARD
+    if version_check:
+        result["version_mismatch"] = []
+    errors = {}
+
+    file_data = job.file.read()
+    rows = open_xls(io.BytesIO(file_data), start_at=0)
+    for line_number, row in enumerate(rows, start=1):
         try:
-            _id = e.pop("id")
-            ind = job.program.individuals.get(id=_id)
-            ind.flex_fields.update(**e)
-            ind.save()
+            _id = int(row.pop("id"))
+            entity = collection_getter(_id)
+        except (KeyError, ValueError):
+            errors.setdefault("Invalid or missing 'id' on line", []).append(line_number)
+            continue
         except ObjectDoesNotExist:
-            ret["not_found"].append(_id)
-    return ret
+            result["not_found"].append(_id)
+            continue
+
+        if version_check:
+            try:
+                _version = int(row.pop("version"))
+            except (KeyError, ValueError):
+                errors.setdefault("Invalid or missing 'version' on line", []).append(line_number)
+                continue
+
+            if entity.version != _version:
+                result["version_mismatch"].append(_id)
+                continue
+
+        entity.flex_fields.update(**row)
+        entity.save()
+
+    if errors:
+        result["errors"] = errors
+
+    return result
+
+
+def bulk_update_individual(job: AsyncJob) -> dict[str, Any]:
+    program = job.program
+    return bulk_update_collection(job, lambda _id: program.individuals.get(id=_id))
 
 
 def bulk_update_household(job: AsyncJob) -> dict[str, Any]:
-    ret = {"not_found": []}
-    for e in open_xls(io.BytesIO(job.file.read()), start_at=0):
-        try:
-            _id = e.pop("id")
-            ind = job.program.households.get(id=_id)
-            ind.flex_fields.update(**e)
-            ind.save()
-        except ObjectDoesNotExist:
-            ret["not_found"].append(_id)
-    return ret
+    program = job.program
+    return bulk_update_collection(job, lambda _id: program.households.get(id=_id))

@@ -14,6 +14,6 @@ management process.
 
 - [Import data](import_data/index.md) from [Kobo](import_data/kobo.md) / [Aurora](import_data/aurora.md) / [XLS](import_data/xls.md) (RDI format)
 - Data validation
-- Data cleaning and updates
+- [Data cleaning and updates](data_cleaning_updates.md)
 - Push data to HOPE
 - Export/Amend/Import process
