@@ -19,7 +19,6 @@ class SurveyItemType(StrEnum):
     END_REPEAT = auto()
 
 
-
 class Raw[T]:
     def __init__(self, raw: T) -> None:
         self._raw = raw
@@ -86,7 +85,9 @@ def download_attachments(data_getter: Callable[[str], Response], raw: raw_submis
 
 
 class Submission(Raw[raw_submission_list.Submission], UserDict):
-    def __init__(self, data_getter: Callable[[str], Response], questions: list[Question], raw: raw_submission_list.Submission) -> None:
+    def __init__(
+        self, data_getter: Callable[[str], Response], questions: list[Question], raw: raw_submission_list.Submission
+    ) -> None:
         Raw.__init__(self, raw)
         download_attachments(data_getter, self._raw)
         _, answers = reduce(extract_answer, questions, (raw, {}))
@@ -98,7 +99,9 @@ class Submission(Raw[raw_submission_list.Submission], UserDict):
 
 
 class Asset(Raw[raw_asset.Asset]):
-    def __init__(self, raw: raw_asset.Asset, submissions: Callable[[list[Question]], Generator[Submission, None, None]]) -> None:
+    def __init__(
+        self, raw: raw_asset.Asset, submissions: Callable[[list[Question]], Generator[Submission, None, None]]
+    ) -> None:
         super().__init__(raw)
         self._submissions = submissions
 

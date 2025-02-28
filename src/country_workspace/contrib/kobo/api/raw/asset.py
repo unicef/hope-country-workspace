@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+
 class SurveyItem(TypedDict("SurveyItem", {"$xpath": str})):
     type: str
 

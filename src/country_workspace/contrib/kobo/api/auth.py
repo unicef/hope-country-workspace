@@ -5,6 +5,7 @@ from requests.models import PreparedRequest
 TOKEN = "Token"  # noqa: S105
 AUTHORIZATION = "Authorization"
 
+
 class Auth(AuthBase):
     def __init__(self, api_key: str) -> None:
         self._auth_header = f"{TOKEN} {api_key}"

@@ -1,7 +1,5 @@
 from django import forms
 
-from country_workspace.contrib.kobo.models import KoboAsset
-
 
 class ImportKoboForm(forms.Form):
     batch_name = forms.CharField(required=False, help_text="Label for this batch")
