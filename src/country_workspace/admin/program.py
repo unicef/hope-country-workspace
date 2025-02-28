@@ -8,16 +8,11 @@ from django.urls import reverse
 
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
-from ..models import Program, KoboAsset
+from ..models import Program
 from .base import BaseModelAdmin
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
-
-
-class KoboAssetInline(admin.TabularInline):
-    model = KoboAsset.programs.through
-    extra = 1
 
 
 @admin.register(Program)
@@ -27,7 +22,6 @@ class ProgramAdmin(BaseModelAdmin):
     list_filter = (("country_office", AutoCompleteFilter), "status", "active", "sector")
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
-    inlines = (KoboAssetInline,)
 
     @button()
     def invalidate_cache(self, request: HttpRequest, pk: str) -> None:

@@ -28,27 +28,28 @@ class Raw[T]:
 class Question(Raw[raw_asset.SurveyItem]):
     def __init__(self, raw: raw_asset.SurveyItem, in_group: bool, in_roster: bool) -> None:
         super().__init__(raw)
-        assert not (in_group and in_roster), "Cannot be both in group and roster"
+        if in_group and in_roster:
+            raise ValueError("Cannot be both in group and roster")
         self._in_group = in_group
         self._in_roster = in_roster
 
-    def extract_answer(self, in_: raw_submission_list.Submission, out: dict[str, Any]) -> None:
+    def extract_answer(self, raw_submission: raw_submission_list.Submission, out: dict[str, Any]) -> None:
         if self._in_roster:
             roster_key, _ = self.key.split("/")
             roster = out.get(roster_key, [])
-            if self.key in in_:
+            if self.key in raw_submission:
                 if roster:
-                    roster[0][self.key] = in_.get(self.key)
+                    roster[0][self.key] = raw_submission.get(self.key)
                 else:
-                    roster.append({self.key: in_.get(self.key)})
-            elif roster_key in in_:
-                for i, item in enumerate(in_[roster_key]):
+                    roster.append({self.key: raw_submission.get(self.key)})
+            elif roster_key in raw_submission:
+                for i, item in enumerate(raw_submission[roster_key]):
                     if len(roster) < i + 1:
                         roster.append({})
                     roster[i][self.key] = item[self.key]
             out[roster_key] = roster
         else:
-            out[self.key] = in_.get(self.key)
+            out[self.key] = raw_submission.get(self.key)
 
     @property
     def key(self) -> str:
@@ -65,12 +66,12 @@ class Question(Raw[raw_asset.SurveyItem]):
 InAndOut = tuple[raw_submission_list.Submission, dict[str, Any]]
 
 
-def _extract_answer(in_and_out: InAndOut, question: Question) -> InAndOut:
+def extract_answer(in_and_out: InAndOut, question: Question) -> InAndOut:
     question.extract_answer(*in_and_out)
     return in_and_out
 
 
-def _download_attachments(data_getter: Callable[[str], Response], raw: raw_submission_list.Submission) -> None:
+def download_attachments(data_getter: Callable[[str], Response], raw: raw_submission_list.Submission) -> None:
     for attachment in raw["_attachments"]:
         content = b64encode(data_getter(attachment["download_url"]).content).decode()
         value = f"data:{attachment['mimetype']};base64,{content}"
@@ -87,8 +88,8 @@ def _download_attachments(data_getter: Callable[[str], Response], raw: raw_submi
 class Submission(Raw[raw_submission_list.Submission], UserDict):
     def __init__(self, data_getter: Callable[[str], Response], questions: list[Question], raw: raw_submission_list.Submission) -> None:
         Raw.__init__(self, raw)
-        _download_attachments(data_getter, self._raw)
-        _, answers = reduce(_extract_answer, questions, (raw, {}))
+        download_attachments(data_getter, self._raw)
+        _, answers = reduce(extract_answer, questions, (raw, {}))
         UserDict.__init__(self, answers)
 
     @property

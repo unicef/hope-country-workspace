@@ -14,8 +14,8 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from ...contrib.aurora.forms import ImportAuroraForm
-from ...contrib.kobo.forms import ImportKoboDataForm, ImportKoboAssetsForm
-from ...contrib.kobo.sync import sync_assets as sync_kobo_assets, sync_data as sync_kobo_data
+from ...contrib.kobo.forms import ImportKoboForm
+from ...contrib.kobo.sync import import_data as import_from_kobo
 from ...datasources.rdi import import_from_rdi
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
@@ -219,8 +219,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
         form_rdi = ImportFileForm(prefix="rdi")
         form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-        form_kobo_assets = ImportKoboAssetsForm(prefix="kobo_assets")
-        form_kobo_data = ImportKoboDataForm(prefix="kobo_data")
+        form_kobo = ImportKoboForm(prefix="kobo")
 
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
@@ -230,17 +229,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 case "aurora":
                     if not (form_aurora := self.import_aurora(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-                case "kobo-assets":
-                    if not (form_kobo_data := self.import_kobo_assets(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-                case "kobo-data":
-                    if not (form_kobo_data := self.import_kobo_data(request, program)):
+                case "kobo":
+                    if not (form_kobo := self.import_kobo(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
 
         context["form_rdi"] = form_rdi
         context["form_aurora"] = form_aurora
-        context["form_kobo_assets"] = form_kobo_assets
-        context["form_kobo_data"] = form_kobo_data
+        context["form_kobo"] = form_kobo
 
         return render(request, "workspace/program/import.html", context)
 
@@ -288,41 +283,18 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             return None
         return form
 
-    def import_kobo_assets(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboAssetsForm | None:
-        form = ImportKoboAssetsForm(request.POST, prefix="kobo_assets")
+
+    def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
+        form = ImportKoboForm(request.POST, prefix="kobo")
         if form.is_valid():
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
-                action=fqn(sync_kobo_assets),
+                action=fqn(import_from_kobo),
                 file=None,
                 program=program,
                 owner=request.user,
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
-                }
-            )
-            job.queue()
-            self.message_user(
-                request,
-                _("The Kobo assets import task has been successfully queued. Job #{0}.").format(job.id),
-                level=messages.SUCCESS
-            )
-            return None
-
-        return form
-
-    def import_kobo_data(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboDataForm | None:
-        form = ImportKoboDataForm(request.POST, prefix="kobo_data")
-        if form.is_valid():
-            job: AsyncJob = AsyncJob.objects.create(
-                type=AsyncJob.JobType.TASK,
-                action=fqn(sync_kobo_data),
-                file=None,
-                program=program,
-                owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
-                    "assets": list(form.cleaned_data["assets"].values_list("uid", flat=True)),
                     "individual_records_field": form.cleaned_data["individual_records_field"],
                 }
             )
