@@ -1,9 +1,11 @@
+from typing import Final
+
 from requests.auth import AuthBase
 from requests.models import PreparedRequest
 
 
-TOKEN = "Token"  # noqa: S105
-AUTHORIZATION = "Authorization"
+TOKEN: Final[str] = "Token"  # noqa: S105
+AUTHORIZATION: Final[str] = "Authorization"
 
 
 class Auth(AuthBase):

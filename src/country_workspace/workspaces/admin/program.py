@@ -283,7 +283,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             return None
         return form
 
-
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
         form = ImportKoboForm(request.POST, prefix="kobo")
         if form.is_valid():
@@ -295,14 +294,15 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 owner=request.user,
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "country_code": form.cleaned_data["country_code"],
                     "individual_records_field": form.cleaned_data["individual_records_field"],
-                }
+                },
             )
             job.queue()
             self.message_user(
                 request,
                 _("The Kobo data import task has been successfully queued. Job #{0}.").format(job.id),
-                level=messages.SUCCESS
+                level=messages.SUCCESS,
             )
             return None
 

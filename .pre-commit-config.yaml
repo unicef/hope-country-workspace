@@ -18,9 +18,9 @@ repos:
     rev: v0.9.3
     hooks:
       - id: ruff
-      - id: ruff-format
         args:
-          - --check
+          - --fix
+      - id: ruff-format
 
   - repo: https://github.com/saxix/pch
     rev: '0.1'

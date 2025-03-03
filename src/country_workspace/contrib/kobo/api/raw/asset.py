@@ -13,3 +13,4 @@ class Asset(TypedDict):
     content: Content
     name: str
     uid: str
+    data: str

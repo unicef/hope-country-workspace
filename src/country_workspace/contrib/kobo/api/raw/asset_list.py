@@ -7,6 +7,7 @@ class Asset(TypedDict):
     data: str
     url: str
     asset_type: str
+    has_deployment: bool
 
 
 class AssetList(ListResponse):
