@@ -28,7 +28,6 @@ class ProgramAdmin(BaseModelAdmin):
         obj: Program = Program.objects.select_related("country_office").get(pk=pk)
         cache_manager.incr_cache_version(program=obj)
 
-
     @link(change_list=False)
     def view_in_workspace(self, btn: "LinkButton") -> None:
         obj = btn.context["original"]

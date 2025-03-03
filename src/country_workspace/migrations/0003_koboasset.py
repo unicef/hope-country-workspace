@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("country_workspace", "0002_alter_asyncjob_program_alter_program_active_and_more"),
     ]
