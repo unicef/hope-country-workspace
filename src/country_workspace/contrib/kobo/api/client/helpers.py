@@ -22,13 +22,13 @@ QUERY_PARAMETER_NAME: Final[str] = "q"
 EMPTY: Final[str] = ""
 
 
-def get_asset_list_url(base_url: str, project_view_id: str | None = None, country_code: str | None = None) -> bytes:
+def get_asset_list_url(base_url: str, project_view_id: str | None = None, country_code: str | None = None) -> str:
     parsed_url = urlparse(base_url)
 
     path = PROJECT_VIEW_ASSETS_PATH.format(project_view_id=project_view_id) if project_view_id else ASSETS_PATH
     query = f"{QUERY_PARAMETER_NAME}={COUNTRY_CODE_SELECTOR}:{country_code}" if country_code else EMPTY
 
-    return urlunparse(parsed_url._replace(path=path)._replace(query=query))
+    return str(urlunparse(parsed_url._replace(path=path)._replace(query=query)))
 
 
 def handle_paginated_response[T, U](
