@@ -10,10 +10,13 @@ def filter_out_meta_data(data: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if not key.startswith("_")}
 
 
+VALUE_FORMAT = "data:{mimetype};base64,{content}"
+
+
 def download_attachments(data_getter: Callable[[str], Response], submission: Submission) -> Submission:
     for attachment in submission.attachments:
         content = b64encode(data_getter(attachment["download_url"]).content).decode()
-        value = f"data:{attachment['mimetype']};base64,{content}"
+        value = VALUE_FORMAT.format(mimetype=attachment["mimetype"], content=content)
         key = attachment["question_xpath"]
         if key in submission:
             submission[key] = value
