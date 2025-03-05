@@ -58,6 +58,7 @@ def import_data(job: AsyncJob) -> dict[str, int]:
     )
     individual_records_field = job.config["individual_records_field"]
     client = make_client(job.config["country_code"])
+
     household_counter = 0
     individual_counter = 0
     for asset in client.assets:
