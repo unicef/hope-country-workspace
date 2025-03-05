@@ -12,6 +12,7 @@ from country_workspace.contrib.kobo.sync import (
     extract_household_data,
     prepare_individuals,
     create_household,
+    import_data,
 )
 
 EMPTY = ""
@@ -98,3 +99,39 @@ def test_create_household(mocker: MockerFixture) -> None:
 
     extract_household_data.assert_called_once_with(submission, individual_records_field)
     households.create.assert_called_once_with(batch=batch, flex_fields=dict(fields))
+
+
+def test_import_data(mocker: MockerFixture) -> None:
+    job = Mock()
+    job.config = {
+        "batch_name": (batch_name := "Batch Name"),
+        "individual_records_field": (individual_records_field := "individuals"),
+        "country_code": (country_code := "CNT"),
+    }
+    batch_class = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
+    batch = batch_class.objects.create.return_value
+    make_client = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
+    asset = Mock()
+    submission = Mock()
+    make_client.return_value.assets = [asset]
+    asset.submissions = [submission]
+    create_household = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
+    household = create_household.return_value
+    prepare_individuals = mocker.patch("country_workspace.contrib.kobo.sync.prepare_individuals")
+    individual = Mock()
+    prepare_individuals.return_value = [individual]
+
+    result = import_data(job)
+
+    assert result == {"households": 1, "individuals": 1}
+    batch_class.objects.create.assert_called_once_with(
+        name=batch_name,
+        program=job.program,
+        country_office=job.program.country_office,
+        imported_by=job.owner,
+        source=batch_class.BatchSource.KOBO,
+    )
+    make_client.assert_called_once_with(country_code)
+    create_household.assert_called_once_with(batch, submission, individual_records_field)
+    prepare_individuals.assert_called_once_with(submission, individual_records_field, batch)
+    household.program.individuals.bulk_create.assert_called_once_with([individual])
