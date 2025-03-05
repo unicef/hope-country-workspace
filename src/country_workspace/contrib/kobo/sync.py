@@ -66,6 +66,6 @@ def import_data(job: AsyncJob) -> dict[str, int]:
             household_counter += 1
             individuals = prepare_individuals(submission, individual_records_field, batch)
             household.program.individuals.bulk_create(individuals)
-            household_counter += len(individuals)
+            individual_counter += len(individuals)
 
     return {"households": household_counter, "individuals": individual_counter}
