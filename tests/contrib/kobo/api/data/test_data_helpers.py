@@ -38,6 +38,7 @@ def test_download_attachments(mocker: MockerFixture, top_level_attachment: bool)
     assert download_attachments(data_getter, cast(Submission, submission)) == submission
     data_getter.assert_called_once_with(download_url)
     b64encode.assert_called_once_with(data_getter.return_value.content)
+
     if top_level_attachment:
         submission.__getitem__.assert_called_once_with(parent)
         submission.__getitem__.return_value.__getitem__.assert_called_once_with(index)
