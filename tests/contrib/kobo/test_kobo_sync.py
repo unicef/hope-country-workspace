@@ -1,4 +1,5 @@
 from typing import cast
+from unittest.mock import Mock
 
 import pytest
 from constance.test.unittest import override_config
@@ -6,7 +7,12 @@ from country_workspace.contrib.kobo.api.data.submission import Submission
 
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.kobo.sync import make_client, extract_household_data
+from country_workspace.contrib.kobo.sync import (
+    make_client,
+    extract_household_data,
+    prepare_individuals,
+    create_household,
+)
 
 EMPTY = ""
 TOKEN = "token"
@@ -59,3 +65,36 @@ def test_extract_household_data() -> None:
     assert individual_records_field not in household_data
     assert household_field in household_data
     assert household_data[household_field] == data[household_field]
+
+
+def test_prepare_individuals(mocker: MockerFixture) -> None:
+    individual_class = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+    individual = individual_class.return_value
+    batch = Mock()
+    data = {
+        (individual_records_field := "a"): [
+            (
+                individual_data := {
+                    "full_name": (full_name := "Full Name"),
+                }
+            )
+        ],
+    }
+
+    individuals = prepare_individuals(cast(Submission, data), individual_records_field, batch)
+
+    assert individuals == [individual]
+    individual_class.assert_called_once_with(batch=batch, name=full_name, flex_fields=individual_data)
+
+
+def test_create_household(mocker: MockerFixture) -> None:
+    batch = Mock()
+    households = batch.program.households
+    submission = Mock()
+    extract_household_data = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    extract_household_data.return_value.items.return_value = (fields := (("key", "value"),))
+
+    create_household(batch, submission, individual_records_field := "individuals")
+
+    extract_household_data.assert_called_once_with(submission, individual_records_field)
+    households.create.assert_called_once_with(batch=batch, flex_fields=dict(fields))

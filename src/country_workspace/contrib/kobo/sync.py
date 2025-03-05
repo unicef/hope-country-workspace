@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, cast
 
 from constance import config
 
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.data.submission import Submission
-from country_workspace.models import AsyncJob, Batch, Individual
+from country_workspace.models import AsyncJob, Batch, Individual, Household
 from country_workspace.utils.fields import clean_field_name
 
 
@@ -38,6 +38,16 @@ def prepare_individuals(submission: Submission, individual_records_field: str, b
     return individuals
 
 
+def create_household(batch: Batch, submission: Submission, individual_records_field: str) -> Household:
+    household_fields = extract_household_data(submission, individual_records_field)
+    return cast(
+        Household,
+        batch.program.households.create(
+            batch=batch, flex_fields={clean_field_name(key): value for key, value in household_fields.items()}
+        ),
+    )
+
+
 def import_data(job: AsyncJob) -> dict[str, int]:
     batch = Batch.objects.create(
         name=job.config["batch_name"],
@@ -52,10 +62,7 @@ def import_data(job: AsyncJob) -> dict[str, int]:
     individual_counter = 0
     for asset in client.assets:
         for submission in asset.submissions:
-            household_fields = extract_household_data(submission, individual_records_field)
-            household = batch.program.households.create(
-                batch=batch, flex_fields={clean_field_name(key): value for key, value in household_fields.items()}
-            )
+            household = create_household(batch, submission, individual_records_field)
             household_counter += 1
             individuals = prepare_individuals(submission, individual_records_field, batch)
             household.program.individuals.bulk_create(individuals)
