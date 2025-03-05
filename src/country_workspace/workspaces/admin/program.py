@@ -14,6 +14,8 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from ...contrib.aurora.forms import ImportAuroraForm
+from ...contrib.kobo.forms import ImportKoboForm
+from ...contrib.kobo.sync import import_data as import_from_kobo
 from ...datasources.rdi import import_from_rdi
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
@@ -217,6 +219,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
         form_rdi = ImportFileForm(prefix="rdi")
         form_aurora = ImportAuroraForm(prefix="aurora", program=program)
+        form_kobo = ImportKoboForm(prefix="kobo")
 
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
@@ -227,10 +230,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     if not (form_aurora := self.import_aurora(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
                 case "kobo":
-                    self.message_user(request, _("Not implemented"))
+                    if not (form_kobo := self.import_kobo(request, program)):
+                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
 
         context["form_rdi"] = form_rdi
         context["form_aurora"] = form_aurora
+        context["form_kobo"] = form_kobo
 
         return render(request, "workspace/program/import.html", context)
 
@@ -276,4 +281,29 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
             return None
+        return form
+
+    def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
+        form = ImportKoboForm(request.POST, prefix="kobo")
+        if form.is_valid():
+            job: AsyncJob = AsyncJob.objects.create(
+                type=AsyncJob.JobType.TASK,
+                action=fqn(import_from_kobo),
+                file=None,
+                program=program,
+                owner=request.user,
+                config={
+                    "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "country_code": form.cleaned_data["country_code"],
+                    "individual_records_field": form.cleaned_data["individual_records_field"],
+                },
+            )
+            job.queue()
+            self.message_user(
+                request,
+                _("The Kobo data import task has been successfully queued. Job #{0}.").format(job.id),
+                level=messages.SUCCESS,
+            )
+            return None
+
         return form

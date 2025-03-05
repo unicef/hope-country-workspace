@@ -1,4 +1,5 @@
 from .app import AURORA_API_TOKEN, AURORA_API_URL, HOPE_API_TOKEN, HOPE_API_URL, NEW_USER_DEFAULT_GROUP
+from .kobo import KOBO_API_TOKEN, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID, KOBO_KF_URL
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 
@@ -46,8 +47,10 @@ CONSTANCE_CONFIG = {
     "AURORA_API_URL": (AURORA_API_URL, "Aurora API Server address", str),
     "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
-    "KOBO_API_TOKEN": ("", "Kobo API Access Token", "write_only_input"),
-    "KOBO_API_URL": ("", "Kobo API Server address", str),
+    "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_input"),
+    "KOBO_MASTER_API_TOKEN": (KOBO_MASTER_API_TOKEN, "Kobo API Master Access Token", "write_only_input"),
+    "KOBO_PROJECT_VIEW_ID": (KOBO_PROJECT_VIEW_ID, "Kobo Project View ID", str),
+    "KOBO_KF_URL": (KOBO_KF_URL, "Kobo Server address", str),
     "CACHE_TIMEOUT": (86400, "Cache Redis TTL", int),
     "CACHE_BY_VERSION": (False, "Invalidate Cache on CW version change", bool),
     "CONCURRENCY_GUARD": (
@@ -68,7 +71,9 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "HOPE_API_TOKEN",
         "HOPE_API_URL",
         "KOBO_API_TOKEN",
-        "KOBO_API_URL",
+        "KOBO_MASTER_API_TOKEN",
+        "KOBO_PROJECT_VIEW_ID",
+        "KOBO_KF_URL",
     ),
     "Data consistency": ("CONCURRENCY_GUARD",),
 }
@@ -78,4 +83,5 @@ CONSTANCE_MASKED_DEFAULTS = {
     "AURORA_API_TOKEN": "***",
     "HOPE_API_TOKEN": "***",
     "KOBO_API_TOKEN": "***",
+    "KOBO_API_MASTER_TOKEN": "***",
 }
