@@ -13,6 +13,8 @@ from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, WIsValidFilter
 from .hh_ind import BeneficiaryBaseAdmin
 
+from country_workspace.workspaces.admin.cleaners.actions import push_to_hope
+
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
@@ -31,6 +33,7 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         WIsValidFilter,
     )
+    actions = [*BeneficiaryBaseAdmin.actions, push_to_hope]
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         program: "CountryProgram | None"

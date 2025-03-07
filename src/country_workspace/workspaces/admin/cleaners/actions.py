@@ -2,7 +2,8 @@ from typing import TYPE_CHECKING
 
 from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render, redirect
+from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
@@ -15,12 +16,19 @@ from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
 from .validate import validate_queryset
+from country_workspace.models import AsyncJob, Household
+from country_workspace.state import state
+from country_workspace.contrib.hope.push import push_to_hope_core
+from country_workspace.contrib.hope.forms import PushToHopeForm
+from country_workspace.utils.fields import rdi_name_default
+
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
     from country_workspace.types import Beneficiary
     from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
+    from country_workspace.workspaces.admin.household import CountryHouseholdAdmin
 
 
 @admin.action(description="Validate selected records", permissions=["validate"])
@@ -180,3 +188,31 @@ def calculate_checksum(
     job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
     return redirect(".")
+
+
+@admin.action(description="Push to HOPE core", permissions=["push_to_hope"])
+def push_to_hope(
+    model_admin: "CountryHouseholdAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[Household]",
+) -> HttpResponse:
+    ctx = model_admin.get_common_context(request, title=_(push_to_hope.short_description))
+    form = PushToHopeForm(request.POST)
+    ctx["form"] = form
+    if "_push" in request.POST and form.is_valid():
+        job = AsyncJob.objects.create(
+            description=push_to_hope.short_description,
+            type=AsyncJob.JobType.TASK,
+            owner=state.request.user,
+            action=fqn(push_to_hope_core),
+            program=state.program,
+            config={
+                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                "pks": list(queryset.values_list("pk", flat=True)),
+            },
+        )
+        job.queue()
+        model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+        return redirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+
+    return render(request, "workspace/actions/push_to_hope.html", ctx)

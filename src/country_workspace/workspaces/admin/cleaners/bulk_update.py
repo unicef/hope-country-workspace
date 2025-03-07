@@ -1,6 +1,7 @@
 import io
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from constance import config as constance_config
 from django import forms

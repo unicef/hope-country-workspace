@@ -22,6 +22,7 @@ class IndividualAdmin(BaseModelAdmin):
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
         IsValidFilter,
+        "removed",
     )
     autocomplete_fields = (
         "batch",
