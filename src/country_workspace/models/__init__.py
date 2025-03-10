@@ -9,4 +9,4 @@ from .rdi import Rdi  # noqa
 from .role import UserRole  # noqa
 from .sync import SyncLog  # noqa
 from .user import User  # noqa
-from country_workspace.contrib.kobo.models import KoboAsset  # noqa
+from country_workspace.contrib.kobo.models import KoboSubmission  # noqa

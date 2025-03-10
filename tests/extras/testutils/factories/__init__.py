@@ -22,7 +22,6 @@ from .user import GroupFactory, SuperUserFactory, User, UserFactory  # noqa
 from .userrole import UserRole, UserRoleFactory  # noqa
 from .version import ScriptFactory  # noqa
 from .workspaces import CountryChecker  # noqa
-from .kobo import KoboAssetFactory  # noqa
 
 for _, name, _ in pkgutil.iter_modules([str(Path(__file__).parent)]):
     importlib.import_module(f".{name}", __package__)

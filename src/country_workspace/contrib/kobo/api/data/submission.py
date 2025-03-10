@@ -1,5 +1,4 @@
 from collections import UserDict
-from uuid import UUID
 
 from country_workspace.contrib.kobo.api.data.common import Raw
 from country_workspace.contrib.kobo.api.raw import submission_list as raw_submission_list
@@ -19,5 +18,5 @@ class Submission(Raw[raw_submission_list.Submission], UserDict):
         return self.raw["_attachments"]
 
     @property
-    def uuid(self) -> UUID:
-        return UUID(self._raw["_uuid"])
+    def id(self) -> int:
+        return self._raw["_id"]

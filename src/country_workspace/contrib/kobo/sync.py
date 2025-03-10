@@ -1,11 +1,14 @@
-from typing import Any, cast
+from typing import Any, cast, TypedDict
 
 from constance import config
 
 from country_workspace.contrib.kobo.api.client.main import Client
+from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
+from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Individual, Household
 from country_workspace.utils.fields import clean_field_name
+from django.core.cache import cache
 
 
 def make_client(country_code: str | None) -> Client:
@@ -23,7 +26,9 @@ def extract_household_data(submission: Submission, individual_records_field: str
     return {key: value for key, value in submission.items() if key != individual_records_field}
 
 
-def prepare_individuals(submission: Submission, individual_records_field: str, batch: Batch) -> list[Individual]:
+def create_individuals(
+    batch: Batch, household: Household, submission: Submission, individual_records_field: str
+) -> int:
     individuals = []
     for raw_individual in submission.get(individual_records_field, []):
         individual = {key.lstrip(f"{individual_records_field}/"): value for key, value in raw_individual.items()}
@@ -35,7 +40,8 @@ def prepare_individuals(submission: Submission, individual_records_field: str, b
                 flex_fields={clean_field_name(key): value for key, value in individual.items()},
             ),
         )
-    return individuals
+    household.program.individuals.bulk_create(individuals)
+    return len(individuals)
 
 
 def create_household(batch: Batch, submission: Submission, individual_records_field: str) -> Household:
@@ -48,7 +54,31 @@ def create_household(batch: Batch, submission: Submission, individual_records_fi
     )
 
 
-def import_data(job: AsyncJob) -> dict[str, int]:
+ASSET_CACHE_KEY = "sync_kobo_asset_{asset_id}"
+
+
+class ImportResult(TypedDict):
+    households: int
+    individuals: int
+
+
+def import_asset(batch: Batch, asset: Asset, individual_records_field: str) -> ImportResult:
+    household_counter = 0
+    individual_counter = 0
+
+    with cache.lock(ASSET_CACHE_KEY.format(asset_id=asset.uid)):
+        submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
+        for submission in asset.submissions:
+            if submission.id in submission_ids:
+                continue
+            household = create_household(batch, submission, individual_records_field)
+            household_counter += 1
+            individual_counter += create_individuals(batch, household, submission, individual_records_field)
+
+    return ImportResult(households=household_counter, individuals=individual_counter)
+
+
+def import_data(job: AsyncJob) -> ImportResult:
     batch = Batch.objects.create(
         name=job.config["batch_name"],
         program=job.program,
@@ -61,12 +91,10 @@ def import_data(job: AsyncJob) -> dict[str, int]:
 
     household_counter = 0
     individual_counter = 0
-    for asset in client.assets:
-        for submission in asset.submissions:
-            household = create_household(batch, submission, individual_records_field)
-            household_counter += 1
-            individuals = prepare_individuals(submission, individual_records_field, batch)
-            household.program.individuals.bulk_create(individuals)
-            individual_counter += len(individuals)
 
-    return {"households": household_counter, "individuals": individual_counter}
+    for asset in client.assets:
+        import_result = import_asset(batch, asset, individual_records_field)
+        household_counter += import_result["households"]
+        individual_counter += import_result["individuals"]
+
+    return ImportResult(households=household_counter, individuals=individual_counter)
