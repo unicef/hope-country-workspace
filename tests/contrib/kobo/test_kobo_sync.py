@@ -11,6 +11,8 @@ from country_workspace.contrib.kobo.sync import (
     create_household,
     import_data,
     ImportResult,
+    import_asset,
+    ASSET_CACHE_KEY,
 )
 from pytest_mock import MockerFixture
 
@@ -106,6 +108,33 @@ def test_create_household(mocker: MockerFixture) -> None:
     households_mock.create.assert_called_once_with(batch=batch_mock, flex_fields=dict(fields))
 
 
+def test_import_asset(mocker: MockerFixture) -> None:
+    cache = mocker.patch("country_workspace.contrib.kobo.sync.cache")
+    kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
+    kobo_submission_class.objects.filter.return_value.values_list.return_value = [(old_submission_id := 42)]
+    create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
+    household_mock = create_household_mock.return_value
+    create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
+    create_individuals_mock.return_value = (individuals_counter := 2)
+    batch_mock = Mock()
+    asset_mock = Mock()
+    new_submission_mock = Mock()
+    old_submission_mock = Mock()
+    old_submission_mock.id = old_submission_id
+    asset_mock.submissions = [new_submission_mock, old_submission_mock]
+
+    result = import_asset(batch_mock, asset_mock, (individual_records_field := "individuals"))
+
+    assert result == ImportResult(households=1, individuals=individuals_counter)
+    cache.lock.assert_called_once_with(ASSET_CACHE_KEY.format(asset_id=asset_mock.uid))
+    kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
+    kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
+    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, individual_records_field)
+    create_individuals_mock.assert_called_once_with(
+        batch_mock, household_mock, new_submission_mock, individual_records_field
+    )
+
+
 def test_import_data(mocker: MockerFixture) -> None:
     job_mock = Mock()
     job_mock.config = {
@@ -125,7 +154,7 @@ def test_import_data(mocker: MockerFixture) -> None:
 
     result = import_data(job_mock)
 
-    assert result == {"households": household_counter, "individuals": individual_counter}
+    assert result == ImportResult(households=household_counter, individuals=individual_counter)
     batch_class_mock.objects.create.assert_called_once_with(
         name=BATCH_NAME,
         program=job_mock.program,
