@@ -10,8 +10,8 @@ class Attachment(TypedDict):
 
 
 class Submission(TypedDict):
-    _uuid: str
     _attachments: list[Attachment]
+    _id: int
 
 
 class SubmissionList(ListResponse):
