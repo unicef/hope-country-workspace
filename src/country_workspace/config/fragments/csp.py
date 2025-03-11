@@ -1,4 +1,8 @@
-CSP_DEFAULT_SRC = ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com"]
+CSP_DEFAULT_SRC = [
+    "'self'",
+    "'unsafe-inline'",
+    "cdnjs.cloudflare.com"
+]
 CSP_STYLE_SRC = [
     "'self'",
     "'unsafe-inline'",
@@ -9,7 +13,6 @@ CSP_STYLE_SRC = [
 CSP_SCRIPT_SRC = [
     "'self'",
     "'unsafe-inline'",
-    "'unsafe-hashes'",
     "same-origin",
     "blob:",
     "cdnjs.cloudflare.com",
