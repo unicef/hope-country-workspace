@@ -1,7 +1,8 @@
 CSP_DEFAULT_SRC = [
     "'self'",
     "'unsafe-inline'",
-    "cdnjs.cloudflare.com"
+    "cdnjs.cloudflare.com",
+    "blob.core.windows.net",
 ]
 CSP_STYLE_SRC = [
     "'self'",
@@ -9,6 +10,7 @@ CSP_STYLE_SRC = [
     "same-origin",
     "fonts.googleapis.com",
     "fonts.gstatic.com",
+    "blob.core.windows.net",
 ]
 CSP_SCRIPT_SRC = [
     "'self'",
@@ -16,6 +18,7 @@ CSP_SCRIPT_SRC = [
     "same-origin",
     "blob:",
     "cdnjs.cloudflare.com",
+    "blob.core.windows.net",
 ]
 CSP_IMG_SRC = [
     "'self'",
@@ -24,6 +27,7 @@ CSP_IMG_SRC = [
     "blob:",
     "data:",
     "cdn.redoc.ly",
+    "blob.core.windows.net",
 ]
 CSP_FONT_SRC = [
     "'self'",
@@ -32,4 +36,5 @@ CSP_FONT_SRC = [
     "fonts.googleapis.com",
     "fonts.gstatic.com",
     "blob:",
+    "blob.core.windows.net",
 ]
