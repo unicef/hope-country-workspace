@@ -19,6 +19,9 @@ CSP_SCRIPT_SRC = [
     "blob:",
     "cdnjs.cloudflare.com",
     "saunihopedev.blob.core.windows.net",
+    "saunihopestg.blob.core.windows.net",
+    "saunihopetrn.blob.core.windows.net",
+    "saunihopeprd.blob.core.windows.net",
 ]
 CSP_IMG_SRC = [
     "'self'",
@@ -28,6 +31,9 @@ CSP_IMG_SRC = [
     "data:",
     "cdn.redoc.ly",
     "saunihopedev.blob.core.windows.net",
+    "saunihopestg.blob.core.windows.net",
+    "saunihopetrn.blob.core.windows.net",
+    "saunihopeprd.blob.core.windows.net",
 ]
 CSP_FONT_SRC = [
     "'self'",
@@ -37,4 +43,7 @@ CSP_FONT_SRC = [
     "fonts.gstatic.com",
     "blob:",
     "saunihopedev.blob.core.windows.net",
+    "saunihopestg.blob.core.windows.net",
+    "saunihopetrn.blob.core.windows.net",
+    "saunihopeprd.blob.core.windows.net",
 ]
