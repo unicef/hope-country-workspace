@@ -3,6 +3,9 @@ CSP_DEFAULT_SRC = [
     "'unsafe-inline'",
     "cdnjs.cloudflare.com",
     "saunihopedev.blob.core.windows.net",
+    "saunihopestg.blob.core.windows.net",
+    "saunihopetrn.blob.core.windows.net",
+    "saunihopeprd.blob.core.windows.net",
 ]
 CSP_STYLE_SRC = [
     "'self'",
@@ -11,6 +14,9 @@ CSP_STYLE_SRC = [
     "fonts.googleapis.com",
     "fonts.gstatic.com",
     "saunihopedev.blob.core.windows.net",
+    "saunihopestg.blob.core.windows.net",
+    "saunihopetrn.blob.core.windows.net",
+    "saunihopeprd.blob.core.windows.net",
 ]
 CSP_SCRIPT_SRC = [
     "'self'",
