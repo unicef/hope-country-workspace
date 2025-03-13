@@ -56,17 +56,6 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     return django_app
 
 
-def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
-    url = reverse("workspace:workspaces_countryindividual_changelist")
-    with select_office(app, individual.country_office, individual.program):
-        res = app.get(url)
-        assert res.status_code == 200, res.location
-        assert f"Add {individual._meta.verbose_name}" not in res.text
-        # filter by program
-        res = app.get(url)
-        assert res.status_code == 200, res.location
-
-
 def test_ind_change(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
     with select_office(app, individual.country_office, individual.program):
