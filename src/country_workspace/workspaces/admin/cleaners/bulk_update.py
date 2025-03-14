@@ -2,12 +2,11 @@ import io
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable
 
+from constance import config as constance_config
 from django import forms
 from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
 from xlsxwriter import Workbook
-
-from constance import config as constance_config
 
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field

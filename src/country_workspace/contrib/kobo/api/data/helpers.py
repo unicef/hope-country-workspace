@@ -2,8 +2,9 @@ from base64 import b64encode
 from collections.abc import Callable
 from typing import Any
 
-from country_workspace.contrib.kobo.api.data.submission import Submission
 from requests import Response
+
+from country_workspace.contrib.kobo.api.data.submission import Submission
 
 
 def filter_out_meta_data(data: dict[str, Any]) -> dict[str, Any]:

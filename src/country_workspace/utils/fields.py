@@ -1,5 +1,5 @@
-from typing import Any
 from functools import reduce
+from typing import Any
 
 
 def clean_field_name(v: str) -> str:

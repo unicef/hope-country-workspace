@@ -1,8 +1,7 @@
+from admin_extra_buttons.api import button
 from django.contrib import admin, messages
 from django.http import HttpRequest
 from django.utils.translation import gettext as _
-
-from admin_extra_buttons.api import button
 from strategy_field.utils import fqn
 
 from country_workspace.admin.base import BaseModelAdmin

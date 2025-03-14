@@ -1,4 +1,5 @@
 from typing import Any
+
 from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient

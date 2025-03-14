@@ -1,9 +1,9 @@
 from typing import Any
-from django.contrib import admin
-from constance.admin import ConstanceAdmin, Config
-from django.http import HttpRequest, HttpResponse
-from django.conf import settings
 
+from constance.admin import Config, ConstanceAdmin
+from django.conf import settings
+from django.contrib import admin
+from django.http import HttpRequest, HttpResponse
 
 admin.site.unregister([Config])
 

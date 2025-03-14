@@ -1,3 +1,5 @@
+from typing import Any
+
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from django.contrib.admin import register
@@ -30,6 +32,11 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     ordering = ("name",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
     readonly_fields = fields = ("name", "source")
+
+    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict:
+        kwargs["modeladmin"] = self
+        kwargs["modeladmin_name"] = self.__class__.__name__
+        return super().get_common_context(request, pk, **kwargs)
 
     def get_search_results(
         self, request: HttpRequest, queryset: QuerySet[CountryBatch], search_term: str

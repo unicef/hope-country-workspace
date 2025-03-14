@@ -5,11 +5,11 @@ from django.utils.translation import gettext as _
 from strategy_field.fields import StrategyField
 from strategy_field.utils import fqn
 
-from country_workspace.models.office import Office
 from hope_flex_fields.models import DataChecker
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
+from country_workspace.models.office import Office
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet

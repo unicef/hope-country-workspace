@@ -1,7 +1,6 @@
+from adminfilters.autocomplete import AutoCompleteFilter
 from django.contrib import admin
 from django.http import HttpRequest
-
-from adminfilters.autocomplete import AutoCompleteFilter
 
 from country_workspace.admin.base import BaseModelAdmin
 from country_workspace.contrib.aurora.models import Registration

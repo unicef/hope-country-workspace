@@ -55,6 +55,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict:
         kwargs["modeladmin"] = self
+        kwargs["modeladmin_name"] = self.__class__.__name__
         return super().get_common_context(request, pk, **kwargs)
 
     @property
@@ -145,6 +146,8 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
         self.change_list_template = self._get_changelist_template()
         extra_context = extra_context or {}
         extra_context["preserved_filters"] = self.get_preserved_filters(request)
+        extra_context["modeladmin"] = self
+        extra_context["modeladmin_name"] = self.__class__.__name__
         return super().changelist_view(request, extra_context=extra_context)
 
     def change_view(
