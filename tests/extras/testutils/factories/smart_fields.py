@@ -1,7 +1,6 @@
 import factory.fuzzy
-from hope_flex_fields.models import DataChecker, DataCheckerFieldset, FieldDefinition, Fieldset, FlexField
-
 from django import forms
+from hope_flex_fields.models import DataChecker, DataCheckerFieldset, FieldDefinition, Fieldset, FlexField
 
 from .base import AutoRegisterModelFactory
 

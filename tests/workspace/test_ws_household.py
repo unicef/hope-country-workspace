@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from responses import RequestsMock
     from testutils.types import CWTestApp
 
-    from country_workspace.workspaces.models import CountryHousehold, CountryProgram
+    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 
 pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
 
@@ -43,6 +43,18 @@ def household(program):
     from testutils.factories import CountryHouseholdFactory
 
     return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
+
+
+@pytest.fixture
+def individual(household: "CountryHousehold") -> "CountryIndividual":
+    from testutils.factories import CountryIndividualFactory
+
+    return CountryIndividualFactory(
+        batch=household.batch,
+        household=household,
+        batch__program=household.batch.program,
+        batch__country_office=household.batch.program.country_office,
+    )
 
 
 @pytest.fixture
@@ -104,3 +116,17 @@ def test_hh_update_single(app: "CWTestApp", household: "CountryHousehold") -> No
             url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
             res = app.get(url)
             assert res.status_code == 200
+
+
+def test_validate_program(app: "CWTestApp", individual: "CountryIndividual"):
+    program: "CountryProgram" = individual.program
+    assert not individual.last_checked
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryhousehold_changelist")
+        res = app.get(url)
+        res.click("Validate Program").follow()
+
+        individual.refresh_from_db()
+        assert individual.household.last_checked
+        assert individual.last_checked

@@ -8,8 +8,6 @@ from constance import config
 from django.core.cache import cache
 from pytest_mock import MockerFixture
 
-from tests.contrib.aurora import stub
-
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.models import Project
 from country_workspace.contrib.aurora.sync import (
@@ -18,6 +16,7 @@ from country_workspace.contrib.aurora.sync import (
     sync_registrations,
 )
 from country_workspace.models import SyncLog
+from tests.contrib.aurora import stub
 
 
 @pytest.fixture

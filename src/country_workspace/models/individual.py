@@ -22,8 +22,8 @@ class Individual(Validable, BaseModel):
 
     @cached_property
     def program(self) -> "DataChecker":
-        return self.household.batch.program
+        return self.batch.program
 
     @cached_property
     def country_office(self) -> "DataChecker":
-        return self.household.batch.program.country_office
+        return self.batch.program.country_office

@@ -6,9 +6,8 @@ import responses
 from constance import config
 from django.urls import reverse
 
-from tests.contrib.aurora import stub
-
 from country_workspace.state import state
+from tests.contrib.aurora import stub
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
