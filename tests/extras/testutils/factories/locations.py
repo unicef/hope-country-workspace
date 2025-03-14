@@ -2,8 +2,9 @@ import factory
 from factory import fuzzy
 from faker import Faker
 
-from country_workspace.models import Area, AreaType, Country
 from testutils.factories import AutoRegisterModelFactory
+
+from country_workspace.models import Area, AreaType, Country
 
 faker = Faker()
 

@@ -1,14 +1,15 @@
 import io
-import pytest
-from pytest_mock import MockerFixture
-from constance.test import override_config
 from typing import TYPE_CHECKING
 
-from country_workspace.workspaces.admin.cleaners.bulk_update import bulk_update_household
+import pytest
+from constance.test import override_config
+from pytest_mock import MockerFixture
+
 from country_workspace.models import AsyncJob
+from country_workspace.workspaces.admin.cleaners.bulk_update import bulk_update_household
 
 if TYPE_CHECKING:
-    from country_workspace.workspaces.models import CountryProgram, CountryHousehold
+    from country_workspace.workspaces.models import CountryHousehold, CountryProgram
 
 
 @pytest.fixture

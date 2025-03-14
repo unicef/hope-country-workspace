@@ -3,11 +3,10 @@ from random import choice
 import factory
 from faker import Faker
 
-from country_workspace.models import Individual
-from country_workspace.workspaces.models import CountryIndividual
-
 from .base import AutoRegisterModelFactory
 from .household import HouseholdFactory
+from country_workspace.models import Individual
+from country_workspace.workspaces.models import CountryIndividual
 
 fake = Faker()
 

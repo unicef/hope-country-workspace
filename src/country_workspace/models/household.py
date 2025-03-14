@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import reversion
 from django.db import models
+from django.utils import timezone
 
 from .base import BaseModel, Validable
 
@@ -36,12 +37,26 @@ class Household(Validable, BaseModel):
     def country_office(self) -> "Office":
         return self.batch.program.country_office
 
+    @cached_property
+    def members(self) -> "QuerySet[Individual]":
+        from .individual import Individual
+
+        return Individual.objects.filter(household=self)
+
     def validate_with_checker(self) -> bool:
-        super().validate_with_checker()
-        errors = self.program.beneficiary_validator.validate(self)
-        if errors:
-            self.errors["dct"] = errors
-        self.save(update_fields=["errors"])
+        hh_valid = True
+        for ind in self.members.all():
+            if not ind.validate_with_checker():
+                hh_valid = False
+        if hh_valid:
+            super().validate_with_checker()
+            errors = self.program.beneficiary_validator.validate(self)
+            if errors:
+                self.errors["dct"] = errors
+        else:
+            self.errors["dct"] = ["Some member did not validate"]
+        self.last_checked = timezone.now()
+        self.save(update_fields=["errors", "last_checked"])
         return not bool(self.errors)
 
     # Business methods

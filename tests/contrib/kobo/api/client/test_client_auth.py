@@ -1,7 +1,8 @@
 from unittest.mock import Mock
 
-from country_workspace.contrib.kobo.api.client.auth import Auth, TOKEN, AUTHORIZATION
 from requests.models import PreparedRequest
+
+from country_workspace.contrib.kobo.api.client.auth import AUTHORIZATION, TOKEN, Auth
 
 
 def test_auth_call():

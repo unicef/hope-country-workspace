@@ -24,8 +24,12 @@
                         {{ adminform.form.non_field_errors }}
                     {% endif %}
                     {% if original.errors %}
-                        <div class="error"> Record does not validate and cannot be sent to HOPE</div>
-                        {{ original.errors.dct }}
+                        <div class="errors"> Record does not validate and cannot be sent to HOPE</div>
+                        <ul>
+                        {% for e in original.errors.dct %}
+                        <li class="errors">{{ e }}</li>
+                        {% endfor %}
+                        </ul>
                     {% endif %}
                     {% block field_sets %}
                         <table  class="min-w-full">

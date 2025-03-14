@@ -18,7 +18,7 @@ from ...models import AsyncJob
 from ...state import state
 from ..options import WorkspaceModelAdmin
 from .cleaners import actions
-from .cleaners.validate import validate_queryset
+from .cleaners.validate import validate_program
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -102,11 +102,11 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         opts = self.model._meta
         job = AsyncJob.objects.create(
             description="Validate Program %s" % opts.proxy_for_model._meta.verbose_name_plural,
-            type=AsyncJob.JobType.ACTION,
+            type=AsyncJob.JobType.TASK,
             owner=state.request.user,
-            action=fqn(validate_queryset),
+            action=fqn(validate_program),
             program=state.program,
-            config={"pks": "__all__", "model_name": opts.label},
+            config={},
         )
         job.queue()
         self.message_user(request, "Task scheduled", messages.SUCCESS)

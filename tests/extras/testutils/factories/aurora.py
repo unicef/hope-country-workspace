@@ -1,8 +1,8 @@
 import factory
 import factory.fuzzy
 
-from country_workspace.contrib.aurora.models import Project, Registration
 from .program import ProgramFactory
+from country_workspace.contrib.aurora.models import Project, Registration
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):

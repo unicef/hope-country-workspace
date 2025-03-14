@@ -1,9 +1,8 @@
 import factory.fuzzy
 from django.contrib.auth.models import Group
 
-from country_workspace.models import User
-
 from .base import AutoRegisterModelFactory
+from country_workspace.models import User
 
 
 class UserFactory(AutoRegisterModelFactory):

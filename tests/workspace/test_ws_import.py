@@ -1,14 +1,14 @@
-from typing import TYPE_CHECKING, Any
-import responses
-import pytest
 import re
-from django.urls import reverse
+from typing import TYPE_CHECKING, Any
 
-from country_workspace.state import state
+import pytest
+import responses
 from constance import config
+from django.urls import reverse
 
 from tests.contrib.aurora import stub
 
+from country_workspace.state import state
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp

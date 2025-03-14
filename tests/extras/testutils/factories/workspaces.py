@@ -1,7 +1,8 @@
 import factory
 
-from country_workspace.workspaces.models import CountryChecker
 from testutils.factories import AutoRegisterModelFactory, OfficeFactory
+
+from country_workspace.workspaces.models import CountryChecker
 
 
 class CountryCheckerFactory(AutoRegisterModelFactory):

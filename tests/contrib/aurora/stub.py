@@ -1,5 +1,4 @@
-from typing import Final, Any
-
+from typing import Any, Final
 
 project: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
     "results": [

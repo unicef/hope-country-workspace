@@ -1,10 +1,10 @@
 from typing import cast
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.kobo.api.data.helpers import filter_out_meta_data, download_attachments, VALUE_FORMAT
+from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT, download_attachments, filter_out_meta_data
 from country_workspace.contrib.kobo.api.data.submission import Submission
 
 

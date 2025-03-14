@@ -1,8 +1,7 @@
 import factory
 
-from country_workspace.models import Office
-
 from .base import AutoRegisterModelFactory
+from country_workspace.models import Office
 
 
 class OfficeFactory(AutoRegisterModelFactory):

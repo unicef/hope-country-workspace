@@ -5,11 +5,10 @@ import factory
 from django.utils import timezone
 from faker import Faker
 
-from country_workspace.models import Household
-from country_workspace.workspaces.models import CountryHousehold
-
 from .base import AutoRegisterModelFactory
 from .batch import CountryBatchFactory
+from country_workspace.models import Household
+from country_workspace.workspaces.models import CountryHousehold
 
 fake = Faker()
 

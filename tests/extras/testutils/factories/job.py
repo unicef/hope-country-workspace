@@ -1,9 +1,8 @@
 import factory
 
-from country_workspace.models import AsyncJob
-
 from .base import AutoRegisterModelFactory
 from .program import ProgramFactory
+from country_workspace.models import AsyncJob
 
 
 class AsyncJobFactory(AutoRegisterModelFactory):

@@ -1,7 +1,8 @@
 import factory
 
-from country_workspace.versioning.models import Script
 from testutils.factories import AutoRegisterModelFactory
+
+from country_workspace.versioning.models import Script
 
 
 class ScriptFactory(AutoRegisterModelFactory):

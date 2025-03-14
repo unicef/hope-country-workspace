@@ -1,11 +1,13 @@
 from typing import TYPE_CHECKING
+
 import pytest
-from pytest_mock import MockerFixture
 from django.urls import reverse
+from pytest_mock import MockerFixture
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from testutils.types import CWTestApp
+
     from country_workspace.models import User
 
 
