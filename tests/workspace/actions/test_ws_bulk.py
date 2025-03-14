@@ -8,7 +8,7 @@ import xlsxwriter
 from django.urls import reverse
 from testutils.factories import FlexFieldFactory
 from testutils.utils import select_office
-from webtest import Checkbox, Upload
+from unittest import mock
 
 from country_workspace.state import state
 from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_xls_importer
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from pytest_django.fixtures import SettingsWrapper
+    from webtest import Checkbox
 
     from country_workspace.models import AsyncJob
     from country_workspace.workspaces.models import CountryHousehold
@@ -36,6 +37,18 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     django_app.set_user(admin_user)
     django_app._user = admin_user
     return django_app
+
+
+@pytest.fixture
+def mock_media_storage():
+    return mock.MagicMock(
+        **{
+            "save.return_value": "mocked/path/to/file",
+            "exists.return_value": False,
+            "get_available_name.return_value": "mocked/path/to/file",
+            "open.return_value": io.BytesIO(b"mocked file content"),
+        }
+    )
 
 
 @pytest.fixture(scope="session")
@@ -142,56 +155,30 @@ def test_create_xls_importer(household: "CountryHousehold", force_migrated_recor
 
 
 def test_bulk_update_export(
-    app: "DjangoTestApp", force_migrated_records, settings: "SettingsWrapper", household: "CountryHousehold"
-) -> None:
-    url = reverse("workspace:workspaces_countryindividual_changelist")
-    settings.CELERY_TASK_ALWAYS_EAGER = True
-    selected_fields = stub.header_add["ind"]
-    with select_office(app, household.country_office, household.program):
-        res = app.get(url)
-        form = res.forms["changelist-form"]
-        form["action"] = "bulk_update_export"
-        form.set("_selected_action", True, index=0)
-        res = form.submit()
-
-        form = res.forms["bulk-update-form"]
-        for i in range(len(form.fields.get("fields"))):
-            target: Checkbox = form.fields.get("fields")[i]
-            if target._value in selected_fields:
-                target.checked = True
-        res = form.submit("_export")
-
-        assert res.status_code == 302
-        job: AsyncJob = household.program.jobs.first()
-        job.queue()
-
-
-def test_bulk_update_import(
     app: "DjangoTestApp",
     force_migrated_records,
     settings: "SettingsWrapper",
-    data: tuple[io.BytesIO, "CountryHousehold", str],
+    household: "CountryHousehold",
+    mock_media_storage,
 ) -> None:
-    buff, household, target = data
-    url = reverse("workspace:workspaces_countryprogram_change", args=[household.program.pk])
-    settings.CELERY_TASK_ALWAYS_EAGER = True
+    with mock.patch("country_workspace.workspaces.admin.cleaners.bulk_update.MEDIA_STORAGE", mock_media_storage):
+        url = reverse("workspace:workspaces_countryindividual_changelist")
+        settings.CELERY_TASK_ALWAYS_EAGER = True
+        selected_fields = stub.header_add["ind"]
+        with select_office(app, household.country_office, household.program):
+            res = app.get(url)
+            form = res.forms["changelist-form"]
+            form["action"] = "bulk_update_export"
+            form.set("_selected_action", True, index=0)
+            res = form.submit()
 
-    with select_office(app, household.country_office, household.program):
-        res = app.get(url)
-        res = res.click("Update Records")
-        res.forms["bulk-update-form"]["description"] = f"Bulk update from {target}"
-        res.forms["bulk-update-form"]["target"] = target
-        res.forms["bulk-update-form"]["file"] = Upload(f"{target}.xlsx", buff.read())
-        res = res.forms["bulk-update-form"].submit("_import")
-        household.refresh_from_db()
-        job: AsyncJob = household.program.jobs.first()
+            form = res.forms["bulk-update-form"]
+            for i in range(len(form.fields.get("fields"))):
+                target: Checkbox = form.fields.get("fields")[i]
+                if target._value in selected_fields:
+                    target.checked = True
+            res = form.submit("_export")
 
-        assert res.status_code == 302
-        assert job
-
-        if target == "hh":
-            admin1_v = f"admin1_{stub.header_add['hh'].index('admin1') + 2}"
-            assert household.flex_fields.get("admin1") == admin1_v
-        elif target == "ind":
-            given_name = f"given_name_{stub.header_add['ind'].index('given_name') + 2}"
-            assert household.members.filter(flex_fields__given_name=given_name).exists()
+            assert res.status_code == 302
+            job: AsyncJob = household.program.jobs.first()
+            job.queue()

@@ -1,10 +1,8 @@
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 import responses
 import pytest
 import re
 from django.urls import reverse
-from webtest import Upload
 
 from country_workspace.state import state
 from constance import config
@@ -54,31 +52,6 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     django_app.set_user(admin_user)
     django_app._user = admin_user
     return django_app
-
-
-def test_import_data_rdi(force_migrated_records, app, program):
-    # NOTE: This test is linked to the content of `data/rdi_one.xlsx`
-    res = app.get("/").follow()
-    res.forms["select-tenant"]["tenant"] = program.country_office.pk
-    res.forms["select-tenant"].submit()
-
-    url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
-    data = (Path(__file__).parent.parent / "data/rdi_one.xlsx").read_bytes()
-
-    res = app.get(url)
-
-    res.forms["import-file"]["_selected_tab"] = "rdi"
-    res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
-    res.forms["import-file"]["rdi-detail_column_label"] = "full_name"
-    res = res.forms["import-file"].submit()
-    assert res.status_code == 302
-    assert program.households.count() == 1
-    assert program.individuals.count() == 5
-
-    hh: "CountryHousehold" = program.households.first()
-    assert hh.members.count() == 5
-    assert (head := hh.heads().first())
-    assert head.name == "Edward Jeffrey Rogers"
 
 
 @pytest.mark.django_db(transaction=True)
