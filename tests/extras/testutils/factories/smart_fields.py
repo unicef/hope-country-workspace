@@ -59,7 +59,12 @@ class DataCheckerFactory(AutoRegisterModelFactory):
         if extracted:
             fs = FieldsetFactory()
             for i in extracted:
-                FlexFieldFactory(fieldset=fs, name=i)
+                if isinstance(i, str):
+                    FlexFieldFactory(fieldset=fs, name=i)
+                elif isinstance(i, (tuple, list)):
+                    df = FieldDefinitionFactory(field_type=i[1])
+                    FlexFieldFactory(fieldset=fs, name=i[0], definition=df)
+
             self.fieldsets.add(fs)
 
 
