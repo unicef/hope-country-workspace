@@ -110,7 +110,6 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         )
         job.queue()
         self.message_user(request, "Task scheduled", messages.SUCCESS)
-        return job
 
     @button()
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":

@@ -36,12 +36,6 @@ class Household(Validable, BaseModel):
     def country_office(self) -> "Office":
         return self.batch.program.country_office
 
-    @cached_property
-    def members(self) -> "QuerySet[Individual]":
-        from .individual import Individual
-
-        return Individual.objects.filter(household=self)
-
     def validate_with_checker(self) -> bool:
         hh_valid = True
         for ind in self.members.all():
