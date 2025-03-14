@@ -1,6 +1,6 @@
-from collections.abc import Generator, Callable
+from collections.abc import Callable, Generator
 from functools import partial
-from typing import cast, Final, Iterable
+from typing import Final, Iterable, cast
 from urllib.parse import urlparse, urlunparse
 
 from country_workspace.contrib.kobo.api.common import DataGetter
@@ -9,10 +9,10 @@ from country_workspace.contrib.kobo.api.data.helpers import download_attachments
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.api.raw import (
     asset as raw_asset,
-    submission_list as raw_submission_list,
+    asset_list as raw_asset_list,
     common as raw_common,
+    submission_list as raw_submission_list,
 )
-from country_workspace.contrib.kobo.api.raw import asset_list as raw_asset_list
 
 API_ROOT: Final[str] = "api/v2"
 ASSETS_PATH: Final[str] = f"{API_ROOT}/assets.json"

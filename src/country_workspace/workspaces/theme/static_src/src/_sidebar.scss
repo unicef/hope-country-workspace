@@ -1,5 +1,8 @@
 ul.menu {
   li.selected {
-    background-color: rgba(0, 60, 143, 0.08);
+    background-color: $admin-main;
+  }
+  li:hover{
+    background-color: #c9cacf;
   }
 }

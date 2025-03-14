@@ -20,39 +20,39 @@
 
 {% block menu %}
     <ul class="menu p-0 w-full h-5/6 mt-10">
-        <li class="flex h-12">
+        <li class="flex h-12 {% if not modeladmin_name %}selected{% endif %}">
             <a class="flex w-full px-4" href="{% url "workspace:index" %}">
                 <span class="flex text-2xl pt-2 pr-4 icon icon-home"></span>
                 <div class="flex-grow pt-3 display-open">{% translate "Home" %}</div>
             </a>
         </li>
         {% if active_program %}
-            <li>
+            <li class="{% if modeladmin_name == 'CountryHouseholdAdmin' %}selected{% endif %}">
                 <a class="flex w-full px-4" href="{% url "workspace:workspaces_countryhousehold_changelist" %}">
                     <span class="flex text-2xl pt-2 pr-4 icon icon-members"></span>
                     <div class="flex-grow pt-3 display-open">{% translate "Households" %}</div>
                 </a>
             </li>
-            <li class="pl-5">
+            <li class="pl-5 {% if modeladmin_name == 'CountryIndividualAdmin' %}selected{% endif %}">
                 <a class="flex w-full px-4" href="{% url "workspace:workspaces_countryindividual_changelist" %}">
                     <span class="flex text-2xl pt-2 pr-4 icon icon-user"></span>
                     <div class="flex-grow pt-3 display-open">{% translate "Individuals" %}</div>
                 </a>
             </li>
-            <li class="flex">
+            <li class="flex {% if modeladmin_name == 'CountryProgramAdmin' %}selected{% endif %}">
                 <a class="flex w-full px-4"
                    href="{% url "workspace:workspaces_countryprogram_change" active_program.pk %}">
                     <span class="flex text-2xl pt-2 pr-4 icon icon-equalizer"></span>
                     <div class="flex-grow pt-3 display-open">{% translate "Program" %}</div>
                 </a>
             </li>
-            <li class="flex">
+            <li class="flex {% if modeladmin_name == 'CountryBatchAdmin' %}selected{% endif %}">
                 <a class="flex w-full px-4" href="{% url "workspace:workspaces_countrybatch_changelist" %}">
                     <span class="flex text-2xl pt-2 pr-4 icon icon-sign"></span>
                     <div class="flex-grow pt-3 display-open">{% translate "Batch" %}</div>
                 </a>
             </li>
-            <li class="flex">
+            <li class="flex {% if modeladmin_name == 'CountryJobAdmin' %}selected{% endif %}">
                 <a class="flex w-full px-4" href="{% url "workspace:workspaces_countryasyncjob_changelist" %}">
                     <span class="flex text-2xl pt-2 pr-4 icon icon-globe"></span>
                     <div class="flex-grow pt-3 display-open">{% translate "Jobs" %}</div>

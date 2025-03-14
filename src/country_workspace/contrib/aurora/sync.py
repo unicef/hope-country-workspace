@@ -1,11 +1,11 @@
 from urllib.parse import urlparse
+
 from django.core.cache import cache
 
-from country_workspace.models import SyncLog
-from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.aurora.client import AuroraClient
+from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.hope.sync.office import sync_programs
-from country_workspace.models import AsyncJob
+from country_workspace.models import AsyncJob, SyncLog
 
 
 def sync_all(job: AsyncJob) -> dict[str, int]:

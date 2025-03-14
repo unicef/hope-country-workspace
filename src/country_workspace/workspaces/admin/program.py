@@ -23,7 +23,7 @@ from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
-from .forms import ImportFileForm, BulkUpdateImportForm
+from .forms import BulkUpdateImportForm, ImportFileForm
 from country_workspace.constants import BATCH_NAME_DEFAULT
 from country_workspace.contrib.aurora.pipeline import import_from_aurora
 from country_workspace.state import state
@@ -135,6 +135,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     def has_delete_permission(self, request: HttpResponse, obj: CountryProgram | None = None) -> bool:
         return False
+
+    def change_view(
+        self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
+    ) -> HttpResponse:
+        extra_context = extra_context or {}
+        extra_context["modeladmin"] = self
+        extra_context["modeladmin_name"] = self.__class__.__name__
+        return super().change_view(request, object_id, form_url, extra_context)
 
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, None] | None = None) -> HttpResponse:
         url = reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])

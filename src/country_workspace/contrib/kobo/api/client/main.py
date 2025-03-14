@@ -2,11 +2,11 @@ from collections.abc import Generator
 from functools import partial
 from typing import Final
 
+from requests import Session
+
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.helpers import DataGetter, get_asset_list, get_asset_list_url
 from country_workspace.contrib.kobo.api.data.asset import Asset
-from requests import Session
-
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 
