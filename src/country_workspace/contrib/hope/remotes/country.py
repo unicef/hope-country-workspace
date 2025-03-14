@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
 from django import forms
-
 from hope_flex_fields.attributes.abstract import AbstractAttributeHandler, AttributeHandlerConfig
 
 if TYPE_CHECKING:

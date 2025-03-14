@@ -1,11 +1,12 @@
 import factory
+
+from country_workspace.models.batch import Batch
+from country_workspace.workspaces.models import CountryBatch
 from django.utils import timezone
 
 from .base import AutoRegisterModelFactory
 from .program import ProgramFactory
 from .user import UserFactory
-from country_workspace.models.batch import Batch
-from country_workspace.workspaces.models import CountryBatch
 
 
 class BatchFactory(AutoRegisterModelFactory):

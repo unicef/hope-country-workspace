@@ -15,6 +15,7 @@ class HCWConfig(AppConfig):
         import django_celery_boost.admin
 
         import country_workspace.compat.admin_extra_buttons as c
+
         from .utils import flags  # noqa
 
         admin_extra_buttons.api.confirm_action = c.confirm_action

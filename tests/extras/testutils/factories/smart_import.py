@@ -1,5 +1,4 @@
 import factory
-
 from hope_smart_import.models import Configuration
 
 from .base import AutoRegisterModelFactory

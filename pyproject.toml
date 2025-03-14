@@ -97,32 +97,6 @@ dev-dependencies = [
     "ruff>=0.9.3",
 ]
 
-[tool.black]
-line-length = 120
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.pytest_cache
-  | \.tox
-  | \.venv
-  | ~build
-  | build
-  | ops
-  | migrations
-)/
-'''
-
-#[tool.isort]
-#profile = "black"
-#line_length = 120
-#default_section = "THIRDPARTY"
-#known_first_party = []
-#known_django = "django"
-#sections = ["FUTURE","STDLIB","DJANGO","THIRDPARTY","FIRSTPARTY","LOCALFOLDER"]
-#include_trailing_comma = true
-#skip = ["migrations", "snapshots", ".venv"]
-
 
 [tool.django-stubs]
 django_settings_module = "country_workspace.config.settings"

@@ -1,9 +1,10 @@
 import factory.fuzzy
+
+from country_workspace.models import SyncLog
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
 from .base import AutoRegisterModelFactory
-from country_workspace.models import SyncLog
 
 
 class SyncLogFactory(AutoRegisterModelFactory):

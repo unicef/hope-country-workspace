@@ -1,11 +1,11 @@
 from typing import Any
 
 import factory
-from django.contrib.contenttypes.models import ContentType
-from strategy_field.utils import fqn
-
 from hope_smart_export.exporters import ExportAsText
 from hope_smart_export.models import Category, Configuration
+from strategy_field.utils import fqn
+
+from django.contrib.contenttypes.models import ContentType
 from testutils.factories import AutoRegisterModelFactory
 
 

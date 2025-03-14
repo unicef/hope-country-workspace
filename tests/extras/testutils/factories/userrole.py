@@ -1,10 +1,11 @@
 import factory
 
+from country_workspace.models import UserRole
+
 from .base import AutoRegisterModelFactory
 from .django_auth import GroupFactory
 from .office import OfficeFactory
 from .user import UserFactory
-from country_workspace.models import UserRole
 
 
 class UserRoleFactory(AutoRegisterModelFactory):

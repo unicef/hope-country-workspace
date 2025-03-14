@@ -9,7 +9,6 @@ from .base import BaseModel, Validable
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
-
     from hope_flex_fields.models import DataChecker
 
     from .individual import Individual

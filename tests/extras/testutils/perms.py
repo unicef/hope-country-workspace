@@ -2,14 +2,15 @@ from contextlib import ContextDecorator
 from random import choice
 from unittest.mock import Mock
 
-from django.conf import settings
-from django.contrib.auth.models import Group, Permission
 from faker import Faker
 
-from .factories import GroupFactory
 from country_workspace.models import Office, Program, UserRole
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryProgram
+from django.conf import settings
+from django.contrib.auth.models import Group, Permission
+
+from .factories import GroupFactory
 
 whitespace = " \t\n\r\v\f"
 lowercase = "abcdefghijklmnopqrstuvwxyz"

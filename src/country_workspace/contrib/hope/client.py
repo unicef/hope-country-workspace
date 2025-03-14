@@ -8,8 +8,9 @@ import requests
 from constance import config
 from requests.exceptions import RequestException
 
-from .signals import hope_request_end, hope_request_start
 from country_workspace.exceptions import RemoteError
+
+from .signals import hope_request_end, hope_request_start
 
 if TYPE_CHECKING:
     JsonType = None | int | str | bool | list["JsonType"] | dict[str, "JsonType"]

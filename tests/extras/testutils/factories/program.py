@@ -1,10 +1,11 @@
 import factory
 
+from country_workspace.models import Program
+from country_workspace.workspaces.models import CountryProgram
+
 from .base import AutoRegisterModelFactory
 from .office import OfficeFactory
 from .smart_import import DataCheckerFactory
-from country_workspace.models import Program
-from country_workspace.workspaces.models import CountryProgram
 
 
 class ProgramFactory(AutoRegisterModelFactory):
