@@ -7,6 +7,9 @@ import factory
 import pytest
 import responses
 
+from django.core.files.storage.base import Storage
+from django.core.files.base import ContentFile
+
 if TYPE_CHECKING:
     from country_workspace.models import User
 
@@ -32,6 +35,37 @@ def pytest_addoption(parser):
         default=False,
         help="will not start browsers in headless mode",
     )
+
+
+class MockStorage(Storage):
+    def __init__(self):
+        self._file_content = None
+
+    def save(self, name, content, max_length=None):
+        self._file_content = content.read() if hasattr(content, "read") else content
+        return "mocked/path/to/file"
+
+    def get_available_name(self, name, max_length=None):
+        return "mocked/path/to/file"
+
+    def open(self, name, mode="rb"):
+        if self._file_content is not None:
+            return ContentFile(self._file_content)
+        return ContentFile(b"id,name\n1,Test")
+
+
+@pytest.fixture
+def mock_storage():
+    return MockStorage()
+
+
+@pytest.fixture(autouse=True)
+def patch_asyncjob(mock_storage):
+    from django.db import models
+    from country_workspace.models.jobs import AsyncJob
+
+    AsyncJob._meta.get_field("file").storage = mock_storage
+    AsyncJob._meta.get_field("file").__class__ = models.FileField
 
 
 def pytest_configure(config):

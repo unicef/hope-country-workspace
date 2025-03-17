@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0004_kobosubmission_delete_koboasset"),
+        ("country_workspace", "0005_alter_asyncjob_file"),
     ]
 
     operations = [
