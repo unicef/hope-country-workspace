@@ -1,5 +1,4 @@
 from django import forms
-
 from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
 
 from country_workspace.contrib.hope.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME

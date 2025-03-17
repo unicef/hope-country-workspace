@@ -10,9 +10,10 @@ from django.utils.text import slugify
 from redis_lock.django_cache import RedisCache
 from sentry_sdk import capture_exception
 
-from .signals import cache_get, cache_invalidate, cache_set
 from country_workspace import VERSION
 from country_workspace.state import state
+
+from .signals import cache_get, cache_invalidate, cache_set
 
 if TYPE_CHECKING:
     from ..models import Office, Program

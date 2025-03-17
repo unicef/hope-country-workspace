@@ -1,8 +1,9 @@
-import pytest
-import responses
-import requests
 import re
 from typing import Callable
+
+import pytest
+import requests
+import responses
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.exceptions import RemoteError

@@ -1,7 +1,6 @@
 from django import forms
 from django.conf import settings
 from django.utils.text import slugify
-
 from hope_flex_fields.models import FieldDefinition
 
 from country_workspace.models import SyncLog

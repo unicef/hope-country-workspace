@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 
 import reversion
 from django.db import models
+from django.utils import timezone
 
 from .base import BaseModel, Validable
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
-
     from hope_flex_fields.models import DataChecker
 
     from .individual import Individual
@@ -37,11 +37,19 @@ class Household(Validable, BaseModel):
         return self.batch.program.country_office
 
     def validate_with_checker(self) -> bool:
-        super().validate_with_checker()
-        errors = self.program.beneficiary_validator.validate(self)
-        if errors:
-            self.errors["dct"] = errors
-        self.save(update_fields=["errors"])
+        hh_valid = True
+        for ind in self.members.all():
+            if not ind.validate_with_checker():
+                hh_valid = False
+        if hh_valid:
+            super().validate_with_checker()
+            errors = self.program.beneficiary_validator.validate(self)
+            if errors:
+                self.errors["dct"] = errors
+        else:
+            self.errors["dct"] = ["Some member did not validate"]
+        self.last_checked = timezone.now()
+        self.save(update_fields=["errors", "last_checked"])
         return not bool(self.errors)
 
     # Business methods

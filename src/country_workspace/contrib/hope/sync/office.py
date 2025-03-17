@@ -1,12 +1,12 @@
 from io import TextIOBase
 
 from django.core.cache import cache
-
 from hope_flex_fields.models import DataChecker
+
+from country_workspace.models import Office, Program, SyncLog
 
 from .. import constants
 from ..client import HopeClient
-from country_workspace.models import Office, Program, SyncLog
 
 
 def sync_offices(stdout: TextIOBase | None = None) -> dict[str, int]:

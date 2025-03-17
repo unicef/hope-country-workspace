@@ -1,6 +1,7 @@
 import io
 import os
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
 import openpyxl
 import pytest
@@ -8,13 +9,10 @@ import xlsxwriter
 from django.urls import reverse
 from testutils.factories import FlexFieldFactory
 from testutils.utils import select_office
-from unittest import mock
 
 from country_workspace.state import state
 from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_xls_importer
-
 from tests.workspace.actions import stub
-
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp

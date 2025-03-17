@@ -1,7 +1,6 @@
 import io
 
 from django.db.transaction import atomic
-
 from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.models import AsyncJob, Batch, Household

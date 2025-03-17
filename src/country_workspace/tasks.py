@@ -39,7 +39,7 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
             pk=pk,
             version=version,
         )
-    except AsyncJob.DoesNotExist as e:
+    except AsyncJob.DoesNotExist as e:  # pragma: no cover
         sentry_sdk.capture_exception(e)
         raise e
 

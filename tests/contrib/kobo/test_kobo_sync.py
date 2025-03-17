@@ -3,18 +3,19 @@ from unittest.mock import Mock
 
 import pytest
 from constance.test.unittest import override_config
+from pytest_mock import MockerFixture
+
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.sync import (
-    make_client,
-    extract_household_data,
-    create_individuals,
-    create_household,
-    import_data,
-    ImportResult,
-    import_asset,
     ASSET_CACHE_KEY,
+    ImportResult,
+    create_household,
+    create_individuals,
+    extract_household_data,
+    import_asset,
+    import_data,
+    make_client,
 )
-from pytest_mock import MockerFixture
 
 EMPTY = ""
 TOKEN = "token"

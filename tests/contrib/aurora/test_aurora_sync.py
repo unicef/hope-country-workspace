@@ -1,23 +1,21 @@
-import pytest
-import responses
 import re
-
+from contextlib import nullcontext
 from typing import Generator
 
-from contextlib import nullcontext
-
+import pytest
+import responses
+from constance import config
 from django.core.cache import cache
 from pytest_mock import MockerFixture
+
+from country_workspace.contrib.aurora.client import AuroraClient
+from country_workspace.contrib.aurora.models import Project
 from country_workspace.contrib.aurora.sync import (
     sync_all,
     sync_projects,
     sync_registrations,
 )
-from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.contrib.aurora.models import Project
 from country_workspace.models import SyncLog
-from constance import config
-
 from tests.contrib.aurora import stub
 
 

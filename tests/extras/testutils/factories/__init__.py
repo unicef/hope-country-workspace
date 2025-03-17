@@ -5,6 +5,7 @@ from pathlib import Path
 from factory.django import DjangoModelFactory
 from pytest_factoryboy import register
 
+from .aurora import ProjectFactory, RegistrationFactory  # noqa
 from .base import AutoRegisterModelFactory, TAutoRegisterModelFactory, factories_registry
 from .batch import BatchFactory, CountryBatchFactory  # noqa
 from .django_celery_beat import PeriodicTaskFactory  # noqa
@@ -14,7 +15,6 @@ from .job import AsyncJobFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
-from .aurora import ProjectFactory, RegistrationFactory  # noqa
 from .smart_fields import DataCheckerFactory, FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory  # noqa
 from .social import SocialAuthUserFactory  # noqa
 from .sync import SyncLogFactory  # noqa

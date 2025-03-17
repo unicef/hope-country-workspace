@@ -2,10 +2,12 @@ import factory
 import factory.fuzzy
 
 from country_workspace.contrib.aurora.models import Project, Registration
+
+from .base import AutoRegisterModelFactory
 from .program import ProgramFactory
 
 
-class ProjectFactory(factory.django.DjangoModelFactory):
+class ProjectFactory(AutoRegisterModelFactory):
     name = factory.Sequence(lambda n: f"Project {n}")
     reference_pk = factory.fuzzy.FuzzyInteger(100)
     program = factory.SubFactory(ProgramFactory)
@@ -15,7 +17,7 @@ class ProjectFactory(factory.django.DjangoModelFactory):
         django_get_or_create = ("name",)
 
 
-class RegistrationFactory(factory.django.DjangoModelFactory):
+class RegistrationFactory(AutoRegisterModelFactory):
     name = factory.Sequence(lambda n: f"Registration {n}")
     active = factory.fuzzy.FuzzyChoice([True, False])
     reference_pk = factory.fuzzy.FuzzyInteger(100)

@@ -2,7 +2,7 @@ import factory.fuzzy
 from django import forms
 from hope_flex_fields.models import DataChecker, DataCheckerFieldset, FieldDefinition, Fieldset, FlexField
 
-from testutils.factories import AutoRegisterModelFactory
+from .base import AutoRegisterModelFactory
 
 
 class FieldDefinitionFactory(AutoRegisterModelFactory):
@@ -59,7 +59,12 @@ class DataCheckerFactory(AutoRegisterModelFactory):
         if extracted:
             fs = FieldsetFactory()
             for i in extracted:
-                FlexFieldFactory(fieldset=fs, name=i)
+                if isinstance(i, str):
+                    FlexFieldFactory(fieldset=fs, name=i)
+                elif isinstance(i, (tuple, list)):
+                    df = FieldDefinitionFactory(field_type=i[1])
+                    FlexFieldFactory(fieldset=fs, name=i[0], definition=df)
+
             self.fieldsets.add(fs)
 
 

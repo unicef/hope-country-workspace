@@ -86,7 +86,9 @@ ul.object-tools {
     }
   }
 }
-
+.errors{
+      @apply bg-red-400 text-black;
+}
 #content {
   #content-main {
     @apply p-3 bg-white flex;

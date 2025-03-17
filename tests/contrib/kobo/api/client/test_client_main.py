@@ -1,5 +1,6 @@
-from country_workspace.contrib.kobo.api.client.main import Client, ACCEPT_JSON_HEADERS
 from pytest_mock import MockerFixture
+
+from country_workspace.contrib.kobo.api.client.main import ACCEPT_JSON_HEADERS, Client
 
 
 def test_client(mocker: MockerFixture) -> None:
