@@ -210,6 +210,9 @@ def test_admin_delete(
         pytest.skip("No 'delete' permission")
 
 
+@pytest.mark.skip_buttons(
+    "country_workspace.UserAdmin:link_user_data", "country_workspace.UserAdmin:load", "country_workspace.UserAdmin:ad"
+)
 def test_admin_buttons(
     app: "DjangoTestApp",
     model_admin: "ExtraButtonsMixin",
