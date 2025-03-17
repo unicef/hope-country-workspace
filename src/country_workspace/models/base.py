@@ -57,13 +57,13 @@ class Cachable:
 
 
 class Validable(Cachable, models.Model):
+    name = models.CharField(_("Name"), max_length=255)
     batch = models.ForeignKey("Batch", on_delete=models.CASCADE)
     last_checked = models.DateTimeField(default=None, null=True, blank=True)
     errors = models.JSONField(default=dict, blank=True, editable=False)
     flex_fields = models.JSONField(default=dict, blank=True)
     flex_files = models.BinaryField(null=True, blank=True)
 
-    name = models.CharField(_("Name"), max_length=255)
     removed = models.BooleanField(_("Removed"), default=False)
     checksum = models.CharField(_("checksum"), max_length=300, blank=True, null=True, db_index=True)
 

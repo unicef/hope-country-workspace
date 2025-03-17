@@ -1,8 +1,16 @@
+from adminfilters.autocomplete import AutoCompleteFilter
 from django.contrib import admin
 
-from ..models import UserRole
+from country_workspace.admin.base import BaseModelAdmin
+from country_workspace.models import UserRole
 
 
 @admin.register(UserRole)
-class UserRoleAdmin(admin.ModelAdmin):
-    list_display = ("user", "country_office", "group")
+class UserRoleAdmin(BaseModelAdmin):
+    list_display = ("user", "country_office", "program", "group")
+    list_filter = (
+        ("user", AutoCompleteFilter),
+        ("country_office", AutoCompleteFilter),
+        ("program", AutoCompleteFilter),
+        ("group", AutoCompleteFilter),
+    )

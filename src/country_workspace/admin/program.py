@@ -17,9 +17,25 @@ if TYPE_CHECKING:
 
 @admin.register(Program)
 class ProgramAdmin(BaseModelAdmin):
-    list_display = ("name", "sector", "status", "active")
+    list_display = (
+        "name",
+        "sector",
+        "status",
+        "active",
+        "beneficiary_validator",
+        "household_checker",
+        "individual_checker",
+    )
     search_fields = ("name",)
-    list_filter = (("country_office", AutoCompleteFilter), "status", "active", "sector")
+    list_filter = (
+        ("country_office", AutoCompleteFilter),
+        "status",
+        "active",
+        "sector",
+        "beneficiary_validator",
+        "household_checker",
+        "individual_checker",
+    )
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
 

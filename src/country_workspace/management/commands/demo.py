@@ -8,7 +8,7 @@ from django.contrib.auth.models import Group
 from django.core.management import BaseCommand
 from django.utils.text import slugify
 
-from country_workspace.models import SyncLog
+from country_workspace.models import SyncLog, Individual
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,12 @@ class Command(BaseCommand):
             ):
                 sync_all()
 
+        self.stdout.write("Cleaning ond data")
         Batch.objects.all().delete()
         Household.objects.all().delete()
+        Individual.objects.all().delete()
+
+        self.stdout.write("Generating new data")
         for co in Office.objects.filter(active=True):
             for p in co.programs.filter():
                 b = BatchFactory(country_office=co, name=f"Batch {p}", program=p)

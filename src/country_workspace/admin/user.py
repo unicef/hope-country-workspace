@@ -1,15 +1,13 @@
 from admin_extra_buttons.decorators import view
-from admin_extra_buttons.mixins import ExtraButtonsMixin
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest, JsonResponse
-
+from unicef_security.admin import UserAdminPlus
 from ..models import User
 
 
 @admin.register(User)
-class UserAdmin(ExtraButtonsMixin, BaseUserAdmin):
+class UserAdmin(UserAdminPlus):
     def get_search_results(
         self, request: HttpRequest, queryset: QuerySet[User], search_term: str
     ) -> tuple[QuerySet[User], bool]:

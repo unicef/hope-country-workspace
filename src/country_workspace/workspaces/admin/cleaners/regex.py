@@ -36,7 +36,9 @@ class RegexUpdateForm(BaseActionForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
-        self.fields["field"].choices = list(get_checker_fields(checker))
+        choices = list(get_checker_fields(checker))
+        choices.sort()
+        self.fields["field"].choices = choices
 
 
 def regex_update_impl(

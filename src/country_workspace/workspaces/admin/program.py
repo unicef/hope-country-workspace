@@ -177,7 +177,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         return render(request, "workspace/program/configure_columns.html", context)
 
-    @button(permission="workspaces.change_countryprogram")
+    @button(
+        permission="workspaces.change_countryprogram",
+        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
+    )
     def household_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Household columns")
         program: "CountryProgram" = context["original"]
@@ -185,7 +188,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["storage_field"] = "household_columns"
         return self._configure_columns(request, SelectColumnsForm, context)
 
-    @button(permission="workspaces.change_countryprogram")
+    @button(
+        permission="workspaces.change_countryprogram",
+        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
+    )
     def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Individual columns")
         program: "CountryProgram" = context["original"]
@@ -193,7 +199,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["storage_field"] = "individual_columns"
         return self._configure_columns(request, SelectIndividualColumnsForm, context)
 
-    @button(label=_("Update Records"), permission="country_workspace.import_program_data")
+    @button(
+        label=_("Update Records"),
+        permission="country_workspace.import_program_data",
+        html_attrs={"title": "Allow to updated records previously exported."},
+    )
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk, title="Bulk update records via .xlsx import")
         program: "CountryProgram" = context["original"]
@@ -221,7 +231,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
 
-    @button(label=_("Import Data"), permission="country_workspace.import_program_data")
+    @button(
+        label=_("Import Data"),
+        permission="country_workspace.import_program_data",
+        html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora."},
+    )
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk, title="Import Data")
         context["selected_program"] = program = context["original"]

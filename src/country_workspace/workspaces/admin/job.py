@@ -41,9 +41,16 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
         return obj.task_status
 
     def completed_time(self, obj: "CountryAsyncJob|None") -> str:
-        return obj.task_info["completed_at"]
+        try:
+            return obj.task_info["completed_at"]
+        except (KeyError, AttributeError):
+            return "Pending"
 
-    @button(label="Check", permission=lambda r, o, handler: handler.model_admin.has_queue_permission("queue", r, o))
+    @button(
+        label="Check",
+        permission=lambda r, o, handler: handler.model_admin.has_queue_permission("queue", r, o),
+        html_attrs={"title": "Checks errors in Celery."},
+    )
     def celery_check(self, request: "HttpRequest", pk: str) -> "HttpResponse":  # type: ignore
         obj = self.get_object(request, pk)
         obj.check()
