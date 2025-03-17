@@ -36,6 +36,7 @@ def create_individuals(
         individuals.append(
             Individual(
                 batch=batch,
+                household=household,
                 name=individual.get(fullname, ""),
                 flex_fields={clean_field_name(key): value for key, value in individual.items()},
             ),

@@ -91,7 +91,9 @@ def test_create_individuals(mocker: MockerFixture) -> None:
     individuals = create_individuals(batch_mock, household_mock, cast(Submission, data), individual_records_field)
 
     assert individuals == len(data[individual_records_field])
-    individual_class_mock.assert_called_once_with(batch=batch_mock, name=full_name, flex_fields=individual_data)
+    individual_class_mock.assert_called_once_with(
+        batch=batch_mock, name=full_name, household=household_mock, flex_fields=individual_data
+    )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_mock])
 
 
