@@ -244,6 +244,9 @@ class TenantAdminSite(admin.AdminSite):
         extra_context: "dict[str,Any]|None" = None,
         **kwargs: "Any",
     ) -> "HttpResponse":
+        if not extra_context:
+            extra_context = {}
+        extra_context.update({"title": f"Welcome to {state.tenant.name}", "program": state.program})
         return super().index(request, extra_context, **kwargs)
 
     # @method_decorator(never_cache)
@@ -269,7 +272,10 @@ class TenantAdminSite(admin.AdminSite):
             if form.is_valid():
                 co = form.cleaned_data["program"]
                 state.set_selected_program(co)
-                return HttpResponseRedirect(reverse("workspace:index"))
+                "workspace:workspaces_countryhousehold_change"
+                return HttpResponseRedirect(
+                    reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])
+                )
         return None
 
 

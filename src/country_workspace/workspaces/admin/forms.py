@@ -36,7 +36,6 @@ class BulkUpdateImportForm(forms.Form):
 class ImportFileForm(forms.Form):
     batch_name = forms.CharField(required=False, help_text="Label for this batch")
 
-    check_before = forms.BooleanField(required=False, help_text="Prevent import if errors")
     pk_column_name = forms.CharField(
         required=True,
         initial="household_id",
@@ -56,5 +55,11 @@ class ImportFileForm(forms.Form):
     )
 
     first_line = forms.IntegerField(required=True, initial=0, help_text="First line to process")
-    fail_if_alien = forms.BooleanField(required=False)
+
+    check_before = forms.BooleanField(
+        required=False, help_text="Prevent import if errors if data is not valid against data checker."
+    )
+    fail_if_alien = forms.BooleanField(
+        required=False, help_text="Fails if it finds fields which do not exists in data checker."
+    )
     file = forms.FileField(validators=[ValidatableFileValidator()])

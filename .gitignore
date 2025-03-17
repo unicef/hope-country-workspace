@@ -32,3 +32,4 @@ site
 black.txt
 flake8
 act.*
+root/

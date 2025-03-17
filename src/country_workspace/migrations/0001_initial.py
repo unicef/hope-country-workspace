@@ -311,11 +311,11 @@ class Migration(migrations.Migration):
                 ("individual_search", models.TextField(default="name", help_text="Fields to use for searches")),
                 (
                     "household_columns",
-                    models.TextField(default="name\nid", help_text="Columns to display ib the Admin table"),
+                    models.TextField(default="name\nid", help_text="Columns to display in the Admin table"),
                 ),
                 (
                     "individual_columns",
-                    models.TextField(default="name\nid", help_text="Columns to display ib the Admin table"),
+                    models.TextField(default="name\nid", help_text="Columns to display in the Admin table"),
                 ),
                 ("extra_fields", models.JSONField(blank=True, default=dict)),
                 (

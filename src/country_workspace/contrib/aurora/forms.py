@@ -12,15 +12,18 @@ class ImportAuroraForm(forms.Form):
         help_text="What type of registrations are being imported.",
     )
 
-    check_before = forms.BooleanField(required=False, help_text="Prevent import if errors.")
-
     household_name_column = forms.CharField(
         required=False,
         initial="family_name",
         help_text="Which Individual's column contains the Household's name.",
     )
 
-    fail_if_alien = forms.BooleanField(required=False, help_text="Fail if found fields does not exists in validator.")
+    check_before = forms.BooleanField(
+        required=False, help_text="Prevent import if errors if data is not valid against data checker."
+    )
+    fail_if_alien = forms.BooleanField(
+        required=False, help_text="Fails if it finds fields which do not exists in data checker."
+    )
 
     def __init__(self, *args: tuple, program: Program | None = None, **kwargs: dict) -> None:
         super().__init__(*args, **kwargs)

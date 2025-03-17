@@ -12,6 +12,7 @@
         <a class="button" target="flower" href="{{ flower_addr }}/task/{{ original.curr_async_result_id }}">Flower</a>
     {% endif %}
     <h3 class="text-xl">Task Info</h3>
+    {% if original.task_info %}
     <table>
         {% for k,v in original.task_info.items %}
             {% if k|is_safe_celery_info %}
@@ -26,6 +27,9 @@
                 <td>{{ original.queue_position }}</td>
             </tr>
     </table>
+    {% else %}
+        <p>Task registration pending. Please try in a few minutes.</p>
+    {% endif %}
 
 
     <h3 class="text-xl">Queue Info</h3>

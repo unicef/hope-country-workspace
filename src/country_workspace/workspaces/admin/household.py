@@ -50,7 +50,7 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
 
-    @link(change_list=False)
+    @link(change_list=False, html_attrs={"title": "Shows related individuals."})
     def members(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryindividual_changelist")
         obj = btn.context["original"]

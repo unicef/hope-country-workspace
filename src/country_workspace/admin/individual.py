@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 @admin.register(Individual)
 class IndividualAdmin(BaseModelAdmin):
-    list_display = ("name", "batch")
+    list_display = ("name", "household", "country_office", "program", "batch", "removed")
     search_fields = ("name",)
     list_filter = (
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),

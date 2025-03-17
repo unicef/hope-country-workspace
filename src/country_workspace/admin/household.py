@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 @admin.register(Household)
 class HouseholdAdmin(BaseModelAdmin):
-    list_display = ("name", "country_office", "program", "batch")
+    list_display = ("name", "country_office", "program", "batch", "removed")
     list_filter = (
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),

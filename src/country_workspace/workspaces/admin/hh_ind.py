@@ -89,7 +89,11 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         ret.update(**kwargs)
         return ret
 
-    @button(label=_("Validate"), enabled=lambda btn: btn.context["original"].checker)
+    @button(
+        label=_("Validate"),
+        enabled=lambda btn: btn.context["original"].checker,
+        html_attrs={"title": "Validate single Entity and related Children"},
+    )
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: "Beneficiary" = self.get_object(request, pk)
         if obj.validate_with_checker():
@@ -97,7 +101,10 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         else:
             self.message_user(request, _("Validation failed!"), messages.ERROR)
 
-    @button(label=_("Validate Programme"))
+    @button(
+        label=_("Validate Programme"),
+        html_attrs={"title": "Validate Entire Programme: Beneficiaries, Households and Individuals"},
+    )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         opts = self.model._meta
         job = AsyncJob.objects.create(
@@ -111,7 +118,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         job.queue()
         self.message_user(request, "Task scheduled", messages.SUCCESS)
 
-    @button()
+    @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk, title="Raw Data")
         return render(request, f"workspace/{self.model._meta.proxy_for_model._meta.model_name}/raw_data.html", context)
