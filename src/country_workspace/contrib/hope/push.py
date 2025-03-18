@@ -1,3 +1,4 @@
+from collections.abc import Callable, Iterator
 from typing import Any
 from itertools import batched
 from dataclasses import dataclass, field
@@ -20,10 +21,10 @@ from country_workspace.contrib.hope.constants import HOUSEHOLD_PUSH_BATCH_SIZE
 class PushProcessor:
     """Handles pushing household data to an external system through the HopeClient API."""
 
-    queryset: QuerySet[CountryHousehold]
     co_slug: str
     batch_name: str
     program_id: str
+    queryset: QuerySet[CountryHousehold] = field(default_factory=lambda: CountryHousehold.objects.none())
     client: HopeClient = field(default_factory=HopeClient)
     total: dict[str, Any] = field(default_factory=lambda: {"households": 0, "errors": []})
     rdi_id: str | None = field(default=None, init=False)
@@ -32,8 +33,8 @@ class PushProcessor:
         """Initialize the base path for API requests."""
         self.base_path = f"{self.co_slug}/rdi/"
 
-    def validate_households(self) -> None:
-        """Validate each household and its members in the queryset.
+    def check_households_validity(self) -> None:
+        """Check the validity of each household and its members in the queryset.
 
         Adds errors to `self.total["errors"]` if any household or member is invalid.
         """
@@ -65,12 +66,11 @@ class PushProcessor:
             self.total["errors"].append("Cannot push data: rdi_id is not set")
             return
         path = f"{self.base_path}{self.rdi_id}/push/lax/"
-        for batch in batched(self.queryset.iterator(), HOUSEHOLD_PUSH_BATCH_SIZE):
-            batch_ids, batch_data = PushProcessor.prepare_batch(batch)
-            response = self.safe_post(path, batch_data, "Error pushing data")
-            successful_ids = self.process_batch_response(response, batch_ids)
-            if successful_ids and not self.total["errors"]:
-                self.mark_batch_removed(successful_ids)
+        batch_ids, batch_data = self.prepare_batch(list(self.queryset.iterator()))
+        response = self.safe_post(path, batch_data, "Error pushing data")
+        successful_ids = self.process_batch_response(response, batch_ids)
+        if successful_ids and not self.total["errors"]:
+            self.mark_batch_removed(successful_ids)
 
     def rdi_complete(self) -> None:
         """Mark the RDI process as completed in the external system.
@@ -155,13 +155,13 @@ class PushProcessor:
         """
         try:
             with transaction.atomic():
-                households = list(CountryHousehold.objects.filter(id__in=successful_ids))
-                for hh in households:
+                households = CountryHousehold.objects.filter(id__in=successful_ids).prefetch_related("members")
+                for hh in households.iterator():
                     for ind in hh.members.all():
                         ind.removed = True
-                        ind.save()
+                        ind.save(update_fields=["removed"])
                     hh.removed = True
-                    hh.save()
+                    hh.save(update_fields=["removed"])
         except (DatabaseError, Exception) as e:
             self.total["errors"].append(f"Failed to mark IDs {successful_ids} as removed: {e}")
 
@@ -177,22 +177,24 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
         dict[str, Any]: Summary of the operation including processed households and errors.
 
     """
+
+    def steps() -> Iterator[Callable[[], None]]:
+        """Yield steps for pushing household data in batches."""
+        yield processor.rdi_create
+        for batch_pks in batched(job.config["pks"], HOUSEHOLD_PUSH_BATCH_SIZE):
+            processor.queryset = CountryHousehold.objects.filter(pk__in=batch_pks).prefetch_related("members")
+            yield from (processor.check_households_validity, processor.rdi_push_lax)
+        yield processor.rdi_complete
+
     processor = PushProcessor(
-        queryset=CountryHousehold.objects.filter(pk__in=job.config["pks"]),
         co_slug=job.program.country_office.slug,
         batch_name=job.config.get("batch_name"),
         program_id=job.program.hope_id,
     )
-    steps = (
-        processor.validate_households,
-        processor.rdi_create,
-        processor.rdi_push_lax,
-        processor.rdi_complete,
-    )
-    for step in steps:
+    for step in steps():
         step()
         if processor.total["errors"]:
-            break
+            return processor.total
     return processor.total
 
 
