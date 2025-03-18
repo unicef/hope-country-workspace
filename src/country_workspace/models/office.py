@@ -12,6 +12,7 @@ class Office(BaseModel):
     code = models.CharField(max_length=100, blank=True, null=True, db_index=True, unique=True)
     slug = models.SlugField(max_length=100, blank=True, null=True, db_index=True, unique=True)
     active = models.BooleanField(default=False)
+    country_iso_code = models.CharField(max_length=3, blank=False, null=False)
 
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
 

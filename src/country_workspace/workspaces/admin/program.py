@@ -317,7 +317,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 owner=request.user,
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
-                    "country_code": form.cleaned_data["country_code"],
+                    "country_code": program.country_office.country_iso_code,
                     "individual_records_field": form.cleaned_data["individual_records_field"],
                 },
             )

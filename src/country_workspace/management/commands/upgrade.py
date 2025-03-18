@@ -170,6 +170,7 @@ class Command(BaseCommand):
                     settings.TENANT_HQ,
                 ),
                 name=settings.TENANT_HQ,
+                country_iso_code=settings.TENANT_HQ_COUNTRY,
             )
             call_command("upgradescripts", ["apply"])
             echo("Upgrade completed", style_func=self.style.SUCCESS)
