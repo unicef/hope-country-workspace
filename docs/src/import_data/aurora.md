@@ -16,27 +16,31 @@ are defined in the Constance configuration within the [Admin Interface](../inter
 Home › Constance › Config > Remote System Tokens
 ```
 
-2. Additionally, select the appropriate **checkers** for both **Households** and **Individuals** corresponding to the specific program.
+2. Additionally, select the appropriate **checkers** for both **Households** and **Individuals** corresponding to the specific program within the [Collector Interface](../interfaces.md#collector-interface):
+```
+Programme
+```
 
 ---
 
 ### Processing
 
 To begin, in the [Collector Interface](../interfaces.md#collector-interface), navigate to the menu
-
-    Program
-
+```
+Programme
+```
 menu, then press the **[Import Data]** button and select the **[Aurora]** tab. Here, you can configure the import settings:
 
 - **Batch Name** – Specify a custom batch name if needed.
 
 By default, will be used: *<"Batch " + the current datetime>*
 
-- **Registration** – Select the specific Aurora registration to import. If needed, [synchronize](../interfaces.md#synchronize-unified-classifiers) registrations before proceeding.
-- **Check Before** – Enable this option to prevent the import if errors are detected.
+- **Registration** – Select the specific Aurora registration to import. If needed, [synchronize](../interfaces.md#synchronize-unified-classifiers) unified classifiers before proceeding.
 - **Household Name Column** – Specify which Individual's column contains the Household's name.
 
 By default, this is set to *family_name*.
+
+- **Check Before** – Enable this option to prevent the import if errors are detected.
 
 - **Fail if Alien** – Enable this option to fail the import if any unexpected fields (not defined in the validator) are found.
 
