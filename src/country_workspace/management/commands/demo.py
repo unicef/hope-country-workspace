@@ -77,7 +77,7 @@ class Command(BaseCommand):
             ):
                 sync_all()
 
-        self.stdout.write("Cleaning ond data")
+        self.stdout.write("Cleaning old data")
         Batch.objects.all().delete()
         Household.objects.all().delete()
         Individual.objects.all().delete()

@@ -7,15 +7,6 @@ Hope Workspace provides two interfaces for different roles:
 The primary interface for data collection and processing, offering an enhanced user experience with additional workspace features.
 
 
-
-#### Households Page / Individuals Page
-
-Displays a list of households and individuals related to the selected program, with filtering options and the ability to validate the entire program.
-
-When selecting an item, you can view or edit the imported data by columns, make necessary corrections, and validate the data for the chosen entry to detect any potential issues.
-
----
-
 #### Program page
 
 Provides complete information about the selected program, along with available actions accessible via buttons, including:
@@ -40,7 +31,15 @@ For convenience, the **Program** page includes a dedicated button, represented b
 
 ---
 
-#### Batch page
+#### Households Page / Individuals Page
+
+Displays a list of households and individuals related to the selected program, with filtering options and the ability to validate the entire program.
+
+When selecting an item, you can view or edit the imported data by columns, make necessary corrections, and validate the data for the chosen entry to detect any potential issues.
+
+---
+
+#### Batches page
 
 Displays a list of batches. A batch is an entity that contains references to imported data sources for the selected program. The page includes filtering options, allowing users to refine the list. For a selected batch, you can view the imported records.
 
