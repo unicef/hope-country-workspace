@@ -74,7 +74,9 @@ def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper"):
     assert "You do not have any Office enabled." in res.text
 
     with user_grant_permissions(
-        user, ["workspaces.view_countryhousehold", "workspaces.view_countryindividual"], program.country_office
+        user,
+        ["workspaces.view_countryhousehold", "workspaces.view_countryindividual", "workspaces.view_countryprogram"],
+        program.country_office,
     ):
         hh = program.country_office.programs.first().households.first()
         res = app.get(reverse("workspace:select_tenant"), user=user)
