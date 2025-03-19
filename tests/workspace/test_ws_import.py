@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
 
-    from country_workspace.workspaces.models import CountryHousehold, CountryProgram
+    from country_workspace.workspaces.models import CountryProgram
 
 
 @pytest.fixture
@@ -55,13 +55,13 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    ("stub_data", "error_expected", "error_message"),
+    ("stub_data", "error_expected", "hh_count", "ind_count", "error_message"),
     [
-        (stub.imported["correct"], False, None),
-        (stub.imported["without_prefix_household"], True, "No data found with prefix"),
-        (stub.imported["without_prefix_individuals"], True, "No data found with prefix"),
-        (stub.imported["multiple_households"], True, "Multiple households found"),
-        (stub.imported["without_head"], True, "No head of household {'admin1': 'UA01'} found"),
+        (stub.imported["correct"], False, 2, 3, None),  # 2 hh: 1st with 1 ind, 2nd with 2 inds
+        (stub.imported["no_individuals"], False, 0, 0, None),  # No individuals, no Household
+        (stub.imported["multiple_households"], True, 0, 0, "Multiple households found"),  # Multiple households error
+        (stub.imported["empty_household_data"], False, 1, 1, None),  # Only ind without hh data
+        (stub.imported["update_head_name"], False, 1, 1, None),  # Household name updated from head
     ],
 )
 def test_import_data_aurora(
@@ -71,9 +71,10 @@ def test_import_data_aurora(
     mocked_responses: responses.RequestsMock,
     stub_data: dict[str, Any],
     error_expected: bool,
+    hh_count: int,
+    ind_count: int,
     error_message: str,
 ) -> None:
-    # NOTE: This test is linked to the stub data in `tests/contrib/aurora/stub.py`
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()
@@ -95,9 +96,11 @@ def test_import_data_aurora(
             res.forms["import-aurora"].submit()
     else:
         res = res.forms["import-aurora"].submit()
-
-        households: "list[CountryHousehold]" = program.households.all()
-        assert households.count() == 2
-        assert {hh.members.count() for hh in households} == {1, 3}
-        assert {hh.heads().first().name for hh in households} == {"as", "Roman"}
-        assert {hh.name for hh in households} == {"sad", "Berezinski"}
+        households = program.households.all()
+        assert households.count() == hh_count
+        assert sum(hh.members.count() for hh in households) == ind_count
+        if hh_count == 2:
+            assert {hh.members.count() for hh in households} == {1, 2}
+            assert {hh.heads().first().name for hh in households} == {"John", "Jane"}
+        elif hh_count == 1 and stub_data == stub.imported["update_head_name"]:
+            assert households.first().name == "Doe"
