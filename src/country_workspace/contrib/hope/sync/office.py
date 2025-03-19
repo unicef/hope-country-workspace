@@ -25,6 +25,7 @@ def sync_offices(stdout: TextIOBase | None = None) -> dict[str, int]:
                         "code": record["code"],
                         "active": record["active"],
                         "long_name": record["long_name"],
+                        # TODO: sync country iso code
                     },
                 )
                 totals["add" if created else "upd"] += 1
