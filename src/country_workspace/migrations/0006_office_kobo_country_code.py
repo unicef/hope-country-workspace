@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="office",
-            name="country_iso_code",
+            name="kobo_country_code",
             field=models.CharField(max_length=3, null=True),
         ),
     ]

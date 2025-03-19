@@ -10,7 +10,7 @@ from .base import BaseModelAdmin
 
 @admin.register(Office)
 class OfficeAdmin(BaseModelAdmin):
-    list_display = ("name", "long_name", "slug", "code", "active", "country_iso_code")
+    list_display = ("name", "long_name", "slug", "code", "active", "kobo_country_code")
     search_fields = ("name", "slug", "code")
     list_filter = ("active",)
     readonly_fields = ("hope_id", "slug")

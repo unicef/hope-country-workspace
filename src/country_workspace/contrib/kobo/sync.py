@@ -88,7 +88,7 @@ def import_data(job: AsyncJob) -> ImportResult:
         source=Batch.BatchSource.KOBO,
     )
     individual_records_field = job.config["individual_records_field"]
-    client = make_client(job.program.country_office.country_iso_code)
+    client = make_client(job.program.country_office.kobo_country_code)
 
     household_counter = 0
     individual_counter = 0

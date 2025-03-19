@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0006_office_country_iso_code"),
+        ("country_workspace", "0006_office_kobo_country_code"),
     ]
 
     operations = [

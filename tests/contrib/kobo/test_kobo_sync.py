@@ -165,5 +165,5 @@ def test_import_data(mocker: MockerFixture) -> None:
         imported_by=job_mock.owner,
         source=batch_class_mock.BatchSource.KOBO,
     )
-    make_client_mock.assert_called_once_with(job_mock.program.country_office.country_iso_code)
+    make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
     import_asset_mock.assert_called_once_with(batch_mock, asset_mock, INDIVIDUAL_RECORDS_FIELD)
