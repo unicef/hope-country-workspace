@@ -95,11 +95,9 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     for asset in client.assets:
         # TODO: fetch specific asset
-        if job.config["project_id"] != asset.uid:
-            continue
-
-        import_result = import_asset(batch, asset, individual_records_field)
-        household_counter += import_result["households"]
-        individual_counter += import_result["individuals"]
+        if job.config["project_id"] == asset.uid:
+            import_result = import_asset(batch, asset, individual_records_field)
+            household_counter += import_result["households"]
+            individual_counter += import_result["individuals"]
 
     return ImportResult(households=household_counter, individuals=individual_counter)
