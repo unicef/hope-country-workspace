@@ -242,7 +242,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
         form_rdi = ImportFileForm(prefix="rdi")
         form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-        form_kobo = ImportKoboForm(prefix="kobo")
+        form_kobo = ImportKoboForm(prefix="kobo", country_iso_code=program.country_office.country_iso_code)
 
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
@@ -307,7 +307,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return form
 
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
-        form = ImportKoboForm(request.POST, prefix="kobo")
+        form = ImportKoboForm(request.POST, prefix="kobo", country_iso_code=program.country_office.country_iso_code)
         if form.is_valid():
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
@@ -317,7 +317,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 owner=request.user,
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
-                    "country_code": program.country_office.country_iso_code,
+                    "project_id": form.cleaned_data["project_id"],
                     "individual_records_field": form.cleaned_data["individual_records_field"],
                 },
             )

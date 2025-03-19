@@ -88,12 +88,16 @@ def import_data(job: AsyncJob) -> ImportResult:
         source=Batch.BatchSource.KOBO,
     )
     individual_records_field = job.config["individual_records_field"]
-    client = make_client(job.config["country_code"])
+    client = make_client(job.program.country_office.country_iso_code)
 
     household_counter = 0
     individual_counter = 0
 
     for asset in client.assets:
+        # TODO: fetch specific asset
+        if job.config["project_id"] != asset.uid:
+            continue
+
         import_result = import_asset(batch, asset, individual_records_field)
         household_counter += import_result["households"]
         individual_counter += import_result["individuals"]
