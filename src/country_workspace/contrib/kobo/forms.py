@@ -12,6 +12,12 @@ class ImportKoboForm(forms.Form):
         initial="individual_questions",
         help_text="Which field contains individual records",
     )
+    check_before = forms.BooleanField(
+        required=False, help_text="Prevent import if errors if data is not valid against data checker."
+    )
+    fail_if_alien = forms.BooleanField(
+        required=False, help_text="Fails if it finds fields which do not exists in data checker."
+    )
 
     def __init__(self, *args: Any, kobo_country_code: str | None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
