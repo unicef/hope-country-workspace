@@ -42,7 +42,6 @@ class Command(BaseCommand):
                 settings.TENANT_HQ,
             ),
             name=settings.TENANT_HQ,
-            country_iso_code=settings.TENANT_HQ_COUNTRY,
         )
 
         analysts, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)

@@ -13,7 +13,11 @@ class ImportKoboForm(forms.Form):
         help_text="Which field contains individual records",
     )
 
-    def __init__(self, *args: Any, country_iso_code: str, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, country_iso_code: str | None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        client = make_client(country_iso_code)
-        self.fields["project_id"].choices = [(asset.uid, asset.name) for asset in client.assets]
+        if country_iso_code:
+            client = make_client(country_iso_code)
+            self.fields["project_id"].choices = [(asset.uid, asset.name) for asset in client.assets]
+        else:
+            self.cleaned_data = {}  # type: ignore
+            self.add_error(None, "Please set country iso code for office to use Kobo import")
