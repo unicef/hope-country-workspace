@@ -37,20 +37,26 @@ def program(office, household_checker, individual_checker):
 
 
 @pytest.fixture
+def admin_user():
+    from testutils.factories import SuperUserFactory
+
+    return SuperUserFactory(username="superuser")
+
+
+@pytest.fixture
 def individual(program):
     from testutils.factories import CountryIndividualFactory
 
     return CountryIndividualFactory(
-        household__batch__program=program, household__batch__country_office=program.country_office
+        household__batch__program=program,
+        household__batch__country_office=program.country_office,
+        household__batch__imported_by=admin_user,
     )
 
 
 @pytest.fixture
-def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
-    from testutils.factories import SuperUserFactory
-
+def app(django_app_factory: "MixinWithInstanceVariables", admin_user) -> "DjangoTestApp":
     django_app = django_app_factory(csrf_checks=False)
-    admin_user = SuperUserFactory(username="superuser")
     django_app.set_user(admin_user)
     django_app._user = admin_user
     return django_app
