@@ -298,7 +298,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 config={
                     "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
                     "registration_reference_pk": registration_reference_pk,
-                    "household_name_column": form.cleaned_data["household_name_column"],
+                    "household_column_prefix": form.cleaned_data["household_column_prefix"],
+                    "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
+                    "household_label_column": form.cleaned_data["household_label_column"],
                 },
             )
             job.queue()

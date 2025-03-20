@@ -36,7 +36,12 @@ menu, then press the **[Import Data]** button and select the **[Aurora]** tab. H
 By default, will be used: *<"Batch " + the current datetime>*
 
 - **Registration** – Select the specific Aurora registration to import. If needed, [synchronize](../interfaces.md#synchronize-unified-classifiers) unified classifiers before proceeding.
-- **Household Name Column** – Specify which Individual's column contains the Household's name.
+
+- **Household column prefix** - A string added at the beginning of column names to indicate household-related data. It can appear in various forms (e.g., "household_" or "household-info") and is used to group these columns.
+
+- **Individuals column prefix** - A string added at the beginning of column names to indicate individual-related data. It can appear in various forms (e.g., "individual-details_" or "personas_") and is used to group these columns.
+
+- **Household label column** – Specify which Individual's column should be used as label for the household.
 
 By default, this is set to *family_name*.
 
