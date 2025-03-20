@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
 
-    from country_workspace.workspaces.models import CountryProgram
+    from country_workspace.workspaces.models import CountryProgram, CountryHousehold
 
 
 @pytest.fixture

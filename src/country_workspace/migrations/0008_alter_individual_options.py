@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0005_alter_asyncjob_file"),
+        ("country_workspace", "0007_alter_program_individual_columns"),
     ]
 
     operations = [

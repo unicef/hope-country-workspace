@@ -38,7 +38,7 @@ class PushProcessor:
 
         Adds errors to `self.total["errors"]` if any household or member is invalid.
         """
-        for hh in self.queryset.iterator():
+        for hh in self.queryset:
             if not hh.is_valid():
                 self.total["errors"].append(f"HH #{hh.pk} invalid or unvalidated.")
             for ind in hh.members.all():
@@ -57,19 +57,20 @@ class PushProcessor:
 
     def rdi_push_lax(self) -> None:
         """
-        Pushes household data in batches to the external RDI system.
+        Pushes a batch of household data to the external RDI system.
 
-        Adds errors to `self.total["errors"]`, if `rdi_id` is not set.
+        Adds errors to `self.total["errors"]` if `rdi_id` is not set.
         Successfully pushed records are marked as removed.
         """
         if self.rdi_id is None:
             self.total["errors"].append("Cannot push data: rdi_id is not set")
             return
+        batch_ids, batch_data = self.prepare_batch()
         path = f"{self.base_path}{self.rdi_id}/push/lax/"
-        batch_ids, batch_data = self.prepare_batch(list(self.queryset.iterator()))
-        response = self.safe_post(path, batch_data, "Error pushing data")
-        successful_ids = self.process_batch_response(response, batch_ids)
-        if successful_ids and not self.total["errors"]:
+        if successful_ids := self.process_batch_response(
+            self.safe_post(path, batch_data, "Error pushing data"),
+            batch_ids,
+        ):
             self.mark_batch_removed(successful_ids)
 
     def rdi_complete(self) -> None:
@@ -102,23 +103,20 @@ class PushProcessor:
             self.total["errors"].append(f"{error_msg}: {e}")
             return None
 
-    @staticmethod
-    def prepare_batch(batch: list) -> tuple[list[int], list[dict]]:
+    def prepare_batch(self) -> tuple[list[int], list[dict]]:
         """
         Prepare a batch of household data for API submission.
-
-        Args:
-            batch (list): List of household objects.
 
         Returns:
             tuple[list[int], list[dict]]: A tuple of household IDs and transformed data.
 
         """
-        ids = [item.id for item in batch]
-        data = [
-            {**map_fields(item.flex_fields), "members": [map_fields(m.flex_fields) for m in item.members.all()]}
-            for item in batch
-        ]
+        ids, data = [], []
+        for item in self.queryset:
+            ids.append(item.id)
+            data.append(
+                {**map_fields(item.flex_fields), "members": [map_fields(m.flex_fields) for m in item.members.all()]}
+            )
         return ids, data
 
     def process_batch_response(self, response: dict | None, batch_ids: list[int]) -> list[int]:
@@ -156,12 +154,18 @@ class PushProcessor:
         try:
             with transaction.atomic():
                 households = CountryHousehold.objects.filter(id__in=successful_ids).prefetch_related("members")
-                for hh in households.iterator():
+                for hh in households:
+                    if hh.removed:
+                        self.total["errors"].append(f"Household #{hh.id} already marked as removed")
+                    else:
+                        hh.removed = True
+                        hh.save(update_fields=["removed"])
                     for ind in hh.members.all():
-                        ind.removed = True
-                        ind.save(update_fields=["removed"])
-                    hh.removed = True
-                    hh.save(update_fields=["removed"])
+                        if ind.removed:
+                            self.total["errors"].append(f"Individual #{ind.id} already marked as removed")
+                        else:
+                            ind.removed = True
+                            ind.save(update_fields=["removed"])
         except (DatabaseError, Exception) as e:
             self.total["errors"].append(f"Failed to mark IDs {successful_ids} as removed: {e}")
 
