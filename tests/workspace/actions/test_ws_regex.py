@@ -60,10 +60,10 @@ def app(
 def test_regex_update_impl(household):
     from country_workspace.models import Household
 
-    regex_update_impl(Household.objects.all(), {"field": "address", "regex": ".*", "subst": "__NEW VALUE__"})
+    regex_update_impl(Household.objects.all(), {"field": "full_name", "regex": ".*", "subst": "__NEW VALUE__"})
 
     household.refresh_from_db()
-    assert household.flex_fields["address"] == "__NEW VALUE__"
+    assert household.flex_fields["full_name"] == "__NEW VALUE__"
 
 
 def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
@@ -75,7 +75,7 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
         form.set("_selected_action", True)
         res = form.submit()
         form = res.forms["regex-update-form"]
-        form["field"].select(text="Address")
+        form["field"].select(text="Full Name")
         form["regex"] = ".*"
         form["subst"] = "__NEW VALUE__"
         res = form.submit("_preview")
@@ -84,4 +84,4 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
         form.submit("_apply")
 
         household.refresh_from_db()
-        assert household.flex_fields["address"] == "__NEW VALUE__"
+        assert household.flex_fields["full_name"] == "__NEW VALUE__"

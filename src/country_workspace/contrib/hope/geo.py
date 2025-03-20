@@ -31,7 +31,7 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
             client = HopeClient()
             try:
                 data = list(
-                    client.get("areas", params={"area_type_area_level": self.level, "country_iso_code3": parent_value}),
+                    client.get("areas", params={"area_type_area_level": self.level, "country_iso_code2": parent_value}),
                 )
                 cache_manager.store(key, data, timeout=300)
             except RemoteError as e:
@@ -58,7 +58,7 @@ class CountryChoice(forms.ChoiceField):
             except RemoteError as e:
                 logger.exception(e)
                 return ret
-        return [(record["iso_code3"], record["name"]) for record in data]
+        return [(record["iso_code2"], record["name"]) for record in data]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

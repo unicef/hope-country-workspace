@@ -15,8 +15,8 @@ def household():
 
 
 def test_validate_program(household):
-    assert validate_program(Mock(program=household.program)) == {"invalid": 0, "total": 0, "valid": 1}
+    assert validate_program(Mock(program=household.program)) == {"invalid": 0, "valid": 1}
     with mock.patch(
         "country_workspace.workspaces.admin.cleaners.validate.Household.validate_with_checker", return_value=False
     ):
-        assert validate_program(Mock(program=household.program)) == {"invalid": 1, "total": 0, "valid": 0}
+        assert validate_program(Mock(program=household.program)) == {"invalid": 1, "valid": 0}

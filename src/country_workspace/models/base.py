@@ -76,6 +76,7 @@ class Validable(Cachable, models.Model):
             ("mass_update_beneficiary", "Can Mass update Beneficiary Records"),
             ("regex_update_beneficiary", "Can Mass update Beneficiary Records"),
             ("export_beneficiary", "Can Export Beneficiary Records"),
+            ("push_beneficiary_to_hope", "Can Push Beneficiary Records To HOPE core"),
         )
 
     def __str__(self) -> str:
@@ -142,6 +143,11 @@ class Validable(Cachable, models.Model):
         status1 = v1.field_dict["flex_fields"]
         status2 = v2.field_dict["flex_fields"]
         return list(dictdiffer.diff(status2, status1))
+
+    def is_valid(self) -> bool | None:
+        if not self.last_checked:
+            return None
+        return not bool(self.errors)
 
 
 class BaseModel(models.Model):

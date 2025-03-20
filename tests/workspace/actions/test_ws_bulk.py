@@ -13,6 +13,8 @@ from testutils.utils import select_office
 from country_workspace.state import state
 from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_xls_importer
 from tests.workspace.actions import stub
+from webtest import Upload
+
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -157,12 +159,12 @@ def test_bulk_update_export(
     force_migrated_records,
     settings: "SettingsWrapper",
     household: "CountryHousehold",
-    mock_media_storage,
+    mock_storage,
 ) -> None:
-    with mock.patch("country_workspace.workspaces.admin.cleaners.bulk_update.MEDIA_STORAGE", mock_media_storage):
-        url = reverse("workspace:workspaces_countryindividual_changelist")
-        settings.CELERY_TASK_ALWAYS_EAGER = True
-        selected_fields = stub.header_add["ind"]
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+    selected_fields = stub.header_add["ind"]
+    with mock.patch("country_workspace.workspaces.admin.cleaners.bulk_update.MEDIA_STORAGE", mock_storage):
         with select_office(app, household.country_office, household.program):
             res = app.get(url)
             form = res.forms["changelist-form"]
@@ -180,3 +182,35 @@ def test_bulk_update_export(
             assert res.status_code == 302
             job: AsyncJob = household.program.jobs.first()
             job.queue()
+
+
+def test_bulk_update_import(
+    app: "DjangoTestApp",
+    force_migrated_records,
+    settings: "SettingsWrapper",
+    household: "CountryHousehold",
+    data: tuple[io.BytesIO, "CountryHousehold", str],
+) -> None:
+    buff, household, target = data
+    url = reverse("workspace:workspaces_countryprogram_change", args=[household.program.pk])
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+
+    with select_office(app, household.country_office, household.program):
+        res = app.get(url)
+        res = res.click("Update Records")
+        res.forms["bulk-update-form"]["description"] = f"Bulk update from {target}"
+        res.forms["bulk-update-form"]["target"] = target
+        res.forms["bulk-update-form"]["file"] = Upload(f"{target}.xlsx", buff.read())
+        res = res.forms["bulk-update-form"].submit("_import")
+        household.refresh_from_db()
+        job: AsyncJob = household.program.jobs.first()
+
+        assert res.status_code == 302
+        assert job
+
+        if target == "hh":
+            admin1_v = f"admin1_{stub.header_add['hh'].index('admin1') + 2}"
+            assert household.flex_fields.get("admin1") == admin1_v
+        elif target == "ind":
+            given_name = f"given_name_{stub.header_add['ind'].index('given_name') + 2}"
+            assert household.members.filter(flex_fields__given_name=given_name).exists()

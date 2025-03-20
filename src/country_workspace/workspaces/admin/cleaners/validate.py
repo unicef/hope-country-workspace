@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def validate_queryset(queryset: QuerySet[Model], **kwargs: Any) -> dict[str, int]:
-    valid = invalid = num = 0
+    valid = invalid = 0
     entry: "Validable"
     try:
         for __, entry in enumerate(queryset, 1):
@@ -24,11 +24,11 @@ def validate_queryset(queryset: QuerySet[Model], **kwargs: Any) -> dict[str, int
         logger.exception(e)
         raise
 
-    return {"valid": valid, "invalid": invalid, "total": num}
+    return {"valid": valid, "invalid": invalid}
 
 
 def validate_program(job: AsyncJob) -> dict[str, int]:
-    valid = invalid = num = 0
+    valid = invalid = 0
     hh: Household
     try:
         p: Program = job.program
@@ -41,4 +41,4 @@ def validate_program(job: AsyncJob) -> dict[str, int]:
         logger.exception(e)
         raise
 
-    return {"valid": valid, "invalid": invalid, "total": num}
+    return {"valid": valid, "invalid": invalid}

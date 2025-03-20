@@ -64,3 +64,26 @@ class HopeClient:
             except TypeError:
                 raise RemoteError(f"Malformed JSON fetching {url}")
         hope_request_end.send(self.__class__, url=url, params=params, pages=pages, signature=signature)
+
+    def post(self, path: str, data: "JsonType | None") -> "FlatJsonType":
+        url = self.get_url(path)
+        signature = hashlib.sha256(f"{url}{data}{time.perf_counter_ns()}".encode()).hexdigest()
+        hope_request_start.send(self.__class__, url=url, data=data, signature=signature)
+        try:
+            ret = requests.post(
+                url,
+                json=data,
+                headers={"Authorization": f"Token {self.token}"},
+                timeout=10,  # nosec
+            )
+            ret.raise_for_status()
+        except RequestException as exc:
+            raise RemoteError(f"Error posting to {url}: {exc}") from exc
+
+        try:
+            result = ret.json()
+        except JSONDecodeError as exc:
+            raise RemoteError(f"Wrong JSON response posting to {url}") from exc
+
+        hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
+        return result

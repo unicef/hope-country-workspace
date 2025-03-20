@@ -1,5 +1,12 @@
-from functools import reduce
+from collections.abc import Callable
 from typing import Any
+from functools import reduce
+
+from django.utils import timezone
+
+
+batch_name_default: Callable[[], str] = lambda: f"Batch {timezone.now()}"
+rdi_name_default: Callable[[], str] = lambda: f"RDI to HOPE {timezone.now()}"
 
 
 def clean_field_name(v: str) -> str:

@@ -26,7 +26,7 @@ COUNTRIES = {
         }
     ],
 }
-ADMIN1_AFG = {
+ADMIN1_AF = {
     "count": 34,
     "next": None,
     "previous": None,
@@ -53,7 +53,7 @@ ADMIN1_AFG = {
     ],
 }
 
-ADMIN2_AFG = {
+ADMIN2_AF = {
     "count": 1,
     "next": None,
     "previous": None,
@@ -85,8 +85,8 @@ def test_validate_child(db, mocked_responses):
     mocked_responses.add(mocked_responses.GET, "https://dev-hope.unitst.org/api/rest/lookups/country/", json=COUNTRIES)
     mocked_responses.add(
         mocked_responses.GET,
-        "https://dev-hope.unitst.org/api/rest/areas/?area_type_area_level=1&country_iso_code3=AFG",
-        json=ADMIN1_AFG,
+        "https://dev-hope.unitst.org/api/rest/areas/?area_type_area_level=1&country_iso_code2=AF",
+        json=ADMIN1_AF,
     )
     fd1 = FieldDefinitionFactory(field_type=CountryChoice)
     fd2 = FieldDefinitionFactory(field_type=Admin1Choice)
@@ -95,8 +95,8 @@ def test_validate_child(db, mocked_responses):
     ita = FlexFieldFactory(name="country", definition=fd1, fieldset=fs)
     FlexFieldFactory(name="region", master=ita, definition=fd2, fieldset=fs)
 
-    errors = fs.validate([{"country": "AFG", "region": "AF15"}])
+    errors = fs.validate([{"country": "AF", "region": "AF15"}])
     assert errors == {}
 
-    errors = fs.validate([{"country": "AFG", "region": "---"}])
+    errors = fs.validate([{"country": "AF", "region": "---"}])
     assert errors == {1: {"region": "['Not valid child for selected parent']"}}

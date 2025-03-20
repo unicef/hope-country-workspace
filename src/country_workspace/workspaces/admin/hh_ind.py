@@ -75,10 +75,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def has_regex_update_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.regex_update_beneficiary")
 
+    def has_push_to_hope_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("country_workspace.push_beneficiary_to_hope")
+
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if prg := self.get_selected_program(request):
-            return qs.filter(batch__program=prg)
+            return qs.filter(batch__program=prg).exclude(removed=True)
         return qs
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
@@ -107,6 +110,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         opts = self.model._meta
+
         job = AsyncJob.objects.create(
             description="Validate Program %s" % opts.proxy_for_model._meta.verbose_name_plural,
             type=AsyncJob.JobType.TASK,
@@ -124,9 +128,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         return render(request, f"workspace/{self.model._meta.proxy_for_model._meta.model_name}/raw_data.html", context)
 
     def is_valid(self, obj: "Validable") -> bool | None:
-        if not obj.last_checked:
-            return None
-        return not bool(obj.errors)
+        return obj.is_valid()
 
     is_valid.boolean = True
 

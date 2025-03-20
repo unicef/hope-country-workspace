@@ -13,7 +13,6 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.constants import BATCH_NAME_DEFAULT
 from country_workspace.contrib.aurora.pipeline import import_from_aurora
 from country_workspace.state import state
 
@@ -28,6 +27,8 @@ from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
 from .forms import BulkUpdateImportForm, ImportFileForm
+from country_workspace.utils.fields import batch_name_default
+
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -273,7 +274,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 program=program,
                 owner=request.user,
                 config={
-                    "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                     "household_pk_col": form.cleaned_data["pk_column_name"],
                     "master_column_label": form.cleaned_data["master_column_label"],
                     "detail_column_label": form.cleaned_data["detail_column_label"],
@@ -296,7 +297,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 program=program,
                 owner=request.user,
                 config={
-                    "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                     "registration_reference_pk": registration_reference_pk,
                     "household_column_prefix": form.cleaned_data["household_column_prefix"],
                     "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
@@ -318,7 +319,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 program=program,
                 owner=request.user,
                 config={
-                    "batch_name": form.cleaned_data["batch_name"] or BATCH_NAME_DEFAULT,
+                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                     "project_id": form.cleaned_data["project_id"],
                     "individual_records_field": form.cleaned_data["individual_records_field"],
                 },
