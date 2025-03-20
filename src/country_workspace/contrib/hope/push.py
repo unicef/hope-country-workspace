@@ -40,10 +40,10 @@ class PushProcessor:
         """
         for hh in self.queryset:
             if not hh.is_valid():
-                self.total["errors"].append(f"HH #{hh.pk} invalid or unvalidated.")
+                self.total["errors"].append(f"HH #{hh.pk} invalid.")
             for ind in hh.members.all():
                 if not ind.is_valid():
-                    self.total["errors"].append(f"Individual #{ind.pk} invalid or unvalidated.")
+                    self.total["errors"].append(f"Ind #{ind.pk} invalid.")
 
     def rdi_create(self) -> None:
         """Create a new RDI record in the external system.
