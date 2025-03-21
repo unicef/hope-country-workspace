@@ -13,10 +13,12 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     ret = {"household": 0, "individual": 0}
     hh_ids = {}
     with atomic():
+        households = []
         batch_name = job.config["batch_name"]
         household_pk_col = job.config["household_pk_col"]
         master_column_label = job.config["master_column_label"]
         detail_column_label = job.config["detail_column_label"]
+        check_before = job.config["check_before"]
         rdi = job.file
         batch = Batch.objects.create(
             name=batch_name,
@@ -38,6 +40,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
                                 name=raw_record[master_column_label],
                                 flex_fields=record,
                             )
+                            households.append(hh)
                             hh_ids[record[household_pk_col]] = hh.pk
                             ret["household"] += 1
                         elif sheet_index == 1:
@@ -56,4 +59,10 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
                             ret["individual"] += 1
                     except Exception as e:  # noqa: BLE001
                         raise Exception("Error processing sheet %s line %s: %s" % (1 + sheet_index, line, e))
-        return ret
+
+        if check_before:
+            for household in households:
+                if not household.validate_with_checker():
+                    raise Exception("Validation failed")
+
+    return ret

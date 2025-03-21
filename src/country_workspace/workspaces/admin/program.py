@@ -278,6 +278,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     "household_pk_col": form.cleaned_data["pk_column_name"],
                     "master_column_label": form.cleaned_data["master_column_label"],
                     "detail_column_label": form.cleaned_data["detail_column_label"],
+                    "check_before": form.cleaned_data["check_before"],
                 },
             )
             job.queue()
