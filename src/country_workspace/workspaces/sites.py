@@ -12,7 +12,7 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import NoReverseMatch, URLPattern, URLResolver, reverse
 from django.utils.text import capfirst
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext_lazy as _
 from django.views import View
 from smart_admin.autocomplete import SmartAutocompleteJsonView
 
@@ -119,9 +119,9 @@ class TenantAdminSite(admin.AdminSite):
     password_change_template = None
     password_change_done_template = None
 
-    site_title = gettext_lazy("HOPE Country Workspace site admin")
+    site_title = _("HOPE Country Workspace site admin")
     site_header = "Country Workspace"
-    index_title = gettext_lazy("")
+    index_title = _("")
     login_form = TenantAuthenticationForm
 
     namespace = "workspace"
@@ -183,6 +183,99 @@ class TenantAdminSite(admin.AdminSite):
 
         return app_dict
 
+    def get_menu_items(self, request: "HttpRequest") -> list[dict[str, Any]]:
+        """Return a simplified list of menu items based on the current program."""
+        items = [
+            {
+                "name": _("Home"),
+                "url": reverse("workspace:index"),
+                "icon": "icon-home",
+                "selected": not hasattr(self, "modeladmin_name"),
+            },
+        ]
+
+        program = get_selected_program()
+        if program:
+            bg = program.beneficiary_group
+            items.extend(
+                [
+                    {
+                        "name": _("Programme"),
+                        "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
+                        "icon": "icon-equalizer",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
+                    },
+                ]
+            )
+
+            if bg and bg.master_detail:
+                items.append(
+                    {
+                        "name": bg.group_label_plural,
+                        "url": reverse("workspace:workspaces_countryhousehold_changelist"),
+                        "icon": "icon-members",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
+                    }
+                )
+                items.append(
+                    {
+                        "name": bg.member_label_plural,
+                        "url": reverse("workspace:workspaces_countryindividual_changelist"),
+                        "icon": "icon-user",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                        "indent": True,
+                    }
+                )
+            elif bg:
+                items.append(
+                    {
+                        "name": bg.member_label_plural,
+                        "url": reverse("workspace:workspaces_countryindividual_changelist"),
+                        "icon": "icon-user",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                    }
+                )
+
+            items.extend(
+                [
+                    {
+                        "name": _("Batches"),
+                        "url": reverse("workspace:workspaces_countrybatch_changelist"),
+                        "icon": "icon-sign",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryBatchAdmin",
+                    },
+                    {
+                        "name": _("Jobs"),
+                        "url": reverse("workspace:workspaces_countryasyncjob_changelist"),
+                        "icon": "icon-globe",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryJobAdmin",
+                    },
+                ]
+            )
+
+        items.append(
+            {
+                "name": _("Logout"),
+                "url": reverse("admin:logout"),
+                "icon": "icon-logout",
+                "selected": False,
+                "is_form": True,
+            }
+        )
+
+        if request.user.is_staff:
+            items.append(
+                {
+                    "name": _("Admin"),
+                    "url": reverse("admin:index"),
+                    "icon": "icon-shield1",
+                    "selected": False,
+                    "target": "_admin",
+                }
+            )
+
+        return items
+
     def each_context(self, request: "HttpRequest") -> "dict[str, Any]":
         ret = super().each_context(request)
         selected_tenant = get_selected_tenant()
@@ -192,6 +285,7 @@ class TenantAdminSite(admin.AdminSite):
         ret["active_tenant"] = selected_tenant
         ret["active_program"] = selected_program
         ret["namespace"] = self.namespace
+        ret["menu_items"] = self.get_menu_items(request)
         return ret  # type: ignore
 
     def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:

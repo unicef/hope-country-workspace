@@ -7,6 +7,7 @@ from strategy_field.fields import StrategyField
 from strategy_field.utils import fqn
 
 from country_workspace.models.office import Office
+from country_workspace.models.beneficiary_group import BeneficiaryGroup
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
@@ -44,6 +45,14 @@ class Program(BaseModel):
         (WASH, _("WASH")),
     )
     hope_id = models.CharField(max_length=200, unique=True, editable=False)
+    beneficiary_group = models.ForeignKey(
+        BeneficiaryGroup,
+        on_delete=models.PROTECT,
+        related_name="programs",
+        null=True,
+        blank=True,
+        help_text="Beneficiary group to which this program belongs",
+    )
     country_office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="programs")
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=255, blank=True, null=True)

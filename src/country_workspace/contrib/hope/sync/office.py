@@ -3,7 +3,7 @@ from io import TextIOBase
 from django.core.cache import cache
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import Office, Program, SyncLog
+from country_workspace.models import BeneficiaryGroup, Office, Program, SyncLog
 
 from .. import constants
 from ..client import HopeClient
@@ -30,10 +30,11 @@ def sync_offices(stdout: TextIOBase | None = None) -> dict[str, int]:
                 )
                 totals["add" if created else "upd"] += 1
         SyncLog.objects.register_sync(Office)
-        return totals
+    return totals
 
 
 def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | None = None) -> dict[str, int]:
+    sync_beneficiary_groups(stdout=stdout)
     if stdout:
         stdout.write("Fetching Programs data from HOPE...")
     client = HopeClient()
@@ -50,6 +51,8 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
                 office = Office.objects.get(code=record["business_area_code"])
                 if record["status"] not in [Program.ACTIVE, Program.DRAFT]:
                     continue
+                # TODO: beneficiary group - choose from the REST API when it will be available
+                beneficiary_group = BeneficiaryGroup.objects.first()
                 p, created = Program.objects.get_or_create(
                     hope_id=record["id"],
                     defaults={
@@ -58,6 +61,7 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
                         "status": record["status"],
                         "sector": record["sector"],
                         "country_office": office,
+                        "beneficiary_group": beneficiary_group,
                     },
                 )
                 if created:
@@ -70,6 +74,29 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
             except Office.DoesNotExist:
                 totals["skip"] += 1
         SyncLog.objects.register_sync(Program)
+    return totals
+
+
+def sync_beneficiary_groups(stdout: TextIOBase | None = None) -> bool:
+    totals = {"add": 0, "upd": 0}
+    client = HopeClient()
+    if stdout:
+        stdout.write("Fetching Beneficiary Groups data from HOPE...")
+    with cache.lock("sync-beneficiary-groups"):
+        for record in client.get("beneficiary-groups"):
+            __, created = BeneficiaryGroup.objects.get_or_create(
+                hope_id=record["id"],
+                defaults={
+                    "name": record["name"],
+                    "group_label": record["group_label"],
+                    "group_label_plural": record["group_label_plural"],
+                    "member_label": record["member_label"],
+                    "member_label_plural": record["member_label_plural"],
+                    "master_detail": record["master_detail"],
+                },
+            )
+            totals["add" if created else "upd"] += 1
+        SyncLog.objects.register_sync(BeneficiaryGroup)
     return totals
 
 

@@ -1,4 +1,5 @@
 from .batch import Batch  # noqa
+from .beneficiary_group import BeneficiaryGroup  # noqa
 from .household import Household  # noqa
 from .individual import Individual  # noqa
 from .jobs import AsyncJob  # noqa

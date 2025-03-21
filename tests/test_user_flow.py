@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from country_workspace.state import state
 
@@ -21,8 +22,8 @@ def office():
     return OfficeFactory()
 
 
-@pytest.fixture
-def program(office, household_checker, individual_checker):
+@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
+def program(request, office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
     return CountryProgramFactory(
@@ -30,6 +31,7 @@ def program(office, household_checker, individual_checker):
         individual_checker=individual_checker,
         household_columns="name\nid\nxx",
         individual_columns="name\nid\nxx",
+        beneficiary_group__master_detail=request.param,
     )
 
 
@@ -44,7 +46,14 @@ def user():
 def data(program):
     from testutils.factories import HouseholdFactory
 
-    return HouseholdFactory.create_batch(10, batch__program=program, batch__country_office=program.country_office)
+    households = HouseholdFactory.create_batch(
+        10,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+    for hh in households:
+        hh.members.update(last_checked=timezone.now(), errors={})
+    return households
 
 
 @pytest.fixture
@@ -54,12 +63,11 @@ def app(django_app_factory: "MixinWithInstanceVariables", mocked_responses: "Req
     return django_app
 
 
-def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper"):
+def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper", program):
     from testutils.perms import user_grant_permissions
 
     settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
 
-    program = data[0].program
     home = reverse("workspace:index")
     res = app.get(home)
     assert res.status_code == 302
@@ -78,7 +86,7 @@ def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper"):
         ["workspaces.view_countryhousehold", "workspaces.view_countryindividual", "workspaces.view_countryprogram"],
         program.country_office,
     ):
-        hh = program.country_office.programs.first().households.first()
+        hh = data[0]
         res = app.get(reverse("workspace:select_tenant"), user=user)
         res.forms["select-tenant"]["tenant"] = program.country_office.pk
         res = res.forms["select-tenant"].submit().follow()
@@ -86,6 +94,14 @@ def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper"):
 
         res.forms["select-program"]["program"].force_value(program.pk)
         res = res.forms["select-program"].submit().follow()
-        res = res.click("Households")
-        res = res.click(hh.name)
+
+        if program.beneficiary_group.master_detail:
+            res = res.click(program.beneficiary_group.group_label_plural)
+            res = res.click(hh.name)
+        else:
+            res = res.click(program.beneficiary_group.member_label_plural)
+            res = res.click("Show all")
+            individual = hh.members.order_by("?").first()
+            res = res.click(individual.name)
+
         res.click("Close", verbose=True)
