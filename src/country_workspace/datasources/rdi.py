@@ -1,5 +1,5 @@
 import io
-from collections.abc import Iterable, Callable
+from collections.abc import Iterable
 from typing import Mapping, Any, TypedDict, cast
 
 from django.db.transaction import atomic
@@ -73,23 +73,19 @@ def get_value(row: Row, column_name: str) -> Any:
     raise ColumnConfigurationError(column_name)
 
 
-def create_has_household_pk_predicate(config: Config) -> Callable[[Row], bool]:
+def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sheet]:
     household_pk_col = config["household_pk_col"]
 
     def has_household_pk(row: Row) -> bool:
         return bool(get_value(row, household_pk_col))
 
-    return has_household_pk
+    return (filter(has_household_pk, sheet) for sheet in sheets)
 
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[str, Household]:
     mapping = {}
-    has_household_pk = create_has_household_pk_predicate(config)
 
     for i, row in enumerate(sheet, 1):
-        if not has_household_pk(row):
-            continue
-
         name = get_value(row, config["master_column_label"])
         household_key = get_value(row, config["household_pk_col"])
 
@@ -112,12 +108,8 @@ def process_individuals(
     sheet: Sheet, household_mapping: Mapping[str, Household], job: AsyncJob, batch: Batch, config: Config
 ) -> int:
     processed = 0
-    has_household_pk = create_has_household_pk_predicate(config)
 
     for i, row in enumerate(sheet, 1):
-        if not has_household_pk(row):
-            continue
-
         name = get_value(row, config["detail_column_label"])
         household_key = get_value(row, config["household_pk_col"])
         household = household_mapping.get(household_key)
@@ -140,6 +132,13 @@ def process_individuals(
     return processed
 
 
+def validate_households(config: Config, household_mapping: Mapping[str, Household]) -> None:
+    if config["check_before"]:
+        for household_key, household in household_mapping.items():
+            if not household.validate_with_checker():
+                raise HouseholdValidationError(household_key)
+
+
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
         config: Config = job.config
@@ -152,13 +151,13 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             source=Batch.BatchSource.RDI,
         )
         (_, household_sheet), (_, individual_sheet) = open_xls_multi(rdi, sheets=[0, 1])
+
+        household_sheet, individual_sheet = filter_rows_with_household_pk(config, household_sheet, individual_sheet)
+
         household_mapping = process_households(household_sheet, job, batch, config)
         individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
 
-        if config["check_before"]:
-            for household_key, household in household_mapping.items():
-                if not household.validate_with_checker():
-                    raise HouseholdValidationError(household_key)
+        validate_households(config, household_mapping)
 
         return {
             "household": len(household_mapping),
