@@ -54,7 +54,7 @@ class MissingHouseholdError(Exception):
 
 
 class HouseholdValidationError(Exception):
-    def __init__(self, household_key: str) -> None:
+    def __init__(self, household_key: int) -> None:
         super().__init__(household_key)
         self.household_key = household_key
 
@@ -82,7 +82,7 @@ def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sh
     return (filter(has_household_pk, sheet) for sheet in sheets)
 
 
-def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[str, Household]:
+def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
@@ -105,7 +105,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
 
 
 def process_individuals(
-    sheet: Sheet, household_mapping: Mapping[str, Household], job: AsyncJob, batch: Batch, config: Config
+    sheet: Sheet, household_mapping: Mapping[int, Household], job: AsyncJob, batch: Batch, config: Config
 ) -> int:
     processed = 0
 
@@ -132,7 +132,7 @@ def process_individuals(
     return processed
 
 
-def validate_households(config: Config, household_mapping: Mapping[str, Household]) -> None:
+def validate_households(config: Config, household_mapping: Mapping[int, Household]) -> None:
     if config["check_before"]:
         for household_key, household in household_mapping.items():
             if not household.validate_with_checker():

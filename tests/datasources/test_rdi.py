@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from unittest.mock import MagicMock, Mock, call
+from unittest.mock import Mock, call
 
 import pytest
 from pytest_mock import MockerFixture
@@ -18,6 +18,7 @@ from country_workspace.datasources.rdi import (
     import_from_rdi,
     Config,
     Sheet,
+    Row,
 )
 from country_workspace.models import Household
 
@@ -90,9 +91,8 @@ def test_household_validation_error_format() -> None:
     assert household_key in str(error)
 
 
-def test_normalize_row(mocker: MockerFixture) -> None:
-    row = MagicMock()
-    row.items.return_value.__iter__.return_value = [((key := "key"), (value := "value"))]
+def test_normalize_row_calls_clean_field_name(mocker: MockerFixture) -> None:
+    row = {(key := "key"): (value := "value")}
     clean_field_name_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_name")
 
     result = normalize_row(row)
@@ -101,40 +101,33 @@ def test_normalize_row(mocker: MockerFixture) -> None:
     clean_field_name_mock.assert_called_once_with(key)
 
 
-def test_get_value() -> None:
-    row = MagicMock()
-    row.__contains__.return_value = True
+def test_get_value_returns_value() -> None:
+    row = {(column := "column"): (column_value := "value")}
 
-    value = get_value(row, "column")
+    value = get_value(row, column)
 
-    assert value == row.__getitem__.return_value
+    assert value == column_value
 
 
-def test_get_value_key_is_missing() -> None:
-    row = MagicMock()
-    row.__contains__.return_value = False
+def test_get_value_raise_exception_when_key_is_missing() -> None:
+    row: Row = {}
 
     with pytest.raises(ColumnConfigurationError):
         get_value(row, "column")
 
 
-def test_filter_rows_with_household_pk(mocker: MockerFixture) -> None:
-    config = MagicMock()
-    sheet = MagicMock()
-    row_with_household_pk = Mock()
-    row_without_household_pk = Mock()
-    sheet.__iter__.return_value = row_with_household_pk, row_without_household_pk
+def test_filter_rows_with_household_pk(mocker: MockerFixture, config: Config, household_sheet: Sheet) -> None:
+    household_sheet_list = list(household_sheet)
     get_value_mock = mocker.patch("country_workspace.datasources.rdi.get_value")
     get_value_mock.side_effect = True, False
 
-    result = [list(s) for s in filter_rows_with_household_pk(config, sheet)]
+    result = [list(s) for s in filter_rows_with_household_pk(config, household_sheet)]
 
-    assert result == [[row_with_household_pk]]
-    config.__getitem__.assert_called_once_with("household_pk_col")
+    assert result == [[household_sheet_list[0]]]
     get_value_mock.assert_has_calls(
         (
-            call(row_with_household_pk, config.__getitem__.return_value),
-            call(row_without_household_pk, config.__getitem__.return_value),
+            call(household_sheet_list[0], config["household_pk_col"]),
+            call(household_sheet_list[1], config["household_pk_col"]),
         )
     )
 
@@ -185,6 +178,16 @@ def test_validate_households(config: Config, household_mapping: Mapping[int, Moc
 
     for household in household_mapping.values():
         household.validate_with_checker.assert_called_once()
+
+
+def test_validate_households_raises_exception_on_failed_validation(
+    config: Config, household_mapping: Mapping[int, Mock]
+) -> None:
+    config["check_before"] = True
+    household_mapping[HOUSEHOLD_1_PK].validate_with_checker.return_value = False
+
+    with pytest.raises(HouseholdValidationError):
+        validate_households(config, household_mapping)
 
 
 def test_import_from_rdi(
