@@ -19,7 +19,7 @@ from country_workspace.state import state
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
 from ...contrib.kobo.sync import import_data as import_from_kobo
-from ...datasources.rdi import import_from_rdi
+from ...datasources.rdi import import_from_rdi, Config as RDIConfig
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
 from ..models import CountryProgram
@@ -266,6 +266,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
         form = ImportFileForm(request.POST, request.FILES, prefix="rdi")
         if form.is_valid():
+            config: RDIConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "household_pk_col": form.cleaned_data["pk_column_name"],
+                "master_column_label": form.cleaned_data["master_column_label"],
+                "detail_column_label": form.cleaned_data["detail_column_label"],
+                "check_before": form.cleaned_data["check_before"],
+            }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI importing",
                 type=AsyncJob.JobType.TASK,
@@ -273,12 +280,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 file=request.FILES["rdi-file"],
                 program=program,
                 owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                    "household_pk_col": form.cleaned_data["pk_column_name"],
-                    "master_column_label": form.cleaned_data["master_column_label"],
-                    "detail_column_label": form.cleaned_data["detail_column_label"],
-                },
+                config=config,
             )
             job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
