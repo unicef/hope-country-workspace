@@ -51,8 +51,7 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
                 office = Office.objects.get(code=record["business_area_code"])
                 if record["status"] not in [Program.ACTIVE, Program.DRAFT]:
                     continue
-                # TODO: beneficiary group - choose from the REST API when it will be available
-                beneficiary_group = BeneficiaryGroup.objects.first()
+                beneficiary_group = BeneficiaryGroup.objects.get(hope_id=record["beneficiary_group"])
                 p, created = Program.objects.get_or_create(
                     hope_id=record["id"],
                     defaults={

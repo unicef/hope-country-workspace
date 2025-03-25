@@ -37,6 +37,7 @@ def program(office):
         individual_checker=DataCheckerFactory(fields=["gender"]),
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
+        beneficiary_group__master_detail=True,
     )
 
 

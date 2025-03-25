@@ -200,7 +200,7 @@ class TenantAdminSite(admin.AdminSite):
             items.extend(
                 [
                     {
-                        "name": _("Programme"),
+                        "name": program._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
                         "icon": "icon-equalizer",
                         "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
@@ -239,13 +239,13 @@ class TenantAdminSite(admin.AdminSite):
             items.extend(
                 [
                     {
-                        "name": _("Batches"),
+                        "name": apps.get_model("country_workspace", "Batch")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countrybatch_changelist"),
                         "icon": "icon-sign",
                         "selected": getattr(self, "modeladmin_name", None) == "CountryBatchAdmin",
                     },
                     {
-                        "name": _("Jobs"),
+                        "name": apps.get_model("country_workspace", "AsyncJob")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryasyncjob_changelist"),
                         "icon": "icon-globe",
                         "selected": getattr(self, "modeladmin_name", None) == "CountryJobAdmin",

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.translation import gettext as _
 
 from .base import BaseModel
 from .user import User
@@ -19,6 +20,8 @@ class Batch(BaseModel):
 
     class Meta:
         unique_together = (("import_date", "name"),)
+        verbose_name = _("Batch")
+        verbose_name_plural = _("Batches")
 
     def __str__(self) -> str:
         return self.name or f"Batch self.pk ({self.country_office})"

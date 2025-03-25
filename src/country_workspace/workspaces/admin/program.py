@@ -181,6 +181,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     @button(
         permission="workspaces.change_countryprogram",
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
+        visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
+        enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
     )
     def household_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Household columns")

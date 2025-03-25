@@ -27,6 +27,8 @@ class AsyncJob(CeleryTaskModel, models.Model):
 
     class Meta:
         permissions = (("debug_job", "Can debug background jobs"),)
+        verbose_name = "Async Job"
+        verbose_name_plural = "Async Jobs"
 
     def __str__(self) -> str:
         return self.description or f"Background Job #{self.pk}"
