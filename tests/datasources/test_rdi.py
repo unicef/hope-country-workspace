@@ -149,6 +149,16 @@ def test_process_households(config: Config, household_sheet: Sheet) -> None:
     )
 
 
+def test_process_households_failed_to_save_household(config: Config, household_sheet: Sheet) -> None:
+    job = Mock()
+    batch = Mock()
+
+    job.program.households.create.side_effect = Exception("Something went wrong")
+
+    with pytest.raises(SheetProcessingError):
+        process_households(household_sheet, job, batch, config)
+
+
 def test_process_individuals(
     config: Config, individual_sheet: Sheet, household_mapping: Mapping[int, Household]
 ) -> None:
@@ -188,6 +198,15 @@ def test_validate_households_raises_exception_on_failed_validation(
 
     with pytest.raises(HouseholdValidationError):
         validate_households(config, household_mapping)
+
+
+def test_validate_households_check_before_is_false(config: Config, household_mapping: Mapping[int, Mock]) -> None:
+    config["check_before"] = False
+
+    validate_households(config, household_mapping)
+
+    for household in household_mapping.values():
+        household.validate_with_checker.assert_not_called()
 
 
 def test_import_from_rdi(
