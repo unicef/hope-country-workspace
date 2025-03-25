@@ -20,6 +20,7 @@ class ProgramAdmin(BaseModelAdmin):
     list_display = (
         "name",
         "sector",
+        "beneficiary_group",
         "status",
         "active",
         "beneficiary_validator",
@@ -32,6 +33,7 @@ class ProgramAdmin(BaseModelAdmin):
         "status",
         "active",
         "sector",
+        "beneficiary_group",
         "beneficiary_validator",
         "household_checker",
         "individual_checker",

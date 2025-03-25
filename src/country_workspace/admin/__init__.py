@@ -6,6 +6,7 @@ from smart_admin.smart_auth.admin import ContentTypeAdmin, PermissionAdmin
 
 from ..cache.smart_panel import panel_cache
 from .batch import BatchAdmin  # noqa
+from .beneficiary_group import BeneficiaryGroupAdmin  # noqa
 from .constance import ConstanceAdmin  # noqa
 from .household import HouseholdAdmin  # noqa
 from .individual import IndividualAdmin  # noqa

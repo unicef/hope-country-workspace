@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+from django.core.cache import cache
 from testutils.factories import get_factory_for_model
 
 from country_workspace.cache.manager import CacheManager
@@ -32,6 +33,7 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
 def manager(worker_id):
     m = CacheManager(f"cache{worker_id}")
     m.init()
+    cache.clear()
     return m
 
 
