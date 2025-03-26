@@ -4,7 +4,15 @@ from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.fields import clean_field_name, uppercase_field_value
+from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
+from country_workspace.utils.fields import uppercase_field_value, RecordPreprocessor, create_json_record_preprocessor
+
+
+class Config(BatchNameConfig, FailIfAlienConfig):
+    registration_reference_pk: str | None
+    household_column_prefix: str
+    individuals_column_prefix: str
+    household_label_column: str
 
 
 def import_from_aurora(job: AsyncJob) -> dict[str, int]:
@@ -25,32 +33,40 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
             - "individuals": The total number of individuals imported.
 
     """
+    config: Config = job.config
     total_hh = total_ind = 0
     batch = Batch.objects.create(
-        name=job.config["batch_name"],
+        name=config["batch_name"],
         program=job.program,
         country_office=job.program.country_office,
         imported_by=job.owner,
         source=Batch.BatchSource.AURORA,
     )
     client = AuroraClient()
+    individual_preprocessor = create_json_record_preprocessor(config, job.program.individual_checker)
+    household_preprocessor = create_json_record_preprocessor(config, job.program.household_checker)
     with atomic():
-        for record in client.get(f"registration/{job.config['registration_reference_pk']}/records/"):
-            inds_data = _collect_by_prefix(record["flatten"], job.config.get("individuals_column_prefix"))
+        for record in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+            inds_data = _collect_by_prefix(record["flatten"], config.get("individuals_column_prefix"))
             if inds_data:
-                hh = create_household(batch, record["flatten"], job.config.get("household_column_prefix"))
+                hh = create_household(
+                    batch, record["flatten"], config.get("household_column_prefix"), household_preprocessor
+                )
                 total_hh += 1
                 total_ind += len(
                     create_individuals(
                         household=hh,
                         data=inds_data,
-                        household_label_column=job.config.get("household_label_column"),
+                        household_label_column=config.get("household_label_column"),
+                        preprocess_record=individual_preprocessor,
                     )
                 )
     return {"households": total_hh, "individuals": total_ind}
 
 
-def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:
+def create_household(
+    batch: Batch, data: dict[str, Any], prefix: str, preprocess_record: RecordPreprocessor
+) -> Household:
     """
     Create a Household object from the provided data and associate it with a batch.
 
@@ -58,6 +74,7 @@ def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Househo
         batch (Batch): The batch to which the household will be linked.
         data (dict[str, Any]): A dictionary containing household-related information.
         prefix (str): The prefix used to filter and group household-related information.
+        preprocess_record (RecordPreprocessor): The function normalizing field names and checking if they are valid.
 
     Returns:
         Household: The newly created household instance.
@@ -69,16 +86,19 @@ def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Househo
     flex_fields = _collect_by_prefix(data, prefix)
     if len(flex_fields) > 1:
         raise ValueError("Multiple households found")
-    return batch.program.households.create(batch=batch, flex_fields=flex_fields)
+    return batch.program.households.create(batch=batch, flex_fields=preprocess_record(flex_fields))
 
 
-def create_individuals(household: Household, data: dict[str, Any], household_label_column: str) -> list[Individual]:
+def create_individuals(
+    household: Household, data: dict[str, Any], household_label_column: str, preprocess_record: RecordPreprocessor
+) -> list[Individual]:
     """Create and associate Individual objects with a given Household.
 
     Args:
         household (Household): The household to which the individuals will be linked.
         data (dict[str, Any]): A dictionary mapping indices to individual details.
         household_label_column (str): The key in the individual data used to determine the household label.
+        preprocess_record (RecordPreprocessor): The function normalizing field names and checking if they are valid.
 
     Returns:
         list[Individual]: A list of successfully created Individual instances.
@@ -95,7 +115,7 @@ def create_individuals(household: Household, data: dict[str, Any], household_lab
                 batch=household.batch,
                 household_id=household.pk,
                 name=individual.get("given_name", ""),
-                flex_fields=individual,
+                flex_fields=preprocess_record(individual),
             ),
         )
     return household.program.individuals.bulk_create(individuals)
@@ -126,8 +146,7 @@ def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str,
     for k, v in data.items():
         if (stripped := k.removeprefix(prefix)) != k:
             index, field = stripped.split("_", 1)
-            field_clean = clean_field_name(field)
-            result.setdefault(index, {})[field_clean] = uppercase_field_value(field_clean, v)
+            result.setdefault(index, {})[field] = uppercase_field_value(field, v)
     return result
 
 

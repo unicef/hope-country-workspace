@@ -1,23 +1,22 @@
 import io
 from collections.abc import Iterable
-from typing import Mapping, Any, TypedDict, cast
+from typing import Mapping, Any, cast
 
 from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.models import AsyncJob, Batch, Household
-from country_workspace.utils.fields import clean_field_name
+from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
+from country_workspace.utils.fields import create_json_record_preprocessor, Record
 
 RDI = str | io.BytesIO
-Row = Mapping[str, Any]
-Sheet = Iterable[Row]
+Sheet = Iterable[Record]
 
 INDIVIDUAL = "individual"
 HOUSEHOLD = "household"
 
 
-class Config(TypedDict):
-    batch_name: str
+class Config(BatchNameConfig, FailIfAlienConfig):
     household_pk_col: str
     master_column_label: str
     detail_column_label: str
@@ -62,11 +61,7 @@ class HouseholdValidationError(Exception):
         return f"Failed to validate household {self.household_key}."
 
 
-def normalize_row(row: Row) -> Mapping[str, Any]:
-    return {clean_field_name(k): v for k, v in row.items()}
-
-
-def get_value(row: Row, column_name: str) -> Any:
+def get_value(row: Record, column_name: str) -> Any:
     if column_name in row:
         return row[column_name]
 
@@ -76,7 +71,7 @@ def get_value(row: Row, column_name: str) -> Any:
 def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sheet]:
     household_pk_col = config["household_pk_col"]
 
-    def has_household_pk(row: Row) -> bool:
+    def has_household_pk(row: Record) -> bool:
         return bool(get_value(row, household_pk_col))
 
     return (filter(has_household_pk, sheet) for sheet in sheets)
@@ -85,9 +80,13 @@ def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sh
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
+    preprocess_json_record = create_json_record_preprocessor(config, job.program.household_checker)
+
     for i, row in enumerate(sheet, 1):
         name = get_value(row, config["master_column_label"])
         household_key = get_value(row, config["household_pk_col"])
+
+        preprocessed_row = preprocess_json_record(row)
 
         try:
             mapping[household_key] = cast(
@@ -95,7 +94,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                 job.program.households.create(
                     batch=batch,
                     name=name,
-                    flex_fields=normalize_row(row),
+                    flex_fields=preprocessed_row,
                 ),
             )
         except Exception as e:
@@ -109,6 +108,8 @@ def process_individuals(
 ) -> int:
     processed = 0
 
+    preprocess_json_record = create_json_record_preprocessor(config, job.program.individual_checker)
+
     for i, row in enumerate(sheet, 1):
         name = get_value(row, config["detail_column_label"])
         household_key = get_value(row, config["household_pk_col"])
@@ -117,12 +118,14 @@ def process_individuals(
         if not household:
             raise MissingHouseholdError(i, household_key)
 
+        preprocessed_row = preprocess_json_record(row)
+
         try:
             job.program.individuals.create(
                 batch=batch,
                 name=name,
                 household_id=household.pk,
-                flex_fields=normalize_row(row),
+                flex_fields=preprocessed_row,
             )
         except Exception as e:
             raise SheetProcessingError(INDIVIDUAL, i) from e

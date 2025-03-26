@@ -18,7 +18,7 @@ from country_workspace.datasources.rdi import (
     import_from_rdi,
     Config,
     Sheet,
-    Row,
+    Record,
 )
 from country_workspace.models import Household
 
@@ -110,7 +110,7 @@ def test_get_value_returns_value() -> None:
 
 
 def test_get_value_raise_exception_when_key_is_missing() -> None:
-    row: Row = {}
+    row: Record = {}
 
     with pytest.raises(ColumnConfigurationError):
         get_value(row, "column")
