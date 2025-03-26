@@ -37,7 +37,6 @@ def program(office):
         individual_checker=DataCheckerFactory(fields=["gender"]),
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
-        beneficiary_group__master_detail=True,
     )
 
 
@@ -63,28 +62,42 @@ def app(
     return django_app
 
 
-def test_configure_hh_columns(app, household: "CountryHousehold"):
+@pytest.mark.parametrize(
+    ("master_detail", "should_be_visible"),
+    [
+        (True, True),
+        (False, False),
+    ],
+    ids=["visible", "hidden"],
+)
+def test_configure_hh_columns(app, household: "CountryHousehold", master_detail: bool, should_be_visible: bool):
     program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = master_detail
+    program.beneficiary_group.save()
     with select_office(app, program.country_office, program):
         res = app.get(program.get_change_url())
-        res = res.click("Household Columns")
-        form = res.forms["configure-columns"]
-        form["columns"] = ["name", "flex_fields__collect_individual_data"]
-        form.submit().follow()
-        program.refresh_from_db()
-        assert program.household_columns == "name\nflex_fields__collect_individual_data"
-        hh_list = reverse("workspace:workspaces_countryhousehold_changelist")
-        res = app.get(hh_list)
-        assert not res.pyquery("div.text a:contains('flex_fields__collect_individual_data')")
-        assert res.pyquery("div.text a:contains('Collect_individual_data')")
-    # assert "collect_individual_data" in res.text
+        button_text = f"{program.beneficiary_group.group_label} Columns"
+        if should_be_visible:
+            res = res.click(button_text)
+            form = res.forms["configure-columns"]
+            form["columns"] = ["name", "flex_fields__collect_individual_data"]
+            form.submit().follow()
+            program.refresh_from_db()
+            assert program.household_columns == "name\nflex_fields__collect_individual_data"
+            hh_list = reverse("workspace:workspaces_countryhousehold_changelist")
+            res = app.get(hh_list)
+            assert not res.pyquery("div.text a:contains('flex_fields__collect_individual_data')")
+            assert res.pyquery("div.text a:contains('Collect_individual_data')")
+        else:
+            assert button_text not in res.text
 
 
 def test_configure_ind_columns(app, household: "CountryHousehold"):
     program: "CountryProgram" = household.program
     with select_office(app, program.country_office, program):
         res = app.get(program.get_change_url())
-        res = res.click("Individual Columns")
+        button_text = f"{program.beneficiary_group.member_label} Columns"
+        res = res.click(button_text)
         form = res.forms["configure-columns"]
         form["columns"] = ["name", "flex_fields__gender"]
         form.submit().follow()

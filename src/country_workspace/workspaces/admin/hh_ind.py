@@ -59,9 +59,23 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.bulk_update_export,
         actions.calculate_checksum,
     ]
-    title = None
-    title_plural = None
     list_per_page = 20
+
+    @property
+    def title_group(self) -> str | None:
+        return self._get_title_label("group_label")
+
+    @property
+    def title_group_plural(self) -> str | None:
+        return self._get_title_label("group_label_plural")
+
+    @property
+    def title_member(self) -> str | None:
+        return self._get_title_label("member_label")
+
+    @property
+    def title_member_plural(self) -> str | None:
+        return self._get_title_label("member_label_plural")
 
     def has_validate_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.validate_beneficiary")
@@ -85,12 +99,24 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         return qs
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
-        ret = super().get_common_context(request, pk, **kwargs)
-        ret["datachecker"] = self.get_checker(request, ret.get("original"))
-        ret["modeladmin"] = self
-        ret["title_plural"] = self.title_plural
-        ret.update(**kwargs)
-        return ret
+        context = super().get_common_context(request, pk, **kwargs)
+        program = self.get_selected_program(request)
+        return {
+            **context,
+            "modeladmin": self,
+            "original": self.get_object(request, pk),
+            "datachecker": self.get_checker(request, context.get("original")),
+            "title_group": self.title_group,
+            "title_group_plural": self.title_group_plural,
+            "title_member": self.title_member,
+            "title_member_plural": self.title_member_plural,
+            "master_detail": program.beneficiary_group.master_detail if program else None,
+            **kwargs,
+        }
+
+    def _get_title_label(self, attr: str) -> str | None:
+        program = state.program
+        return getattr(program.beneficiary_group, attr) if program else None
 
     @button(
         label=_("Validate"),
@@ -201,7 +227,6 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             form = form_class(prefix="flex_field", initial=initials)
 
         context["show_save_invalid"] = True
-        context["title"] = self.title
         context["checker_form"] = form
         context["has_change_permission"] = self.has_change_permission(request)
 
