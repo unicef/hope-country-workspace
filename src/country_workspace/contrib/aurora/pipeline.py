@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Mapping
 
 from django.db.transaction import atomic
 
@@ -107,7 +107,8 @@ def create_individuals(
     individuals = []
     head_found = False
 
-    for individual in data.values():
+    for raw_individual in data.values():
+        individual = preprocess_record(raw_individual)
         if not head_found:
             head_found = _update_household_label_from_individual(household, individual, household_label_column)
         individuals.append(
@@ -115,7 +116,7 @@ def create_individuals(
                 batch=household.batch,
                 household_id=household.pk,
                 name=individual.get("given_name", ""),
-                flex_fields=preprocess_record(individual),
+                flex_fields=individual,
             ),
         )
     return household.program.individuals.bulk_create(individuals)
@@ -151,7 +152,7 @@ def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str,
 
 
 def _update_household_label_from_individual(
-    household: Household, individual: dict[str, Any], household_label_column: str
+    household: Household, individual: Mapping[str, Any], household_label_column: str
 ) -> bool:
     """Update the household's name based on an individual's role and specified name field.
 
