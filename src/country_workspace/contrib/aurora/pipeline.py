@@ -86,6 +86,7 @@ def create_household(
     flex_fields = _collect_by_prefix(data, prefix)
     if len(flex_fields) > 1:
         raise ValueError("Multiple households found")
+    flex_fields = next(iter(flex_fields.values()), {})
     return batch.program.households.create(batch=batch, flex_fields=preprocess_record(flex_fields))
 
 
