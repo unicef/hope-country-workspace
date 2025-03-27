@@ -38,7 +38,7 @@ def create_individuals(
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual = {
-            key.lstrip(f"{config['individual_records_field']}/"): value for key, value in raw_individual.items()
+            key.replace(f"{config['individual_records_field']}/", ""): value for key, value in raw_individual.items()
         }
         fullname = next((key for key in individual if key.startswith("full_name")), None)
         individuals.append(
