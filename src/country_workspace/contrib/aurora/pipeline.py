@@ -167,7 +167,7 @@ def _update_household_label_from_individual(
         bool: True if the household name was updated (individual is head and name provided), False otherwise.
 
     """
-    is_head = any(individual.get(k) == "HEAD" for k in individual if k.startswith("relationship"))
+    is_head = any(individual.get(k, "").upper() == "HEAD" for k in individual if k.startswith("relationship"))
     name = individual.get(household_label_column)
     if is_head and name:
         household.name = name
