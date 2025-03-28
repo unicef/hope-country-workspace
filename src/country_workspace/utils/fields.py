@@ -14,6 +14,9 @@ Record = Mapping[str, Any]
 RecordPreprocessor = Callable[[Record], Record]
 
 
+TO_REMOVE = "_h_c", "_h_f", "_i_c", "_i_f"
+
+
 def clean_field_name(v: str) -> str:
     """Normalize a field name by removing specific substrings (case-insensitive) and converting it to lowercase.
 
@@ -24,8 +27,7 @@ def clean_field_name(v: str) -> str:
         str: The cleaned field name.
 
     """
-    to_remove = ("_h_c", "_h_f", "_i_c", "_i_f")
-    return reduce(lambda name, substr: name.replace(substr, ""), to_remove, v.lower())
+    return reduce(lambda name, substr: name.replace(substr, ""), TO_REMOVE, v.lower())
 
 
 class ExtraFieldInRecordError(Exception):
