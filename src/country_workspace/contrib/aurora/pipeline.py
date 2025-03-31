@@ -1,4 +1,4 @@
-from typing import Any, Mapping
+from typing import Any, Mapping, Final, NotRequired
 
 from django.db.transaction import atomic
 
@@ -10,9 +10,14 @@ from country_workspace.utils.fields import clean_field_names, uppercase_field_va
 
 class Config(BatchNameConfig, FailIfAlienConfig):
     registration_reference_pk: str | None
-    household_column_prefix: str
+    master_detail: bool
+    household_column_prefix: NotRequired[str]
     individuals_column_prefix: str
-    household_label_column: str
+    household_label_column: NotRequired[str]
+
+
+RELATIONSHIP_HEAD: Final[str] = "HEAD"
+RELATIONSHIP_FIELDNAME: Final[str] = "relationship"
 
 
 def import_from_aurora(job: AsyncJob) -> dict[str, int]:
@@ -20,48 +25,38 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
 
     Args:
         job (AsyncJob): The job instance containing the configuration and context for data import.
-            Expected keys in `job.config`:
-            - "batch_name" (str): The name for the newly created batch.
-            - "registration_reference_pk" (int): The unique identifier of the registration to import.
-            - "household_column_prefix" (str, optional): The prefix for household-related columns.
-            - "individuals_column_prefix" (str, optional): The prefix for individual-related columns.
-            - "household_label_column" (str, optional): The column name used to determine the household label.
+            Expected keys in `job.config` correspond to the `Config` TypedDict.
 
     Returns:
-        dict[str, int]: A dictionary with the counts of successfully created records:
-            - "households": The number of households imported.
-            - "individuals": The total number of individuals imported.
+        dict[str, int]: Counts of imported records:
+            - "households": Number of households imported (0 if `master_detail` is False or None).
+            - "individuals": Total number of individuals imported.
 
     """
-    config: Config = job.config
-    total_hh = total_ind = 0
-    batch = Batch.objects.create(
-        name=config["batch_name"],
-        program=job.program,
-        country_office=job.program.country_office,
-        imported_by=job.owner,
-        source=Batch.BatchSource.AURORA,
-    )
-    client = AuroraClient()
     with atomic():
-        for record in client.get(f"registration/{config['registration_reference_pk']}/records/"):
-            inds_data = _collect_by_prefix(record["flatten"], config.get("individuals_column_prefix"))
-            if inds_data:
-                hh = create_household(batch, record["flatten"], config.get("household_column_prefix"))
-                total_hh += 1
-                total_ind += len(
-                    create_individuals(
-                        household=hh,
-                        data=inds_data,
-                        household_label_column=config.get("household_label_column"),
-                    )
-                )
-    return {"households": total_hh, "individuals": total_ind}
+        total = {"households": 0, "individuals": 0}
+        cfg: Config = job.config
+
+        batch = Batch.objects.create(
+            name=cfg["batch_name"],
+            program=job.program,
+            country_office=job.program.country_office,
+            imported_by=job.owner,
+            source=Batch.BatchSource.AURORA,
+        )
+
+        client = AuroraClient()
+        for record in client.get(f"registration/{cfg['registration_reference_pk']}/records/"):
+            individuals = create_individuals(batch, record["flatten"], cfg)
+            total["individuals"] += len(individuals)
+            if cfg["master_detail"] and individuals and individuals[0].household_id:
+                total["households"] += 1
+
+    return total
 
 
 def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:
-    """
-    Create a Household object from the provided data and associate it with a batch.
+    """Create a Household object from the provided data and associate it with a batch.
 
     Args:
         batch (Batch): The batch to which the household will be linked.
@@ -80,36 +75,49 @@ def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Househo
         raise ValueError("Multiple households found")
     flex_fields = next(iter(flex_fields.values()), {})
     return batch.program.households.create(batch=batch, flex_fields=clean_field_names(flex_fields))
+    # return batch.program.households.create(batch=batch, flex_fields=flex_fields)
 
 
-def create_individuals(household: Household, data: dict[str, Any], household_label_column: str) -> list[Individual]:
-    """Create and associate Individual objects with a given Household.
+def create_individuals(
+    batch: Batch,
+    data: dict[str, Any],
+    cfg: Config,
+) -> list[Individual]:
+    """Create and associate Individual objects with an optional Household.
 
     Args:
-        household (Household): The household to which the individuals will be linked.
-        data (dict[str, Any]): A dictionary mapping indices to individual details.
-        household_label_column (str): The key in the individual data used to determine the household label.
+        batch (Batch): The batch to which individuals will be linked.
+        data (dict[str, Any]): A dictionary containing related information.
+        cfg (Config): Configuration dictionary containing various settings for the import process.
 
     Returns:
         list[Individual]: A list of successfully created Individual instances.
 
     """
-    individuals = []
+    household, individuals = None, []
     head_found = False
 
-    for raw_individual in data.values():
-        individual = clean_field_names(raw_individual)
-        if not head_found:
+    # for raw_individual in data.values():
+        # individual = clean_field_names(raw_individual)
+        # if not head_found:
+    inds_data = _collect_by_prefix(data, cfg.get("individuals_column_prefix"))
+
+    if inds_data and cfg["master_detail"] and (hh_prefix := cfg.get("household_column_prefix")):
+        household = create_household(batch, data, hh_prefix)
+
+    for individual in inds_data.values():
+        household_label_column = cfg.get("household_label_column")
+        if household and household_label_column and not head_found:
             head_found = _update_household_label_from_individual(household, individual, household_label_column)
         individuals.append(
             Individual(
-                batch=household.batch,
-                household_id=household.pk,
+                batch=batch,
+                household_id=household.pk if household else None,
                 name=individual.get("given_name", ""),
                 flex_fields=individual,
-            ),
+            )
         )
-    return household.program.individuals.bulk_create(individuals)
+    return batch.program.individuals.bulk_create(individuals, batch_size=1000)
 
 
 def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str, Any]]:
@@ -138,7 +146,13 @@ def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str,
         if (stripped := k.removeprefix(prefix)) != k:
             index, field = stripped.split("_", 1)
             result.setdefault(index, {})[field] = uppercase_field_value(field, v)
-    return result
+    # for key, value in data.items():
+    #     if not key.startswith(prefix):
+    #         continue
+    #     index, field = key.removeprefix(prefix).split("_", 1)
+    #     clean_field = clean_field_name(field)
+    #     result.setdefault(index, {})[clean_field] = uppercase_field_value(clean_field, value)
+    # return result
 
 
 def _update_household_label_from_individual(
@@ -157,7 +171,7 @@ def _update_household_label_from_individual(
         bool: True if the household name was updated (individual is head and name provided), False otherwise.
 
     """
-    is_head = any(individual.get(k, "").upper() == "HEAD" for k in individual if k.startswith("relationship"))
+    is_head = any(individual.get(k) == RELATIONSHIP_HEAD for k in individual if k.startswith(RELATIONSHIP_FIELDNAME))
     name = individual.get(household_label_column)
     if is_head and name:
         household.name = name

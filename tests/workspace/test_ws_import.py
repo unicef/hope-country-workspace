@@ -27,8 +27,8 @@ def office():
     return co
 
 
-@pytest.fixture
-def program(office, force_migrated_records, household_checker, individual_checker):
+@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
+def program(request, office, force_migrated_records, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory, ProjectFactory, RegistrationFactory
 
     program = CountryProgramFactory(
@@ -37,6 +37,7 @@ def program(office, force_migrated_records, household_checker, individual_checke
         individual_checker=individual_checker,
         household_columns="name\nid\nxx",
         individual_columns="name\nid\nxx",
+        beneficiary_group__master_detail=request.param,
     )
     project = ProjectFactory(program=program)
     RegistrationFactory.create_batch(3, project=project, active=True)
@@ -85,8 +86,8 @@ def test_import_data_rdi(force_migrated_records, app, program):
     ("stub_data", "error_expected", "hh_count", "ind_count", "error_message"),
     [
         (stub.imported["correct"], False, 2, 3, None),  # 2 hh: 1st with 1 ind, 2nd with 2 inds
-        (stub.imported["no_individuals"], False, 0, 0, None),  # No individuals, no Household
-        (stub.imported["multiple_households"], True, 0, 0, "Multiple households found"),  # Multiple households error
+        (stub.imported["no_individuals"], False, 0, 0, None),  # No individuals
+        (stub.imported["multiple_households"], True, 0, 1, "Multiple households found"),  # Multiple households error
         (stub.imported["empty_household_data"], False, 1, 1, None),  # Only ind without hh data
         (stub.imported["update_head_name"], False, 1, 1, None),  # Household name updated from head
     ],
@@ -107,7 +108,6 @@ def test_import_data_aurora(
     res.forms["select-tenant"].submit()
 
     url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
-
     mocked_responses.add(
         responses.GET,
         re.compile(re.escape(config.AURORA_API_URL) + ".*"),
@@ -118,14 +118,20 @@ def test_import_data_aurora(
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
     res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
-    if error_expected:
+    master_detail = program.beneficiary_group.master_detail
+
+    if error_expected and master_detail:
         with pytest.raises(ValueError, match=error_message):
             res.forms["import-aurora"].submit()
-    else:
-        res = res.forms["import-aurora"].submit()
-        households = program.households.all()
-        assert households.count() == hh_count
-        assert sum(hh.members.count() for hh in households) == ind_count
+        return
+
+    res = res.forms["import-aurora"].submit()
+    households = program.households.all()
+    individuals = program.individuals.all()
+    assert individuals.count() == ind_count
+    assert households.count() == (hh_count if master_detail else 0)
+
+    if master_detail:
         if hh_count == 2:
             assert {hh.members.count() for hh in households} == {1, 2}
             assert {hh.heads().first().name for hh in households} == {"John", "Jane"}
