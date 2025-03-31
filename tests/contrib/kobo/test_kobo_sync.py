@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 import pytest
 from constance.test.unittest import override_config
@@ -85,6 +85,7 @@ def test_extract_household_data() -> None:
 
 
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
+    clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
     individual_mock = individual_class_mock.return_value
     data = {
@@ -102,43 +103,35 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         household_mock := Mock(name="household"),
         cast(Submission, data),
         config,
-        preprocess_record := Mock(name="preprocess_record"),
     )
 
     assert individuals == len(data[INDIVIDUAL_RECORDS_FIELD])
     individual_class_mock.assert_called_once_with(
-        batch=batch_mock, name=full_name, household=household_mock, flex_fields=preprocess_record.return_value
+        batch=batch_mock, name=full_name, household=household_mock, flex_fields=clean_field_names_mock.return_value
     )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_mock])
-    preprocess_record.assert_called_once_with(individual_data)
+    clean_field_names_mock.assert_called_once_with(individual_data)
 
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
+    clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
 
     household = create_household(
         batch_mock := Mock(name="batch"),
         submission_mock := Mock(name="submission"),
         config,
-        preprocess_record_mock := Mock(name="preprocess_record"),
     )
 
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
     batch_mock.program.households.create.assert_called_once_with(
-        batch=batch_mock, flex_fields=preprocess_record_mock.return_value
+        batch=batch_mock, flex_fields=clean_field_names_mock.return_value
     )
-    preprocess_record_mock.assert_called_once_with(extract_household_data_mock.return_value)
+    clean_field_names_mock.assert_called_once_with(extract_household_data_mock.return_value)
 
 
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
-    create_json_record_preprocessor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.create_json_record_preprocessor"
-    )
-    create_json_record_preprocessor_mock.side_effect = (
-        (individual_preprocessor_mock := Mock(name="individual_preprocessor")),
-        (household_preprocessor_mock := Mock(name="household_preprocessor")),
-    )
     cache = mocker.patch("country_workspace.contrib.kobo.sync.cache")
     kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
     kobo_submission_class.objects.filter.return_value.values_list.return_value = [(old_submission_id := 42)]
@@ -156,20 +149,14 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         batch_mock := Mock(name="batch"),
         asset_mock,
         config,
-        batch_mock.program,
     )
 
     assert result == ImportResult(households=1, individuals=individuals_counter)
-    create_json_record_preprocessor_mock.assert_has_calls(
-        (call(config, batch_mock.program.individual_checker), call(config, batch_mock.program.household_checker))
-    )
     cache.lock.assert_called_once_with(ASSET_CACHE_KEY.format(asset_id=asset_mock.uid))
     kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
     kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
-    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config, household_preprocessor_mock)
-    create_individuals_mock.assert_called_once_with(
-        batch_mock, household_mock, new_submission_mock, config, individual_preprocessor_mock
-    )
+    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config)
+    create_individuals_mock.assert_called_once_with(batch_mock, household_mock, new_submission_mock, config)
 
 
 def test_import_data(mocker: MockerFixture, config: Config) -> None:
@@ -197,4 +184,4 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         source=batch_class_mock.BatchSource.KOBO,
     )
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
-    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config, job_mock.program)
+    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config)

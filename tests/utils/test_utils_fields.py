@@ -1,12 +1,10 @@
-from unittest.mock import MagicMock
-
 import pytest
+from pytest_mock import MockFixture
 
 from country_workspace.utils.fields import (
     clean_field_name,
     TO_REMOVE,
-    ExtraFieldInRecordError,
-    create_json_record_preprocessor,
+    clean_field_names,
 )
 
 
@@ -22,16 +20,10 @@ def test_clean_field_name(input_value, expected_output):
     assert clean_field_name(input_value) == expected_output
 
 
-def test_extra_field_in_record_error_format() -> None:
-    assert ", ".join(extra_fields := ("a", "b", "c")) in str(ExtraFieldInRecordError(*extra_fields))
+def test_clean_field_names(mocker: MockFixture) -> None:
+    clean_field_name_mock = mocker.patch("country_workspace.utils.fields.clean_field_name")
 
+    cleaned = clean_field_names({(key := "foo"): "bar"})
 
-def test_create_json_record_preprocessor_raises_on_extra_fields() -> None:
-    config = {
-        "fail_if_alien": True,
-    }
-    checker = MagicMock()
-    preprocessor = create_json_record_preprocessor(config, checker)
-
-    with pytest.raises(ExtraFieldInRecordError):
-        preprocessor({"foo": "bar"})
+    assert cleaned == {clean_field_name_mock.return_value: "bar"}
+    clean_field_name_mock.assert_called_once_with(key)

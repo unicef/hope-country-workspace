@@ -7,9 +7,9 @@ from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
-from country_workspace.models import AsyncJob, Batch, Household, Individual, Program
+from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
-from country_workspace.utils.fields import create_json_record_preprocessor, RecordPreprocessor
+from country_workspace.utils.fields import clean_field_names
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
@@ -32,9 +32,7 @@ def extract_household_data(submission: Submission, individual_records_field: str
     return {key: value for key, value in submission.items() if key != individual_records_field}
 
 
-def create_individuals(
-    batch: Batch, household: Household, submission: Submission, config: Config, preprocess_record: RecordPreprocessor
-) -> int:
+def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual = {
@@ -46,22 +44,20 @@ def create_individuals(
                 batch=batch,
                 household=household,
                 name=individual.get(fullname, ""),
-                flex_fields=preprocess_record(individual),
+                flex_fields=clean_field_names(individual),
             ),
         )
     household.program.individuals.bulk_create(individuals)
     return len(individuals)
 
 
-def create_household(
-    batch: Batch, submission: Submission, config: Config, preprocess_record: RecordPreprocessor
-) -> Household:
+def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
     household_fields = extract_household_data(submission, config["individual_records_field"])
     return cast(
         Household,
         batch.program.households.create(
             batch=batch,
-            flex_fields=preprocess_record(household_fields),
+            flex_fields=clean_field_names(household_fields),
         ),
     )
 
@@ -74,21 +70,18 @@ class ImportResult(TypedDict):
     individuals: int
 
 
-def import_asset(batch: Batch, asset: Asset, config: Config, program: Program) -> ImportResult:
+def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
     household_counter = 0
     individual_counter = 0
-
-    individual_preprocessor = create_json_record_preprocessor(config, program.individual_checker)
-    household_preprocessor = create_json_record_preprocessor(config, program.household_checker)
 
     with cache.lock(ASSET_CACHE_KEY.format(asset_id=asset.uid)):
         submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
         for submission in asset.submissions:
             if submission.id in submission_ids:
                 continue
-            household = create_household(batch, submission, config, household_preprocessor)
+            household = create_household(batch, submission, config)
             household_counter += 1
-            individual_counter += create_individuals(batch, household, submission, config, individual_preprocessor)
+            individual_counter += create_individuals(batch, household, submission, config)
 
     return ImportResult(households=household_counter, individuals=individual_counter)
 
@@ -111,7 +104,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     for asset in client.assets:
         # TODO: fetch specific asset
         if config["project_id"] == asset.uid:
-            import_result = import_asset(batch, asset, config, job.program)
+            import_result = import_asset(batch, asset, config)
             household_counter += import_result["households"]
             individual_counter += import_result["individuals"]
 

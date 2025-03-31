@@ -7,7 +7,7 @@ from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.models import AsyncJob, Batch, Household
 from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
-from country_workspace.utils.fields import create_json_record_preprocessor, Record
+from country_workspace.utils.fields import clean_field_names, Record
 
 RDI = str | io.BytesIO
 Sheet = Iterable[Record]
@@ -80,13 +80,9 @@ def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sh
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
-    preprocess_json_record = create_json_record_preprocessor(config, job.program.household_checker)
-
     for i, row in enumerate(sheet, 1):
         name = get_value(row, config["master_column_label"])
         household_key = get_value(row, config["household_pk_col"])
-
-        preprocessed_row = preprocess_json_record(row)
 
         try:
             mapping[household_key] = cast(
@@ -94,7 +90,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                 job.program.households.create(
                     batch=batch,
                     name=name,
-                    flex_fields=preprocessed_row,
+                    flex_fields=clean_field_names(row),
                 ),
             )
         except Exception as e:
@@ -108,8 +104,6 @@ def process_individuals(
 ) -> int:
     processed = 0
 
-    preprocess_json_record = create_json_record_preprocessor(config, job.program.individual_checker)
-
     for i, row in enumerate(sheet, 1):
         name = get_value(row, config["detail_column_label"])
         household_key = get_value(row, config["household_pk_col"])
@@ -118,14 +112,12 @@ def process_individuals(
         if not household:
             raise MissingHouseholdError(i, household_key)
 
-        preprocessed_row = preprocess_json_record(row)
-
         try:
             job.program.individuals.create(
                 batch=batch,
                 name=name,
                 household_id=household.pk,
-                flex_fields=preprocessed_row,
+                flex_fields=clean_field_names(row),
             )
         except Exception as e:
             raise SheetProcessingError(INDIVIDUAL, i) from e
@@ -138,7 +130,7 @@ def process_individuals(
 def validate_households(config: Config, household_mapping: Mapping[int, Household]) -> None:
     if config["check_before"]:
         for household_key, household in household_mapping.items():
-            if not household.validate_with_checker():
+            if not household.validate_with_checker(fail_if_alien=config["fail_if_alien"]):
                 raise HouseholdValidationError(household_key)
 
 

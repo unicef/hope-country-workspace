@@ -5,7 +5,7 @@ from django.db.transaction import atomic
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
-from country_workspace.utils.fields import uppercase_field_value, RecordPreprocessor, create_json_record_preprocessor
+from country_workspace.utils.fields import uppercase_field_value, clean_field_names
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
@@ -43,30 +43,23 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
         source=Batch.BatchSource.AURORA,
     )
     client = AuroraClient()
-    individual_preprocessor = create_json_record_preprocessor(config, job.program.individual_checker)
-    household_preprocessor = create_json_record_preprocessor(config, job.program.household_checker)
     with atomic():
         for record in client.get(f"registration/{config['registration_reference_pk']}/records/"):
             inds_data = _collect_by_prefix(record["flatten"], config.get("individuals_column_prefix"))
             if inds_data:
-                hh = create_household(
-                    batch, record["flatten"], config.get("household_column_prefix"), household_preprocessor
-                )
+                hh = create_household(batch, record["flatten"], config.get("household_column_prefix"))
                 total_hh += 1
                 total_ind += len(
                     create_individuals(
                         household=hh,
                         data=inds_data,
                         household_label_column=config.get("household_label_column"),
-                        preprocess_record=individual_preprocessor,
                     )
                 )
     return {"households": total_hh, "individuals": total_ind}
 
 
-def create_household(
-    batch: Batch, data: dict[str, Any], prefix: str, preprocess_record: RecordPreprocessor
-) -> Household:
+def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:
     """
     Create a Household object from the provided data and associate it with a batch.
 
@@ -74,7 +67,6 @@ def create_household(
         batch (Batch): The batch to which the household will be linked.
         data (dict[str, Any]): A dictionary containing household-related information.
         prefix (str): The prefix used to filter and group household-related information.
-        preprocess_record (RecordPreprocessor): The function normalizing field names and checking if they are valid.
 
     Returns:
         Household: The newly created household instance.
@@ -87,19 +79,16 @@ def create_household(
     if len(flex_fields) > 1:
         raise ValueError("Multiple households found")
     flex_fields = next(iter(flex_fields.values()), {})
-    return batch.program.households.create(batch=batch, flex_fields=preprocess_record(flex_fields))
+    return batch.program.households.create(batch=batch, flex_fields=clean_field_names(flex_fields))
 
 
-def create_individuals(
-    household: Household, data: dict[str, Any], household_label_column: str, preprocess_record: RecordPreprocessor
-) -> list[Individual]:
+def create_individuals(household: Household, data: dict[str, Any], household_label_column: str) -> list[Individual]:
     """Create and associate Individual objects with a given Household.
 
     Args:
         household (Household): The household to which the individuals will be linked.
         data (dict[str, Any]): A dictionary mapping indices to individual details.
         household_label_column (str): The key in the individual data used to determine the household label.
-        preprocess_record (RecordPreprocessor): The function normalizing field names and checking if they are valid.
 
     Returns:
         list[Individual]: A list of successfully created Individual instances.
@@ -109,7 +98,7 @@ def create_individuals(
     head_found = False
 
     for raw_individual in data.values():
-        individual = preprocess_record(raw_individual)
+        individual = clean_field_names(raw_individual)
         if not head_found:
             head_found = _update_household_label_from_individual(household, individual, household_label_column)
         individuals.append(

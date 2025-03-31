@@ -36,13 +36,13 @@ class Household(Validable, BaseModel):
     def country_office(self) -> "Office":
         return self.batch.program.country_office
 
-    def validate_with_checker(self) -> bool:
+    def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         hh_valid = True
         for ind in self.members.all():
-            if not ind.validate_with_checker():
+            if not ind.validate_with_checker(fail_if_alien=fail_if_alien):
                 hh_valid = False
         if hh_valid:
-            super().validate_with_checker()
+            super().validate_with_checker(fail_if_alien=fail_if_alien)
             errors = self.program.beneficiary_validator.validate(self)
             if errors:
                 self.errors["dct"] = errors
