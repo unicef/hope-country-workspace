@@ -150,6 +150,20 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         url = reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])
         return HttpResponseRedirect(url)
 
+    def changeform_view(
+        self,
+        request: "HttpRequest",
+        object_id: str | None = None,
+        form_url: str = "",
+        extra_context: dict[str, Any] | None = None,
+    ) -> HttpResponse:
+        if obj := self.get_object(request, object_id):
+            extra_context["btnlabels"] = {
+                "individual_columns": f"{obj.beneficiary_group.member_label} Columns",
+                "household_columns": f"{obj.beneficiary_group.group_label} Columns",
+            }
+        return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
+
     def _configure_columns(
         self,
         request: HttpResponse,

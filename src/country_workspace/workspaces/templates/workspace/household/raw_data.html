@@ -1,6 +1,6 @@
 {% extends "workspace/raw_data.html" %}{% load i18n workspace_modify workspace_urls %}
 {% block page-title %}
-    &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">Households</a>
+    &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>
     &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.pk %}">{{ original }}</a>{% admin_url original %}
     &rsaquo; Raw Data
 {% endblock page-title %}

@@ -5,7 +5,6 @@ from admin_extra_buttons.decorators import link
 from django.contrib.admin import register
 from django.http import HttpRequest
 from django.urls import reverse
-from django.utils.translation import gettext as _
 
 from ...state import state
 from ..models import CountryHousehold
@@ -26,14 +25,16 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     list_display = ["name", "batch"]
     search_fields = ("name",)
     ordering = ("name",)
-    title = _("Household")
-    title_plural = _("Households")
     list_per_page = 20
     list_filter = (
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         WIsValidFilter,
     )
     actions = [*BeneficiaryBaseAdmin.actions, push_to_hope]
+
+    @property
+    def title_plural(self) -> str:
+        return super().title_group_plural
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         program: "CountryProgram | None"
@@ -53,8 +54,10 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
 
-    @link(change_list=False, html_attrs={"title": "Shows related individuals."})
+    @link(change_list=False, html_attrs={"title": "Shows related members."})
     def members(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryindividual_changelist")
         obj = btn.context["original"]
-        btn.href = f"{base}?household__exact={obj.pk}"
+        if obj:
+            btn.href = f"{base}?household__exact={obj.pk}"
+        btn.label = self.title_member_plural

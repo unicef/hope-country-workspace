@@ -14,7 +14,9 @@ register = Library()
 
 @register.simple_tag(takes_context=True)
 def field_error(context: Context, field: "BoundField") -> list[ValidationError]:
-    obj: "Validable" = context["original"]
+    obj: "Validable" | None = context.get("original")
     form_errors = field.form.errors.get(field.name, [])
-    errs = obj.errors.get(field.name, [])
-    return form_errors + errs
+    if obj:
+        errs = obj.errors.get(field.name, [])
+        return form_errors + errs
+    return form_errors

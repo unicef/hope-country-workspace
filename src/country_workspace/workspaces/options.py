@@ -135,11 +135,13 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
         form_url: str = "",
         extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
-        extra_context = extra_context or {}
-        extra_context["show_save_and_add_another"] = False
-        extra_context["show_save_and_continue"] = True
-        extra_context["show_save"] = False
-        extra_context["preserved_filters"] = self.get_preserved_filters(request)
+        extra_context = {
+            **(extra_context or {}),
+            "show_save_and_add_another": False,
+            "show_save_and_continue": True,
+            "show_save": False,
+            "preserved_filters": self.get_preserved_filters(request),
+        }
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, Any] | None = None) -> HttpResponse:
