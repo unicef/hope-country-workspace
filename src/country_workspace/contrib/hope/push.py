@@ -1,20 +1,18 @@
 from collections.abc import Callable, Iterator
-from typing import Any
-from itertools import batched
 from dataclasses import dataclass, field
+from itertools import batched
+from json import JSONDecodeError
+from typing import Any
 
+from django.db import DatabaseError, transaction
 from django.db.models import QuerySet
-from django.db import transaction, DatabaseError
-
+from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
+from country_workspace.contrib.hope.constants import HOUSEHOLD_PUSH_BATCH_SIZE
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
 from country_workspace.workspaces.models import CountryHousehold
-
-from requests.exceptions import RequestException
-from json import JSONDecodeError
-from country_workspace.exceptions import RemoteError
-from country_workspace.contrib.hope.constants import HOUSEHOLD_PUSH_BATCH_SIZE
 
 
 @dataclass

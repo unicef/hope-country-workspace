@@ -8,7 +8,7 @@ from django.contrib.auth.models import Group
 from django.core.management import BaseCommand
 from django.utils.text import slugify
 
-from country_workspace.models import SyncLog, Individual
+from country_workspace.models import Individual, SyncLog
 
 logger = logging.getLogger(__name__)
 

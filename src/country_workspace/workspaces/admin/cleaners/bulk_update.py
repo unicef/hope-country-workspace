@@ -1,6 +1,6 @@
 import io
-from io import BytesIO
 from collections.abc import Callable
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from constance import config as constance_config

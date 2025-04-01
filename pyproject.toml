@@ -51,6 +51,7 @@ dependencies = [
     "sentry-sdk>=2.7.1",
     "social-auth-app-django",
     "unicef-security>=1.5.1",
+    "django-pghistory>=3.5.4",
 ]
 [project.scripts]
 celery-monitor = "country_workspace.__monitor__:run"

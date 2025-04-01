@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 
 from country_workspace.models import BeneficiaryGroup
+
 from .base import BaseModelAdmin
 
 

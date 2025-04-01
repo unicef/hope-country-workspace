@@ -1,6 +1,6 @@
 import io
 from collections.abc import Iterable
-from typing import Mapping, Any, TypedDict, cast
+from typing import Any, Mapping, TypedDict, cast
 
 from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi

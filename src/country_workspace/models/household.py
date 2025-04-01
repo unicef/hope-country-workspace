@@ -1,7 +1,7 @@
 from functools import cached_property
 from typing import TYPE_CHECKING
 
-import reversion
+import pghistory
 from django.db import models
 from django.utils import timezone
 
@@ -16,7 +16,9 @@ if TYPE_CHECKING:
     from .program import Program
 
 
-@reversion.register()
+@pghistory.track(
+    pghistory.UpdateEvent("updates", condition=pghistory.AnyChange("flex_fields", "flex_files", "removed"))
+)
 class Household(Validable, BaseModel):
     system_fields = models.JSONField(default=dict, blank=True)
     members: "QuerySet[Individual]"

@@ -6,8 +6,8 @@ from hope_flex_fields.models import DataChecker
 from strategy_field.fields import StrategyField
 from strategy_field.utils import fqn
 
-from country_workspace.models.office import Office
 from country_workspace.models.beneficiary_group import BeneficiaryGroup
+from country_workspace.models.office import Office
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
