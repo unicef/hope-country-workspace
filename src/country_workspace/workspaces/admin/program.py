@@ -318,8 +318,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
-                "fail_if_alien": form.cleaned_data["fail_if_alien"],
-                "master_detail": (master_detail := getattr(program.beneficiary_group, "master_detail", False)),
+                "master_detail": (
+                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
+                ),
                 **(
                     {
                         "household_column_prefix": form.cleaned_data.get("household_column_prefix"),

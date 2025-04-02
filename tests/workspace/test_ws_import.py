@@ -6,7 +6,8 @@ import pytest
 import responses
 from constance import config
 from django.urls import reverse
-from webtest import Upload
+from webtest import forms, Upload
+
 
 from country_workspace.state import state
 from tests.contrib.aurora import stub
@@ -81,28 +82,10 @@ def test_import_data_rdi(force_migrated_records, app, program):
     assert head.name == "Edward Jeffrey Rogers"
 
 
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize(
-    ("stub_data", "error_expected", "hh_count", "ind_count", "error_message"),
-    [
-        (stub.imported["correct"], False, 2, 3, None),  # 2 hh: 1st with 1 ind, 2nd with 2 inds
-        (stub.imported["no_individuals"], False, 0, 0, None),  # No individuals
-        (stub.imported["multiple_households"], True, 0, 1, "Multiple households found"),  # Multiple households error
-        (stub.imported["empty_household_data"], False, 1, 1, None),  # Only ind without hh data
-        (stub.imported["update_head_name"], False, 1, 1, None),  # Household name updated from head
-    ],
-)
-def test_import_data_aurora(
-    force_migrated_records: None,
-    app: "DjangoTestApp",
-    program: "CountryProgram",
-    mocked_responses: responses.RequestsMock,
-    stub_data: dict[str, Any],
-    error_expected: bool,
-    hh_count: int,
-    ind_count: int,
-    error_message: str,
-) -> None:
+@pytest.fixture
+def form_aurora(
+    app: "DjangoTestApp", program: "CountryProgram", mocked_responses: responses.RequestsMock, stub_data: dict[str, Any]
+) -> forms.Form:
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()
@@ -118,14 +101,30 @@ def test_import_data_aurora(
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
     res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
+    return res.forms["import-aurora"]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("stub_data", "hh_count", "ind_count"),
+    [
+        (stub.imported["correct"], 2, 3),
+        (stub.imported["no_individuals"], 0, 0),
+        (stub.imported["empty_household_data"], 1, 1),
+        (stub.imported["update_head_name"], 1, 1),
+    ],
+)
+def test_import_data_aurora_success(
+    force_migrated_records: None,
+    program: "CountryProgram",
+    form_aurora: forms.Form,
+    stub_data: dict[str, Any],
+    hh_count: int,
+    ind_count: int,
+) -> None:
+    form_aurora.submit()
+
     master_detail = program.beneficiary_group.master_detail
-
-    if error_expected and master_detail:
-        with pytest.raises(ValueError, match=error_message):
-            res.forms["import-aurora"].submit()
-        return
-
-    res = res.forms["import-aurora"].submit()
     households = program.households.all()
     individuals = program.individuals.all()
     assert individuals.count() == ind_count
@@ -137,3 +136,32 @@ def test_import_data_aurora(
             assert {hh.heads().first().name for hh in households} == {"John", "Jane"}
         elif hh_count == 1 and stub_data == stub.imported["update_head_name"]:
             assert households.first().name == "Doe"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    ("stub_data", "hh_count", "ind_count", "error_message"),
+    [
+        (stub.imported["multiple_households"], 0, 1, "Multiple households found"),
+        (stub.imported["invalid_key"], 0, 0, r".*must contain an underscore"),
+    ],
+)
+def test_import_data_aurora_errors(
+    force_migrated_records: None,
+    program: "CountryProgram",
+    form_aurora: forms.Form,
+    stub_data: dict[str, Any],
+    hh_count: int,
+    ind_count: int,
+    error_message: str,
+) -> None:
+    master_detail = program.beneficiary_group.master_detail
+    expected_success = stub_data == stub.imported["multiple_households"] and not master_detail
+
+    if expected_success:
+        form_aurora.submit()
+        assert program.individuals.count() == ind_count
+        assert program.households.count() == hh_count
+    else:
+        with pytest.raises(ValueError, match=error_message):
+            form_aurora.submit()

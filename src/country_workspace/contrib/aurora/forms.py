@@ -34,7 +34,7 @@ class ImportAuroraForm(forms.Form):
         self.program = program
         if program:
             self.fields["registration"].queryset = Registration.objects.filter(project__program=program, active=True)
-            if not getattr(program.beneficiary_group, "master_detail", False):
+            if not (program.beneficiary_group and program.beneficiary_group.master_detail):
                 self.fields = {
                     key: value
                     for key, value in self.fields.items()

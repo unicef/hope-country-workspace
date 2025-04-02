@@ -4,11 +4,11 @@ from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
-from country_workspace.utils.fields import clean_field_names, uppercase_field_value
+from country_workspace.utils.config import BatchNameConfig
+from country_workspace.utils.fields import clean_field_names
 
 
-class Config(BatchNameConfig, FailIfAlienConfig):
+class Config(BatchNameConfig):
     registration_reference_pk: str | None
     master_detail: bool
     household_column_prefix: NotRequired[str]
@@ -70,12 +70,11 @@ def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Househo
         ValueError: If multiple household entries are found in the provided data.
 
     """
-    flex_fields = _collect_by_prefix(data, prefix)
-    if len(flex_fields) > 1:
+    hh_data = _collect_by_prefix(data, prefix)
+    if len(hh_data) > 1:
         raise ValueError("Multiple households found")
-    flex_fields = next(iter(flex_fields.values()), {})
-    return batch.program.households.create(batch=batch, flex_fields=clean_field_names(flex_fields))
-    # return batch.program.households.create(batch=batch, flex_fields=flex_fields)
+    flex_fields = clean_field_names(next(iter(hh_data.values()), {}))
+    return batch.program.households.create(batch=batch, flex_fields=flex_fields)
 
 
 def create_individuals(
@@ -97,24 +96,21 @@ def create_individuals(
     household, individuals = None, []
     head_found = False
 
-    # for raw_individual in data.values():
-        # individual = clean_field_names(raw_individual)
-        # if not head_found:
     inds_data = _collect_by_prefix(data, cfg.get("individuals_column_prefix"))
 
     if inds_data and cfg["master_detail"] and (hh_prefix := cfg.get("household_column_prefix")):
         household = create_household(batch, data, hh_prefix)
 
-    for individual in inds_data.values():
-        household_label_column = cfg.get("household_label_column")
-        if household and household_label_column and not head_found:
-            head_found = _update_household_label_from_individual(household, individual, household_label_column)
+    for ind_data in inds_data.values():
+        flex_fields = clean_field_names(ind_data)
+        if household and (hh_label := cfg.get("household_label_column")) and not head_found:
+            head_found = _update_household_label_from_individual(household, flex_fields, hh_label)
         individuals.append(
             Individual(
                 batch=batch,
                 household_id=household.pk if household else None,
-                name=individual.get("given_name", ""),
-                flex_fields=individual,
+                name=flex_fields.get("given_name", ""),
+                flex_fields=flex_fields,
             )
         )
     return batch.program.individuals.bulk_create(individuals, batch_size=1000)
@@ -133,6 +129,9 @@ def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str,
             and, for specific fields, values converted to uppercase. Returns an empty dictionary if no
             matching keys are found.
 
+    Raises:
+        ValueError: If a key with the specified prefix does not contain an underscore after the prefix.
+
     Examples:
         >>> data = {"user_0_relationship": "head", "user_0_gender": "male", "user_1_gender": "female"}
         >>> _collect_by_prefix(data, "user_")
@@ -144,25 +143,22 @@ def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str,
     result = {}
     for k, v in data.items():
         if (stripped := k.removeprefix(prefix)) != k:
-            index, field = stripped.split("_", 1)
-            result.setdefault(index, {})[field] = uppercase_field_value(field, v)
-    # for key, value in data.items():
-    #     if not key.startswith(prefix):
-    #         continue
-    #     index, field = key.removeprefix(prefix).split("_", 1)
-    #     clean_field = clean_field_name(field)
-    #     result.setdefault(index, {})[clean_field] = uppercase_field_value(clean_field, value)
-    # return result
+            try:
+                index, field = stripped.split("_", 1)
+                result.setdefault(index, {})[field] = v
+            except ValueError:
+                raise ValueError(f"Field name '{k}' after removing prefix '{prefix}' must contain an underscore.")
+    return result
 
 
 def _update_household_label_from_individual(
-    household: Household, individual: Mapping[str, Any], household_label_column: str
+    household: Household, ind_data: Mapping[str, Any], household_label_column: str
 ) -> bool:
     """Update the household's name based on an individual's role and specified name field.
 
     Args:
         household (Household): The household instance to update.
-        individual (dict[str, Any]): A dictionary containing the individual's data,
+        ind_data (dict[str, Any]): A dictionary containing the individual's data,
             including relationship status and potential household name.
         household_label_column (str): The key in the individual's data that stores
             the name to assign to the household.
@@ -171,8 +167,8 @@ def _update_household_label_from_individual(
         bool: True if the household name was updated (individual is head and name provided), False otherwise.
 
     """
-    is_head = any(individual.get(k) == RELATIONSHIP_HEAD for k in individual if k.startswith(RELATIONSHIP_FIELDNAME))
-    name = individual.get(household_label_column)
+    is_head = any(ind_data.get(k) == RELATIONSHIP_HEAD for k in ind_data if k == RELATIONSHIP_FIELDNAME)
+    name = ind_data.get(household_label_column)
     if is_head and name:
         household.name = name
         household.save(update_fields=["name"])
