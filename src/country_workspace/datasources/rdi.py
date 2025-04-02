@@ -1,23 +1,22 @@
 import io
 from collections.abc import Iterable
-from typing import Mapping, Any, TypedDict, cast
+from typing import Mapping, Any, cast
 
 from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.models import AsyncJob, Batch, Household
-from country_workspace.utils.fields import clean_field_name
+from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
+from country_workspace.utils.fields import clean_field_names, Record
 
 RDI = str | io.BytesIO
-Row = Mapping[str, Any]
-Sheet = Iterable[Row]
+Sheet = Iterable[Record]
 
 INDIVIDUAL = "individual"
 HOUSEHOLD = "household"
 
 
-class Config(TypedDict):
-    batch_name: str
+class Config(BatchNameConfig, FailIfAlienConfig):
     household_pk_col: str
     master_column_label: str
     detail_column_label: str
@@ -62,11 +61,7 @@ class HouseholdValidationError(Exception):
         return f"Failed to validate household {self.household_key}."
 
 
-def normalize_row(row: Row) -> Mapping[str, Any]:
-    return {clean_field_name(k): v for k, v in row.items()}
-
-
-def get_value(row: Row, column_name: str) -> Any:
+def get_value(row: Record, column_name: str) -> Any:
     if column_name in row:
         return row[column_name]
 
@@ -76,7 +71,7 @@ def get_value(row: Row, column_name: str) -> Any:
 def filter_rows_with_household_pk(config: Config, *sheets: Sheet) -> Iterable[Sheet]:
     household_pk_col = config["household_pk_col"]
 
-    def has_household_pk(row: Row) -> bool:
+    def has_household_pk(row: Record) -> bool:
         return bool(get_value(row, household_pk_col))
 
     return (filter(has_household_pk, sheet) for sheet in sheets)
@@ -95,7 +90,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                 job.program.households.create(
                     batch=batch,
                     name=name,
-                    flex_fields=normalize_row(row),
+                    flex_fields=clean_field_names(row),
                 ),
             )
         except Exception as e:
@@ -122,7 +117,7 @@ def process_individuals(
                 batch=batch,
                 name=name,
                 household_id=household.pk,
-                flex_fields=normalize_row(row),
+                flex_fields=clean_field_names(row),
             )
         except Exception as e:
             raise SheetProcessingError(INDIVIDUAL, i) from e
@@ -135,7 +130,7 @@ def process_individuals(
 def validate_households(config: Config, household_mapping: Mapping[int, Household]) -> None:
     if config["check_before"]:
         for household_key, household in household_mapping.items():
-            if not household.validate_with_checker():
+            if not household.validate_with_checker(fail_if_alien=config["fail_if_alien"]):
                 raise HouseholdValidationError(household_key)
 
 

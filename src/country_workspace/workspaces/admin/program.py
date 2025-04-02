@@ -18,7 +18,7 @@ from country_workspace.state import state
 
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
-from ...contrib.kobo.sync import import_data as import_from_kobo
+from ...contrib.kobo.sync import import_data as import_from_kobo, Config as KoboConfig
 from ...datasources.rdi import import_from_rdi, Config as RDIConfig
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
@@ -29,8 +29,8 @@ from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
 from .forms import BulkUpdateImportForm, ImportFileForm
 from country_workspace.utils.fields import batch_name_default
 
-
 if TYPE_CHECKING:
+    from ...contrib.aurora.pipeline import Config as AuroraConfig
     from hope_flex_fields.models import DataChecker
 
 
@@ -288,6 +288,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "master_column_label": form.cleaned_data["master_column_label"],
                 "detail_column_label": form.cleaned_data["detail_column_label"],
                 "check_before": form.cleaned_data["check_before"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI importing",
@@ -307,6 +308,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
         if form.is_valid():
             registration_reference_pk = getattr(form.cleaned_data["registration"], "reference_pk", None)
+            config: AuroraConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "registration_reference_pk": registration_reference_pk,
+                "household_column_prefix": form.cleaned_data["household_column_prefix"],
+                "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
+                "household_label_column": form.cleaned_data["household_label_column"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+            }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",
                 type=AsyncJob.JobType.TASK,
@@ -314,13 +323,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 file=None,
                 program=program,
                 owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                    "registration_reference_pk": registration_reference_pk,
-                    "household_column_prefix": form.cleaned_data["household_column_prefix"],
-                    "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
-                    "household_label_column": form.cleaned_data["household_label_column"],
-                },
+                config=config,
             )
             job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
@@ -330,17 +333,19 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
         form = ImportKoboForm(request.POST, prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
         if form.is_valid():
+            config: KoboConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "project_id": form.cleaned_data["project_id"],
+                "individual_records_field": form.cleaned_data["individual_records_field"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+            }
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_kobo),
                 file=None,
                 program=program,
                 owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                    "project_id": form.cleaned_data["project_id"],
-                    "individual_records_field": form.cleaned_data["individual_records_field"],
-                },
+                config=config,
             )
             job.queue()
             self.message_user(

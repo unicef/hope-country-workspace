@@ -112,8 +112,8 @@ class Validable(Cachable, models.Model):
     def checker(self) -> "DataChecker":
         raise NotImplementedError
 
-    def validate_with_checker(self) -> bool:
-        errors = self.checker.validate([self.flex_fields])
+    def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
         if errors:
             self.errors = errors[1]
         else:
