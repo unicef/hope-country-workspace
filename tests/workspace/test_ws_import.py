@@ -1,11 +1,11 @@
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
 import responses
 from constance import config
 from django.urls import reverse
-from pathlib import Path
 from webtest import Upload
 
 from country_workspace.state import state
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
 
-    from country_workspace.workspaces.models import CountryProgram, CountryHousehold
+    from country_workspace.workspaces.models import CountryHousehold, CountryProgram
 
 
 @pytest.fixture

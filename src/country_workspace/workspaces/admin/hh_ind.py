@@ -234,29 +234,30 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         self, request: HttpRequest, object_id: str, extra_context: dict[str, Any] | None = None
     ) -> TemplateResponse:
         obj = self.get_object(request, unquote(object_id))
-        etag = cache_manager.build_key_from_request(request, "history", obj.last_modified)
-        if response := cache_manager.retrieve(etag):
-            return response
-        history = []
-        prev = {}
-        field_names = [f.name for __, f in obj.checker.get_fields()]
-        for entry in obj.events.select_related("pgh_context").all():
-            changes = {}
-            for field_name in field_names:
-                old_value = prev.get(field_name, "")
-                new_value = entry.flex_fields.get(field_name, "")
-                if old_value != new_value:
-                    changes[field_name] = {"from": old_value, "to": new_value}
-            history.append(
-                {
-                    "changes": changes,
-                    "date": entry.pgh_created_at,
-                    "pgh_label": entry.pgh_label,
-                    "user": entry.pgh_context.metadata["user"],
-                }
-            )
-            prev = entry.flex_fields
-        history.reverse()
+        key = cache_manager.build_key_from_request(request, "history", obj.pk, obj.version)
+        if not (history := cache_manager.retrieve(key)):
+            history = []
+            prev = {}
+            field_names = [f.name for __, f in obj.checker.get_fields()]
+            for entry in obj.events.select_related("pgh_context").all():
+                changes = {}
+                for field_name in field_names:
+                    old_value = prev.get(field_name, "")
+                    new_value = entry.flex_fields.get(field_name, "")
+                    if old_value != new_value:
+                        changes[field_name] = {"from": old_value, "to": new_value}
+                history.append(
+                    {
+                        "changes": changes,
+                        "date": entry.pgh_created_at,
+                        "pgh_label": entry.pgh_label,
+                        "user": entry.pgh_context.metadata["user"],
+                    }
+                )
+                prev = entry.flex_fields
+            history.reverse()
+            cache_manager.store(key, history)
+
         context = {
             **self.admin_site.each_context(request),
             "modeladmin": self,
@@ -273,9 +274,5 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             "preserved_filters": self.get_preserved_filters(request),
             **(extra_context or {}),
         }
-        return TemplateResponse(
-            request,
-            self.object_history_template,
-            context,
-            headers={"Etag": etag},
-        )
+
+        return TemplateResponse(request, self.object_history_template, context)

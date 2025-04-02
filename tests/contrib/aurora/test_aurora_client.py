@@ -1,7 +1,6 @@
 import re
 from collections.abc import Callable
 
-
 import pytest
 import requests
 import responses

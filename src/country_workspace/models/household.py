@@ -16,9 +16,7 @@ if TYPE_CHECKING:
     from .program import Program
 
 
-@pghistory.track(
-    pghistory.UpdateEvent("updates", condition=pghistory.AnyChange("flex_fields", "flex_files", "removed"))
-)
+@pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
 class Household(Validable, BaseModel):
     system_fields = models.JSONField(default=dict, blank=True)
     members: "QuerySet[Individual]"
