@@ -11,7 +11,9 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
 
-@pghistory.track(fields=["flex_fields", "flex_files", "removed"])
+@pghistory.track(
+    pghistory.UpdateEvent("updates", condition=pghistory.AnyChange("flex_fields", "flex_files", "removed"))
+)
 class Individual(Validable, BaseModel):
     household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)

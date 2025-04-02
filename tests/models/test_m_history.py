@@ -1,41 +1,54 @@
-from typing import TYPE_CHECKING
-
 import pytest
 
-if TYPE_CHECKING:
-    from country_workspace.models import Household
-    from country_workspace.workspaces.models import CountryHousehold
+from country_workspace.models import Household
+from country_workspace.state import state
 
 
 @pytest.fixture
-def household() -> "CountryHousehold":
-    from testutils.factories.household import CountryHouseholdFactory, get_hh_fields
+def office():
+    from testutils.factories import OfficeFactory
 
-    ff = get_hh_fields(None)
-    ff["size"] = 99
-    return CountryHouseholdFactory(flex_fields=ff, flex_files=b"1111")
+    co = OfficeFactory()
+    state.tenant = co
+    return co
 
 
-def test_last_changes(household: "Household"):
-    old = household.checksum
-    household.flex_fields["size"] = 2
+@pytest.fixture
+def program(office, household_checker, individual_checker):
+    from testutils.factories import CountryProgramFactory
+
+    return CountryProgramFactory(
+        household_checker=household_checker,
+        individual_checker=individual_checker,
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
+    )
+
+
+@pytest.fixture
+def household(program):
+    from testutils.factories import CountryHouseholdFactory
+
+    return CountryHouseholdFactory(
+        batch__program=program,
+        flex_fields={"first_name": "name", "last_name": "family name", "size": 0},
+        batch__country_office=program.country_office,
+    )
+
+
+def test_history_update(household):
+    assert household.events.count() == 1
+
+    household.system_fields = {"a": 1}
     household.save()
-    household.refresh_from_db()
-    assert household.checksum != old
-    assert household.flex_fields["size"] == 2
-    assert household.last_changes() == [("change", "size", (99, 2))]
+    assert household.events.count() == 1
 
+    Household.objects.filter(pk=household.pk).update(system_fields={"a": 1})
+    assert household.events.count() == 1
 
-def test_diff(household: "Household"):
-    household.flex_fields["size"] = 11
+    Household.objects.filter(pk=household.pk).update(flex_fields={"first_name": "First Name"})
+    assert household.events.count() == 2
+
+    household.flex_fields = {"a": 1}
     household.save()
-    household.flex_fields["size"] = 12
-    household.save()
-    household.flex_fields["size"] = 13
-    household.save()
-    household.refresh_from_db()
-    assert household.diff() == [("change", "size", (13, 12))]
-    assert household.diff(-1) == [("change", "size", (13, 12))]
-    assert household.diff(-1, -2) == [("change", "size", (13, 12))]
-    assert household.diff(-2, -3) == [("change", "size", (12, 11))]
-    assert household.diff(-3, -4) == [("change", "size", (11, 99))]
+    assert household.events.count() == 3

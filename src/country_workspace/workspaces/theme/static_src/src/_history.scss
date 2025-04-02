@@ -1,0 +1,45 @@
+table.history {
+  @apply p-0 w-full;
+  div.new_value, div.old_value{
+     @apply w-56;
+  }
+
+  thead {
+    tr {
+      th {
+        @apply p-3;
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      @apply p-0 m-0;
+      &:nth-child(odd) {
+        @apply bg-gray-300;
+      }
+
+      &:nth-child(even) {
+        @apply bg-gray-200;
+      }
+
+      &:hover {
+        @apply bg-yellow-100;
+        div:hover {
+          @apply bg-yellow-200;
+        }
+      }
+
+      td {
+        div.old_value {
+          @apply text-red-600;
+        }
+
+        div.new_value {
+          @apply text-green-900;
+        }
+
+      }
+    }
+  }
+}

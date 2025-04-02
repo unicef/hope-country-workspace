@@ -1,19 +1,14 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import dictdiffer
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from django.contrib.admin import register
-from django.contrib.admin.utils import unquote
 from django.http import HttpRequest
-from django.template.response import TemplateResponse
 from django.urls import reverse
-from django.utils.text import capfirst
 from django.utils.translation import gettext as _
 
 from country_workspace.workspaces.admin.cleaners.actions import push_to_hope
 
-from ...cache.manager import cache_manager
 from ...state import state
 from ..models import CountryHousehold
 from ..sites import workspace
@@ -40,43 +35,6 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     )
     actions = [*BeneficiaryBaseAdmin.actions, push_to_hope]
     object_history_template = "workspace/household/object_history.html"
-
-    def history_view(
-        self, request: HttpRequest, object_id: str, extra_context: dict[str, Any] | None = None
-    ) -> TemplateResponse:
-        obj: "CountryHousehold" = self.get_object(request, unquote(object_id))
-        etag = cache_manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""), obj.last_modified)
-        if response := cache_manager.retrieve(etag):
-            return response
-        history = []
-        prev = {}
-        for entry in obj.events.values():
-            changes = list(dictdiffer.diff(prev, entry["flex_fields"]))
-            history.append({"changes": changes, **entry})
-            prev = entry["flex_fields"]
-
-        context = {
-            **self.admin_site.each_context(request),
-            "modeladmin": self,
-            "title": _("Change history: %s") % obj,
-            "subtitle": None,
-            "history": history,
-            "action_list": None,
-            "page_range": None,
-            "page_var": None,
-            "pagination_required": False,
-            "module_name": str(capfirst(self.opts.verbose_name_plural)),
-            "original": obj,
-            "opts": self.opts,
-            "preserved_filters": self.get_preserved_filters(request),
-            **(extra_context or {}),
-        }
-        return TemplateResponse(
-            request,
-            self.object_history_template,
-            context,
-            headers={"Etag": etag},
-        )
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         program: "CountryProgram | None"

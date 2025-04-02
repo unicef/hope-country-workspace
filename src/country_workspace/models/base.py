@@ -114,10 +114,6 @@ class Validable(Cachable, models.Model):
         self.save(update_fields=["last_checked", "errors"])
         return not bool(errors)
 
-    def last_changes(self) -> "Any": ...
-
-    def diff(self, first: int | None = None, second: int | None = None) -> "Any": ...
-
     def is_valid(self) -> bool | None:
         if not self.last_checked:
             return None

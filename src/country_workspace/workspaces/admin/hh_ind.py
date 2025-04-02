@@ -10,10 +10,12 @@ from django.db.models import Model, QuerySet
 from django.forms import Form
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
+from django.template.defaultfilters import capfirst
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext as _
 
+from ...cache.manager import cache_manager
 from ...models import AsyncJob
 from ...state import state
 from ..options import WorkspaceModelAdmin
@@ -62,6 +64,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     title = None
     title_plural = None
     list_per_page = 20
+    object_history_template = "workspace/individual/object_history.html"
 
     def has_validate_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.validate_beneficiary")
@@ -226,3 +229,53 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def save_model(self, request: HttpRequest, obj: "Validable", form: Form, change: bool) -> None:
         super().save_model(request, obj, form, change)
         obj.validate_with_checker()
+
+    def history_view(
+        self, request: HttpRequest, object_id: str, extra_context: dict[str, Any] | None = None
+    ) -> TemplateResponse:
+        obj = self.get_object(request, unquote(object_id))
+        etag = cache_manager.build_key_from_request(request, "history", obj.last_modified)
+        if response := cache_manager.retrieve(etag):
+            return response
+        history = []
+        prev = {}
+        field_names = [f.name for __, f in obj.checker.get_fields()]
+        for entry in obj.events.select_related("pgh_context").all():
+            changes = {}
+            for field_name in field_names:
+                old_value = prev.get(field_name, "")
+                new_value = entry.flex_fields.get(field_name, "")
+                if old_value != new_value:
+                    changes[field_name] = {"from": old_value, "to": new_value}
+            history.append(
+                {
+                    "changes": changes,
+                    "date": entry.pgh_created_at,
+                    "pgh_label": entry.pgh_label,
+                    "user": entry.pgh_context.metadata["user"],
+                }
+            )
+            prev = entry.flex_fields
+        history.reverse()
+        context = {
+            **self.admin_site.each_context(request),
+            "modeladmin": self,
+            "title": _("Change history: %s") % obj,
+            "subtitle": None,
+            "history": history,
+            "action_list": None,
+            "page_range": None,
+            "page_var": None,
+            "pagination_required": False,
+            "module_name": str(capfirst(self.opts.verbose_name_plural)),
+            "original": obj,
+            "opts": self.opts,
+            "preserved_filters": self.get_preserved_filters(request),
+            **(extra_context or {}),
+        }
+        return TemplateResponse(
+            request,
+            self.object_history_template,
+            context,
+            headers={"Etag": etag},
+        )

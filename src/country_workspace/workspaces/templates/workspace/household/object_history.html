@@ -1,28 +1,8 @@
-{% extends "workspace/_base.html" %}{% load admin_urls i18n workspace_urls %}
+{% extends "workspace/hh_ind_object_history.html" %}{% load admin_urls i18n workspace_urls %}
 {% block page-title %}
     {% url "workspace:workspaces_countryhousehold_changelist" as wcl %}
     &rsaquo; <a href="{% add_preserved_filters wcl %}">Households</a>{% admin_url modeladmin %}
     &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.pk %}">{{ original }}</a>
     {% admin_url original %}
     &rsaquo; changes
-
 {% endblock page-title %}
-
-{% block content %}
-    <div id="content-main">
-        <div id="change-history" class="module">
-            <table>
-                {% for entry in history %}
-                    {% if entry.changes %}
-                        <tr>
-                            <th class="nowrap">{{ entry.pgh_created_at }}</th>
-                            <td>{{ entry.pgh_label }}</td>
-                            {# <td>{{ entry.flex_fields }}</td> #}
-                            <td>{{ entry.changes }}</td>
-                        </tr>
-                    {% endif %}
-                {% endfor %}
-            </table>
-        </div>
-    </div>
-{% endblock content %}
