@@ -69,6 +69,18 @@ def create_hope_field_definitions() -> None:
         },
     )
 
+    FieldDefinition.objects.get_or_create(
+        name="HOPE People Type",
+        slug=slugify("HOPE People Type"),
+        field_type=forms.ChoiceField,
+        attrs={
+            "choices": [
+                ["", ""],
+                ["NON_BENEFICIARY", "Non Beneficiary"],
+            ]
+        },
+    )
+
     SyncLog.objects.create_lookups()
 
 

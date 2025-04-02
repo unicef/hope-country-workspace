@@ -92,7 +92,7 @@ class Program(BaseModel):
     household_search = models.TextField(default="name", help_text="Fields to use for searches")
     individual_search = models.TextField(default="name", help_text="Fields to use for searches")
     household_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
-    individual_columns = models.TextField(default="name\nid", help_text="Columns to display i the Admin table")
+    individual_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
 
     def __str__(self) -> str:

@@ -1,7 +1,11 @@
 from django import forms
 from hope_flex_fields.models import DataChecker, FieldDefinition, Fieldset
 
-from country_workspace.contrib.hope.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
+from country_workspace.contrib.hope.constants import (
+    HOUSEHOLD_CHECKER_NAME,
+    INDIVIDUAL_CHECKER_NAME,
+    PEOPLE_CHECKER_NAME,
+)
 
 
 def create_hope_checkers() -> None:
@@ -16,6 +20,8 @@ def create_hope_checkers() -> None:
     _i_disability = FieldDefinition.objects.get(slug="hope-ind-disability")
     _i_role = FieldDefinition.objects.get(slug="hope-ind-role")
     _i_relationship = FieldDefinition.objects.get(slug="hope-ind-relationship")
+
+    _p_type = FieldDefinition.objects.get(slug="hope-people-type")
 
     hh_fs, __ = Fieldset.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_fs.fields.get_or_create(name="address", definition=_char)
@@ -86,10 +92,22 @@ def create_hope_checkers() -> None:
     )
     ind_fs.fields.get_or_create(name="role", attrs={"label": "Role"}, definition=_i_role)
 
+    pp_fs, __ = Fieldset.objects.get_or_create(name=PEOPLE_CHECKER_NAME)
+    pp_fs.fields.get_or_create(name="type", attrs={"label": "People Type", "required": True}, definition=_p_type)
+    pp_fs.fields.get_or_create(name="full_name", attrs={"label": "Full Name", "required": True}, definition=_char)
+    pp_fs.fields.get_or_create(name="country", attrs={"label": "Country", "required": True}, definition=_h_country)
+    pp_fs.fields.get_or_create(
+        name="residence_status", attrs={"label": "Residence Status", "required": True}, definition=_h_residence
+    )
+    pp_fs.fields.get_or_create(name="gender", definition=_i_gender)
+    pp_fs.fields.get_or_create(name="birth_date", attrs={"label": "Birth Date", "required": True}, definition=_date)
+
     hh_dc, __ = DataChecker.objects.get_or_create(name=HOUSEHOLD_CHECKER_NAME)
     hh_dc.fieldsets.add(hh_fs)
     ind_dc, __ = DataChecker.objects.get_or_create(name=INDIVIDUAL_CHECKER_NAME)
     ind_dc.fieldsets.add(ind_fs)
+    pp_dc, __ = DataChecker.objects.get_or_create(name=PEOPLE_CHECKER_NAME)
+    pp_dc.fieldsets.add(pp_fs)
 
 
 def removes_hope_checkers() -> None:
@@ -97,3 +115,5 @@ def removes_hope_checkers() -> None:
     DataChecker.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
     Fieldset.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
     Fieldset.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
+    Fieldset.objects.filter(name=PEOPLE_CHECKER_NAME).delete()
+    Fieldset.objects.filter(name=PEOPLE_CHECKER_NAME).delete()
