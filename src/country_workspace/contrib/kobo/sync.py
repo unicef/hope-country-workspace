@@ -1,9 +1,13 @@
-from typing import Any, TypedDict, cast
+import re
+from typing import Any, TypedDict, cast, Final
 
 from constance import config as constance_config
 from django.core.cache import cache
+from requests import Session
 
+from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
+from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
@@ -16,13 +20,30 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     project_id: str
     individual_records_field: str
 
+ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
+
+SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
+
+
+def is_submission_data_url(url: str) -> bool:
+    return bool(SUBMISSION_URL_RE.match(url))
+
 
 def make_client(country_code: str | None) -> Client:
+    session = Session()
     token = constance_config.KOBO_MASTER_API_TOKEN or constance_config.KOBO_API_TOKEN
+    session.auth = Auth(token)
+    data_getter = DataGetter(
+        session,
+        ACCEPT_JSON_HEADERS,
+        cache_ttl=constance_config.KOBO_CACHE_TTL,
+        do_not_use_cache_if=is_submission_data_url,
+    )
     project_view_id = constance_config.KOBO_PROJECT_VIEW_ID if constance_config.KOBO_MASTER_API_TOKEN else None
+
     return Client(
+        data_getter=data_getter,
         base_url=constance_config.KOBO_KF_URL,
-        token=token,
         country_code=country_code,
         project_view_id=project_view_id,
     )
