@@ -131,4 +131,16 @@ imported: Final[dict[str, dict[str, Any]]] = {
             },
         ],
     },
+    "invalid_key": {
+        "page": 1,
+        "results": [
+            {
+                "id": 9,
+                "flatten": {
+                    "individuals_wrong": "value",
+                    "household_invalid": "data",
+                },
+            },
+        ],
+    },
 }
