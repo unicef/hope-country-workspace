@@ -1,6 +1,6 @@
 import factory
 
-from country_workspace.models import Program, BeneficiaryGroup
+from country_workspace.models import BeneficiaryGroup, Program
 from country_workspace.workspaces.models import CountryProgram
 
 from .base import AutoRegisterModelFactory

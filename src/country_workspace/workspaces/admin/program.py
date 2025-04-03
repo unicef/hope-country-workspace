@@ -15,11 +15,18 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.aurora.pipeline import import_from_aurora
 from country_workspace.state import state
+from country_workspace.utils.fields import batch_name_default
 
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
-from ...contrib.kobo.sync import import_data as import_from_kobo, Config as KoboConfig
-from ...datasources.rdi import import_from_rdi, Config as RDIConfig
+from ...contrib.kobo.sync import (
+    Config as KoboConfig,
+    import_data as import_from_kobo,
+)
+from ...datasources.rdi import (
+    Config as RDIConfig,
+    import_from_rdi,
+)
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
 from ..models import CountryProgram
@@ -27,11 +34,11 @@ from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
 from .forms import BulkUpdateImportForm, ImportFileForm
-from country_workspace.utils.fields import batch_name_default
 
 if TYPE_CHECKING:
-    from ...contrib.aurora.pipeline import Config as AuroraConfig
     from hope_flex_fields.models import DataChecker
+
+    from ...contrib.aurora.pipeline import Config as AuroraConfig
 
 
 class SelectColumnsForm(forms.Form):

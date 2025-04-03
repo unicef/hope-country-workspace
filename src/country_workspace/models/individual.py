@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-import reversion
+import pghistory
 from django.db import models
 from django.utils.functional import cached_property
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
 
-@reversion.register()
+@pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
 class Individual(Validable, BaseModel):
     household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)

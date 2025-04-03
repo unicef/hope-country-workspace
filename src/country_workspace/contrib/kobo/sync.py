@@ -8,7 +8,7 @@ from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
+from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names
 
 

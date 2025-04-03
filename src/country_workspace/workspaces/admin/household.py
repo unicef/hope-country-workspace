@@ -6,13 +6,13 @@ from django.contrib.admin import register
 from django.http import HttpRequest
 from django.urls import reverse
 
+from country_workspace.workspaces.admin.cleaners.actions import push_to_hope
+
 from ...state import state
 from ..models import CountryHousehold
 from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, WIsValidFilter
 from .hh_ind import BeneficiaryBaseAdmin
-
-from country_workspace.workspaces.admin.cleaners.actions import push_to_hope
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -31,6 +31,7 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         WIsValidFilter,
     )
     actions = [*BeneficiaryBaseAdmin.actions, push_to_hope]
+    object_history_template = "workspace/household/object_history.html"
 
     @property
     def title_plural(self) -> str:

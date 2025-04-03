@@ -85,8 +85,9 @@ class HouseholdFactory(AutoRegisterModelFactory):
             pass
         else:
             self.flex_fields.setdefault("household_id", self.id)
-            for __ in range(self.flex_fields["size"]):
-                IndividualFactory(batch=self.batch, household=self)
+            if size := self.flex_fields.get("size"):
+                for __ in range(size):
+                    IndividualFactory(batch=self.batch, household=self)
 
 
 class CountryHouseholdFactory(HouseholdFactory):

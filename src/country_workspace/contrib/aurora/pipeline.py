@@ -5,7 +5,7 @@ from django.db.transaction import atomic
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
-from country_workspace.utils.fields import uppercase_field_value, clean_field_names
+from country_workspace.utils.fields import clean_field_names, uppercase_field_value
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):

@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import pytest
 from django.core.cache import cache
 from django.urls import reverse
-
 from testutils.perms import user_grant_permissions
 from testutils.utils import select_office
 

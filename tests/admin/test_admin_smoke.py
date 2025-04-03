@@ -37,6 +37,7 @@ GLOBAL_EXCLUDED_MODELS = RegexList(
         "authtoken",
         "social_django",
         "depot",
+        "pghistory",
     ]
 )
 

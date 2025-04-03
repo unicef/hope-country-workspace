@@ -1,13 +1,13 @@
 import io
 from collections.abc import Iterable
-from typing import Mapping, Any, cast
+from typing import Any, Mapping, cast
 
 from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi
 
 from country_workspace.models import AsyncJob, Batch, Household
-from country_workspace.utils.config import FailIfAlienConfig, BatchNameConfig
-from country_workspace.utils.fields import clean_field_names, Record
+from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
+from country_workspace.utils.fields import Record, clean_field_names
 
 RDI = str | io.BytesIO
 Sheet = Iterable[Record]
