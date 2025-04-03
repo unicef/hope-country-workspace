@@ -39,8 +39,8 @@ class DataGetter:
     def __init__(
         self,
         session: Session,
+        cache_ttl: int,
         headers: dict[str, str] | None = None,
-        cache_ttl: int | None = None,
         do_not_use_cache_if: UrlPredicate | None = None,
     ) -> None:
         self._session = session
@@ -56,6 +56,7 @@ class DataGetter:
 
         if cached_value := cache.get(cache_key):
             return CachedResponse(cached_value)
+
         response = self._session.get(url, headers=self._headers)
         try:
             response.raise_for_status()
@@ -65,4 +66,5 @@ class DataGetter:
 
         value: ResponseDict = {"json": response.json(), "status_code": response.status_code}
         cache.set(cache_key, value, self._cache_ttl)
+
         return response

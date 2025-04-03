@@ -16,12 +16,15 @@ from country_workspace.contrib.kobo.sync import (
     import_data,
     make_client,
     Config,
+    ACCEPT_JSON_HEADERS,
+    is_submission_data_url,
 )
 
 EMPTY = ""
 TOKEN = "token"
 MAIN_TOKEN = "main_token"
 PROJECT_ID = "project-view-id"
+CACHE_TTL = 42
 BATCH_NAME = "batch-name"
 INDIVIDUAL_RECORDS_FIELD = "individual-records-field"
 COUNTRY_CODE = "CNT"
@@ -53,21 +56,32 @@ def test_make_client(
     expected_token: str,
     expected_project_view_id: str | None,
 ) -> None:
-    client_class = mocker.patch("country_workspace.contrib.kobo.sync.Client")
-    expected_client = client_class.return_value
+    session_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Session")
+    auth_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Auth")
+    client_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Client")
+    data_getter_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.DataGetter")
 
     with (
         override_config(KOBO_KF_URL=(url := "https://test.org")),
         override_config(KOBO_MASTER_API_TOKEN=master_token),
         override_config(KOBO_API_TOKEN=token),
+        override_config(KOBO_CACHE_TTL=CACHE_TTL),
         override_config(KOBO_PROJECT_VIEW_ID=project_view_id),
     ):
         client = make_client(country_code := "CNT")
 
-    assert client is expected_client
-    client_class.assert_called_once_with(
+    assert client is client_class_mock.return_value
+    session_class_mock.assert_called_once_with()
+    auth_class_mock.assert_called_once_with(expected_token)
+    data_getter_class_mock.assert_called_once_with(
+        session=session_class_mock.return_value,
+        headers=ACCEPT_JSON_HEADERS,
+        cache_ttl=CACHE_TTL,
+        do_not_use_cache_if=is_submission_data_url,
+    )
+    client_class_mock.assert_called_once_with(
+        data_getter=data_getter_class_mock.return_value,
         base_url=url,
-        token=expected_token,
         country_code=country_code,
         project_view_id=expected_project_view_id,
     )

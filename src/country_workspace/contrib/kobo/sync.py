@@ -20,6 +20,7 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     project_id: str
     individual_records_field: str
 
+
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 
 SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
@@ -34,9 +35,9 @@ def make_client(country_code: str | None) -> Client:
     token = constance_config.KOBO_MASTER_API_TOKEN or constance_config.KOBO_API_TOKEN
     session.auth = Auth(token)
     data_getter = DataGetter(
-        session,
-        ACCEPT_JSON_HEADERS,
+        session=session,
         cache_ttl=constance_config.KOBO_CACHE_TTL,
+        headers=ACCEPT_JSON_HEADERS,
         do_not_use_cache_if=is_submission_data_url,
     )
     project_view_id = constance_config.KOBO_PROJECT_VIEW_ID if constance_config.KOBO_MASTER_API_TOKEN else None
