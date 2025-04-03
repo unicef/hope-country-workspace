@@ -13,16 +13,18 @@ fake = Faker()
 
 
 def get_ind_fields(individual: "CountryIndividual"):
+    hh = individual.household
+    fname = hh.name if hh else fake.last_name()
     return {
         "alternate_collector_id": "",
         "birth_date": "",
         "disability": "",
         "estimated_birth_date": "",
-        "family_name": individual.household.name,
-        "full_name": "%s %s" % (individual.name, individual.household.name),
+        "family_name": fname,
+        "full_name": f"{individual.name} {fname}",
         "gender": choice(["MALE", "FEMALE"]),
         "given_name": "",
-        "household_id": individual.household.flex_fields["household_id"],
+        "household_id": hh.flex_fields["household_id"] if hh else None,
         "middle_name": "",
         "national_id_issuer": "",
         "national_id_photo": "",
@@ -35,7 +37,9 @@ def get_ind_fields(individual: "CountryIndividual"):
 
 class IndividualFactory(AutoRegisterModelFactory):
     household = factory.SubFactory(HouseholdFactory)
-    name = factory.LazyAttributeSequence(lambda o, n: f"{fake.first_name()} {o.household.name} {n}")
+    name = factory.LazyAttributeSequence(
+        lambda o, n: f"{fake.first_name()} {o.household.name if o.household else fake.last_name()} {n}"
+    )
     flex_fields = factory.LazyAttribute(get_ind_fields)
 
     class Meta:
@@ -44,7 +48,7 @@ class IndividualFactory(AutoRegisterModelFactory):
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        if "household" in kwargs:
+        if "household" in kwargs and kwargs["household"] is not None:
             kwargs["batch"] = kwargs["household"].batch
         return super()._create(model_class, *args, **kwargs)
 

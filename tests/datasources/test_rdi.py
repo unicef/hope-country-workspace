@@ -6,19 +6,18 @@ from pytest_mock import MockerFixture
 
 from country_workspace.datasources.rdi import (
     ColumnConfigurationError,
-    Config,
     HouseholdValidationError,
     MissingHouseholdError,
-    Row,
-    Sheet,
     SheetProcessingError,
     filter_rows_with_household_pk,
     get_value,
-    import_from_rdi,
-    normalize_row,
     process_households,
     process_individuals,
     validate_households,
+    import_from_rdi,
+    Config,
+    Sheet,
+    Record,
 )
 from country_workspace.models import Household
 
@@ -36,6 +35,7 @@ def config() -> Config:
         "master_column_label": "master_column",
         "detail_column_label": "detail_column",
         "check_before": False,
+        "fail_if_alien": False,
     }
 
 
@@ -87,18 +87,8 @@ def test_missing_household_error_format() -> None:
 
 
 def test_household_validation_error_format() -> None:
-    error = HouseholdValidationError(household_key := "test_household_key")
-    assert household_key in str(error)
-
-
-def test_normalize_row_calls_clean_field_name(mocker: MockerFixture) -> None:
-    row = {(key := "key"): (value := "value")}
-    clean_field_name_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_name")
-
-    result = normalize_row(row)
-
-    assert result == {clean_field_name_mock.return_value: value}
-    clean_field_name_mock.assert_called_once_with(key)
+    error = HouseholdValidationError(household_key := 42)
+    assert str(household_key) in str(error)
 
 
 def test_get_value_returns_value() -> None:
@@ -110,7 +100,7 @@ def test_get_value_returns_value() -> None:
 
 
 def test_get_value_raise_exception_when_key_is_missing() -> None:
-    row: Row = {}
+    row: Record = {}
 
     with pytest.raises(ColumnConfigurationError):
         get_value(row, "column")
@@ -132,21 +122,21 @@ def test_filter_rows_with_household_pk(mocker: MockerFixture, config: Config, ho
     )
 
 
-def test_process_households(config: Config, household_sheet: Sheet) -> None:
-    job = Mock()
-    batch = Mock()
+def test_process_households(mocker: MockerFixture, config: Config, household_sheet: Sheet) -> None:
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
 
-    result = process_households(household_sheet, job, batch, config)
+    result = process_households(household_sheet, job := Mock(), batch := Mock(), config)
 
     assert result == {
         row[config["household_pk_col"]]: job.program.households.create.return_value for row in household_sheet
     }
     job.program.households.create.assert_has_calls(
         [
-            call(batch=batch, name=row[config["master_column_label"]], flex_fields=normalize_row(row))
+            call(batch=batch, name=row[config["master_column_label"]], flex_fields=clean_field_names_mock.return_value)
             for row in household_sheet
         ]
     )
+    clean_field_names_mock.assert_has_calls((call(row) for row in household_sheet))
 
 
 def test_process_households_failed_to_save_household(config: Config, household_sheet: Sheet) -> None:
@@ -160,25 +150,27 @@ def test_process_households_failed_to_save_household(config: Config, household_s
 
 
 def test_process_individuals(
-    config: Config, individual_sheet: Sheet, household_mapping: Mapping[int, Household]
+    mocker: MockerFixture, config: Config, individual_sheet: Sheet, household_mapping: Mapping[int, Household]
 ) -> None:
-    job = Mock()
-    batch = Mock()
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
 
-    result = process_individuals(individual_sheet, household_mapping, job, batch, config)
+    result = process_individuals(
+        individual_sheet, household_mapping, job_mock := Mock(name="job"), batch_mock := Mock(name="batch"), config
+    )
 
     assert result == len(list(individual_sheet))
-    job.program.individuals.create.assert_has_calls(
+    job_mock.program.individuals.create.assert_has_calls(
         [
             call(
-                batch=batch,
+                batch=batch_mock,
                 name=row[config["detail_column_label"]],
                 household_id=household_mapping[row[config["household_pk_col"]]].pk,
-                flex_fields=normalize_row(row),
+                flex_fields=clean_field_names_mock.return_value,
             )
             for row in individual_sheet
         ]
     )
+    clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
 def test_validate_households(config: Config, household_mapping: Mapping[int, Mock]) -> None:

@@ -52,7 +52,7 @@ class Command(BaseCommand):
         sys.path.append(str(test_utils_dir.absolute()))
 
         import vcr
-        from testutils.factories import BatchFactory, HouseholdFactory
+        from testutils.factories import BatchFactory, HouseholdFactory, IndividualFactory
         from vcr.record_mode import RecordMode
 
         from country_workspace.contrib.hope.sync.office import sync_all
@@ -86,4 +86,7 @@ class Command(BaseCommand):
         for co in Office.objects.filter(active=True):
             for p in co.programs.filter():
                 b = BatchFactory(country_office=co, name=f"Batch {p}", program=p)
-                HouseholdFactory.create_batch(10, batch=b)
+                if p.beneficiary_group.master_detail:
+                    HouseholdFactory.create_batch(10, batch=b)
+                else:
+                    IndividualFactory.create_batch(10, batch=b, household=None)

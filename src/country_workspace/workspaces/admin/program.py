@@ -19,7 +19,10 @@ from country_workspace.utils.fields import batch_name_default
 
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
-from ...contrib.kobo.sync import import_data as import_from_kobo
+from ...contrib.kobo.sync import (
+    Config as KoboConfig,
+    import_data as import_from_kobo,
+)
 from ...datasources.rdi import (
     Config as RDIConfig,
     import_from_rdi,
@@ -34,6 +37,8 @@ from .forms import BulkUpdateImportForm, ImportFileForm
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
+
+    from ...contrib.aurora.pipeline import Config as AuroraConfig
 
 
 class SelectColumnsForm(forms.Form):
@@ -151,6 +156,20 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, None] | None = None) -> HttpResponse:
         url = reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])
         return HttpResponseRedirect(url)
+
+    def changeform_view(
+        self,
+        request: "HttpRequest",
+        object_id: str | None = None,
+        form_url: str = "",
+        extra_context: dict[str, Any] | None = None,
+    ) -> HttpResponse:
+        if obj := self.get_object(request, object_id):
+            extra_context["btnlabels"] = {
+                "individual_columns": f"{obj.beneficiary_group.member_label} Columns",
+                "household_columns": f"{obj.beneficiary_group.group_label} Columns",
+            }
+        return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
     def _configure_columns(
         self,
@@ -276,6 +295,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "master_column_label": form.cleaned_data["master_column_label"],
                 "detail_column_label": form.cleaned_data["detail_column_label"],
                 "check_before": form.cleaned_data["check_before"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI importing",
@@ -295,6 +315,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
         if form.is_valid():
             registration_reference_pk = getattr(form.cleaned_data["registration"], "reference_pk", None)
+            config: AuroraConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "registration_reference_pk": registration_reference_pk,
+                "household_column_prefix": form.cleaned_data["household_column_prefix"],
+                "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
+                "household_label_column": form.cleaned_data["household_label_column"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+            }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",
                 type=AsyncJob.JobType.TASK,
@@ -302,13 +330,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 file=None,
                 program=program,
                 owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                    "registration_reference_pk": registration_reference_pk,
-                    "household_column_prefix": form.cleaned_data["household_column_prefix"],
-                    "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
-                    "household_label_column": form.cleaned_data["household_label_column"],
-                },
+                config=config,
             )
             job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
@@ -318,17 +340,19 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
         form = ImportKoboForm(request.POST, prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
         if form.is_valid():
+            config: KoboConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "project_id": form.cleaned_data["project_id"],
+                "individual_records_field": form.cleaned_data["individual_records_field"],
+                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+            }
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_kobo),
                 file=None,
                 program=program,
                 owner=request.user,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                    "project_id": form.cleaned_data["project_id"],
-                    "individual_records_field": form.cleaned_data["individual_records_field"],
-                },
+                config=config,
             )
             job.queue()
             self.message_user(

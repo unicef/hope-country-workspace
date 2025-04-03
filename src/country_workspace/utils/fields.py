@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import reduce
 from typing import Any
 
@@ -6,6 +6,11 @@ from django.utils import timezone
 
 batch_name_default: Callable[[], str] = lambda: f"Batch {timezone.now()}"
 rdi_name_default: Callable[[], str] = lambda: f"RDI to HOPE {timezone.now()}"
+
+Record = Mapping[str, Any]
+
+
+TO_REMOVE = "_h_c", "_h_f", "_i_c", "_i_f"
 
 
 def clean_field_name(v: str) -> str:
@@ -18,8 +23,11 @@ def clean_field_name(v: str) -> str:
         str: The cleaned field name.
 
     """
-    to_remove = ("_h_c", "_h_f", "_i_c", "_i_f")
-    return reduce(lambda name, substr: name.replace(substr, ""), to_remove, v.lower())
+    return reduce(lambda name, substr: name.replace(substr, ""), TO_REMOVE, v.lower())
+
+
+def clean_field_names(record: Record) -> Record:
+    return {clean_field_name(k): v for k, v in record.items()}
 
 
 def uppercase_field_value(k: str, v: Any) -> str:

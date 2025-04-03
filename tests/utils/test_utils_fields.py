@@ -1,8 +1,11 @@
 import pytest
+from pytest_mock import MockFixture
 
-from country_workspace.utils.fields import clean_field_name
-
-TO_REMOVE = ("_h_c", "_h_f", "_i_c", "_i_f")
+from country_workspace.utils.fields import (
+    clean_field_name,
+    TO_REMOVE,
+    clean_field_names,
+)
 
 
 @pytest.mark.parametrize(
@@ -15,3 +18,12 @@ TO_REMOVE = ("_h_c", "_h_f", "_i_c", "_i_f")
 )
 def test_clean_field_name(input_value, expected_output):
     assert clean_field_name(input_value) == expected_output
+
+
+def test_clean_field_names(mocker: MockFixture) -> None:
+    clean_field_name_mock = mocker.patch("country_workspace.utils.fields.clean_field_name")
+
+    cleaned = clean_field_names({(key := "foo"): "bar"})
+
+    assert cleaned == {clean_field_name_mock.return_value: "bar"}
+    clean_field_name_mock.assert_called_once_with(key)

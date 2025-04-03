@@ -4,7 +4,6 @@ from urllib.parse import parse_qs
 from django.contrib.admin import AdminSite, register
 from django.db.models import Model, QuerySet
 from django.http import HttpRequest
-from django.utils.translation import gettext as _
 
 from ...state import state
 from ..models import CountryHousehold, CountryIndividual, CountryProgram
@@ -33,8 +32,10 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         "user_fields",
     ]
     ordering = ("name",)
-    title = _("Individual")
-    title_plural = _("Individuals")
+
+    @property
+    def title_plural(self) -> str:
+        return super().title_member_plural
 
     def __init__(self, model: Model, admin_site: "AdminSite") -> None:
         self._selected_household = None

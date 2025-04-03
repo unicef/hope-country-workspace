@@ -1,16 +1,20 @@
 {% extends "workspace/raw_data.html" %}{% load i18n workspace_modify workspace_urls %}
 {% block page-title %}
     {% if selected_household %}
-        &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">Households</a>
+        &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>
         &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" selected_household.pk %}">{{ selected_household }}</a>{% admin_url selected_household %}
-        &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ selected_household.pk }}">members</a> {% admin_url modeladmin household__exact=selected_household.pk %}
-        &rsaquo;{{ original }}{% admin_url original %}
+        &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ selected_household.pk }}">{{ title_member_plural }}</a> {% admin_url modeladmin household__exact=selected_household.pk %}
+        &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_change" original.pk %}">{{ original }}</a>{% admin_url original %}
         &rsaquo; Raw Data
     {% else %}
-        &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">Households</a>
-        &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.household.pk %}">{{ original.household }}</a>{% admin_url original.household %}
-        &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ original.household.pk }}">members</a> {% admin_url modeladmin household__exact=selected_household.pk %}
-        &rsaquo;{{ original }}{% admin_url original %}
+        {% if master_detail %}
+            &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>
+            &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.household.pk %}">{{ original.household }}</a>{% admin_url original.household %}
+            &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ original.household.pk }}">{{ title_member_plural }}</a> {% admin_url modeladmin household__exact=selected_household.pk %}
+        {% else %}
+            &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}">{{ title_member_plural }}</a>{% admin_url modeladmin %}
+        {% endif %}
+        &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_change" original.pk %}">{{ original }}</a>{% admin_url original %}
         &rsaquo; Raw Data
     {% endif %}
 {% endblock page-title %}
