@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING
 import factory
 import pytest
 import responses
-
-from django.core.files.storage.base import Storage
 from django.core.files.base import ContentFile
+from django.core.files.storage.base import Storage
 
 if TYPE_CHECKING:
     from country_workspace.models import User
@@ -62,6 +61,7 @@ def mock_storage():
 @pytest.fixture(autouse=True)
 def patch_asyncjob(mock_storage):
     from django.db import models
+
     from country_workspace.models.jobs import AsyncJob
 
     AsyncJob._meta.get_field("file").storage = mock_storage

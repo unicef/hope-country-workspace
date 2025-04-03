@@ -11,6 +11,7 @@ Record = Mapping[str, Any]
 
 
 TO_REMOVE = "_h_c", "_h_f", "_i_c", "_i_f"
+TO_UPPERCASE = "relationship", "gender", "disability", "residence_status"
 
 
 def clean_field_name(v: str) -> str:
@@ -27,12 +28,21 @@ def clean_field_name(v: str) -> str:
 
 
 def clean_field_names(record: Record) -> Record:
-    return {clean_field_name(k): v for k, v in record.items()}
+    """Clean all field names in a record by normalizing them.
+
+    Args:
+        record (dict): A dictionary with field names as keys and their values.
+
+    Returns:
+        dict: A new dictionary with cleaned field names and original values.
+
+    """
+    return {clean_field_name(k): uppercase_field_value(k, v) for k, v in record.items()}
 
 
 def uppercase_field_value(k: str, v: Any) -> str:
     """
-    Convert the given field value to uppercase if applicable.
+    Convert the given field value to uppercase if its name starts with specific prefixes.
 
     Args:
         k (str): The name of the field.
@@ -42,5 +52,4 @@ def uppercase_field_value(k: str, v: Any) -> str:
         str: The uppercase value if applicable or the original value.
 
     """
-    to_uppercase = ("relationship", "gender", "disability", "residence_status")
-    return v.upper() if isinstance(v, str) and k in to_uppercase else v
+    return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in TO_UPPERCASE) else v

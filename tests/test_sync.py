@@ -3,7 +3,7 @@ from io import StringIO
 import pytest
 from django import forms
 
-from country_workspace.contrib.hope.sync.office import sync_all, sync_offices, sync_programs, sync_beneficiary_groups
+from country_workspace.contrib.hope.sync.office import sync_all, sync_beneficiary_groups, sync_offices, sync_programs
 
 
 @pytest.fixture(autouse=True)

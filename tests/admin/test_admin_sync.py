@@ -42,6 +42,7 @@ def app(
         ),
     ],
 )
+@pytest.mark.xdist_group("remote")
 def test_admin_sync(
     app, mocker: MockerFixture, admin_class, sync_function, url_name, reverse_args, sync_result, expected_message
 ) -> None:

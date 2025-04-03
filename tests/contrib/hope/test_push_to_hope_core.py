@@ -1,16 +1,15 @@
-import pytest
-
-from pytest_mock import MockerFixture
-from django.db import DatabaseError
-
-from country_workspace.state import state
-from country_workspace.contrib.hope.push import PushProcessor, push_to_hope_core, map_fields
-from country_workspace.models import Individual, Household
-
-from country_workspace.workspaces.models import CountryHousehold
-from requests.exceptions import RequestException
 from json import JSONDecodeError
+
+import pytest
+from django.db import DatabaseError
+from pytest_mock import MockerFixture
+from requests.exceptions import RequestException
+
+from country_workspace.contrib.hope.push import PushProcessor, map_fields, push_to_hope_core
 from country_workspace.exceptions import RemoteError
+from country_workspace.models import Household, Individual
+from country_workspace.state import state
+from country_workspace.workspaces.models import CountryHousehold
 
 
 @pytest.fixture

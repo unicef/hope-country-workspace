@@ -9,12 +9,11 @@ import xlsxwriter
 from django.urls import reverse
 from testutils.factories import FlexFieldFactory
 from testutils.utils import select_office
+from webtest import Upload
 
 from country_workspace.state import state
 from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_xls_importer
 from tests.workspace.actions import stub
-from webtest import Upload
-
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp

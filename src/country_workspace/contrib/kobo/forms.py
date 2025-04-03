@@ -1,7 +1,8 @@
 from typing import Any
 
-from country_workspace.contrib.kobo.sync import make_client
 from django import forms
+
+from country_workspace.contrib.kobo.sync import make_client
 
 
 class ImportKoboForm(forms.Form):
