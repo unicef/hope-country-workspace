@@ -51,6 +51,7 @@ CONSTANCE_CONFIG = {
     "KOBO_MASTER_API_TOKEN": (KOBO_MASTER_API_TOKEN, "Kobo API Master Access Token", "write_only_input"),
     "KOBO_PROJECT_VIEW_ID": (KOBO_PROJECT_VIEW_ID, "Kobo Project View ID", str),
     "KOBO_KF_URL": (KOBO_KF_URL, "Kobo Server address", str),
+    "KOBO_CACHE_TTL": (86400, "Kobo data cache TTL", int),
     "CACHE_TIMEOUT": (86400, "Cache Redis TTL", int),
     "CACHE_BY_VERSION": (False, "Invalidate Cache on CW version change", bool),
     "CONCURRENCY_GUARD": (
@@ -74,6 +75,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "KOBO_MASTER_API_TOKEN",
         "KOBO_PROJECT_VIEW_ID",
         "KOBO_KF_URL",
+        "KOBO_CACHE_TTL",
     ),
     "Data consistency": ("CONCURRENCY_GUARD",),
 }
