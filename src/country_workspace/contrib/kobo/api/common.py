@@ -36,6 +36,13 @@ def data_getter_cache_key(url: str) -> str:
 
 
 class DataGetter:
+    """
+    An abstraction over HTTP GET request.
+
+    A class used to abstract HTTP GET request, so authentication, caching,
+    etc. can be configured without touching the rest of the code.
+    """
+
     def __init__(
         self,
         session: Session,
