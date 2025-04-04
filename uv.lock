@@ -599,18 +599,17 @@ wheels = [
 
 [[package]]
 name = "django-celery-boost"
-version = "0.6.0"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery" },
-    { name = "django" },
     { name = "django-admin-extra-buttons" },
     { name = "django-concurrency" },
     { name = "sentry-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/de/6d/7ef1ea99d516971fc9e431db775d90e26697675b3d36cce3d2e9fde777c1/django_celery_boost-0.6.0.tar.gz", hash = "sha256:d5c1830b09cbaef8deab77600c818ccb099f043da9f0435e690a9007d40c6b86", size = 346874 }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/a3/ec7cdca64ea423a77b0d5bf286fef5f7a9370b3ce9acee288d0ef988040b/django_celery_boost-0.6.2.tar.gz", hash = "sha256:b1dfe235a6bfdbb898aa897e5201754a71f558a0f3c122110802b8abbccec9af", size = 8716 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/4d/ce5a5642d57bfaf49b0c42c974deec51cf99468f61f32ebfc884d54a7e0e/django_celery_boost-0.6.0-py3-none-any.whl", hash = "sha256:54e74a9b34ca1d78628d81f978797a5ea7825a0aecfef4519f37819998735357", size = 44210 },
+    { url = "https://files.pythonhosted.org/packages/36/3e/66eef7271dc951988ee81c60e119733dbce8f7fccdfd15e7d6008c2f9327/django_celery_boost-0.6.2-py3-none-any.whl", hash = "sha256:bf10347c93740c565c47941d96d3c758d5e9020b3fb87d4bc491f887c6d5258c", size = 11171 },
 ]
 
 [[package]]
@@ -1192,7 +1191,7 @@ requires-dist = [
     { name = "django-adminfilters", specifier = ">=2.5.2" },
     { name = "django-cacheops", specifier = ">=7.1" },
     { name = "django-celery-beat", specifier = ">=2.6.0" },
-    { name = "django-celery-boost", specifier = ">=0.5.0" },
+    { name = "django-celery-boost", specifier = ">=0.6.2" },
     { name = "django-celery-results", specifier = ">=2.5.1" },
     { name = "django-concurrency", specifier = ">=2.6.0" },
     { name = "django-constance", specifier = ">=4.1.3" },
@@ -1322,7 +1321,7 @@ name = "humanfriendly"
 version = "10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyreadline3", marker = "sys_platform == 'win32'" },
+    { name = "pyreadline3", marker = "python_full_version == '3.12.*' and sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/3f/2c29224acb2e2df4d2046e4c73ee2662023c58ff5b113c4c1adac0886c43/humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc", size = 360702 }
 wheels = [
@@ -1464,7 +1463,7 @@ version = "5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "amqp" },
-    { name = "tzdata" },
+    { name = "tzdata", marker = "python_full_version == '3.12.*'" },
     { name = "vine" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/38/4d/b93fcb353d279839cc35d0012bee805ed0cf61c07587916bfc35dbfddaf1/kombu-5.4.2.tar.gz", hash = "sha256:eef572dd2fd9fc614b37580e3caeafdd5af46c1eff31e7fba89138cdb406f2cf", size = 442858 }
@@ -2239,7 +2238,7 @@ dependencies = [
     { name = "kombu" },
     { name = "psutil" },
     { name = "pytest-docker-tools" },
-    { name = "setuptools" },
+    { name = "setuptools", marker = "python_full_version == '3.12.*'" },
     { name = "tenacity" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f4/a0/fcc6a3fbd8c06d04d206da27e1062eaee8ddc0cbaf2db72e66aa74f240e8/pytest_celery-1.2.0.tar.gz", hash = "sha256:de605eca1b0134c136910c8ed161cc3996b0c8aaafd29170878a396eed81b5b1", size = 28043 }
@@ -2987,7 +2986,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
     { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation == 'PyPy'" },
-    { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation != 'PyPy'" },
+    { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation != 'PyPy' and python_full_version == '3.12.*'" },
     { name = "wrapt" },
     { name = "yarl" },
 ]
