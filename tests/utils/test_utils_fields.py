@@ -2,8 +2,8 @@ import pytest
 from pytest_mock import MockFixture
 
 from country_workspace.utils.fields import (
-    clean_field_name,
     TO_REMOVE,
+    clean_field_name,
     clean_field_names,
 )
 

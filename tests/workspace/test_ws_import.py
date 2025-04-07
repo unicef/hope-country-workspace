@@ -6,8 +6,7 @@ import pytest
 import responses
 from constance import config
 from django.urls import reverse
-from webtest import forms, Upload
-
+from webtest import Upload, forms
 
 from country_workspace.state import state
 from tests.contrib.aurora import stub

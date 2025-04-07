@@ -13,7 +13,6 @@ project: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
     ]
 }
 
-
 registration: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
     "results": [
         {

@@ -6,7 +6,6 @@ from django.urls import reverse
 from pyquery import PyQuery
 from testutils.utils import select_office
 
-
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from testutils.types import CWTestApp
