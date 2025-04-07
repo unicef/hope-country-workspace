@@ -45,3 +45,4 @@ CSP_FONT_SRC = [
     "saunihopetrn.blob.core.windows.net",
     "saunihopeprd.blob.core.windows.net",
 ]
+CSP_CONNECT_SRC = ["'self'"]
