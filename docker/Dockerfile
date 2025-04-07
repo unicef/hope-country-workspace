@@ -131,7 +131,9 @@ ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
     PGSSLCERT="/tmp/postgresql.crt" \
     UV_PROJECT_ENVIRONMENT=/venv \
     VIRTUAL_ENV=/venv \
-    UWSGI_PROCESSES=4
+    UWSGI_PROCESSES=4 \
+    MEDIA_ROOT="${MEDIA_ROOT:-/var/run/app/media}" \
+    STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}"
 
 RUN <<EOF cat> /RELEASE
 {"version": "$VERSION",

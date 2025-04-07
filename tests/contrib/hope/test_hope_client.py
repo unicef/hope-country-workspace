@@ -1,4 +1,3 @@
-# tests/test_hope_client.py
 import re
 from collections.abc import Callable
 from unittest.mock import Mock
