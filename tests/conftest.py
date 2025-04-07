@@ -80,9 +80,6 @@ def pytest_configure(config):
     os.environ.setdefault("STATIC_ROOT", "/tmp/media/")
     os.environ.setdefault("TEST_EMAIL_SENDER", "sender@example.com")
     os.environ.setdefault("TEST_EMAIL_RECIPIENT", "recipient@example.com")
-    del os.environ["HOPE_API_URL"]
-    del os.environ["HOPE_API_TOKEN"]
-    del os.environ["AURORA_API_URL"]
 
     os.environ["MAILJET_API_KEY"] = "11"
     os.environ["MAILJET_SECRET_KEY"] = "11"
