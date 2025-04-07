@@ -13,6 +13,7 @@ from country_workspace.contrib.hope.constants import HOUSEHOLD_PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+from country_workspace.utils.fields import map_fields
 
 
 @dataclass
@@ -225,20 +226,3 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
         if processor.total["errors"]:
             return processor.total
     return processor.total
-
-
-def map_fields(fields: dict[str, str]) -> dict[str, str]:
-    """
-    Map keys in a dictionary to alternative names based on a predefined mapping.
-
-    Args:
-        fields (dict[str, str]): A dictionary containing field names as keys and their values.
-
-    Returns:
-        dict[str, str]: A new dictionary with keys mapped according to the predefined mapping.
-
-    """
-    to_map = {
-        "gender": "sex",
-    }
-    return {to_map.get(k, k): v for k, v in fields.items()}

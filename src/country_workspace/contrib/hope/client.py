@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Generator
 
 import requests
 from constance import config
-from requests.exceptions import RequestException
+from requests.exceptions import RequestException, HTTPError
 
 from country_workspace.exceptions import RemoteError
 
@@ -69,21 +69,34 @@ class HopeClient:
         url = self.get_url(path)
         signature = hashlib.sha256(f"{url}{data}{time.perf_counter_ns()}".encode()).hexdigest()
         hope_request_start.send(self.__class__, url=url, data=data, signature=signature)
+        response = None
+
         try:
-            ret = requests.post(
+            response = requests.post(
                 url,
                 json=data,
                 headers={"Authorization": f"Token {self.token}"},
                 timeout=10,  # nosec
             )
-            ret.raise_for_status()
-        except RequestException as exc:
-            raise RemoteError(f"Error posting to {url}: {exc}") from exc
+            response.raise_for_status()
+        except HTTPError as http_err:
+            resp = http_err.response
+            error_details = resp.text[:1000] + "..." if len(resp.text) > 1000 else resp.text
+            raise RemoteError(
+                f"HTTP error posting to {url}: {http_err}. "
+                f"Status Code: {resp.status_code}. Response Body: {error_details}"
+            ) from http_err
+        except RequestException as req_err:
+            raise RemoteError(f"Request failed for {url}: {req_err}") from req_err
 
         try:
-            result = ret.json()
-        except JSONDecodeError as exc:
-            raise RemoteError(f"Wrong JSON response posting to {url}") from exc
+            result = response.json()
+        except JSONDecodeError as json_err:
+            response_text = response.text if response else "N/A"
+            raise RemoteError(
+                f"Wrong JSON response posting to {url}. Status: {response.status_code}. Response text: {response_text}"
+            ) from json_err
 
         hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
+
         return result

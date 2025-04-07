@@ -1,5 +1,6 @@
 import re
 from collections.abc import Callable
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -182,21 +183,22 @@ def test_post_success(mocked_responses: responses.RequestsMock, mock_signals):
 
 
 @pytest.mark.parametrize(
-    ("status_code", "body", "expected_error"),
+    ("status_code", "body", "expected_error_pattern"),
     [
-        (400, {"error": "Bad request"}, "Error posting to https://hope-dummy.org/api/rest/dummy_path/:"),
-        (500, {"error": "Server error"}, "Error posting to https://hope-dummy.org/api/rest/dummy_path/:"),
-        (200, "invalid json", "Wrong JSON response posting to https://hope-dummy.org/api/rest/dummy_path/"),
+        pytest.param(400, {"error": "Bad request"}, r"HTTP error posting to.*?Status Code: 400", id="http_400"),
+        pytest.param(500, {"error": "Server error"}, r"HTTP error posting to.*?Status Code: 500", id="http_500"),
+        pytest.param(200, "invalid json", r"Wrong JSON response posting to .*?\. Status: 200", id="json_decode_error"),
     ],
 )
 @override_config(HOPE_API_URL="https://hope-dummy.org/api/rest", HOPE_API_TOKEN="dummy_token")
+@pytest.mark.django_db
 def test_post_errors(
     mocked_responses: responses.RequestsMock,
-    mock_signals,
+    mock_signals: Any,
     status_code: int,
-    body: dict | str,
-    expected_error: str,
-):
+    body: dict[str, Any] | str,
+    expected_error_pattern: str,
+) -> None:
     start_mock, end_mock = mock_signals
     client = HopeClient()
     path = "dummy_path"
@@ -204,11 +206,12 @@ def test_post_errors(
     data = {"key": "value"}
 
     if isinstance(body, dict):
-        mocked_responses.add(responses.POST, url, json=body, status=status_code)
+        mocked_responses.add(method=responses.POST, url=url, json=body, status=status_code)
     else:
-        mocked_responses.add(responses.POST, url, body=body, status=status_code)
+        mocked_responses.add(method=responses.POST, url=url, body=body, status=status_code)
 
-    with pytest.raises(RemoteError, match=re.escape(expected_error)):
+    with pytest.raises(RemoteError, match=expected_error_pattern):
         client.post(path, data=data)
-    assert start_mock.call_count == 1
-    assert end_mock.call_count == 0
+
+    start_mock.assert_called_once()
+    end_mock.assert_not_called()
