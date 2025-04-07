@@ -51,6 +51,7 @@ def job():
     return AsyncJobFactory()
 
 
+@pytest.mark.xdist_group("remote")
 def test_sync_all(
     mocker: MockerFixture,
     mocked_responses: responses.RequestsMock,

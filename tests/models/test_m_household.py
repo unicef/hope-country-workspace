@@ -4,10 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
-
 if TYPE_CHECKING:
-    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
     from country_workspace.models import Household
+    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 
 @pytest.fixture

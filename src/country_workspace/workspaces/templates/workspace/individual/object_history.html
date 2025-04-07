@@ -1,0 +1,10 @@
+{% extends "workspace/hh_ind_object_history.html" %}{% load admin_urls i18n workspace_urls %}
+{% block page-title %}
+    {% url "workspace:workspaces_countryhousehold_changelist" as wcl %}
+    {% url "workspace:workspaces_countryhousehold_change" original.household.pk as wcf %}
+    &rsaquo; <a href="{% add_preserved_filters wcl %}">Households</a>
+    &rsaquo; <a href="{% add_preserved_filters wcf %}">{{ original.household }}</a>{% admin_url original.household %}
+    &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ original.household.pk }}">members</a> {% admin_url modeladmin household__exact=original.household.pk %}
+    &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_change" original.pk %}?household__exact={{ original.household.pk }}">{{ original }}</a> {% admin_url modeladmin household__exact=original.household.pk %}
+    &rsaquo; changes
+{% endblock page-title %}

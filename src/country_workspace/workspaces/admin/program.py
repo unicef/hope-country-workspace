@@ -13,13 +13,20 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.aurora.pipeline import import_from_aurora
+from country_workspace.contrib.aurora.pipeline import import_from_aurora, Config as AuroraConfig
 from country_workspace.state import state
+from country_workspace.utils.fields import batch_name_default
 
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
-from ...contrib.kobo.sync import import_data as import_from_kobo, Config as KoboConfig
-from ...datasources.rdi import import_from_rdi, Config as RDIConfig
+from ...contrib.kobo.sync import (
+    Config as KoboConfig,
+    import_data as import_from_kobo,
+)
+from ...datasources.rdi import (
+    Config as RDIConfig,
+    import_from_rdi,
+)
 from ...models import AsyncJob
 from ...utils.flex_fields import get_checker_fields
 from ..models import CountryProgram
@@ -27,11 +34,11 @@ from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
 from .forms import BulkUpdateImportForm, ImportFileForm
-from country_workspace.utils.fields import batch_name_default
 
 if TYPE_CHECKING:
-    from ...contrib.aurora.pipeline import Config as AuroraConfig
     from hope_flex_fields.models import DataChecker
+
+    from ...contrib.aurora.pipeline import Config as AuroraConfig
 
 
 class SelectColumnsForm(forms.Form):
@@ -307,14 +314,21 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def import_aurora(self, request: HttpRequest, program: "CountryProgram") -> "ImportAuroraForm|None":
         form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
         if form.is_valid():
-            registration_reference_pk = getattr(form.cleaned_data["registration"], "reference_pk", None)
             config: AuroraConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "registration_reference_pk": registration_reference_pk,
-                "household_column_prefix": form.cleaned_data["household_column_prefix"],
+                "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
-                "household_label_column": form.cleaned_data["household_label_column"],
-                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+                "master_detail": (
+                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
+                ),
+                **(
+                    {
+                        "household_column_prefix": form.cleaned_data.get("household_column_prefix"),
+                        "household_label_column": form.cleaned_data.get("household_label_column"),
+                    }
+                    if master_detail
+                    else {}
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",

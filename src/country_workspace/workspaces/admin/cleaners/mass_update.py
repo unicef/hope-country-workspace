@@ -11,8 +11,10 @@ from .base import BaseActionForm
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from django.db.models import QuerySet
     from hope_flex_fields.models import DataChecker
+
     from country_workspace.types import Beneficiary
 
     MassUpdateFunc = Callable[[Any, Any], Any]

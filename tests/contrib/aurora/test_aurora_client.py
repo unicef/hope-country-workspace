@@ -1,10 +1,10 @@
 import re
 from collections.abc import Callable
 
-
 import pytest
 import requests
 import responses
+from constance.test import override_config
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.exceptions import RemoteError
@@ -24,6 +24,7 @@ from country_workspace.exceptions import RemoteError
         ("json_decode", 200, "invalid json", lambda url: f"Wrong JSON response fetching {url}"),
     ],
 )
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
 def test_client_exceptions(
     mocked_responses: responses.RequestsMock,
     error_case: str,
@@ -31,7 +32,7 @@ def test_client_exceptions(
     body: dict | str,
     expected_error: Callable[[str], str],
 ) -> None:
-    client = AuroraClient(token="dummy")
+    client = AuroraClient()
     path = "dummy_path"
     url = client._get_url(path)
 

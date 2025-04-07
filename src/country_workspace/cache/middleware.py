@@ -36,8 +36,11 @@ class UpdateCacheMiddleware(MiddlewareMixin):
         timeout = self.page_timeout
         patch_response_headers(response, timeout)
         if response.status_code == 200:
-            cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
-            response.headers["Etag"] = cache_key
+            if "Etag" in response.headers:
+                cache_key = response.headers["Etag"]
+            else:
+                cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
+                response.headers["Etag"] = cache_key
             if hasattr(response, "render") and callable(response.render):
                 response.add_post_render_callback(lambda r: self.manager.store(cache_key, r))
             else:

@@ -1,12 +1,11 @@
-# tests/test_hope_client.py
 import re
 from collections.abc import Callable
 from unittest.mock import Mock
-from constance.test import override_config
 
 import pytest
 import requests
 import responses
+from constance.test import override_config
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.exceptions import RemoteError
@@ -14,7 +13,7 @@ from country_workspace.exceptions import RemoteError
 
 @pytest.fixture
 def mock_signals():
-    from country_workspace.contrib.hope.client import hope_request_start, hope_request_end
+    from country_workspace.contrib.hope.client import hope_request_end, hope_request_start
 
     start_mock = Mock()
     end_mock = Mock()
