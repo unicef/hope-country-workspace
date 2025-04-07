@@ -114,7 +114,7 @@ TIME_ZONE = env("TIME_ZONE")
 # Language code for this installation. All choices can be found here:
 # http://www.i18nguy.com/unicode/language-identifiers.html
 LANGUAGE_CODE = "en-us"
-ugettext = lambda s: s  # noqa
+ugettext = lambda s: s
 LANGUAGES = (
     ("es", ugettext("Spanish")),  # type: ignore[no-untyped-call]
     ("fr", ugettext("French")),  # type: ignore[no-untyped-call]
@@ -230,19 +230,17 @@ EMAIL_PORT = env("EMAIL_PORT", default=25)
 EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=False)
 EMAIL_USE_SSL = env("EMAIL_USE_SSL", default=False)
 
-from .fragments.app import *  # noqa
-from .fragments.celery import *  # noqa
-from .fragments.constance import *  # noqa
-from .fragments.csp import *  # noqa
-from .fragments.debug_toolbar import *  # noqa
-from .fragments.flags import *  # noqa
-from .fragments.jsoneditor import *  # noqa
-from .fragments.rest_framework import *  # noqa
-from .fragments.root import *  # noqa
-from .fragments.sentry import *  # noqa
-from .fragments.kobo import *  # noqa
-
-# from .fragments.smart_admin import *  # noqa
-from .fragments.social_auth import *  # noqa
-from .fragments.spectacular import *  # noqa
-from .fragments.tailwind import *  # noqa
+from .fragments.app import *  # noqa: E402, F403
+from .fragments.celery import *  # noqa: E402, F403
+from .fragments.constance import *  # noqa: E402, F403
+from .fragments.csp import *  # noqa: E402, F403
+from .fragments.debug_toolbar import *  # noqa: E402, F403
+from .fragments.flags import *  # noqa: E402, F403
+from .fragments.jsoneditor import *  # noqa: E402, F403
+from .fragments.kobo import *  # noqa: E402, F403
+from .fragments.rest_framework import *  # noqa: E402, F403
+from .fragments.root import *  # noqa: E402, F403
+from .fragments.sentry import *  # noqa: E402, F403
+from .fragments.social_auth import *  # noqa: E402, F403
+from .fragments.spectacular import *  # noqa: E402, F403
+from .fragments.tailwind import *  # noqa: E402, F403

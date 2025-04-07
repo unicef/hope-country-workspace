@@ -13,7 +13,10 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.aurora.pipeline import import_from_aurora, Config as AuroraConfig
+from country_workspace.contrib.aurora.pipeline import (
+    Config as AuroraConfig,
+    import_from_aurora,
+)
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
 
@@ -164,6 +167,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         form_url: str = "",
         extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
+        extra_context = extra_context or {}
         if obj := self.get_object(request, object_id):
             extra_context["btnlabels"] = {
                 "individual_columns": f"{obj.beneficiary_group.member_label} Columns",
@@ -264,9 +268,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context = self.get_common_context(request, pk, title="Import Data")
         context["selected_program"] = program = context["original"]
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
-        form_rdi = ImportFileForm(prefix="rdi")
-        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-        form_kobo = ImportKoboForm(prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
 
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
@@ -279,10 +280,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 case "kobo":
                     if not (form_kobo := self.import_kobo(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+        else:
+            form_rdi = ImportFileForm(prefix="rdi")
+            form_aurora = ImportAuroraForm(prefix="aurora", program=program)
+            form_kobo = ImportKoboForm(prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
 
-        context["form_rdi"] = form_rdi
-        context["form_aurora"] = form_aurora
-        context["form_kobo"] = form_kobo
+            context["form_rdi"] = form_rdi
+            context["form_aurora"] = form_aurora
+            context["form_kobo"] = form_kobo
 
         return render(request, "workspace/program/import.html", context)
 

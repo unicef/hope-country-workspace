@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from typing import TYPE_CHECKING, Any, Generator
+from typing import Any, Generator
 
 import sentry_sdk
 from django.core.cache import cache
@@ -10,11 +10,6 @@ from country_workspace.config.celery import app
 from country_workspace.models import AsyncJob
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from redis_lock.django_cache import RedisCache
-
-    cache: RedisCache
 
 
 @contextlib.contextmanager
@@ -41,7 +36,7 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
         )
     except AsyncJob.DoesNotExist as e:  # pragma: no cover
         sentry_sdk.capture_exception(e)
-        raise e
+        raise
 
     with lock_job(job):
         try:
@@ -49,11 +44,8 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
             if job.program:
                 sentry_sdk.set_tag("business_area", job.program.country_office.slug)
                 sentry_sdk.set_tag("project", job.program.name)
-            sentry_sdk.set_user = {"id": job.owner.pk, "email": job.owner.email}
+            sentry_sdk.set_user({"id": job.owner.pk, "email": job.owner.email})
             return job.execute()
-        except Exception:
-            # error is logged in job.execute
-            raise
         finally:
             scope.clear()
 

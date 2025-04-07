@@ -3,6 +3,14 @@ docker: &docker
   - added|modified: './docker/**/*'
   - added|modified: './docker/*'
 
+code_conventions: &dependencies
+  - '.mypy.ini'
+  - '.pre-commit-config.yaml'
+  - 'pytest.ini'
+  - 'ruff.toml'
+  - 'tox.ini'
+  - 'pyproject.toml'
+
 dependencies: &dependencies
   - 'uv.lock'
   - 'pyproject.toml'

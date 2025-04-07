@@ -47,7 +47,7 @@ def admin_url(obj: Model, **extra: dict[str, Any]) -> str:
             if extra:
                 filters = urllib.parse.urlencode(extra)
 
-            return mark_safe(  # noqa
+            return mark_safe(  # noqa: S308
                 f'<a class="admin-change-link" target="_admin" href="{url}?{filters}">'
                 '<span class="icon icon-shield1"></span>'
                 "</a>",

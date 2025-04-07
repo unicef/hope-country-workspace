@@ -8,5 +8,5 @@ class BeneficiaryGroupValidator:
     def __init__(self, program: "Program") -> None:
         self.program = program
 
-    def validate(self, hh: "Household") -> list:
+    def validate(self, hh: "Household") -> list[str]:
         return []

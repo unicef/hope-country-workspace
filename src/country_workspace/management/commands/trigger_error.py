@@ -11,7 +11,7 @@ class Command(BaseCommand):
     requires_migrations_checks = False
     requires_system_checks = []
 
-    def handle(self, *args: Any, **options: Any) -> None:  # noqa
+    def handle(self, *args: Any, **options: Any) -> None:
         try:
             1 / 0  # noqa: B018
         except ValueError as e:  # pragma: no cover

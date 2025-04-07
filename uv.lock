@@ -761,18 +761,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-reversion"
-version = "5.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/aa/d7e9d98b23041b24d2b35cefcbbfa51e6e557e8e58c1c1bddabdb0baf13f/django_reversion-5.1.0.tar.gz", hash = "sha256:3309821e5b6fceedcce6b6975f1a9c7fab6ae7c7d0e1276a90e345946fa0dcb8", size = 73178 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/84/898fec51294e6764ab5fdde5db079ca89d528cef039c05447ca41d6f4c74/django_reversion-5.1.0-py3-none-any.whl", hash = "sha256:084d4f117d9e2b4e8dfdfaad83ebb34410a03eed6071c96089e6811fdea82ad3", size = 84857 },
-]
-
-[[package]]
 name = "django-select2"
 version = "8.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1096,7 +1084,6 @@ dependencies = [
     { name = "django-mptt" },
     { name = "django-pghistory" },
     { name = "django-regex" },
-    { name = "django-reversion" },
     { name = "django-select2" },
     { name = "django-smart-admin" },
     { name = "django-smart-env" },
@@ -1183,7 +1170,6 @@ requires-dist = [
     { name = "django-mptt", specifier = ">=0.16.0" },
     { name = "django-pghistory", specifier = ">=3.5.4" },
     { name = "django-regex", specifier = ">=0.5.0" },
-    { name = "django-reversion", specifier = ">=5.1.0" },
     { name = "django-select2" },
     { name = "django-smart-admin", specifier = ">=2.6.0" },
     { name = "django-smart-env", specifier = ">=0.1.0" },
@@ -1302,7 +1288,7 @@ name = "humanfriendly"
 version = "10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyreadline3", marker = "python_full_version == '3.12.*' and sys_platform == 'win32'" },
+    { name = "pyreadline3", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cc/3f/2c29224acb2e2df4d2046e4c73ee2662023c58ff5b113c4c1adac0886c43/humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc", size = 360702 }
 wheels = [
@@ -1444,7 +1430,7 @@ version = "5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "amqp" },
-    { name = "tzdata", marker = "python_full_version == '3.12.*'" },
+    { name = "tzdata" },
     { name = "vine" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/38/4d/b93fcb353d279839cc35d0012bee805ed0cf61c07587916bfc35dbfddaf1/kombu-5.4.2.tar.gz", hash = "sha256:eef572dd2fd9fc614b37580e3caeafdd5af46c1eff31e7fba89138cdb406f2cf", size = 442858 }
@@ -2118,7 +2104,7 @@ dependencies = [
     { name = "kombu" },
     { name = "psutil" },
     { name = "pytest-docker-tools" },
-    { name = "setuptools", marker = "python_full_version == '3.12.*'" },
+    { name = "setuptools" },
     { name = "tenacity" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f4/a0/fcc6a3fbd8c06d04d206da27e1062eaee8ddc0cbaf2db72e66aa74f240e8/pytest_celery-1.2.0.tar.gz", hash = "sha256:de605eca1b0134c136910c8ed161cc3996b0c8aaafd29170878a396eed81b5b1", size = 28043 }
@@ -2841,7 +2827,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
     { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation == 'PyPy'" },
-    { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation != 'PyPy' and python_full_version == '3.12.*'" },
+    { name = "urllib3", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation != 'PyPy'" },
     { name = "wrapt" },
     { name = "yarl" },
 ]

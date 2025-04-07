@@ -25,7 +25,7 @@ def sync_offices(stdout: TextIOBase | None = None) -> dict[str, int]:
                         "code": record["code"],
                         "active": record["active"],
                         "long_name": record["long_name"],
-                        # TODO: sync country iso code
+                        # TODO @Misuk: sync country iso code
                     },
                 )
                 totals["add" if created else "upd"] += 1
@@ -76,7 +76,7 @@ def sync_programs(limit_to_office: "Office | None" = None, stdout: TextIOBase | 
     return totals
 
 
-def sync_beneficiary_groups(stdout: TextIOBase | None = None) -> bool:
+def sync_beneficiary_groups(stdout: TextIOBase | None = None) -> dict[str, int]:
     totals = {"add": 0, "upd": 0}
     client = HopeClient()
     if stdout:

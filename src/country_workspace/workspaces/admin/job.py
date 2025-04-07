@@ -51,6 +51,6 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
         permission=lambda r, o, handler: handler.model_admin.has_queue_permission("queue", r, o),
         html_attrs={"title": "Checks errors in Celery."},
     )
-    def celery_check(self, request: "HttpRequest", pk: str) -> "HttpResponse":  # type: ignore
+    def celery_check(self, request: "HttpRequest", pk: str) -> "HttpResponse":
         obj = self.get_object(request, pk)
         obj.check()

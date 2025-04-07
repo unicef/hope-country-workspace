@@ -1,5 +1,5 @@
 import re
-from typing import Any, TypedDict, cast, Final
+from typing import Any, Final, TypedDict, cast
 
 from constance import config as constance_config
 from django.core.cache import cache
@@ -124,7 +124,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     individual_counter = 0
 
     for asset in client.assets:
-        # TODO: fetch specific asset
+        # TODO @Misuk: fetch specific asset
         if config["project_id"] == asset.uid:
             import_result = import_asset(batch, asset, config)
             household_counter += import_result["households"]

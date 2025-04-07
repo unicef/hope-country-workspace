@@ -1,4 +1,4 @@
-from typing import Any, Mapping, Final, NotRequired
+from typing import Any, Final, Mapping, NotRequired
 
 from django.db.transaction import atomic
 

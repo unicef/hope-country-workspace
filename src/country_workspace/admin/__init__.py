@@ -5,25 +5,42 @@ from smart_admin.console import panel_migrations, panel_redis, panel_sentry, pan
 from smart_admin.smart_auth.admin import ContentTypeAdmin, PermissionAdmin
 
 from ..cache.smart_panel import panel_cache
-from .batch import BatchAdmin  # noqa
-from .beneficiary_group import BeneficiaryGroupAdmin  # noqa
-from .constance import ConstanceAdmin  # noqa
-from .household import HouseholdAdmin  # noqa
-from .individual import IndividualAdmin  # noqa
-from .job import AsyncJobAdmin  # noqa
-from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin  # noqa
-from .office import OfficeAdmin  # noqa
-from .program import ProgramAdmin  # noqa
-from .role import UserRoleAdmin  # noqa
-from .sync import SyncLog  # noqa
-from .user import UserAdmin  # noqa
+from .batch import BatchAdmin
+from .beneficiary_group import BeneficiaryGroupAdmin
+from .constance import ConstanceAdmin
+from .household import HouseholdAdmin
+from .individual import IndividualAdmin
+from .job import AsyncJobAdmin
+from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin
+from .office import OfficeAdmin
+from .program import ProgramAdmin
+from .role import UserRoleAdmin
+from .sync import SyncLog
+from .user import UserAdmin
 
 site.register(ContentType, admin_class=ContentTypeAdmin)
 site.register(Permission, admin_class=PermissionAdmin)
-
 
 site.register_panel(panel_sentry)
 site.register_panel(panel_cache)
 site.register_panel(panel_sysinfo)
 site.register_panel(panel_migrations)
 site.register_panel(panel_redis)
+
+__all__ = [
+    "AreaAdmin",
+    "AreaTypeAdmin",
+    "AsyncJobAdmin",
+    "BatchAdmin",
+    "BeneficiaryGroupAdmin",
+    "ConstanceAdmin",
+    "CountryAdmin",
+    "HouseholdAdmin",
+    "IndividualAdmin",
+    "OfficeAdmin",
+    "ProgramAdmin",
+    "SyncLog",
+    "SyncLog",
+    "UserAdmin",
+    "UserRoleAdmin",
+]

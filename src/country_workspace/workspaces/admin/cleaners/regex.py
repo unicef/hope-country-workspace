@@ -23,9 +23,10 @@ class RegexFormField(forms.CharField):
         super().clean(value)
         try:
             re.compile(value)
-            return value
         except (ValueError, TypeError):
             raise forms.ValidationError("Invalid regex")
+        else:
+            return value
 
 
 class RegexUpdateForm(BaseActionForm):

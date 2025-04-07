@@ -12,6 +12,7 @@ from django_regex.utils import RegexList as _RegexList
 from pytest_django.fixtures import SettingsWrapper
 
 if TYPE_CHECKING:
+    from _pytest.python import Metafunc
     from admin_extra_buttons.mixins import ExtraButtonsMixin
     from django.contrib.admin import ModelAdmin
     from django.db.models.options import Options
@@ -24,8 +25,8 @@ pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
 
 
 class RegexList(_RegexList):  # type: ignore[misc]
-    def extend(self, __iterable: "Iterable[Any]") -> None:
-        for e in __iterable:
+    def extend(self, iterable: Iterable[Any]) -> None:
+        for e in iterable:
             self.append(e)
 
 
@@ -62,12 +63,12 @@ def reverse_model_admin(model_admin: "ModelAdmin[Model]", op: str, args: Optiona
 
 def log_submit_error(res: "DjangoWebtestResponse") -> str:
     try:
-        return f"Submit failed with: {repr(res.context['form'].errors)}"
+        return f"Submit failed with: {res.context['form'].errors!r}"
     except KeyError:
         return "Submit failed"
 
 
-def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
+def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa: C901, PLR0912
     import django
 
     ids: list[str]
@@ -76,10 +77,10 @@ def pytest_generate_tests(metafunc: "Metafunc") -> None:  # noqa
     excluded_models = RegexList(GLOBAL_EXCLUDED_MODELS)
     excluded_buttons = RegexList(GLOBAL_EXCLUDED_BUTTONS)
     if "skip_models" in [m.name for m in markers]:
-        skip_rule = list(filter(lambda m: m.name == "skip_models", markers))[0]
+        skip_rule = next(filter(lambda m: m.name == "skip_models", markers))
         excluded_models.extend(skip_rule.args)
     if "skip_buttons" in [m.name for m in markers]:
-        skip_rule = list(filter(lambda m: m.name == "skip_buttons", markers))[0]
+        skip_rule = next(filter(lambda m: m.name == "skip_buttons", markers))
         excluded_buttons.extend(skip_rule.args)
     django.setup()
     if "button_handler" in metafunc.fixturenames:

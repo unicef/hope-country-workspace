@@ -38,9 +38,9 @@ def get_factory_for_model(
 
     bases = (AutoRegisterModelFactory,)
     if _model in factories_registry:
-        return factories_registry[_model]  # noqa
+        return factories_registry[_model]
 
     if _model in django_model_factories:
         return django_model_factories[_model]
 
-    return register(type(f"{_model._meta.model_name}AutoCreatedFactory", bases, {"Meta": Meta}))  # noqa
+    return register(type(f"{_model._meta.model_name}AutoCreatedFactory", bases, {"Meta": Meta}))

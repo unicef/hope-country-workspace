@@ -1,12 +1,11 @@
 from collections.abc import Generator
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from pytest_mock import MockFixture
 from requests import HTTPError
 
 from country_workspace.contrib.kobo.api.common import DataGetter
-
 
 URL = "https://test.org"
 CACHE_TTL = 42

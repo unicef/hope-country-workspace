@@ -1,6 +1,7 @@
 from io import StringIO
 
 import pytest
+from constance.test import override_config
 from django import forms
 
 from country_workspace.contrib.hope.sync.office import sync_all, sync_beneficiary_groups, sync_offices, sync_programs
@@ -17,6 +18,7 @@ def setup_definitions(db):
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
 @pytest.mark.parametrize("stdout", [None, StringIO()])
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_sync_all(stdout):
     assert sync_all(stdout)
     if stdout:
@@ -25,6 +27,7 @@ def test_sync_all(stdout):
 
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_sync_programs():
     from country_workspace.models import Office
 

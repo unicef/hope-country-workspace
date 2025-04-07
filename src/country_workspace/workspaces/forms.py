@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django import forms
 from django.contrib.admin.forms import AdminAuthenticationForm
@@ -13,8 +13,6 @@ from ..state import state
 from .config import conf
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from django.contrib.auth.base_user import AbstractBaseUser
 
 
@@ -45,7 +43,11 @@ class ProgramWidget(s2forms.ModelSelect2Widget):
     search_fields = ["name__icontains"]
 
     def filter_queryset(
-        self, request: HttpRequest, term: str, queryset: QuerySet[Program] | None = None, **dependent_fields: dict
+        self,
+        request: HttpRequest,
+        term: str,
+        queryset: QuerySet[Program] | None = None,
+        **dependent_fields: dict[str, Any],
     ) -> QuerySet[Program]:
         qs = super().filter_queryset(request, term, queryset, **dependent_fields)
         return qs.filter(country_office=state.tenant)

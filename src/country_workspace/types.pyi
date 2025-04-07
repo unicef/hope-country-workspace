@@ -1,3 +1,3 @@
 from country_workspace.models import Household, Individual
 
-Beneficiary = Household | Individual
+type Beneficiary = Household | Individual

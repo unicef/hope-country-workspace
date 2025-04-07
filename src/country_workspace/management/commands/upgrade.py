@@ -106,14 +106,14 @@ class Command(BaseCommand):
 
         sys.exit(1)
 
-    def handle(self, *args: Any, **options: Any) -> None:  # noqa
+    def handle(self, *args: Any, **options: Any) -> None:  # noqa: C901
         from country_workspace.models import Office, User
 
         self.get_options(options)
         if self.verbosity >= 1:
             echo = self.stdout.write
         else:
-            echo = lambda *a, **kw: None  # noqa: E731
+            echo = lambda *a, **kw: None
 
         try:
             extra = {

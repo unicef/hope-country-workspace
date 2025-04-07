@@ -14,12 +14,12 @@ jobs:
     name: labels pull requests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Check for file changes
-        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+        uses: dorny/paths-filter@v3
         id: changes
         with:
           token: ${{ github.token }}
@@ -36,3 +36,9 @@ jobs:
         if: steps.changes.outputs.dependencies == 'true'
         with:
           labels: 'Add/Change dependencies'
+
+      - name: Add Dependencies label
+        uses: actions-ecosystem/action-add-labels@v1
+        if: steps.changes.outputs.code_conventions == 'true'
+        with:
+          labels: 'Change Code Style/Conventions'

@@ -35,7 +35,7 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
 
     @property
     def title_plural(self) -> str:
-        return super().title_group_plural
+        return super().title_group_plural or ""
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         program: "CountryProgram | None"

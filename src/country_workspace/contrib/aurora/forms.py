@@ -1,3 +1,5 @@
+from typing import Any
+
 from django import forms
 
 from country_workspace.contrib.aurora.models import Registration
@@ -29,7 +31,7 @@ class ImportAuroraForm(forms.Form):
         required=False, help_text="Fails if it finds fields which do not exists in data checker."
     )
 
-    def __init__(self, *args: tuple, program: Program | None = None, **kwargs: dict) -> None:
+    def __init__(self, *args: Any, program: Program | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.program = program
         if program:

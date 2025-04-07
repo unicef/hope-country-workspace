@@ -5,6 +5,7 @@ from typing import Generator
 import pytest
 import responses
 from constance import config
+from constance.test import override_config
 from django.core.cache import cache
 from pytest_mock import MockerFixture
 
@@ -76,6 +77,9 @@ def test_sync_all(
     cache_setup_and_fake_lock.assert_called_once_with("sync-aurora")
 
 
+@pytest.mark.vcr
+@pytest.mark.xdist_group("remote")
+@override_config(AURORA_API_URL="https://aurora.org/api/")
 def test_sync_projects(
     mocker: MockerFixture,
     mocked_responses: responses.RequestsMock,
@@ -102,6 +106,7 @@ def test_sync_projects(
     assert SyncLog.objects.count() == 1
 
 
+@override_config(AURORA_API_URL="https://aurora.org/api/")
 def test_sync_registrations(
     mocker: MockerFixture,
     mocked_responses: responses.RequestsMock,

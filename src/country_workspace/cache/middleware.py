@@ -9,7 +9,7 @@ from country_workspace.cache.manager import cache_manager
 
 
 class UpdateCacheMiddleware(MiddlewareMixin):
-    def __init__(self, get_response: Callable) -> None:
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         super().__init__(get_response)
         self.cache_timeout = settings.CACHE_MIDDLEWARE_SECONDS
         self.page_timeout = 10

@@ -59,7 +59,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
                     return func(self)
         except Exception as e:
             sid = sentry_sdk.capture_exception(e)
-            raise e
+            raise
         finally:
             if sid:
                 self.sentry_id = sid
