@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 import responses
 from constance import config
+from constance.test import override_config
 from django.urls import reverse
 from webtest import Upload, forms
 
@@ -113,6 +114,7 @@ def form_aurora(
         (stub.imported["update_head_name"], 1, 1),
     ],
 )
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_success(
     force_migrated_records: None,
     program: "CountryProgram",
@@ -145,6 +147,7 @@ def test_import_data_aurora_success(
         (stub.imported["invalid_key"], 0, 0, r".*must contain an underscore"),
     ],
 )
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_errors(
     force_migrated_records: None,
     program: "CountryProgram",

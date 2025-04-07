@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
+from constance.test import override_config
 from django import forms
 from strategy_field.utils import fqn
 from testutils.factories import FieldDefinitionFactory
 
 from country_workspace.contrib.hope.remotes.country import CountryAttributeHandler
-from constance.test import override_config
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import FieldDefinition

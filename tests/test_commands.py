@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+from constance.test import override_config
 from django.core.management import call_command
 from responses import RequestsMock
 
@@ -43,6 +44,7 @@ def environment() -> dict[str, str]:
 @pytest.mark.parametrize("static", [True, False], ids=["static", "no-static"])
 @pytest.mark.parametrize("verbosity", [1, 0], ids=["verbose", ""])
 @pytest.mark.parametrize("migrate", [True, False], ids=["migrate", ""])
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_init(
     verbosity: int,
     migrate: bool,
@@ -81,6 +83,7 @@ def test_upgrade_init(
 
 @pytest.mark.parametrize("verbosity", [1, 0], ids=["verbose", ""])
 @pytest.mark.parametrize("migrate", [1, 0], ids=["migrate", ""])
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade(verbosity: int, migrate: int, monkeypatch: pytest.MonkeyPatch, environment: dict[str, str]) -> None:
     from testutils.factories import SuperUserFactory
 
@@ -91,6 +94,7 @@ def test_upgrade(verbosity: int, migrate: int, monkeypatch: pytest.MonkeyPatch, 
     assert "error" not in str(out.getvalue())
 
 
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_next(mocked_responses: RequestsMock) -> None:
     from testutils.factories import SuperUserFactory
 
@@ -100,6 +104,7 @@ def test_upgrade_next(mocked_responses: RequestsMock) -> None:
     assert "error" not in str(out.getvalue())
 
 
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_check(mocked_responses: RequestsMock, admin_user: "User", environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
@@ -125,6 +130,7 @@ def test_upgrade_admin(mocked_responses: RequestsMock, environment: dict[str, st
 @pytest.mark.default_cassette("test_sync_all.yaml")
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_sync(environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
@@ -137,6 +143,7 @@ def test_upgrade_sync(environment: dict[str, str]) -> None:
 @pytest.mark.default_cassette("test_sync_all.yaml")
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_sync(environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
