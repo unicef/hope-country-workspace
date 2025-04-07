@@ -106,6 +106,7 @@ def test_sync_projects(
     assert SyncLog.objects.count() == 1
 
 
+@override_config(AURORA_API_URL="https://aurora.org/api/")
 def test_sync_registrations(
     mocker: MockerFixture,
     mocked_responses: responses.RequestsMock,

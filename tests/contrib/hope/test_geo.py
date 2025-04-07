@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from testutils.factories import FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory
 
 from country_workspace.contrib.hope.geo import Admin1Choice, CountryChoice
+from constance.test import override_config
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import Fieldset
@@ -81,6 +82,7 @@ ADMIN2_AF = {
 }
 
 
+@override_config(AURORA_API_URL="https://aurora.org/api/")
 def test_validate_child(db, mocked_responses):
     mocked_responses.add(mocked_responses.GET, "https://dev-hope.unitst.org/api/rest/lookups/country/", json=COUNTRIES)
     mocked_responses.add(

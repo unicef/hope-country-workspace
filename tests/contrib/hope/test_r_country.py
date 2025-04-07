@@ -7,6 +7,7 @@ from strategy_field.utils import fqn
 from testutils.factories import FieldDefinitionFactory
 
 from country_workspace.contrib.hope.remotes.country import CountryAttributeHandler
+from constance.test import override_config
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import FieldDefinition
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_r_country_fetcher():
     f = CountryAttributeHandler(
         Mock(
@@ -29,6 +31,7 @@ def test_r_country_fetcher():
 
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_r_country():
     fd: FieldDefinition = FieldDefinitionFactory(
         name="HOPE HH Country",

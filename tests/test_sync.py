@@ -4,6 +4,7 @@ import pytest
 from django import forms
 
 from country_workspace.contrib.hope.sync.office import sync_all, sync_beneficiary_groups, sync_offices, sync_programs
+from constance.test import override_config
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +18,7 @@ def setup_definitions(db):
 @pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
 @pytest.mark.parametrize("stdout", [None, StringIO()])
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_sync_all(stdout):
     assert sync_all(stdout)
     if stdout:
