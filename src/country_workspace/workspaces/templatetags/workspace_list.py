@@ -1,6 +1,7 @@
 import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generator
 
+from django import forms
 from django.contrib.admin.templatetags.admin_list import (
     ResultList as DjangoResultList,
     _coerce_field_name,
@@ -27,18 +28,17 @@ from .base import WorkspaceInclusionAdminNode
 from .workspace_urls import add_preserved_filters
 
 if TYPE_CHECKING:
-    from typing import Generator
-
     from django.contrib.admin import ModelAdmin
 
+    from country_workspace.workspaces.changelist import WorkspaceChangeList
     from country_workspace.workspaces.models import CountryIndividual
 
 __all__ = [
     "admin_actions",
-    "search_form_tag",
-    "result_list_tag",
-    "change_list_object_tools_tag",
     "admin_list_filter",
+    "change_list_object_tools_tag",
+    "result_list_tag",
+    "search_form_tag",
     "search_form_tag",
 ]
 register = Library()
@@ -90,7 +90,7 @@ def flex_field_lookup_field(
     return f, attr, value
 
 
-def result_headers(cl: "WorkspaceChangeList | ChangeList") -> "Generator[dict[str, str]]":  # noqa
+def result_headers(cl: "WorkspaceChangeList | ChangeList") -> "Generator[dict[str, Any]]":  # noqa: C901, PLR0912
     """Override standard Django behaviour to silent error if wrong columns have been configured."""
     ordering_field_columns = cl.get_ordering_field_columns()
     for i, field_name in enumerate(cl.list_display):
@@ -185,7 +185,7 @@ def result_headers(cl: "WorkspaceChangeList | ChangeList") -> "Generator[dict[st
         }
 
 
-def items_for_result(cl, result, form):  # noqa
+def items_for_result(cl: ChangeList, result: ResultList, form: forms.Form) -> Generator[str, None, None]:  # noqa: C901, PLR0912, PLR0915
     """Generate the actual list of data."""
 
     def link_in_col(is_first: bool, field_name: str, cl: ChangeList) -> bool:

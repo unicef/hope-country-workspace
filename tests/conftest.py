@@ -108,9 +108,6 @@ def pytest_configure(config):
     from country_workspace.cache.manager import cache_manager
 
     cache_manager.active = False
-    from constance import config
-
-    config.AURORA_API_URL = "https://aurora.org"
 
 
 @pytest.fixture(autouse=True)

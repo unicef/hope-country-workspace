@@ -35,7 +35,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
 
     @property
     def title_plural(self) -> str:
-        return super().title_member_plural
+        return super().title_member_plural or ""
 
     def __init__(self, model: Model, admin_site: "AdminSite") -> None:
         self._selected_household = None

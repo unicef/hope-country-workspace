@@ -36,7 +36,7 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         self,
         request: HttpRequest,
         obj: "Validable | None" = None,
-    ) -> "tuple[str|None, CountryProgram | None]":
+    ) -> "CountryProgram | None":
         return state.program
 
     def get_checker(self, request: HttpRequest, obj: "Beneficiary | None" = None) -> "DataChecker":
@@ -181,7 +181,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def has_delete_permission(self, request: HttpRequest, obj: Model | None = None) -> bool:
         return False
 
-    def _changeform_view(  # noqa: PLR0912
+    def _changeform_view(
         self,
         request: HttpRequest,
         object_id: str,

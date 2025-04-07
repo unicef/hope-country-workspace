@@ -53,7 +53,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
             "workspace/object_history.html",
         ]
 
-    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict:
+    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["modeladmin"] = self
         kwargs["modeladmin_name"] = self.__class__.__name__
         return super().get_common_context(request, pk, **kwargs)
@@ -69,7 +69,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
             css={},
         )
 
-    def get_preserved_filters(self, request: HttpRequest) -> dict[str, str]:
+    def get_preserved_filters(self, request: HttpRequest) -> str:
         """Return the preserved filters querystring."""
         match = request.resolver_match
         if self.preserve_filters and match:

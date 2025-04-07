@@ -24,7 +24,7 @@ def download_attachments(data_getter: Callable[[str], Response], submission: Sub
         elif key:
             parent, key = key.split("/", maxsplit=1)
             parent, index = parent.split("[")
-            index = int(index.rstrip("]")) - 1
-            submission[parent][index][f"{parent}/{key}"] = value
+            offset = int(index.rstrip("]")) - 1
+            submission[parent][offset][f"{parent}/{key}"] = value
 
     return submission

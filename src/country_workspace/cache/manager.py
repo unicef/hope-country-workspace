@@ -35,7 +35,7 @@ class CacheManager:
         return caches["default"]
 
     def init(self) -> None:
-        from . import handlers  # noqa
+        from . import handlers  # noqa: F401
 
         try:
             self.cache_timeout = config.CACHE_TIMEOUT
@@ -75,7 +75,7 @@ class CacheManager:
         key = self._get_version_key(office, program)
         self.cache.delete(key)
 
-    def get_cache_version(self, *, office: "Office | None" = None, program: "Program | None" = None) -> None:
+    def get_cache_version(self, *, office: "Office | None" = None, program: "Program | None" = None) -> int:
         key = self._get_version_key(office, program)
         version = self.cache.get(key)
         if not version:
@@ -119,15 +119,13 @@ class CacheManager:
             tenant = state.tenant.slug
             version = str(self.get_cache_version(office=state.tenant))
 
-        parts = [self.prefix, "entry", prefix, self.cw_version, ts, version, tenant, program, *parts]
-        return ":".join(parts)
+        final_parts = [self.prefix, "entry", prefix, self.cw_version, ts, version, tenant, program, *parts]
+        return ":".join(map(str, final_parts))
 
     def build_key_from_request(self, request: HttpRequest, prefix: str = "view", *args: list[str]) -> str:
         return self.build_key(
             prefix,
-            slugify(request.path),
-            slugify(str(sorted(request.GET.items()))),
-            *[str(e) for e in args],
+            *[slugify(request.path), slugify(str(sorted(request.GET.items()))), *[str(e) for e in args]],
         )
 
 

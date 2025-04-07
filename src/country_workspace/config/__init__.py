@@ -163,7 +163,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     ),
     "HOPE_API_TOKEN": (str, "", "", False, "Hope API token"),
     "MEDIA_ROOT": (str, "/var/media/", "/tmp/media", True, setting("media-root")),  # noqa: S108
-    "MEDIA_URL": (str, "/media/", "/media", False, setting("media-root")),  # noqa: S108
+    "MEDIA_URL": (str, "/media/", "/media", False, setting("media-root")),
     "SECRET_KEY": (
         str,
         "",
@@ -180,7 +180,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     "SOCIAL_AUTH_RAISE_EXCEPTIONS": (bool, False, True, False),
     "SOCIAL_AUTH_REDIRECT_IS_HTTPS": (bool, True, False, False, ""),
     "STATIC_ROOT": (str, "/var/static", "/tmp/static", True, setting("static-root")),  # noqa: S108
-    "STATIC_URL": (str, "/static/", "/static/", False, setting("static-url")),  # noqa: S108
+    "STATIC_URL": (str, "/static/", "/static/", False, setting("static-url")),
     "TIME_ZONE": (str, "UTC", "UTC", False, setting("std-setting-TIME_ZONE")),
     "AZURE_CLIENT_SECRET": (str, "", "", False, "Azure client secret for SSO"),
     "AZURE_TENANT_ID": (str, "", "", False, "Azure tenant ID for SSO"),

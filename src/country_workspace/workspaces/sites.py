@@ -43,7 +43,7 @@ class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
             qs = qs.distinct()
         return self.filter_queryset(qs)
 
-    def process_request(self, request: "HttpRequest") -> tuple[str, "ModelAdmin", "Field", str]:  # noqa C901
+    def process_request(self, request: "HttpRequest") -> tuple[str, "ModelAdmin", "Field", str]:  # noqa: C901, PLR0912
         """Override to handle Proxy Models."""
         term = request.GET.get("term", "")
         try:
@@ -102,7 +102,7 @@ def force_tenant(view_func: "Callable[...]") -> "Callable[...]":
     def _view_wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> "Callable[...]":
         if not request.user.is_authenticated:
             return redirect("workspace:login")
-        if not is_tenant_valid() and "+st" not in request.path:  # TODO: Dry
+        if not is_tenant_valid() and "+st" not in request.path:
             return redirect("workspace:select_tenant")
         return view_func(request, *args, **kwargs)
 
@@ -286,7 +286,7 @@ class TenantAdminSite(admin.AdminSite):
         ret["active_program"] = selected_program
         ret["namespace"] = self.namespace
         ret["menu_items"] = self.get_menu_items(request)
-        return ret  # type: ignore
+        return ret
 
     def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:
         return TenantAutocompleteJsonView.as_view(admin_site=self)(request)
@@ -310,7 +310,7 @@ class TenantAdminSite(admin.AdminSite):
             def wrapper(*args: Any, **kwargs: Any) -> "Callable[[], Any]":
                 return self.admin_view(view, cacheable)(*args, **kwargs)
 
-            wrapper.admin_site = self  # type: ignore
+            wrapper.admin_site = self
             return update_wrapper(wrapper, view)
 
         urlpatterns = [

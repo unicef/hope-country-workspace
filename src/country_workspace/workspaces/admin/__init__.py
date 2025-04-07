@@ -1,5 +1,13 @@
-from .batch import CountryBatchAdmin  # noqa
-from .household import CountryHouseholdAdmin  # noqa
-from .individual import CountryIndividualAdmin  # noqa
-from .job import CountryJobAdmin  # noqa
-from .program import CountryProgramAdmin  # noqa
+from .batch import CountryBatchAdmin
+from .household import CountryHouseholdAdmin
+from .individual import CountryIndividualAdmin
+from .job import CountryJobAdmin
+from .program import CountryProgramAdmin
+
+__all__ = [
+    "CountryBatchAdmin",
+    "CountryHouseholdAdmin",
+    "CountryIndividualAdmin",
+    "CountryJobAdmin",
+    "CountryProgramAdmin",
+]

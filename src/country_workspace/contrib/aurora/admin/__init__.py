@@ -1,2 +1,4 @@
-from .project import ProjectAdmin  # noqa
-from .registration import RegistrationAdmin  # noqa
+from .project import ProjectAdmin
+from .registration import RegistrationAdmin
+
+__all__ = ["ProjectAdmin", "RegistrationAdmin"]

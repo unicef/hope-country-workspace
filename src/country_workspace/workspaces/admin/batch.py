@@ -27,13 +27,13 @@ class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ["import_date", "name", "imported_by", "source"]
     search_fields = ("label",)
-    change_list_template = "workspace/change_list.html"
-    change_form_template = "workspace/change_form.html"
+    change_list_template = ["workspace/change_list.html"]
+    change_form_template = ["workspace/change_form.html"]
     ordering = ("name",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
     readonly_fields = fields = ("name", "source")
 
-    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict:
+    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["modeladmin"] = self
         kwargs["modeladmin_name"] = self.__class__.__name__
         return super().get_common_context(request, pk, **kwargs)

@@ -26,5 +26,5 @@ class ImportKoboForm(forms.Form):
             client = make_client(kobo_country_code)
             self.fields["project_id"].choices = [(asset.uid, asset.name) for asset in client.assets]
         else:
-            self.cleaned_data = {}  # type: ignore
+            self.cleaned_data = {}
             self.add_error(None, "Please set country iso code for office to use Kobo import")

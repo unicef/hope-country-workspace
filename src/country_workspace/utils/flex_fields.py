@@ -1,6 +1,6 @@
 import hashlib
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 
 from hope_flex_fields.models import DataChecker
 
@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-def get_checker_fields(checker: DataChecker) -> tuple[str, str]:
+def get_checker_fields(checker: DataChecker) -> Generator[tuple[str, str], None, None]:
     for fs in checker.members.select_related("fieldset").all():
         for field in fs.fieldset.get_fields():
             yield field.name, (field.attrs.get("label", field.name) or field.name)

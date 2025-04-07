@@ -10,7 +10,7 @@ from country_workspace.contrib.hope.signals import hope_request_end, hope_reques
 
 
 class ApiCall:
-    def __init__(self, panel: "WSHopePanel", data: dict) -> None:
+    def __init__(self, panel: "WSHopePanel", data: dict[str, Any]) -> None:
         self.panel = panel
         self.url = data["url"]
         self.params = data["params"]

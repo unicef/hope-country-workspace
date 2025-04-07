@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 from django.contrib import messages
 from django.contrib.admin import ModelAdmin
@@ -11,7 +11,7 @@ from django.urls import reverse
 def confirm_action(  # noqa: PLR0913
     modeladmin: ModelAdmin,
     request: HttpRequest,
-    action: str,
+    action: Callable[[HttpRequest], Any],
     message: str,
     success_message: str = "",
     description: str = "",

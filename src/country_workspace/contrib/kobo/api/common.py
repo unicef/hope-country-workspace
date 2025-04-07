@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Any, TypedDict
 
 from django.core.cache import cache
-from requests import Response, Session, HTTPError
+from requests import HTTPError, Response, Session
 
 UrlPredicate = Callable[[str], bool]
 

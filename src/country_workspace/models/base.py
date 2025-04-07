@@ -10,7 +10,7 @@ from country_workspace.cache.manager import cache_manager
 from country_workspace.utils.flex_fields import get_obj_checksum
 
 if TYPE_CHECKING:
-    from django.db.models import QuerySet
+    from django.db.models import Model, QuerySet
     from hope_flex_fields.models import DataChecker
 
     from country_workspace.models import Office, Program
@@ -30,8 +30,8 @@ class BaseManager(models.Manager["models.Model"]):
     _queryset_class = BaseQuerySet
 
 
-class ValidableQuerySet(BaseQuerySet["Validable"]):
-    def all(self) -> "QuerySet[Validable]":
+class ValidableQuerySet(BaseQuerySet):
+    def all(self) -> "QuerySet[Model, Model]":
         return super().all().defer("flex_files")
 
 

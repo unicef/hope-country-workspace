@@ -1,3 +1,4 @@
+from typing import Any
 from urllib.parse import urlparse
 
 from django.core.cache import cache
@@ -8,7 +9,7 @@ from country_workspace.contrib.hope.sync.office import sync_programs
 from country_workspace.models import AsyncJob, SyncLog
 
 
-def sync_all(job: AsyncJob) -> dict[str, int]:
+def sync_all(job: AsyncJob) -> dict[str, Any]:
     """
     Synchronize programs from the HOPE core, as well as projects and registrations from the Aurora system.
 
