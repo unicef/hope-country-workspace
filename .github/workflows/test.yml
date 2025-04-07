@@ -142,8 +142,6 @@ jobs:
               -e CELERY_BROKER_URL=${CELERY_BROKER_URL} \
               -e CACHE_URL=${CACHE_URL} \
               -e SECRET_KEY=super-secret-key-just-for-testing \
-              -e HOPE_API_URL="https://dev-hope.unitst.org/api/rest/" \
-              -e AURORA_API_URL="https://uni-hope-ukr-sr-dev.unitst.org/api/" \
               -v "./output/:/app/output" \
               -v "./src/:/app/src" \
               -v "./tests:/app/tests" \
