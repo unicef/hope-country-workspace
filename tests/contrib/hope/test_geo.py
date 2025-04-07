@@ -82,7 +82,7 @@ ADMIN2_AF = {
 }
 
 
-@override_config(AURORA_API_URL="https://aurora.org/api/")
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_validate_child(db, mocked_responses):
     mocked_responses.add(mocked_responses.GET, "https://dev-hope.unitst.org/api/rest/lookups/country/", json=COUNTRIES)
     mocked_responses.add(
