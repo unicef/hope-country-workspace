@@ -106,3 +106,4 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 "tests/**.py" = ["S101", "PGH004", "TRY002", "TRY", "PYI024", "PD901", "INP001", "PLR2004", "S", "SIM117", "D", "UP", "PLR0913", "ANN", "N999"]
 "src/**/versioning/**.py" = ["N999", ]
 "src/**/migrations/**.py" = ["E501", ]
+"docs/**/**.py" = ["INP001", ]

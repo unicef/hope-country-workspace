@@ -1,4 +1,4 @@
-copyright: Copyright &copy; 2020-2024 UNICEF.
+copyright: Copyright &copy; 2020-2025 UNICEF.
 dev_addr: 127.0.0.1:8001
 docs_dir: docs/src
 edit_uri: 'blob/develop/docs/'
@@ -73,6 +73,7 @@ plugins:
   - mkdocstrings:
       default_handler: python
   - awesome-pages
+  - include-markdown
   - search
   - gen-files:
       scripts:
@@ -82,3 +83,4 @@ watch:
 
 hooks:
   - docs/_hooks/hooks.py
+  - docs/_hooks/version.py

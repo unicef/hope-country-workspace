@@ -10,3 +10,4 @@ nav:
   - Data Import: import_data
   - Data Validation : validation.md
   - Push Data to HOPE Core: push_data.md
+  - changelog.md

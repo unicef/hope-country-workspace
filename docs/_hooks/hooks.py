@@ -1,5 +1,5 @@
 # mypy: disable-error-code="typeddict-unknown-key"
-from datetime import datetime
+from datetime import datetime, UTC
 
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.structure.files import Files
@@ -17,4 +17,4 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
 
 
 def on_page_context(context: TemplateContext, nav: Navigation, page: Page, config: MkDocsConfig) -> None:
-    context["build_date"] = datetime.now().strftime("%a, %d, %b %Y - %H:%M")
+    context["build_date"] = datetime.now(tz=UTC).strftime("%a, %d, %b %Y - %H:%M")
