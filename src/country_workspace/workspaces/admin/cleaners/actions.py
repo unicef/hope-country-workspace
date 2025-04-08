@@ -9,11 +9,12 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.forms import PushToHopeForm
 from country_workspace.contrib.hope.push import push_to_hope_core
-from country_workspace.models import AsyncJob, Household
+from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 
+from ...models import CountryIndividual, CountryHousehold
 from .bulk_update import bulk_update_export_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 
     from country_workspace.types import Beneficiary
     from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
-    from country_workspace.workspaces.admin.household import CountryHouseholdAdmin
 
 
 @admin.action(description="Validate selected records", permissions=["validate"])
@@ -189,14 +189,23 @@ def calculate_checksum(
 
 @admin.action(description="Push to HOPE core", permissions=["push_to_hope"])
 def push_to_hope(
-    model_admin: "CountryHouseholdAdmin",
+    model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
-    queryset: "QuerySet[Household]",
+    queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
     ctx = model_admin.get_common_context(request, title=_(push_to_hope.short_description))
     form = PushToHopeForm(request.POST)
     ctx["form"] = form
     if "_push" in request.POST and form.is_valid():
+        if (program := model_admin.get_selected_program(request)) and program.beneficiary_group:
+            expected_model = CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual
+            if not isinstance(queryset.model, expected_model.__class__):
+                model_admin.message_user(
+                    request,
+                    "Program, beneficiary group not set, or action unavailable for this model.",
+                    messages.ERROR,
+                )
+                return redirect(request.path)
         job = AsyncJob.objects.create(
             description=push_to_hope.short_description,
             type=AsyncJob.JobType.TASK,
@@ -205,6 +214,7 @@ def push_to_hope(
             program=state.program,
             config={
                 "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                "master_detail": program.beneficiary_group.master_detail,
                 "pks": list(queryset.values_list("pk", flat=True)),
             },
         )

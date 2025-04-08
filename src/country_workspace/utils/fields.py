@@ -10,8 +10,9 @@ rdi_name_default: Callable[[], str] = lambda: f"RDI to HOPE {timezone.now()}"
 Record = Mapping[str, Any]
 
 
-TO_REMOVE = "_h_c", "_h_f", "_i_c", "_i_f"
-TO_UPPERCASE = "relationship", "gender", "disability", "residence_status"
+TO_REMOVE_VALUES = "_h_c", "_h_f", "_i_c", "_i_f"
+TO_UPPERCASE_FIELDS = "relationship", "gender", "disability", "residence_status"
+TO_MAP_FIELDS = {"gender": "sex"}
 
 
 def clean_field_name(v: str) -> str:
@@ -24,7 +25,7 @@ def clean_field_name(v: str) -> str:
         str: The cleaned field name.
 
     """
-    return reduce(lambda name, substr: name.replace(substr, ""), TO_REMOVE, v.lower())
+    return reduce(lambda name, substr: name.replace(substr, ""), TO_REMOVE_VALUES, v.lower())
 
 
 def clean_field_names(record: Record) -> Record:
@@ -52,4 +53,18 @@ def uppercase_field_value(k: str, v: Any) -> str:
         str: The uppercase value if applicable or the original value.
 
     """
-    return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in TO_UPPERCASE) else v
+    return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in TO_UPPERCASE_FIELDS) else v
+
+
+def map_fields(fields: dict[str, str]) -> dict[str, str]:
+    """
+    Map keys in a dictionary to alternative names based on a predefined mapping.
+
+    Args:
+        fields (dict[str, str]): A dictionary containing field names as keys and their values.
+
+    Returns:
+        dict[str, str]: A new dictionary with keys mapped according to the predefined mapping.
+
+    """
+    return {TO_MAP_FIELDS.get(k, k): v for k, v in fields.items()}

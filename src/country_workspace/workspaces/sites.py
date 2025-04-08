@@ -197,34 +197,32 @@ class TenantAdminSite(admin.AdminSite):
         program = get_selected_program()
         if program:
             bg = program.beneficiary_group
-            items.extend(
-                [
-                    {
-                        "name": program._meta.verbose_name_plural,
-                        "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
-                        "icon": "icon-equalizer",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
-                    },
-                ]
+            items.append(
+                {
+                    "name": program._meta.verbose_name_plural,
+                    "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
+                    "icon": "icon-equalizer",
+                    "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
+                },
             )
 
             if bg and bg.master_detail:
-                items.append(
-                    {
-                        "name": bg.group_label_plural,
-                        "url": reverse("workspace:workspaces_countryhousehold_changelist"),
-                        "icon": "icon-members",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
-                    }
-                )
-                items.append(
-                    {
-                        "name": bg.member_label_plural,
-                        "url": reverse("workspace:workspaces_countryindividual_changelist"),
-                        "icon": "icon-user",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
-                        "indent": True,
-                    }
+                items.extend(
+                    (
+                        {
+                            "name": bg.group_label_plural,
+                            "url": reverse("workspace:workspaces_countryhousehold_changelist"),
+                            "icon": "icon-members",
+                            "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
+                        },
+                        {
+                            "name": bg.member_label_plural,
+                            "url": reverse("workspace:workspaces_countryindividual_changelist"),
+                            "icon": "icon-user",
+                            "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                            "indent": True,
+                        },
+                    )
                 )
             elif bg:
                 items.append(
@@ -235,9 +233,27 @@ class TenantAdminSite(admin.AdminSite):
                         "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
                     }
                 )
+            else:
+                items.extend(
+                    (
+                        {
+                            "name": _("Households"),
+                            "url": reverse("workspace:workspaces_countryhousehold_changelist"),
+                            "icon": "icon-members",
+                            "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
+                        },
+                        {
+                            "name": _("Individuals"),
+                            "url": reverse("workspace:workspaces_countryindividual_changelist"),
+                            "icon": "icon-user",
+                            "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                            "indent": True,
+                        },
+                    )
+                )
 
             items.extend(
-                [
+                (
                     {
                         "name": apps.get_model("country_workspace", "Batch")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countrybatch_changelist"),
@@ -250,7 +266,7 @@ class TenantAdminSite(admin.AdminSite):
                         "icon": "icon-globe",
                         "selected": getattr(self, "modeladmin_name", None) == "CountryJobAdmin",
                     },
-                ]
+                )
             )
 
         items.append(

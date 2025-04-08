@@ -19,8 +19,10 @@ from ...cache.manager import cache_manager
 from ...models import AsyncJob
 from ...state import state
 from ..options import WorkspaceModelAdmin
+from ..models import CountryHousehold, CountryIndividual
 from .cleaners import actions
 from .cleaners.validate import validate_program
+
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -55,11 +57,11 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
 
 class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
     actions = [
-        actions.validate_records,
-        actions.mass_update,
-        actions.regex_update,
         actions.bulk_update_export,
         actions.calculate_checksum,
+        actions.mass_update,
+        actions.regex_update,
+        actions.validate_records,
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"
@@ -79,6 +81,20 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     @property
     def title_member_plural(self) -> str | None:
         return self._get_title_label("member_label_plural")
+
+    def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
+        _actions = super().get_actions(request)
+        if (
+            (program := self.get_selected_program(request))
+            and program.beneficiary_group
+            and self.model == (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
+        ):
+            _actions["push_to_hope"] = (
+                actions.push_to_hope,
+                actions.push_to_hope.__name__,
+                actions.push_to_hope.short_description,
+            )
+        return _actions
 
     def has_validate_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.validate_beneficiary")
@@ -113,13 +129,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             "title_group_plural": self.title_group_plural,
             "title_member": self.title_member,
             "title_member_plural": self.title_member_plural,
-            "master_detail": program.beneficiary_group.master_detail if program else None,
+            "master_detail": program.beneficiary_group.master_detail if program and program.beneficiary_group else None,
             **kwargs,
         }
 
     def _get_title_label(self, attr: str) -> str | None:
         program = state.program
-        return getattr(program.beneficiary_group, attr) if program else None
+        return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
 
     @button(
         label=_("Validate"),

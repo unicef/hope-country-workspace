@@ -6,8 +6,6 @@ from django.contrib.admin import register
 from django.http import HttpRequest
 from django.urls import reverse
 
-from country_workspace.workspaces.admin.cleaners.actions import push_to_hope
-
 from ...state import state
 from ..models import CountryHousehold
 from ..sites import workspace
@@ -30,7 +28,6 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         WIsValidFilter,
     )
-    actions = [*BeneficiaryBaseAdmin.actions, push_to_hope]
     object_history_template = "workspace/household/object_history.html"
 
     @property

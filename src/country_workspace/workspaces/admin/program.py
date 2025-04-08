@@ -5,7 +5,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import register
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Field
 from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -40,8 +40,6 @@ from .forms import BulkUpdateImportForm, ImportFileForm
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
-
-    from ...contrib.aurora.pipeline import Config as AuroraConfig
 
 
 class SelectColumnsForm(forms.Form):
@@ -106,27 +104,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     )
     form = ProgramForm
     ordering = ("name",)
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    ("name", "code"),
-                    ("status", "sector", "active"),
-                ),
-            },
-        ),
-        (_("Validators"), {"fields": ("beneficiary_validator", ("household_checker", "individual_checker"))}),
-        (
-            _("Columns"),
-            {
-                "fields": (
-                    "household_columns",
-                    "individual_columns",
-                ),
-            },
-        ),
-    )
 
     @property
     def media(self) -> forms.Media:
@@ -148,12 +125,67 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def has_delete_permission(self, request: HttpResponse, obj: CountryProgram | None = None) -> bool:
         return False
 
+    def get_fieldsets(
+        self, request: HttpRequest, obj: CountryProgram | None = None
+    ) -> list[tuple[str | None, dict[str, Any]]]:
+        fieldsets = (
+            (
+                None,
+                {
+                    "fields": (
+                        ("name", "code"),
+                        ("status", "sector", "active"),
+                    ),
+                },
+            ),
+            (_("Validators"), {"fields": ("beneficiary_validator", ("household_checker", "individual_checker"))}),
+            (
+                _("Columns"),
+                {
+                    "fields": (
+                        "household_columns",
+                        "individual_columns",
+                    ),
+                },
+            ),
+        )
+        if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
+            fieldsets[1][1]["fields"] = ("beneficiary_validator", "individual_checker")
+            fieldsets[2][1]["fields"] = ("individual_columns",)
+
+        return fieldsets
+
+    def formfield_for_dbfield(self, db_field: Field, request: HttpRequest, **kwargs: Any) -> Field | None:
+        field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        object_id = request.resolver_match.kwargs.get("object_id")
+
+        if not (object_id and field):
+            return field
+        obj = self.get_object(request, object_id)
+        if not (obj and obj.beneficiary_group):
+            return field
+
+        bg = obj.beneficiary_group
+        match db_field.name.split("_"):
+            case ["household", suffix] if bg.master_detail:
+                label_prefix = bg.group_label or _("Household")
+                field.label = f"{label_prefix} {suffix}"
+            case ["individual", suffix]:
+                label_prefix = bg.member_label or _("Individual")
+                field.label = f"{label_prefix} {suffix}"
+            case _:
+                ...
+
+        return field
+
     def change_view(
         self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
     ) -> HttpResponse:
-        extra_context = extra_context or {}
-        extra_context["modeladmin"] = self
-        extra_context["modeladmin_name"] = self.__class__.__name__
+        extra_context = {
+            **(extra_context or {}),
+            "modeladmin": self,
+            "modeladmin_name": self.__class__.__name__,
+        }
         return super().change_view(request, object_id, form_url, extra_context)
 
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, None] | None = None) -> HttpResponse:
@@ -168,10 +200,21 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
         extra_context = extra_context or {}
-        if obj := self.get_object(request, object_id):
-            extra_context["btnlabels"] = {
-                "individual_columns": f"{obj.beneficiary_group.member_label} Columns",
-                "household_columns": f"{obj.beneficiary_group.group_label} Columns",
+        if (obj := self.get_object(request, object_id)) and obj.beneficiary_group:
+            group_label = obj.beneficiary_group.group_label or _("Household")
+            member_label = obj.beneficiary_group.member_label or _("Individual")
+            dynamic_labels = {
+                "individual_columns": f"{member_label} columns",
+            }
+            if obj.beneficiary_group.master_detail:
+                dynamic_labels["household_columns"] = f"{group_label} columns"
+            extra_context = {
+                **extra_context,
+                "dynamic_field_labels": dynamic_labels,
+                "btnlabels": {
+                    "individual_columns": f"{member_label} Columns",
+                    "household_columns": f"{group_label} Columns",
+                },
             }
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
