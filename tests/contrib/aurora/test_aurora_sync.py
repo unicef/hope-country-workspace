@@ -63,7 +63,7 @@ def test_sync_all(
     expected_registrations = {"add": 1, "upd": 3}
 
     with (
-        mocker.patch("country_workspace.contrib.aurora.sync.sync_programs", return_value=expected_programs),
+        mocker.patch("country_workspace.contrib.aurora.sync.sync_context_programs", return_value=expected_programs),
         mocker.patch("country_workspace.contrib.aurora.sync.sync_projects", return_value=expected_projects),
         mocker.patch("country_workspace.contrib.aurora.sync.sync_registrations", return_value=expected_registrations),
     ):

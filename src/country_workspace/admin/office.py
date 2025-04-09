@@ -1,6 +1,6 @@
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.http import HttpRequest
 from django.urls import reverse
 
@@ -24,7 +24,12 @@ class OfficeAdmin(BaseModelAdmin):
 
     @button()
     def sync(self, request: HttpRequest) -> None:
-        from country_workspace.contrib.hope.sync.office import sync_offices
+        from country_workspace.contrib.hope.sync.context_programs import SyncStep, sync_context_programs
 
-        totals = sync_offices()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated")
+        totals = sync_context_programs(step=SyncStep.OFFICES)
+
+        if errors := totals.get("errors"):
+            self.message_user(request, "; ".join(errors), level=messages.ERROR)
+        else:
+            info = totals[Office._meta.model_name]
+            self.message_user(request, f"{info['add']} created - {info['upd']} updated", level=messages.SUCCESS)

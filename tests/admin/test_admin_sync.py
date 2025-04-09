@@ -2,7 +2,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 from django.urls import reverse
+from django.contrib import messages
 from pytest_mock import MockerFixture
+
+from country_workspace.contrib.hope.sync.context_programs import SyncStep
+from country_workspace.models import Office, Program
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -22,44 +26,53 @@ def app(
 
 
 @pytest.mark.parametrize(
-    ("admin_class", "sync_function", "url_name", "reverse_args", "sync_result", "expected_message"),
+    ("admin_class", "model_name", "step", "url_name", "sync_result", "message", "level"),
     [
         (
             "admin.OfficeAdmin",
-            "hope.sync.office.sync_offices",
+            Office._meta.model_name,
+            SyncStep.OFFICES,
             "country_workspace_office_sync",
-            [],
-            {"add": 1, "upd": 2},
+            {Office._meta.model_name: {"add": 1, "upd": 2}},
             "1 created - 2 updated",
+            messages.SUCCESS,
+        ),
+        (
+            "admin.OfficeAdmin",
+            Office._meta.model_name,
+            SyncStep.OFFICES,
+            "country_workspace_office_sync",
+            {"errors": ["Error 1", "Error 2"], Office._meta.model_name: {"add": 0, "upd": 0}},
+            "Error 1; Error 2",
+            messages.ERROR,
         ),
         (
             "admin.ProgramAdmin",
-            "hope.sync.office.sync_programs",
+            Program._meta.model_name,
+            SyncStep.PROGRAMS,
             "country_workspace_program_sync",
-            [],
-            {"add": 1, "upd": 2, "skip": 3},
-            "1 created - 2 updated - 3 skipped",
+            {Program._meta.model_name: {"add": 1, "upd": 2}},
+            "1 created - 2 updated",
+            messages.SUCCESS,
+        ),
+        (
+            "admin.ProgramAdmin",
+            Program._meta.model_name,
+            SyncStep.PROGRAMS,
+            "country_workspace_program_sync",
+            {"errors": ["Error 3", "Error 4"], Program._meta.model_name: {"add": 0, "upd": 0}},
+            "Error 3; Error 4",
+            messages.ERROR,
         ),
     ],
+    ids=["office_success", "office_errors", "program_success", "program_errors"],
 )
 @pytest.mark.xdist_group("remote")
-def test_admin_sync(
-    app, mocker: MockerFixture, admin_class, sync_function, url_name, reverse_args, sync_result, expected_message
-) -> None:
+def test_admin_sync(app, mocker: MockerFixture, admin_class, model_name, step, url_name, sync_result, message, level):
     mocker.patch(
-        f"country_workspace.contrib.{sync_function}",
+        "country_workspace.contrib.hope.sync.context_programs.sync_context_programs",
         return_value=sync_result,
     )
-
-    mock_message_user = mocker.patch(
-        f"country_workspace.{admin_class}.message_user",
-        autospec=True,
-    )
-
-    app.get(reverse(f"admin:{url_name}", args=reverse_args))
-
-    mock_message_user.assert_called_once_with(
-        mocker.ANY,
-        mocker.ANY,
-        expected_message,
-    )
+    mock_message_user = mocker.patch(f"country_workspace.{admin_class}.message_user")
+    app.get(reverse(f"admin:{url_name}"))
+    mock_message_user.assert_called_once_with(mocker.ANY, message, level=level)

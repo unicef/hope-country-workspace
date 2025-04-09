@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
@@ -76,7 +76,12 @@ class ProgramAdmin(BaseModelAdmin):
 
     @button()
     def sync(self, request: HttpRequest) -> None:
-        from country_workspace.contrib.hope.sync.office import sync_programs
+        from country_workspace.contrib.hope.sync.context_programs import SyncStep, sync_context_programs
 
-        totals = sync_programs()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skip']} skipped")
+        totals = sync_context_programs(step=SyncStep.PROGRAMS)
+
+        if errors := totals.get("errors"):
+            self.message_user(request, "; ".join(errors), level=messages.ERROR)
+        else:
+            info = totals[Program._meta.model_name]
+            self.message_user(request, f"{info['add']} created - {info['upd']} updated", level=messages.SUCCESS)

@@ -4,7 +4,7 @@ import pytest
 from constance.test import override_config
 from django import forms
 
-from country_workspace.contrib.hope.sync.office import sync_all, sync_beneficiary_groups, sync_offices, sync_programs
+from country_workspace.contrib.hope.sync.context_programs import sync_context_programs, SyncStep
 
 
 @pytest.fixture(autouse=True)
@@ -19,10 +19,10 @@ def setup_definitions(db):
 @pytest.mark.xdist_group("remote")
 @pytest.mark.parametrize("stdout", [None, StringIO()])
 @override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
-def test_sync_all(stdout):
-    assert sync_all(stdout)
+def test_sync_context_programs(stdout):
+    assert sync_context_programs(stdout=stdout)
     if stdout:
-        assert "Fetching" in str(stdout.getvalue())
+        assert "fetching" in str(stdout.getvalue())
 
 
 @pytest.mark.vcr
@@ -31,10 +31,5 @@ def test_sync_all(stdout):
 def test_sync_programs():
     from country_workspace.models import Office
 
-    assert sync_offices()
-    assert sync_programs()
-    assert sync_beneficiary_groups()
-
     office = Office.objects.first()
-
-    assert sync_programs(office)
+    assert sync_context_programs(step=SyncStep.PROGRAMS, programs_limit_to_office=office)
