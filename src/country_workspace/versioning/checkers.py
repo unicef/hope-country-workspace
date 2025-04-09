@@ -20,6 +20,10 @@ def create_hope_checkers() -> None:
             "int": FieldDefinition.objects.get(field_type=forms.IntegerField),
             "h_country": FieldDefinition.objects.get(name="CountryChoice"),
             "h_residence": FieldDefinition.objects.get(slug="hope-hh-residencestatus"),
+            "h_admin1": FieldDefinition.objects.get(name="Admin1Choice"),
+            "h_admin2": FieldDefinition.objects.get(name="Admin2Choice"),
+            "h_admin3": FieldDefinition.objects.get(name="Admin3Choice"),
+            "h_admin4": FieldDefinition.objects.get(name="Admin4Choice"),
             "i_gender": FieldDefinition.objects.get(slug="hope-ind-gender"),
             "i_disability": FieldDefinition.objects.get(slug="hope-ind-disability"),
             "i_role": FieldDefinition.objects.get(slug="hope-ind-role"),
@@ -31,10 +35,10 @@ def create_hope_checkers() -> None:
 
     household_fields_spec: list[FieldSpec] = [
         ("address", defs["char"], None),
-        ("admin1", defs["char"], None),
-        ("admin2", defs["char"], None),
-        ("admin3", defs["char"], None),
-        ("admin4", defs["char"], None),
+        ("admin1", defs["h_admin1"], None),
+        ("admin2", defs["h_admin2"], None),
+        ("admin3", defs["h_admin3"], None),
+        ("admin4", defs["h_admin4"], None),
         ("collect_individual_data", defs["bool"], None),
         ("consent", defs["bool"], None),
         ("country", defs["h_country"], {"label": "Country", "required": True}),
@@ -122,9 +126,11 @@ def create_hope_checkers() -> None:
 
 
 def removes_hope_checkers() -> None:
-    DataChecker.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
-    DataChecker.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
-    DataChecker.objects.filter(name=PEOPLE_CHECKER_NAME).delete()
-    Fieldset.objects.filter(name=HOUSEHOLD_CHECKER_NAME).delete()
-    Fieldset.objects.filter(name=INDIVIDUAL_CHECKER_NAME).delete()
-    Fieldset.objects.filter(name=PEOPLE_CHECKER_NAME).delete()
+    hope_names: tuple[str] = (
+        HOUSEHOLD_CHECKER_NAME,
+        INDIVIDUAL_CHECKER_NAME,
+        PEOPLE_CHECKER_NAME,
+    )
+
+    DataChecker.objects.filter(name__in=hope_names).delete()
+    Fieldset.objects.filter(name__in=hope_names).delete()

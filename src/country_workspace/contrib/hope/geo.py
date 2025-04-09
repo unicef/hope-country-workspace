@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
     level = -1
 
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        # TODO @Yanushchyk: use parent_value - country_iso_code2 (state.tenant ?)
+        self.choices = self.get_choices_for_parent_value(parent_value="UA")
+
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:
         choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
         if parent_value and value not in choices:
@@ -26,7 +31,7 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
         if not parent_value:
             return []
         key = slugify(f"{parent_value}-{self.level}")
-        ret = []
+        ret = [["", ""]]
         if not (data := cache_manager.retrieve(key)):
             client = HopeClient()
             try:
@@ -42,7 +47,7 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
             if only_codes:
                 ret.append(record["p_code"])
             else:
-                ret.append((record["p_code"], record["name"]))
+                ret.append((record["p_code"], f"{record['p_code']} - {record['name']}"))
         return ret
 
 
@@ -58,7 +63,7 @@ class CountryChoice(forms.ChoiceField):
             except RemoteError as e:
                 logger.exception(e)
                 return ret
-        return [(record["iso_code2"], record["name"]) for record in data]
+        return [(record["iso_code2"], f"{record['iso_code2']} - {record['name']}") for record in data]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
