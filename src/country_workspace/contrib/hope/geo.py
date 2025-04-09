@@ -14,8 +14,15 @@ from .client import HopeClient
 logger = logging.getLogger(__name__)
 
 
+# TODO @Yanushchyk: change to use the new endpoint
 class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
     level = -1
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.choices = self.get_choices_for_parent_value(
+            parent_value="UA"  # parent_value=state.tenant.slug
+        )
 
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:
         choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
@@ -26,12 +33,13 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
         if not parent_value:
             return []
         key = slugify(f"{parent_value}-{self.level}")
-        ret = []
+        ret = [["", ""]]
         if not (data := cache_manager.retrieve(key)):
             client = HopeClient()
             try:
                 data = list(
-                    client.get("areas", params={"area_type_area_level": self.level, "country_iso_code2": parent_value}),
+                    client.get("areas", params={"area_type_area_level": self.level, "country_iso_code2": parent_value})
+                    # client.get(f"{parent_value}/geo/areas/"), params={"area_type_area_level": self.level}
                 )
                 cache_manager.store(key, data, timeout=300)
             except RemoteError as e:
@@ -42,7 +50,7 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
             if only_codes:
                 ret.append(record["p_code"])
             else:
-                ret.append((record["p_code"], record["name"]))
+                ret.append((record["id"], f"{record['p_code']} - {record['name']}"))
         return ret
 
 

@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING
-
 import pytest
 from django.urls import reverse
 from pytest_django.fixtures import SettingsWrapper
 from testutils.utils import select_office
+from constance.test import override_config
+from responses import RequestsMock, matchers
 
 from country_workspace.state import state
 from country_workspace.workspaces.admin.cleaners.mass_update import mass_update_impl
@@ -69,7 +70,27 @@ def test_mass_update_impl(household):
     assert household.flex_fields["address"] == "__NEW VALUE__"
 
 
-def test_mass_update(app: "DjangoTestApp", household: "CountryHousehold") -> None:
+@override_config(HOPE_API_URL="https://hope-dummy.org/api/rest", HOPE_API_TOKEN="dummy_token")
+def test_mass_update(app: "DjangoTestApp", household: "CountryHousehold", mocked_responses: RequestsMock) -> None:
+    mocked_responses.add(
+        method=mocked_responses.GET,
+        url="https://hope-dummy.org/api/rest/areas/",
+        match=[
+            matchers.query_param_matcher(
+                {
+                    "area_type_area_level": "1",
+                    "country_iso_code2": "UA",
+                }
+            )
+        ],
+        json={
+            "results": [
+                {"id": "ua_adm1_kiev", "p_code": "UA-30", "name": "Kyiv City"},
+                {"id": "ua_adm1_lviv", "p_code": "UA-46", "name": "Lviv Oblast"},
+            ]
+        },
+        status=200,
+    )
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     with select_office(app, household.country_office, household.program):
         res = app.get(url)

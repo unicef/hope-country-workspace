@@ -8,6 +8,8 @@ from enum import Enum, auto
 from django.core.cache import cache
 from django.db import DatabaseError
 from django.db.models import Model, Q
+from django.contrib.contenttypes.models import ContentType
+
 from country_workspace.exceptions import RemoteError
 
 from ....models import SyncLog
@@ -40,12 +42,17 @@ class LogLevel(Enum):
     ERROR = auto()
 
 
+class EndpointConfig(TypedDict):
+    path: str
+    params: NotRequired[dict[str, Any] | None]
+
+
 class SyncConfig(TypedDict):
     """Configuration for synchronizing an entity.
 
     Attributes:
         model: The Django model class to synchronize.
-        path: The API path to fetch data from.
+        endpoint: The API endpoint configuration with path and optional query parameters.
         prepare_defaults: Function to prepare default values for the model.
         should_process: Optional function to filter records before processing.
         post_process: Optional function to process the model instance after creation/update.
@@ -54,7 +61,7 @@ class SyncConfig(TypedDict):
     """
 
     model: type[Model]
-    path: str
+    endpoint: EndpointConfig
     should_process: NotRequired[Callable[[dict[str, Any]], bool] | None]
     prepare_defaults: Callable[[dict[str, Any]], dict[str, Any] | None]
     post_process: NotRequired[Callable[[Model, bool], None] | None]
@@ -94,12 +101,12 @@ class BaseSync:
     stdout: TextIOBase | None = None
     total: dict[str, Any] = field(default_factory=dict)
 
-    def safe_get(self, path: str) -> Generator[dict[str, Any], None, None]:
+    def safe_get(self, endpoint: EndpointConfig) -> Generator[dict[str, Any], None, None]:
         """Fetch data from the remote API safely, handling errors."""
         try:
-            yield from self.client.get(path)
+            yield from self.client.get(**endpoint)
         except RemoteError as e:
-            self.emit_log("REMOTE_API_FAILURE", LogLevel.ERROR, path=path, error=e)
+            self.emit_log("REMOTE_API_FAILURE", LogLevel.ERROR, path=endpoint.get("path"), error=str(e))
 
     def emit_log(self, key: str, level: LogLevel = LogLevel.INFO, **kwargs: Any) -> None:
         """Emit a log message with the specified key and level."""
@@ -152,7 +159,7 @@ class BaseSync:
         with cache.lock(f"sync-{model_name.lower()}"):
             self.emit_log("SYNC_START", entity=model_name)
             all_processed, inactive = set(), set()
-            for record in self.safe_get(config["path"]):
+            for record in self.safe_get(config["endpoint"]):
                 if not (hope_id := self.validated_hope_id(record)):
                     continue
                 all_processed.add(hope_id)
@@ -196,6 +203,12 @@ class BaseSync:
         except DatabaseError as e:
             self.emit_log("DEACTIVATION_FAILURE", LogLevel.ERROR, entity=model_name, error=str(e))
 
+    def get_updated_at_after(self, model: type[Model]) -> str | None:
+        """Get the last update date for the given model."""
+        ct = ContentType.objects.get_for_model(model)
+        last_sync = SyncLog.objects.filter(content_type=ct).order_by("-last_update_date").first()
+        return last_sync.last_update_date.date().isoformat() if last_sync else None
+
 
 def sync_context(
     context_class: type[T],
@@ -215,7 +228,7 @@ def sync_context(
         dict[str, Any]: Synchronization results, including counts and errors.
 
     Notes:
-        Executes the specified step or all steps defined in the context's SyncStep  and refreshes SyncLog.
+        Executes the specified step or all steps defined in the context's SyncStep.
         Stops on errors.
 
     """

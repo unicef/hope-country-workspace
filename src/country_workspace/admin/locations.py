@@ -11,7 +11,6 @@ from django.forms import FileField, FileInput, Form
 
 from ..models.locations import Area, AreaType, Country
 from ..contrib.hope.sync.context_geo import SyncStep
-from .base import BaseModelAdmin
 from .sync import SyncAdminMixin, SyncConfig, ContextGeoSyncHandler
 
 
@@ -26,7 +25,7 @@ class ImportCSVForm(Form):
 
 
 @admin.register(Country)
-class CountryAdmin(SyncAdminMixin, BaseModelAdmin):
+class CountryAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "iso_code2",
@@ -41,13 +40,13 @@ class CountryAdmin(SyncAdminMixin, BaseModelAdmin):
 
 
 @admin.register(AreaType)
-class AreaTypeAdmin(AdminFiltersMixin, admin.ModelAdmin):
+class AreaTypeAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     list_display = ("name", "country", "area_level", "parent")
     list_filter = (("country", AutoCompleteFilter), ("area_level", NumberFilter))
-
     search_fields = ("name",)
     autocomplete_fields = ("country",)
     raw_id_fields = ("country", "parent")
+    sync_config = SyncConfig(model=AreaType, step=SyncStep.AREATYPES, sync_handler=ContextGeoSyncHandler())
 
 
 class AreaTypeFilter(RelatedFieldListFilter):
@@ -58,7 +57,7 @@ class AreaTypeFilter(RelatedFieldListFilter):
 
 
 @admin.register(Area)
-class AreaAdmin(AdminFiltersMixin, admin.ModelAdmin):
+class AreaAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "area_type",
@@ -70,3 +69,4 @@ class AreaAdmin(AdminFiltersMixin, admin.ModelAdmin):
     )
     search_fields = ("name", "p_code")
     raw_id_fields = ("area_type", "parent")
+    sync_config = SyncConfig(model=Area, step=SyncStep.AREAS, sync_handler=ContextGeoSyncHandler())
