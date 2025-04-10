@@ -48,6 +48,7 @@ INSTALLED_APPS = (
     "hope_smart_import",
     "hope_smart_export",
     "smart_env",
+    "anymail",
     "country_workspace.security",
     "country_workspace.apps.HCWConfig",
     "country_workspace.workspaces.apps.Config",
@@ -221,15 +222,6 @@ CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 AUTH_USER_MODEL = "country_workspace.User"
 SUPERUSERS = env("SUPERUSERS")
 
-DEFAULT_FROM_EMAIL = "hope@unicef.org"
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-EMAIL_HOST = env("EMAIL_HOST", default="")
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-EMAIL_PORT = env("EMAIL_PORT", default=25)
-EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=False)
-EMAIL_USE_SSL = env("EMAIL_USE_SSL", default=False)
-
 from .fragments.app import *  # noqa: E402, F403
 from .fragments.celery import *  # noqa: E402, F403
 from .fragments.constance import *  # noqa: E402, F403
@@ -244,3 +236,4 @@ from .fragments.sentry import *  # noqa: E402, F403
 from .fragments.social_auth import *  # noqa: E402, F403
 from .fragments.spectacular import *  # noqa: E402, F403
 from .fragments.tailwind import *  # noqa: E402, F403
+from .fragments.mail import *  # noqa: E402, F403

@@ -107,27 +107,6 @@ CONFIG: "dict[str, ConfigItem]" = {
         "https://django-environ.readthedocs.io/en/latest/types.html#environ-env-db-url",
     ),
     "DEBUG": (bool, False, True, False, setting("debug")),
-    "EMAIL_HOST": (str, "", "", False, setting("email-host")),
-    "EMAIL_HOST_USER": (str, "", "", False, setting("email-host-user")),
-    "EMAIL_HOST_PASSWORD": (str, "", "", False, setting("email-host-password")),
-    "EMAIL_PORT": (int, "25", "25", False, setting("email-port")),
-    "EMAIL_SUBJECT_PREFIX": (
-        str,
-        "[Hope-cw]",
-        "[Hope-ce]",
-        False,
-        setting("email-subject-prefix"),
-    ),
-    "EMAIL_USE_LOCALTIME": (
-        bool,
-        False,
-        False,
-        False,
-        setting("email-use-localtime"),
-    ),
-    "EMAIL_USE_TLS": (bool, False, False, False, setting("email-use-tls")),
-    "EMAIL_USE_SSL": (bool, False, False, False, setting("email-use-ssl")),
-    "EMAIL_TIMEOUT": (str, None, None, False, setting("email-timeout")),
     "ENVIRONMENT": (str, "production", "develop", False, "Environment"),
     "EXTRA_APPS": (list, "", "", False, ""),  # nosec
     "EXTRA_AUTHENTICATION_BACKENDS": (
@@ -189,6 +168,13 @@ CONFIG: "dict[str, ConfigItem]" = {
     "KOBO_MASTER_API_TOKEN": (str, "", "", False, "Kobo API master token"),
     "KOBO_PROJECT_VIEW_ID": (str, "", "", False, "Kobo project view ID"),
     "KOBO_API_TOKEN": (str, "", "", False, "Kobo API token"),
+    "MAILJET_API_URL": (str, "", "", False, "Mailjet API URL"),
+    "MAILJET_API_KEY": (str, "", "", False, "Mailjet API key"),
+    "MAILJET_SECRET_KEY": (str, "", "", False, "Mailjet API secret key"),
+    "IGNORE_RECIPIENT_STATUS": (bool, False, True),
+    "IGNORE_UNSUPPORTED_FEATURES": (bool, False, True),
+    "REQUESTS_TIMEOUT": (int, 30, 30),
+    "DEBUG_API_REQUESTS": (bool, False, False),
 }
 
 env = SmartEnv(**CONFIG)

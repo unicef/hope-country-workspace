@@ -1,5 +1,6 @@
 from .app import AURORA_API_TOKEN, AURORA_API_URL, HOPE_API_TOKEN, HOPE_API_URL, NEW_USER_DEFAULT_GROUP
 from .kobo import KOBO_API_TOKEN, KOBO_KF_URL, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID
+from .mail import MAILJET_API_KEY, MAILJET_SECRET_KEY
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 
@@ -61,6 +62,8 @@ CONSTANCE_CONFIG = {
         " overwrites of newer information.",
         bool,
     ),
+    "MAILJET_API_KEY": (MAILJET_API_KEY, "Mailjet API key", str),
+    "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_input"),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {
@@ -76,6 +79,8 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "KOBO_PROJECT_VIEW_ID",
         "KOBO_KF_URL",
         "KOBO_CACHE_TTL",
+        "MAILJET_API_KEY",
+        "MAILJET_SECRET_KEY",
     ),
     "Data consistency": ("CONCURRENCY_GUARD",),
 }
@@ -86,4 +91,5 @@ CONSTANCE_MASKED_DEFAULTS = {
     "HOPE_API_TOKEN": "***",
     "KOBO_API_TOKEN": "***",
     "KOBO_API_MASTER_TOKEN": "***",
+    "MAILJET_SECRET_KEY": "***",
 }
