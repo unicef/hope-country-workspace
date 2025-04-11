@@ -10,6 +10,7 @@ from .base import BaseModel
 class Country(BaseModel):
     name = models.CharField(max_length=255, db_index=True)
     iso_code2 = models.CharField(max_length=2, unique=True)
+    hope_id = models.CharField(max_length=200, unique=True, null=True, editable=False)
 
     class Meta:
         verbose_name_plural = "Countries"
