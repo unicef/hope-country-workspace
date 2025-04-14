@@ -54,12 +54,14 @@ def extract_household_data(submission: Submission, individual_records_field: str
     return {key: value for key, value in submission.items() if key != individual_records_field}
 
 
+def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
+    return {key.split("/")[-1]: value for key, value in data.items()}
+
+
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual = {
-            key.replace(f"{config['individual_records_field']}/", ""): value for key, value in raw_individual.items()
-        }
+        individual = normalize_json(raw_individual)
         fullname = next((key for key in individual if key.startswith("full_name")), None)
         individuals.append(
             Individual(
@@ -74,7 +76,8 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 
 
 def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
-    household_fields = extract_household_data(submission, config["individual_records_field"])
+    raw_household_fields = extract_household_data(submission, config["individual_records_field"])
+    household_fields = normalize_json(raw_household_fields)
     return cast(
         Household,
         batch.program.households.create(
