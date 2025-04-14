@@ -130,6 +130,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
     clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    normalize_json_mock = mocker.patch("country_workspace.contrib.kobo.sync.normalize_json")
 
     household = create_household(
         batch_mock := Mock(name="batch"),
@@ -142,7 +143,8 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock, flex_fields=clean_field_names_mock.return_value
     )
-    clean_field_names_mock.assert_called_once_with(extract_household_data_mock.return_value)
+    normalize_json_mock.assert_called_once_with(extract_household_data_mock.return_value)
+    clean_field_names_mock.assert_called_once_with(normalize_json_mock.return_value)
 
 
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
