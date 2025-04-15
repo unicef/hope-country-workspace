@@ -155,6 +155,7 @@ def bulk_update_export(
                 "pks": list(queryset.values_list("pk", flat=True)),
                 "model_name": opts.label,
                 "columns": columns,
+                "send_to": request.user.email,
             },
         )
         job.queue()
