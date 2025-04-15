@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Any
 from constance import config as constance_config
 from django import forms
 from django.apps import apps
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.mail import EmailMessage
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
@@ -174,6 +176,9 @@ def bulk_update_export_template(job: AsyncJob) -> bytes:
     filename = "bulk_update_export_template/%s/%s/%s.xlsx" % (job.program.pk, job.owner.pk, job.config["model_name"])
     out, __ = create_xls_importer(queryset, job.program, job.config["columns"])
     path = MEDIA_STORAGE.save(filename, out)
+    mail = EmailMessage("Bulk update export", "", settings.DEFAULT_FROM_EMAIL, [job.config["send_to"]])
+    mail.attach(filename, out, "application/vnd.ms-excel")
+    mail.send()
     job.file = path
     job.save()
     return path
