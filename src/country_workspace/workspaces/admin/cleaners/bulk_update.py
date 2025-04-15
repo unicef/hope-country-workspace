@@ -177,7 +177,8 @@ def bulk_update_export_template(job: AsyncJob) -> bytes:
     out, __ = create_xls_importer(queryset, job.program, job.config["columns"])
     path = MEDIA_STORAGE.save(filename, out)
     mail = EmailMessage("Bulk update export", "", settings.DEFAULT_FROM_EMAIL, [job.config["send_to"]])
-    mail.attach(filename, out, "application/vnd.ms-excel")
+    out.seek(0)
+    mail.attach(filename, out.read(), "application/vnd.ms-excel")
     mail.send()
     job.file = path
     job.save()
