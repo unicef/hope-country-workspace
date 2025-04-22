@@ -1,22 +1,9 @@
 FROM python:3.12-slim-bookworm AS base_os
-ARG GOSU_VERSION=1.17
-ARG GOSU_SHA256=bbc4136d03ab138b1ad66fa4fc051bafc6cc7ffae632b069a53657279a450de3
-
 
 RUN set -x \
-  && runtimeDeps=" \
-    libmagic1 \
-    libxml2 \
-  " \
-  && buildDeps=" \
-wget \
-" \
-  && apt-get update && apt-get install -y --no-install-recommends ${buildDeps} ${runtimeDeps} \
-  && rm -rf /var/lib/apt/lists/* \
-  && wget --quiet -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64" \
-  && echo "$GOSU_SHA256 /usr/local/bin/gosu" | sha256sum --check --status \
-  && chmod +x /usr/local/bin/gosu \
-  && apt-get purge -y --auto-remove $buildDeps
+  && runtimeDeps="libmagic1 libxml2 tini" \
+  && apt-get update && apt-get install -y --no-install-recommends $runtimeDeps \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1024 unicef \
     && adduser --disabled-login --disabled-password --no-create-home --ingroup unicef -q hope
@@ -24,38 +11,21 @@ RUN groupadd --gid 1024 unicef \
 
 # ------- builder -------
 FROM base_os AS builder
-RUN set -x \
-    && buildDeps="build-essential \
-cmake \
-curl \
-gcc \
-git \
-libfontconfig1 \
-libgconf-2-4 \
-libglib2.0-0 \
-libnss3 \
-libssl-dev \
-libxml2-dev  \
-python3-dev \
-zlib1g-dev  \
-" \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends $buildDeps \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gnupg wget curl unzip && \
-    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list && \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends google-chrome-stable && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/* && \
-    CHROME_VERSION=$(google-chrome --product-version) && \
-    wget -q --continue -P /chromedriver "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip" && \
-    unzip /chromedriver/chromedriver* -d /usr/local/bin/ && \
-    rm -rf /chromedriver
+RUN set -x \
+    && buildDeps="build-essential cmake curl gcc git libfontconfig1 libgconf-2-4 libglib2.0-0 libnss3 libssl-dev libxml2-dev python3-dev zlib1g-dev" \
+    && runtimeDeps="gnupg wget curl unzip" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends $buildDeps $runtimeDeps \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list \
+    && apt-get update -y \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && CHROME_VERSION=$(google-chrome --product-version) \
+    && wget -q --continue -P /chromedriver "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip" \
+    && unzip /chromedriver/chromedriver* -d /usr/local/bin/ \
+    && apt-get purge -y --auto-remove $runtimeDeps \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /chromedriver
 
 RUN pip install uv uwsgi
 
@@ -63,6 +33,7 @@ RUN pip install uv uwsgi
 FROM builder AS tests
 ARG BUILD_DATE
 ARG GIT_SHA
+ARG VERSION
 
 LABEL distro="tests"
 LABEL org.opencontainers.image.created="$BUILD_DATE"
@@ -117,6 +88,9 @@ FROM base_os AS dist
 ARG BUILD_DATE
 ARG GIT_SHA
 ARG BRANCH
+ARG VERSION
+ARG GITHUB_SERVER_URL
+ARG GITHUB_REPOSITORY
 
 ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
     DJANGO_SETTINGS_MODULE=country_workspace.config.settings \
@@ -125,7 +99,6 @@ ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
     VERSION=$VERSION \
     BRANCH=$BRANCH \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
     STATIC_URL="/static/" \
     PYTHONPATH=""\
     PGSSLCERT="/tmp/postgresql.crt" \
@@ -151,12 +124,16 @@ COPY --chown=hope:unicef --from=production /venv /venv
 COPY --from=builder /usr/local/bin/uwsgi /usr/local/bin/uv /usr/local/bin/
 RUN --mount=type=cache,target=/root/.uv-cache \
     uv --cache-dir=/root/.uv-cache  pip install --no-deps . \
-    && rm -fr /app/* \
+    && rm -fr /app/*
 
+RUN mkdir -p /var/run/app/media /var/run/app/static \
+    && chown -R hope:unicef /var/run/app/media /var/run/app/static
 
+USER hope:unicef
+WORKDIR /app
 
 EXPOSE 8000
-ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["run"]
 
 
