@@ -69,7 +69,6 @@ class ProgramForm(forms.ModelForm):
             "code",
             "status",
             "sector",
-            "active",
             "beneficiary_validator",
             "household_checker",
             "individual_checker",
@@ -87,16 +86,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         "name",
         "sector",
         "status",
-        "active",
     )
     search_fields = ("name",)
-    list_filter = ("status", "active", "sector")
+    list_filter = ("status", "sector")
     exclude = ("country_office",)
     default_url_filters = {"status__exact": CountryProgram.ACTIVE}
     readonly_fields = (
         "individual_columns",
         "household_columns",
-        "active",
         "code",
         "status",
         "sector",
@@ -134,7 +131,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 {
                     "fields": (
                         ("name", "code"),
-                        ("status", "sector", "active"),
+                        ("status", "sector"),
                     ),
                 },
             ),

@@ -44,7 +44,7 @@ class SyncContextPrograms(BaseSync):
             SyncConfig(
                 model=Office,
                 path="business_areas",
-                prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name")},
+                prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name", "active")},
                 should_process=lambda r: r.get("active"),
                 should_deactivate=lambda r: not r.get("active"),
             ),
