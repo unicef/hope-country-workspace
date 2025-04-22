@@ -4,7 +4,7 @@ from typing import Any
 
 from django.core.management import BaseCommand
 
-from country_workspace.contrib.hope.sync.office import sync_all
+from country_workspace.contrib.hope.sync.context_programs import sync_context_programs
 
 logger = logging.getLogger(__name__)
 
@@ -23,4 +23,4 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        sync_all(stdout=self.stdout)
+        sync_context_programs(stdout=self.stdout)

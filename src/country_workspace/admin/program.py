@@ -9,14 +9,15 @@ from django.urls import reverse
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
 from ..models import Program
-from .base import BaseModelAdmin
+from .base import BaseModelAdmin, SyncAdminMixin, SyncConfig
+from country_workspace.contrib.hope.sync.context_programs import SyncStep
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
 
 
 @admin.register(Program)
-class ProgramAdmin(BaseModelAdmin):
+class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     list_display = (
         "name",
         "sector",
@@ -40,6 +41,7 @@ class ProgramAdmin(BaseModelAdmin):
     )
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
+    sync_config = SyncConfig(model=Program, step=SyncStep.PROGRAMS)
 
     @button()
     def invalidate_cache(self, request: HttpRequest, pk: str) -> None:
@@ -73,10 +75,3 @@ class ProgramAdmin(BaseModelAdmin):
             description="Continuing will erase all the beneficiaries from this program",
             success_message="Successfully executed",
         )
-
-    @button()
-    def sync(self, request: HttpRequest) -> None:
-        from country_workspace.contrib.hope.sync.office import sync_programs
-
-        totals = sync_programs()
-        self.message_user(request, f"{totals['add']} created - {totals['upd']} updated - {totals['skip']} skipped")

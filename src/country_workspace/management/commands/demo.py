@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from constance import config
 from django.contrib.auth.models import Group
 from django.core.management import BaseCommand
 from django.utils.text import slugify
@@ -55,18 +56,18 @@ class Command(BaseCommand):
         from testutils.factories import BatchFactory, HouseholdFactory, IndividualFactory
         from vcr.record_mode import RecordMode
 
-        from country_workspace.contrib.hope.sync.office import sync_all
+        from country_workspace.contrib.hope.sync.context_programs import sync_context_programs
         from country_workspace.models import Batch, Household
 
         SyncLog.objects.create_lookups()
-        if settings.HOPE_API_TOKEN:
+        if settings.HOPE_API_TOKEN or config.HOPE_API_TOKEN:
             self.stdout.write("Syncing online")
             with vcr.use_cassette(
                 test_utils_dir.parent / "sync_all.yaml",
                 record_mode=RecordMode.ALL,
                 filter_headers=["authorization"],
             ):
-                sync_all()
+                sync_context_programs()
         else:
             self.stdout.write("Syncing using cassette")
             with vcr.use_cassette(
@@ -75,7 +76,7 @@ class Command(BaseCommand):
                 match_on=("path",),
                 filter_headers=["authorization"],
             ):
-                sync_all()
+                sync_context_programs()
 
         self.stdout.write("Cleaning old data")
         Batch.objects.all().delete()

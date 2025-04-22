@@ -5,7 +5,7 @@ from django.core.cache import cache
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.models import Project, Registration
-from country_workspace.contrib.hope.sync.office import sync_programs
+from country_workspace.contrib.hope.sync.context_programs import SyncStep, sync_context_programs
 from country_workspace.models import AsyncJob, SyncLog
 
 
@@ -23,7 +23,7 @@ def sync_all(job: AsyncJob) -> dict[str, Any]:
     client = AuroraClient()
     with cache.lock("sync-aurora"):
         return {
-            "programs": sync_programs(),
+            "programs": sync_context_programs(step=SyncStep.PROGRAMS),
             "projects": sync_projects(client),
             "registrations": sync_registrations(client),
         }
