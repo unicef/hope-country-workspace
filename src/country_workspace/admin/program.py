@@ -2,21 +2,22 @@ from typing import TYPE_CHECKING
 
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
-from django.contrib import admin, messages
+from django.contrib import admin
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
 from ..models import Program
-from .base import BaseModelAdmin
+from .base import BaseModelAdmin, SyncAdminMixin
+from country_workspace.contrib.hope.sync.context_programs import SyncStep
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
 
 
 @admin.register(Program)
-class ProgramAdmin(BaseModelAdmin):
+class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     list_display = (
         "name",
         "sector",
@@ -40,6 +41,9 @@ class ProgramAdmin(BaseModelAdmin):
     )
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
+
+    sync_step = SyncStep.PROGRAMS
+    sync_model = Program
 
     @button()
     def invalidate_cache(self, request: HttpRequest, pk: str) -> None:
@@ -73,15 +77,3 @@ class ProgramAdmin(BaseModelAdmin):
             description="Continuing will erase all the beneficiaries from this program",
             success_message="Successfully executed",
         )
-
-    @button()
-    def sync(self, request: HttpRequest) -> None:
-        from country_workspace.contrib.hope.sync.context_programs import SyncStep, sync_context_programs
-
-        totals = sync_context_programs(step=SyncStep.PROGRAMS)
-
-        if errors := totals.get("errors"):
-            self.message_user(request, "; ".join(errors), level=messages.ERROR)
-        else:
-            info = totals[Program._meta.model_name]
-            self.message_user(request, f"{info['add']} created - {info['upd']} updated", level=messages.SUCCESS)
