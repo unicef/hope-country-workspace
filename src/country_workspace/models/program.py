@@ -58,10 +58,6 @@ class Program(BaseModel):
     code = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICE, db_index=True)
     sector = models.CharField(max_length=50, choices=SECTOR_CHOICE, db_index=True)
-    active = models.BooleanField(
-        default=False,
-        help_text=_("Whether the program is active. Only active program are visible in the UI"),
-    )
 
     # Local Fields
     beneficiary_validator = StrategyField(

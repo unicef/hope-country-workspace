@@ -22,7 +22,6 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         "name",
         "sector",
         "status",
-        "active",
         "beneficiary_group",
         "beneficiary_validator",
         "household_checker",
@@ -32,7 +31,6 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     list_filter = (
         ("country_office", AutoCompleteFilter),
         "status",
-        "active",
         "sector",
         "beneficiary_group",
         "beneficiary_validator",
