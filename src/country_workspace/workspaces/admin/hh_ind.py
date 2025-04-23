@@ -22,7 +22,7 @@ from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from .cleaners import actions
 from .cleaners.validate import validate_program
-
+from ...utils.flex_fields import Base64ImageField
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -225,13 +225,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         elif not self.has_view_or_change_permission(request, obj):
             raise PermissionDenied
 
-        if obj.flex_fields:
+        if hasattr(obj, "flex_fields"):
             initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
         else:
             initials = {}
         if request.method == "POST":
             if obj:
-                form: "FlexForm" = form_class(request.POST, prefix="flex_field", initial=initials)
+                form: "FlexForm" = form_class(request.POST, request.FILES, prefix="flex_field", initial=initials)
                 form_valid = form.is_valid()
                 if form_valid or "_save_invalid" in request.POST:
                     obj.flex_fields = form.cleaned_data
@@ -248,6 +248,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         context["show_save_invalid"] = True
         context["checker_form"] = form
         context["has_change_permission"] = self.has_change_permission(request)
+        context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
 
         return TemplateResponse(request, self.change_form_template, context)
 
