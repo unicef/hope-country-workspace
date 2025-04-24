@@ -1,7 +1,7 @@
 from base64 import b64encode
 import hashlib
 import json
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, Generator, Literal
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
@@ -40,7 +40,7 @@ class Base64ImageInput(forms.ClearableFileInput):
 class Base64ImageField(forms.ImageField):
     widget = Base64ImageInput
 
-    def clean(self, data: UploadedFile, initial: str | None = None) -> str | None:
+    def clean(self, data: UploadedFile | Literal[False], initial: str | None = None) -> str | None:
         if cleaned_data := super().clean(data, initial):
             content = b64encode(cleaned_data.read()).decode()
             return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
