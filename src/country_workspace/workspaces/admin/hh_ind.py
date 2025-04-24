@@ -225,7 +225,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         elif not self.has_view_or_change_permission(request, obj):
             raise PermissionDenied
 
-        if hasattr(obj, "flex_fields"):
+        if obj.flex_fields:
             initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
         else:
             initials = {}
