@@ -52,6 +52,7 @@ dependencies = [
     "unicef-security>=1.5.1",
     "django-pghistory>=3.5.4",
     "django-anymail[mailjet]>=13.0",
+    "pillow>=11.2.1",
 ]
 [project.scripts]
 celery-monitor = "country_workspace.__monitor__:run"
