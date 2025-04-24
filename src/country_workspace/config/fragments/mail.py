@@ -2,7 +2,7 @@ from .. import env
 
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 SERVER_EMAIL = "root@localhost"
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = env("EMAIL_BACKEND")
 
 ANYMAIL = {
     "MAILJET_API_URL": env("MAILJET_API_URL"),

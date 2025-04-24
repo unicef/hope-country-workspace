@@ -177,6 +177,13 @@ CONFIG: "dict[str, ConfigItem]" = {
     ),
     "MAILJET_API_KEY": (str, "", "", False, "Mailjet API key"),
     "MAILJET_SECRET_KEY": (str, "", "", False, "Mailjet API secret key"),
+    "EMAIL_BACKEND": (
+        str,
+        "anymail.backends.mailjet.EmailBackend",
+        "anymail.backends.mailjet.EmailBackend",
+        False,
+        "Email Backend",
+    ),
     "DEFAULT_FROM_EMAIL": (
         str,
         "hope-workspace@mail.unicef.org",
