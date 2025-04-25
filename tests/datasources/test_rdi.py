@@ -7,7 +7,7 @@ from pytest_mock import MockerFixture
 from country_workspace.datasources.rdi import (
     ColumnConfigurationError,
     Config,
-    HouseholdValidationError,
+    # HouseholdValidationError,
     MissingHouseholdError,
     Record,
     Sheet,
@@ -17,9 +17,12 @@ from country_workspace.datasources.rdi import (
     import_from_rdi,
     process_households,
     process_individuals,
-    validate_households,
+    # validate_households,
 )
 from country_workspace.models import Household
+from country_workspace.workspaces.exceptions import BeneficiaryValidationError
+from country_workspace.validators.beneficiaries import validate_beneficiaries
+
 
 HOUSEHOLD_1_PK = 1
 HOUSEHOLD_2_PK = 2
@@ -87,8 +90,9 @@ def test_missing_household_error_format() -> None:
 
 
 def test_household_validation_error_format() -> None:
-    error = HouseholdValidationError(household_key := 42)
-    assert str(household_key) in str(error)
+    error = BeneficiaryValidationError(beneficiary := HOUSEHOLD_1_NAME, key := HOUSEHOLD_1_PK)
+    assert beneficiary in str(error)
+    assert str(key) in str(error)
 
 
 def test_get_value_returns_value() -> None:
@@ -173,29 +177,29 @@ def test_process_individuals(
     clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
-def test_validate_households(config: Config, household_mapping: Mapping[int, Mock]) -> None:
+def test_validate_beneficiaries(config: Config, household_mapping: Mapping[int, Mock]) -> None:
     config["check_before"] = True
 
-    validate_households(config, household_mapping)
+    validate_beneficiaries(config, household_mapping)
 
     for household in household_mapping.values():
         household.validate_with_checker.assert_called_once()
 
 
-def test_validate_households_raises_exception_on_failed_validation(
+def test_validate_beneficiaries_raises_exception_on_failed_validation(
     config: Config, household_mapping: Mapping[int, Mock]
 ) -> None:
     config["check_before"] = True
     household_mapping[HOUSEHOLD_1_PK].validate_with_checker.return_value = False
 
-    with pytest.raises(HouseholdValidationError):
-        validate_households(config, household_mapping)
+    with pytest.raises(BeneficiaryValidationError):
+        validate_beneficiaries(config, household_mapping)
 
 
-def test_validate_households_check_before_is_false(config: Config, household_mapping: Mapping[int, Mock]) -> None:
+def test_validate_beneficiaries_check_before_is_false(config: Config, household_mapping: Mapping[int, Mock]) -> None:
     config["check_before"] = False
 
-    validate_households(config, household_mapping)
+    validate_beneficiaries(config, household_mapping)
 
     for household in household_mapping.values():
         household.validate_with_checker.assert_not_called()
@@ -219,7 +223,7 @@ def test_import_from_rdi(
     process_households_mock.return_value = household_mapping
     process_individuals_mock = mocker.patch("country_workspace.datasources.rdi.process_individuals")
     process_individuals_mock.return_value = (processed_individuals := len(list(individual_sheet)))
-    validate_households_mock = mocker.patch("country_workspace.datasources.rdi.validate_households")
+    validate_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.validate_beneficiaries")
 
     result = import_from_rdi(job)
 
@@ -239,4 +243,4 @@ def test_import_from_rdi(
     process_individuals_mock.assert_called_once_with(
         individual_sheet, household_mapping, job, batch_class_mock.objects.create.return_value, config
     )
-    validate_households_mock.assert_called_once_with(config, household_mapping)
+    validate_beneficiaries_mock.assert_called_once_with(config, household_mapping)

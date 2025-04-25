@@ -60,6 +60,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                     "individuals_0_relationship": "head",
                     "individuals_0_given_name": "John",
                     "individuals_0_gender": "male",
+                    "id": 5,
                 },
             },
             {
@@ -72,6 +73,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                     "individuals_1_relationship": "son_daughter",
                     "individuals_1_given_name": "Tom",
                     "individuals_1_gender": "male",
+                    "id": 6,
                 },
             },
         ],
@@ -83,6 +85,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                 "id": 7,
                 "flatten": {
                     "household_0_admin1": "UA03",
+                    "id": 7,
                 },
             },
         ],
@@ -98,6 +101,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                     "individuals_0_relationship": "head",
                     "individuals_0_given_name": "Alice",
                     "individuals_0_gender": "female",
+                    "id": 8,
                 },
             },
         ],
@@ -111,6 +115,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                     "individuals_0_relationship_i_c": "head",
                     "individuals_0_given_name_i_c": "Bob",
                     "individuals_0_gender_i_c": "male",
+                    "id": 9,
                 },
             },
         ],
@@ -126,6 +131,7 @@ imported: Final[dict[str, dict[str, Any]]] = {
                     "individuals_0_given_name_i_c": "Mike",
                     "individuals_0_gender_i_c": "male",
                     "individuals_0_family_name_i_c": "Doe",
+                    "id": 10,
                 },
             },
         ],
@@ -134,10 +140,37 @@ imported: Final[dict[str, dict[str, Any]]] = {
         "page": 1,
         "results": [
             {
-                "id": 9,
+                "id": 11,
                 "flatten": {
                     "individuals_wrong": "value",
                     "household_invalid": "data",
+                    "id": 11,
+                },
+            },
+        ],
+    },
+    "multiple_individuals_if_not_hh": {
+        "page": 1,
+        "results": [
+            {
+                "id": 12,
+                "flatten": {
+                    "individuals_0_relationship": "head",
+                    "individuals_0_given_name": "Alice",
+                    "individuals_0_gender": "female",
+                    "individuals_1_given_name": "Tom",
+                    "id": 12,
+                },
+            },
+        ],
+    },
+    "invalid_record_id": {
+        "page": 1,
+        "results": [
+            {
+                "id": 13,
+                "flatten": {
+                    "individuals_0_given_name": "Tom",
                 },
             },
         ],
