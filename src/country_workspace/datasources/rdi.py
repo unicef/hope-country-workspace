@@ -8,6 +8,7 @@ from hope_smart_import.readers import open_xls_multi
 from country_workspace.models import AsyncJob, Batch, Household
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
+from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 RDI = str | io.BytesIO
 Sheet = Iterable[Record]
@@ -20,7 +21,6 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     household_pk_col: str
     master_column_label: str
     detail_column_label: str
-    check_before: bool
 
 
 class ColumnConfigurationError(Exception):
@@ -50,15 +50,6 @@ class MissingHouseholdError(Exception):
 
     def __str__(self) -> str:
         return f"Missing household {self.household_key} for individual at row {self.row_index}"
-
-
-class HouseholdValidationError(Exception):
-    def __init__(self, household_key: int) -> None:
-        super().__init__(household_key)
-        self.household_key = household_key
-
-    def __str__(self) -> str:
-        return f"Failed to validate household {self.household_key}."
 
 
 def get_value(row: Record, column_name: str) -> Any:
@@ -127,13 +118,6 @@ def process_individuals(
     return processed
 
 
-def validate_households(config: Config, household_mapping: Mapping[int, Household]) -> None:
-    if config["check_before"]:
-        for household_key, household in household_mapping.items():
-            if not household.validate_with_checker(fail_if_alien=config["fail_if_alien"]):
-                raise HouseholdValidationError(household_key)
-
-
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
         config: Config = job.config
@@ -152,7 +136,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         household_mapping = process_households(household_sheet, job, batch, config)
         individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
 
-        validate_households(config, household_mapping)
+        validate_beneficiaries(config, household_mapping)
 
         return {
             "household": len(household_mapping),

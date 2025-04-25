@@ -339,8 +339,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "household_pk_col": form.cleaned_data["pk_column_name"],
                 "master_column_label": form.cleaned_data["master_column_label"],
                 "detail_column_label": form.cleaned_data["detail_column_label"],
-                "check_before": form.cleaned_data["check_before"],
-                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI importing",
@@ -366,6 +366,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "master_detail": (
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
+                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
                 **(
                     {
                         "household_column_prefix": form.cleaned_data.get("household_column_prefix"),
@@ -396,7 +398,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
-                "fail_if_alien": form.cleaned_data["fail_if_alien"],
+                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 type=AsyncJob.JobType.TASK,
