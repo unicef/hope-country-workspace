@@ -35,7 +35,7 @@ class LockedTask(Task):
             return "Task already running"
 
 
-app = Celery("cw")
+app = Celery("cw", backend=settings.CELERY_RESULT_BACKEND)
 app.task_cls = LockedTask
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks(lambda: settings.INSTALLED_APPS, related_name="tasks")
