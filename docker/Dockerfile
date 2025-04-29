@@ -79,9 +79,7 @@ RUN --mount=type=cache,target=/root/.uv-cache \
     uv sync --cache-dir=/root/.uv-cache \
         --python=/usr/local/bin/python \
         --python-preference=system \
-        --no-dev --frozen --extra distribution
-
-
+        --no-dev --frozen
 
 # ------- dist -------
 FROM base_os AS dist
@@ -106,7 +104,8 @@ ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
     VIRTUAL_ENV=/venv \
     UWSGI_PROCESSES=4 \
     MEDIA_ROOT="${MEDIA_ROOT:-/var/run/app/media}" \
-    STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}"
+    STATIC_ROOT="${STATIC_ROOT:-/var/run/app/static}" \
+    XDG_CACHE_HOME=/tmp/selenium-cache
 
 RUN <<EOF cat> /RELEASE
 {"version": "$VERSION",
@@ -133,7 +132,7 @@ USER hope:unicef
 WORKDIR /app
 
 EXPOSE 8000
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
 CMD ["run"]
 
 
