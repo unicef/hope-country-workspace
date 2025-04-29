@@ -37,7 +37,7 @@ dependencies = [
     "django-stubs-ext",
     "django-sysinfo>=2.6.2",
     "django-tailwind>=3.8.0",
-    "django>=5.1",
+    "django>=5.1,<5.2",
     "djangorestframework>=3.15.1",
     "flower>=2.0.1",
     "hope-flex-fields>=0.6.2",
