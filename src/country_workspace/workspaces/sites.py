@@ -199,7 +199,7 @@ class TenantAdminSite(admin.AdminSite):
             bg = program.beneficiary_group
             items.append(
                 {
-                    "name": program._meta.verbose_name_plural,
+                    "name": program._meta.verbose_name,
                     "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
                     "icon": "icon-equalizer",
                     "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
