@@ -5,9 +5,11 @@ from django.urls import reverse
 from django.contrib import messages
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.sync.context_programs import SyncStep
-from country_workspace.models import Office, Program
-from country_workspace.admin.base import SyncConfig
+from country_workspace.contrib.hope.sync.context_programs import SyncStep as ContextProgramsSyncStep
+from country_workspace.contrib.hope.sync.context_geo import SyncStep as ContextGeoSyncStep
+
+from country_workspace.models import Office, Program, Country
+from country_workspace.admin.sync import SyncConfig, ContextProgramsSyncHandler, ContextGeoSyncHandler
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -22,49 +24,47 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
     return django_app
 
 
+@pytest.mark.parametrize("scenario", ["success", "error"], ids=["success", "error"])
 @pytest.mark.parametrize(
-    ("sync_config", "url_name", "sync_result", "message", "level"),
+    ("model", "step", "sync_handler"),
     [
         (
-            SyncConfig(model=Office, step=SyncStep.OFFICES),
-            "country_workspace_office_sync",
-            {Office._meta.model_name: {"add": 1, "upd": 2}},
-            "1 created - 2 updated",
-            messages.SUCCESS,
+            Office,
+            ContextProgramsSyncStep.OFFICES,
+            ContextProgramsSyncHandler(),
         ),
         (
-            SyncConfig(model=Office, step=SyncStep.OFFICES),
-            "country_workspace_office_sync",
-            {"errors": ["Error 1", "Error 2"], Office._meta.model_name: {"add": 0, "upd": 0}},
-            "Error 1; Error 2",
-            messages.ERROR,
+            Program,
+            ContextProgramsSyncStep.PROGRAMS,
+            ContextProgramsSyncHandler(),
         ),
         (
-            SyncConfig(model=Program, step=SyncStep.PROGRAMS),
-            "country_workspace_program_sync",
-            {Program._meta.model_name: {"add": 1, "upd": 2}},
-            "1 created - 2 updated",
-            messages.SUCCESS,
-        ),
-        (
-            SyncConfig(model=Program, step=SyncStep.PROGRAMS),
-            "country_workspace_program_sync",
-            {"errors": ["Error 3", "Error 4"], Program._meta.model_name: {"add": 0, "upd": 0}},
-            "Error 3; Error 4",
-            messages.ERROR,
+            Country,
+            ContextGeoSyncStep.COUNTRIES,
+            ContextGeoSyncHandler(),
         ),
     ],
-    ids=["office_success", "office_errors", "program_success", "program_errors"],
+    ids=["office", "program", "country"],
 )
-@pytest.mark.xdist_group("remote")
-def test_admin_sync(app, mocker: MockerFixture, sync_config, url_name, sync_result, message, level):
-    mock_sync_context_programs = mocker.patch(
-        "country_workspace.admin.base.sync_context_programs",
+def test_admin_sync(app, mocker: MockerFixture, model, step, sync_handler, scenario):
+    if scenario == "success":
+        sync_result = {model._meta.model_name: {"add": 1, "upd": 2}}
+        expected_message = "1 created - 2 updated"
+        expected_level = messages.SUCCESS
+    else:
+        errors = [f"Error 1 for {model._meta.model_name}", f"Error 2 for {model._meta.model_name}"]
+        sync_result = {"errors": errors, model._meta.model_name: {"add": 0, "upd": 0}}
+        expected_message = "; ".join(errors)
+        expected_level = messages.ERROR
+
+    mock_message_user = mocker.patch("country_workspace.admin.base.BaseModelAdmin.message_user")
+    mock_sync = mocker.patch(
+        f"country_workspace.admin.sync.{sync_handler.__class__.__name__}.sync",
         return_value=sync_result,
     )
-    mock_message_user = mocker.patch("country_workspace.admin.base.BaseModelAdmin.message_user")
 
-    app.get(reverse(f"admin:{url_name}"))
+    SyncConfig(model=model, step=step, sync_handler=sync_handler)
+    app.get(reverse(f"admin:country_workspace_{model._meta.model_name}_sync"))
 
-    mock_sync_context_programs.assert_called_once_with(step=sync_config["step"])
-    mock_message_user.assert_called_once_with(mocker.ANY, message, level=level)
+    mock_sync.assert_called_once_with(step=step)
+    mock_message_user.assert_called_once_with(mocker.ANY, expected_message, level=expected_level)

@@ -9,8 +9,10 @@ from django.urls import reverse
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
 from ..models import Program
-from .base import BaseModelAdmin, SyncAdminMixin, SyncConfig
-from country_workspace.contrib.hope.sync.context_programs import SyncStep
+from ..contrib.hope.sync.context_programs import SyncStep
+from .base import BaseModelAdmin
+from .sync import SyncAdminMixin, SyncConfig, ContextProgramsSyncHandler
+
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
@@ -39,7 +41,7 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     )
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
-    sync_config = SyncConfig(model=Program, step=SyncStep.PROGRAMS)
+    sync_config = SyncConfig(model=Program, step=SyncStep.PROGRAMS, sync_handler=ContextProgramsSyncHandler())
 
     @button()
     def invalidate_cache(self, request: HttpRequest, pk: str) -> None:

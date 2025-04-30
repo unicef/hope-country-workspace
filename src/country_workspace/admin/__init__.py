@@ -15,7 +15,7 @@ from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin
 from .office import OfficeAdmin
 from .program import ProgramAdmin
 from .role import UserRoleAdmin
-from .sync import SyncLog
+from .sync_log import SyncLog
 from .user import UserAdmin
 
 site.register(ContentType, admin_class=ContentTypeAdmin)
