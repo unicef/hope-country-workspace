@@ -9,7 +9,11 @@ from django.contrib.admin import ModelAdmin, RelatedFieldListFilter
 from django.db.models import Field
 from django.forms import FileField, FileInput, Form
 
-from country_workspace.models.locations import Area, AreaType, Country
+from ..models.locations import Area, AreaType, Country
+from ..contrib.hope.sync.context_geo import SyncStep
+from .base import BaseModelAdmin
+from .sync import SyncAdminMixin, SyncConfig, ContextGeoSyncHandler
+
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -22,7 +26,7 @@ class ImportCSVForm(Form):
 
 
 @admin.register(Country)
-class CountryAdmin(AdminFiltersMixin, admin.ModelAdmin):
+class CountryAdmin(SyncAdminMixin, BaseModelAdmin):
     list_display = (
         "name",
         "iso_code2",
@@ -31,6 +35,7 @@ class CountryAdmin(AdminFiltersMixin, admin.ModelAdmin):
         "name",
         "iso_code2",
     )
+    sync_config = SyncConfig(model=Country, step=SyncStep.COUNTRIES, sync_handler=ContextGeoSyncHandler())
 
 
 @admin.register(AreaType)

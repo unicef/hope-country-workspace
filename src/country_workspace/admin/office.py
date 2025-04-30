@@ -2,10 +2,11 @@ from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from django.contrib import admin
 from django.urls import reverse
-from country_workspace.contrib.hope.sync.context_programs import SyncStep
 
+from ..contrib.hope.sync.context_programs import SyncStep
 from ..models import Office
-from .base import BaseModelAdmin, SyncAdminMixin, SyncConfig
+from .base import BaseModelAdmin
+from .sync import SyncAdminMixin, SyncConfig, ContextProgramsSyncHandler
 
 
 @admin.register(Office)
@@ -15,7 +16,7 @@ class OfficeAdmin(SyncAdminMixin, BaseModelAdmin):
     list_filter = ("active",)
     readonly_fields = ("hope_id", "slug")
     ordering = ("name",)
-    sync_config = SyncConfig(model=Office, step=SyncStep.OFFICES)
+    sync_config = SyncConfig(model=Office, step=SyncStep.OFFICES, sync_handler=ContextProgramsSyncHandler())
 
     @link(change_list=False)
     def programmes(self, btn: LinkButton) -> None:
