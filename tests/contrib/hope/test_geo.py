@@ -1,9 +1,12 @@
 from typing import TYPE_CHECKING
-
+import pytest
 from constance.test import override_config
 from testutils.factories import FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory
+from unittest import mock
 
-from country_workspace.contrib.hope.geo import Admin1Choice, CountryChoice
+from country_workspace.contrib.hope.geo import Admin1Choice, CountryChoice, HopeClient
+from country_workspace.exceptions import RemoteError
+from country_workspace.cache.manager import cache_manager
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import Fieldset
@@ -102,3 +105,48 @@ def test_validate_child(db, mocked_responses):
 
     errors = fs.validate([{"country": "AF", "region": "---"}])
     assert errors == {1: {"region": "['Not valid child for selected parent']"}}
+
+
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
+@pytest.mark.parametrize(
+    ("value", "expected_validate", "expected_prepare"),
+    [
+        ("AF", {}, "AF"),
+        ("AFG", {}, "AF"),
+        ("XX", {1: {"country": ["Select a valid choice. XX is not one of the available choices."]}}, "XX"),
+        (None, {}, None),
+    ],
+    ids=["iso_code2", "iso_code3", "invalid", "empty"],
+)
+def test_country_choice(db, mocked_responses, value, expected_validate, expected_prepare):
+    mocked_responses.add(mocked_responses.GET, "https://dev-hope.unitst.org/api/rest/lookups/country/", json=COUNTRIES)
+    fd = FieldDefinitionFactory(field_type=CountryChoice)
+    fs: Fieldset = FieldsetFactory()
+    FlexFieldFactory(name="country", definition=fd, fieldset=fs)
+
+    errors = fs.validate([{"country": value}])
+    assert errors == expected_validate
+
+    form_class = fs.get_form_class()
+    form = form_class(data={"country": value})
+    assert form.fields["country"].prepare_value(value) == expected_prepare
+
+
+@pytest.mark.parametrize(
+    ("field_cls", "call", "call_args", "expected"),
+    [
+        (Admin1Choice, "get_choices_for_parent_value", ("AF", False), []),
+        (Admin1Choice, "get_choices_for_parent_value", ("AF", True), []),
+        (CountryChoice, None, None, []),
+    ],
+    ids=["admin1", "admin1_only_codes", "country"],
+)
+@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
+def test_remote_error_fields(field_cls, call, call_args, expected):
+    with (
+        mock.patch.object(cache_manager, "retrieve", return_value=None),
+        mock.patch.object(HopeClient, "get", side_effect=RemoteError("API failure")),
+    ):
+        field = field_cls()
+        result = field.choices if call is None else getattr(field, call)(*call_args)
+        assert result == expected

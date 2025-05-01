@@ -47,22 +47,32 @@ class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
 
 
 class CountryChoice(forms.ChoiceField):
-    def get_choices(self) -> list[tuple[str, str]]:
-        ret = []
-        key = "lookups/country"
-        if not (data := cache_manager.retrieve(key)):
-            client = HopeClient()
-            try:
-                data = list(client.get("lookups/country"))
-                cache_manager.store(key, data, timeout=300)
-            except RemoteError as e:
-                logger.exception(e)
-                return ret
-        return [(record["iso_code2"], record["name"]) for record in data]
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, choices: tuple[tuple[str, str]] = (), **kwargs: Any) -> None:
+        super().__init__(choices=choices, **kwargs)
+        self.iso3_to_iso2 = {}
         self.choices = self.get_choices()
+
+    def get_choices(self) -> tuple[tuple[str, str]]:
+        key = "lookups/country"
+        if data := cache_manager.retrieve(key):
+            return self._set_choices(data)
+        try:
+            client = HopeClient()
+            data = list(client.get("lookups/country"))
+            cache_manager.store(key, data, timeout=300)
+            return self._set_choices(data)
+        except RemoteError as e:
+            logger.exception(e)
+            return ()
+
+    def prepare_value(self, value: Any) -> str | None:
+        return super().prepare_value(self.iso3_to_iso2.get(value, value))
+
+    def to_python(self, value: Any) -> str | None:
+        return super().to_python(self.iso3_to_iso2.get(value, value))
+
+    def _set_choices(self, data: list[dict[str, str]]) -> tuple[tuple[str, str]]:
+        return tuple([(self.iso3_to_iso2.setdefault(rec["iso_code3"], rec["iso_code2"]), rec["name"]) for rec in data])
 
 
 class Admin1Choice(DynamicChoiceField):
