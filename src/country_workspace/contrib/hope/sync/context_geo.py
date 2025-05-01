@@ -30,7 +30,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=Country,
                 path="lookups/country",
-                prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "iso_code2")},
+                prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "iso_code2", "iso_code3")},
             ),
         )
 

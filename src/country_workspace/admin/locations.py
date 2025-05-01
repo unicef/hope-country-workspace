@@ -30,10 +30,12 @@ class CountryAdmin(SyncAdminMixin, BaseModelAdmin):
     list_display = (
         "name",
         "iso_code2",
+        "iso_code3",
     )
     search_fields = (
         "name",
         "iso_code2",
+        "iso_code3",
     )
     sync_config = SyncConfig(model=Country, step=SyncStep.COUNTRIES, sync_handler=ContextGeoSyncHandler())
 
