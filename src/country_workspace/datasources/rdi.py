@@ -1,10 +1,16 @@
 import io
-from collections.abc import Iterable
-from typing import Any, Mapping, cast
+from base64 import b64encode
+from collections import defaultdict
+from collections.abc import Iterable, Generator
+from typing import Any, Mapping, cast, Sequence
 
+import openpyxl
+from PIL import Image
 from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi
+from openpyxl.drawing.image import Image as RDIImage
 
+from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
@@ -118,6 +124,41 @@ def process_individuals(
     return processed
 
 
+def image_location(image: RDIImage) -> tuple[int, int]:
+    return image.anchor._from.row, image.anchor._from.col
+
+
+def image_content(rdi_image: RDIImage) -> tuple[str | None, str]:
+    image = Image.open(rdi_image.ref)
+    content_type = Image.MIME.get(image.format)
+    rdi_image.ref.seek(0)
+    content = b64encode(rdi_image.ref.read()).decode()
+    return content_type, content
+
+
+def extract_images(filepath: str, sheets: Sequence[int]) -> Generator[Mapping[int, Mapping[int, str]], None, None]:
+    workbook = openpyxl.load_workbook(filepath)
+    for i in sheets:
+        worksheet = workbook.worksheets[i]
+        images: dict[int, dict[int, str]] = defaultdict(dict)
+        for rdi_image in worksheet._images:
+            row, column = image_location(rdi_image)
+            content_type, content = image_content(rdi_image)
+            images[row][column] = VALUE_FORMAT.format(mimetype=content_type, content=content)
+        yield images
+
+
+def add_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) -> Generator[Record, None, None]:
+    for i, row in enumerate(sheet):
+        if i in sheet_images:
+            yield {key: sheet_images[i].get(j, value) for j, (key, value) in enumerate(row.items())}
+        else:
+            yield row
+
+
+SHEET_INDICES = 0, 1
+
+
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
         config: Config = job.config
@@ -129,10 +170,13 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
         )
-        (_, household_sheet), (_, individual_sheet) = open_xls_multi(rdi, sheets=[0, 1])
-
+        (_, household_sheet), (_, individual_sheet) = open_xls_multi(rdi, sheets=SHEET_INDICES)
+        household_images, individual_images = extract_images(rdi, SHEET_INDICES)
+        household_sheet, individual_sheet = (
+            add_images(household_sheet, household_images),
+            add_images(individual_sheet, individual_images),
+        )
         household_sheet, individual_sheet = filter_rows_with_household_pk(config, household_sheet, individual_sheet)
-
         household_mapping = process_households(household_sheet, job, batch, config)
         individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
 
