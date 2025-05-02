@@ -16,14 +16,14 @@ def create_hope_field_definitions() -> None:
     FieldDefinition.objects.get_or_create(
         name="HOPE IND Gender",
         slug=slugify("HOPE IND Gender"),
-        attrs={"choices": [["FEMALE", "FEMALE"], ["MALE", "MALE"], ["UNKNOWN", "UNKNOWN"]]},
+        attrs={"choices": [["FEMALE", "female"], ["MALE", "male"], ["UNKNOWN", "unknown"]]},
         field_type=forms.ChoiceField,
     )
     FieldDefinition.objects.get_or_create(
         name="HOPE IND Disability",
         slug=slugify("HOPE IND Disability"),
         field_type=forms.ChoiceField,
-        attrs={"choices": [["not disabled", "not disabled"], ["disabled", "disabled"]]},
+        attrs={"choices": [["NOT DISABLED", "not disabled"], ["DISABLED", "disabled"]]},
     )
     FieldDefinition.objects.get_or_create(
         name="HOPE HH ResidenceStatus",
