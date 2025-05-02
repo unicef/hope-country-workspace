@@ -1,14 +1,14 @@
 from collections.abc import Mapping
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
 
+from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.rdi import (
     ColumnConfigurationError,
     Config,
     # HouseholdValidationError,
-    MissingHouseholdError,
     Record,
     Sheet,
     SheetProcessingError,
@@ -17,6 +17,11 @@ from country_workspace.datasources.rdi import (
     import_from_rdi,
     process_households,
     process_individuals,
+    image_location,
+    image_content,
+    extract_images,
+    merge_images,
+    read_sheets,
     # validate_households,
 )
 from country_workspace.models import Household
@@ -83,12 +88,6 @@ def test_sheet_processing_error_format() -> None:
     assert str(row_index) in str(error)
 
 
-def test_missing_household_error_format() -> None:
-    error = MissingHouseholdError(row_index := 42, household_key := "test_household_key")
-    assert str(row_index) in str(error)
-    assert household_key in str(error)
-
-
 def test_household_validation_error_format() -> None:
     error = BeneficiaryValidationError(beneficiary := HOUSEHOLD_1_NAME, key := HOUSEHOLD_1_PK)
     assert beneficiary in str(error)
@@ -115,9 +114,9 @@ def test_filter_rows_with_household_pk(mocker: MockerFixture, config: Config, ho
     get_value_mock = mocker.patch("country_workspace.datasources.rdi.get_value")
     get_value_mock.side_effect = True, False
 
-    result = [list(s) for s in filter_rows_with_household_pk(config, household_sheet)]
+    result = list(filter_rows_with_household_pk(config, household_sheet))
 
-    assert result == [[household_sheet_list[0]]]
+    assert result == [household_sheet_list[0]]
     get_value_mock.assert_has_calls(
         (
             call(household_sheet_list[0], config["household_pk_col"]),
@@ -215,10 +214,8 @@ def test_import_from_rdi(
     job = Mock()
     job.config = config
     batch_class_mock = mocker.patch("country_workspace.datasources.rdi.Batch")
-    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
-    open_xls_multi_mock.return_value = (0, household_sheet), (1, individual_sheet)
-    filter_rows_with_household_pk_mock = mocker.patch("country_workspace.datasources.rdi.filter_rows_with_household_pk")
-    filter_rows_with_household_pk_mock.return_value = household_sheet, individual_sheet
+    read_sheets_mock = mocker.patch("country_workspace.datasources.rdi.read_sheets")
+    read_sheets_mock.return_value = household_sheet, individual_sheet
     process_households_mock = mocker.patch("country_workspace.datasources.rdi.process_households")
     process_households_mock.return_value = household_mapping
     process_individuals_mock = mocker.patch("country_workspace.datasources.rdi.process_individuals")
@@ -235,8 +232,6 @@ def test_import_from_rdi(
         imported_by=job.owner,
         source=batch_class_mock.BatchSource.RDI,
     )
-    open_xls_multi_mock.assert_called_once_with(job.file, sheets=[0, 1])
-    filter_rows_with_household_pk_mock.assert_called_once_with(config, household_sheet, individual_sheet)
     process_households_mock.assert_called_once_with(
         household_sheet, job, batch_class_mock.objects.create.return_value, config
     )
@@ -244,3 +239,69 @@ def test_import_from_rdi(
         individual_sheet, household_mapping, job, batch_class_mock.objects.create.return_value, config
     )
     validate_beneficiaries_mock.assert_called_once_with(config, household_mapping)
+
+
+def test_image_location() -> None:
+    result = image_location(image := Mock())
+    assert result == (image.anchor._from.row, image.anchor._from.col)
+
+
+def test_image_content(mocker: MockerFixture) -> None:
+    image_module_mock = mocker.patch("country_workspace.datasources.rdi.Image")
+    b64encode_mock = mocker.patch("country_workspace.datasources.rdi.b64encode")
+
+    result = image_content(image := Mock())
+
+    assert result == (image_module_mock.MIME.get.return_value, b64encode_mock.return_value.decode.return_value)
+    image_module_mock.open.assert_called_once_with(image.ref)
+    image_module_mock.MIME.get.assert_called_once_with(image_module_mock.open.return_value.format)
+    image.ref.seek.assert_called_once_with(0)
+    b64encode_mock.assert_called_once_with(image.ref.read.return_value)
+
+
+def test_extract_images(mocker: MockerFixture) -> None:
+    load_workbook_mock = mocker.patch("country_workspace.datasources.rdi.openpyxl.load_workbook")
+    image_location_mock = mocker.patch("country_workspace.datasources.rdi.image_location")
+    image_location_mock.return_value = (row := 1, column := 2)
+    image_content_mock = mocker.patch("country_workspace.datasources.rdi.image_content")
+    image_content_mock.return_value = (content_type := "content/type", content := "content")
+    image = MagicMock()
+    load_workbook_mock.return_value.worksheets.__getitem__.return_value._images = (image,)
+
+    result = list(extract_images(filepath := "test", sheet_index := 0))
+
+    assert result == [{row: {column: VALUE_FORMAT.format(mimetype=content_type, content=content)}}]
+    load_workbook_mock.assert_called_once_with(filepath)
+    load_workbook_mock.return_value.worksheets.__getitem__.assert_called_once_with(sheet_index)
+    image_location_mock.assert_called_once_with(image)
+    image_content_mock.assert_called_once_with(image)
+
+
+def test_merge_images() -> None:
+    sheet = (
+        {(column := "column"): "value"},
+        second_row := {"column": "value"},
+    )
+    sheet_images = {0: {0: (image_data := "IMAGE_DATA")}}
+
+    result = list(merge_images(sheet, sheet_images))
+
+    assert result == [{column: image_data}, second_row]
+
+
+def test_read_sheets(mocker: MockerFixture) -> None:
+    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
+    open_xls_multi_mock.return_value = ((Mock(), sheet := Mock()),)
+    extract_images_mock = mocker.patch("country_workspace.datasources.rdi.extract_images")
+    extract_images_mock.return_value = ((images := Mock()),)
+    merge_images_mock = mocker.patch("country_workspace.datasources.rdi.merge_images")
+    filter_rows_with_household_pk_mock = mocker.patch("country_workspace.datasources.rdi.filter_rows_with_household_pk")
+    config_mock = Mock()
+
+    result = list(read_sheets(config_mock, filepath := "test", sheet_index := 0))
+
+    assert result == [filter_rows_with_household_pk_mock.return_value]
+    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index])
+    extract_images_mock.assert_called_once_with(filepath, sheet_index)
+    merge_images_mock.assert_called_once_with(sheet, images)
+    filter_rows_with_household_pk_mock.assert_called_once_with(config_mock, merge_images_mock.return_value)
