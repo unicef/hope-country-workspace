@@ -68,15 +68,15 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
-        name = get_value(row, config["master_column_label"])
         household_key = get_value(row, config["household_pk_col"])
+        label = get_value(row, config["detail_column_label"])
 
         try:
             mapping[household_key] = cast(
                 Household,
                 job.program.households.create(
                     batch=batch,
-                    name=name,
+                    name=label,
                     flex_fields=clean_field_names(row),
                 ),
             )
@@ -86,14 +86,22 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     return mapping
 
 
+def full_name_column(row: Record) -> str | None:
+    for key in row:
+        if key.startswith("full") and "name" in key:
+            return key
+    return None
+
+
 def process_individuals(
     sheet: Sheet, household_mapping: Mapping[int, Household], job: AsyncJob, batch: Batch, config: Config
 ) -> int:
     processed = 0
 
     for i, row in enumerate(sheet, 1):
-        name = get_value(row, config["detail_column_label"])
-        household_key = get_value(row, config["household_pk_col"])
+        name_column = full_name_column(row)
+        name = get_value(row, name_column) if name_column else None
+        household_key = get_value(row, config["master_column_label"])
         household = household_mapping.get(household_key)
 
         try:

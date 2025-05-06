@@ -50,7 +50,7 @@ class ImportFileForm(forms.Form):
 
     detail_column_label = forms.CharField(
         required=False,
-        initial="full_name_i_c",
+        initial="household_id",
         help_text="Which column should be used as label for the household. It can use interpolation",
     )
 

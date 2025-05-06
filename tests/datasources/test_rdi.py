@@ -33,6 +33,7 @@ HOUSEHOLD_1_PK = 1
 HOUSEHOLD_2_PK = 2
 HOUSEHOLD_1_NAME = "Household 1"
 HOUSEHOLD_2_NAME = "Household 2"
+FULL_NAME_COLUMN = "full_name"
 
 
 @pytest.fixture
@@ -50,8 +51,8 @@ def config() -> Config:
 @pytest.fixture
 def household_sheet(config: Config) -> Sheet:
     return [
-        {config["master_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_1_PK},
-        {config["master_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_2_PK},
+        {config["detail_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_1_PK},
+        {config["detail_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_2_PK},
     ]
 
 
@@ -59,12 +60,12 @@ def household_sheet(config: Config) -> Sheet:
 def individual_sheet(config: Config) -> Sheet:
     return [
         {
-            config["detail_column_label"]: "John Doe",
-            config["household_pk_col"]: HOUSEHOLD_1_PK,
+            FULL_NAME_COLUMN: "John Doe",
+            config["master_column_label"]: HOUSEHOLD_1_PK,
         },
         {
-            config["detail_column_label"]: "Doe John",
-            config["household_pk_col"]: HOUSEHOLD_2_PK,
+            FULL_NAME_COLUMN: "Doe John",
+            config["master_column_label"]: HOUSEHOLD_2_PK,
         },
     ]
 
@@ -135,7 +136,7 @@ def test_process_households(mocker: MockerFixture, config: Config, household_she
     }
     job.program.households.create.assert_has_calls(
         [
-            call(batch=batch, name=row[config["master_column_label"]], flex_fields=clean_field_names_mock.return_value)
+            call(batch=batch, name=row[config["detail_column_label"]], flex_fields=clean_field_names_mock.return_value)
             for row in household_sheet
         ]
     )
@@ -166,8 +167,8 @@ def test_process_individuals(
         [
             call(
                 batch=batch_mock,
-                name=row[config["detail_column_label"]],
-                household_id=household_mapping[row[config["household_pk_col"]]].pk,
+                name=row[FULL_NAME_COLUMN],
+                household_id=household_mapping[row[config["master_column_label"]]].pk,
                 flex_fields=clean_field_names_mock.return_value,
             )
             for row in individual_sheet
