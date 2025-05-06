@@ -116,5 +116,6 @@ def mass_update_impl(
                     func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func(old_value, new_value)
                 elif create_missing_fields:
+                    func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func("", new_value)
             record.save()
