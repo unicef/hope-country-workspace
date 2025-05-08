@@ -8,6 +8,9 @@
         <input type="submit" value="{% translate 'Export' %}" class="default" name="_export">
     </div>
     {% csrf_token %}
+    <label for="select-all">
+        <input type="checkbox" id="select-all">Select all
+    </label>
     <table>
         {{ form.as_table }}
     </table>
