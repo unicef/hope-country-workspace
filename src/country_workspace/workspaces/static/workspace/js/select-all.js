@@ -1,5 +1,9 @@
 $(function () {
     $("#select-all").change(function () {
-        $(this).parent("form").children("input:checkbox").not(this).prop('checked', this.checked);
+        $(this)
+            .closest("form")
+            .find("input:checkbox")
+            .not(this)
+            .prop('checked', this.checked);
     })
 })

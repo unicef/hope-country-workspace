@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Any
 from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from concurrency.utils import fqn
-from django import forms
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
@@ -66,15 +65,6 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"
-
-    @property
-    def media(self) -> forms.Media:
-        return super().media + forms.Media(
-            js=[
-                "workspace/js/select-all.js",
-            ],
-            css={},
-        )
 
     @property
     def title_group(self) -> str | None:
