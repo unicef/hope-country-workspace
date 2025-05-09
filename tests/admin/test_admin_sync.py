@@ -57,7 +57,7 @@ def test_admin_sync(app, mocker: MockerFixture, model, step, sync_handler, scena
         expected_message = "; ".join(errors)
         expected_level = messages.ERROR
 
-    mock_message_user = mocker.patch("country_workspace.admin.base.BaseModelAdmin.message_user")
+    mock_message_user = mocker.patch("country_workspace.admin.sync.SyncAdminMixin.message_user")
     mock_sync = mocker.patch(
         f"country_workspace.admin.sync.{sync_handler.__class__.__name__}.sync",
         return_value=sync_result,

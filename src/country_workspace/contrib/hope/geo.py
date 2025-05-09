@@ -58,7 +58,7 @@ class CountryChoice(APIChoicesMixin, forms.ChoiceField):
         return super().to_python(self.iso3_to_iso2.get(value, value))
 
 
-class DynamicChoiceField(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
+class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
     path: str = "{}/geo/areas/"
     level: int = -1
 
@@ -98,17 +98,17 @@ class DynamicChoiceField(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
         return [r for r in data if r.get("area_type") in valid_types]
 
 
-class Admin1Choice(DynamicChoiceField):
+class Admin1Choice(AdminLevelChoice):
     level = 1
 
 
-class Admin2Choice(DynamicChoiceField):
+class Admin2Choice(AdminLevelChoice):
     level = 2
 
 
-class Admin3Choice(DynamicChoiceField):
+class Admin3Choice(AdminLevelChoice):
     level = 3
 
 
-class Admin4Choice(DynamicChoiceField):
+class Admin4Choice(AdminLevelChoice):
     level = 4

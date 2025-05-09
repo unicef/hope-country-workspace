@@ -124,7 +124,6 @@ class SyncContextGeo(BaseSync):
             except model.DoesNotExist:
                 self.emit_log(
                     "RECORD_SKIPPED",
-                    LogLevel.ERROR,
                     hope_id=child_id,
                     error=f"{model._meta.model_name}: child '{child_id}' not found for parent assignment",
                 )
@@ -134,7 +133,6 @@ class SyncContextGeo(BaseSync):
             except model.DoesNotExist:
                 self.emit_log(
                     "RECORD_SKIPPED",
-                    LogLevel.ERROR,
                     hope_id=child_id,
                     error=f"{model._meta.model_name} parent '{parent_id}' not found for assignment",
                 )

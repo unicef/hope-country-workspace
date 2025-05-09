@@ -7,6 +7,7 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.hope.sync.base import (
     BaseSync,
     SyncConfig,
+    EndpointConfig,
     BaseSyncStep,
 )
 
@@ -42,7 +43,7 @@ def records() -> list[dict[str, Any]]:
 def success_config(mock_model: Mock) -> SyncConfig:
     return SyncConfig(
         model=mock_model,
-        path="dummy_path",
+        endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
         should_process=lambda r: r.get("active"),
     )
@@ -52,7 +53,7 @@ def success_config(mock_model: Mock) -> SyncConfig:
 def deactivate_config(mock_model: Mock) -> SyncConfig:
     return SyncConfig(
         model=mock_model,
-        path="dummy_path",
+        endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
         should_deactivate=lambda r: not r.get("active"),
     )

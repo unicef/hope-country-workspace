@@ -2,7 +2,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.sync.base import BaseSync, SyncConfig
+from country_workspace.contrib.hope.sync.base import BaseSync, SyncConfig, EndpointConfig
 from country_workspace.models import BeneficiaryGroup
 
 
@@ -12,7 +12,7 @@ def test_sync_programs_missing_beneficiary_group(base_sync: BaseSync, mock_model
         base_sync.sync_entity(
             SyncConfig(
                 model=mock_model,
-                path="programs",
+                endpoint=EndpointConfig(path="fake_path"),
                 prepare_defaults=lambda r: {
                     "beneficiary_group": BeneficiaryGroup.objects.get(hope_id=r["beneficiary_group"])
                 },
@@ -31,7 +31,7 @@ def test_sync_programs_post_process_save(base_sync: BaseSync, mock_model: Mock, 
     base_sync.sync_entity(
         SyncConfig(
             model=mock_model,
-            path="programs",
+            endpoint=EndpointConfig(path="fake_path"),
             prepare_defaults=lambda r: {
                 "beneficiary_group": BeneficiaryGroup.objects.get(hope_id=r["beneficiary_group"])
             },

@@ -10,6 +10,7 @@ from country_workspace.contrib.hope.sync.base import (
     LogLevel,
     SkipRecordError,
     SyncConfig,
+    EndpointConfig,
     BaseSyncStep,
     sync_context,
 )
@@ -19,9 +20,9 @@ from tests.extras.testutils.utils import assert_stdout_contains
 
 def test_safe_get_success(base_sync: BaseSync, records: list[dict]) -> None:
     base_sync.client.get.return_value = iter(records)
-    results = list(base_sync.safe_get("dummy_path"))
+    results = list(base_sync.safe_get(endpoint=EndpointConfig(path="dummy_path")))
     assert results == records
-    assert base_sync.client.get.call_args == (("dummy_path",), {})
+    assert base_sync.client.get.call_args == ({"path": "dummy_path"},)
     assert base_sync.total.get("errors") is None
 
 
@@ -35,7 +36,7 @@ def test_safe_get_success(base_sync: BaseSync, records: list[dict]) -> None:
 )
 def test_safe_get_errors(base_sync: BaseSync, exception: Exception, expected_error: str) -> None:
     base_sync.client.get.side_effect = exception
-    results = list(base_sync.safe_get("dummy_path"))
+    results = list(base_sync.safe_get(endpoint=EndpointConfig(path="dummy_path")))
     assert results == []
     assert_stdout_contains(base_sync.stdout, expected_error)
     assert any(expected_error in e for e in base_sync.total["errors"])
@@ -139,7 +140,7 @@ def test_sync_entity_should_process(
 def test_sync_entity_prepare_defaults_none(
     base_sync: BaseSync, mock_model: Mock, sync_entity_context: Callable, records: list[dict]
 ) -> None:
-    config = SyncConfig(model=mock_model, path="dummy_path", prepare_defaults=lambda r: None)
+    config = SyncConfig(model=mock_model, endpoint=EndpointConfig(path="dummy_path"), prepare_defaults=lambda r: None)
     sync_entity_context(records=[records[0]], config=config)
     assert base_sync.total["test_model"] == {"add": 0, "upd": 0}
     assert base_sync.total.get("errors") is None
@@ -193,7 +194,7 @@ def test_sync_entity_post_process(
     post_process = mocker.Mock()
     config = SyncConfig(
         model=mock_model,
-        path="dummy_path",
+        endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
         post_process=post_process,
     )
