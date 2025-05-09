@@ -22,6 +22,7 @@ from country_workspace.datasources.rdi import (
     extract_images,
     merge_images,
     read_sheets,
+    full_name_column,
     # validate_households,
 )
 from country_workspace.models import Household
@@ -306,3 +307,15 @@ def test_read_sheets(mocker: MockerFixture) -> None:
     extract_images_mock.assert_called_once_with(filepath, sheet_index)
     merge_images_mock.assert_called_once_with(sheet, images)
     filter_rows_with_household_pk_mock.assert_called_once_with(config_mock, merge_images_mock.return_value)
+
+
+@pytest.mark.parametrize(
+    ("record", "expected"),
+    [
+        ({"full_name": "John Smith"}, "full_name"),
+        ({}, None),
+        ({"name_full": "John Smith"}, None),
+    ],
+)
+def test_full_name_column(record: Record, expected: str | None) -> None:
+    assert full_name_column(record) == expected
