@@ -71,7 +71,7 @@ def test_import_data_rdi(force_migrated_records, app, program):
 
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
-    res.forms["import-file"]["rdi-detail_column_label"] = "full_name_i_c"
+    res.forms["import-file"]["rdi-detail_column_label"] = "household_id"
     res = res.forms["import-file"].submit()
     assert res.status_code == 302
     assert program.households.count() == 1
