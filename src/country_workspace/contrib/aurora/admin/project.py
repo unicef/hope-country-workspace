@@ -29,7 +29,7 @@ class ProjectAdmin(BaseModelAdmin):
     @button()
     def sync(self, request: HttpRequest) -> None:
         job = AsyncJob.objects.create(
-            description="Sync with Aurora projects and registrations",
+            description=_("Sync with Aurora projects and registrations"),
             program=None,
             owner=request.user,
             type=AsyncJob.JobType.TASK,

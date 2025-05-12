@@ -3,10 +3,10 @@ from django.contrib import messages
 from django.db.models import Model
 from django.http import HttpRequest
 from admin_extra_buttons.api import button
+from admin_extra_buttons.mixins import ExtraButtonsMixin
 
 from ..contrib.hope.sync.context_programs import sync_context_programs, SyncStep as ContextProgramsSyncStep
 from ..contrib.hope.sync.context_geo import sync_context_geo, SyncStep as ContextGeoSyncStep
-
 
 T_SyncStep = TypeVar("T_SyncStep", bound=ContextProgramsSyncStep | ContextGeoSyncStep)
 type SyncHandlerResp = dict[str, list[str] | dict[str, int]]
@@ -33,7 +33,7 @@ class SyncConfig(TypedDict):
     sync_handler: SyncHandler
 
 
-class SyncAdminMixin:
+class SyncAdminMixin(ExtraButtonsMixin):
     sync_config: SyncConfig
 
     @button()

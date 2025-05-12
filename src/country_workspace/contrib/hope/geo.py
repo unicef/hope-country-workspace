@@ -1,69 +1,55 @@
-import logging
 from typing import Any
-
 from django import forms
+from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
 from hope_flex_fields.mixin import ChildFieldMixin
 
 from country_workspace.cache.manager import cache_manager
+from country_workspace.state import state
 
 from ...exceptions import RemoteError
+
 from .client import HopeClient
 
-logger = logging.getLogger(__name__)
+
+class APIChoicesMixin:
+    path: str
+    cache_timeout: int = 300
+
+    def fetch_api(self, *args: Any) -> list[dict[str, Any]]:
+        endpoint = self.path.format(*args) if args else self.path
+        key = slugify(endpoint)
+
+        if (cached := cache_manager.retrieve(key)) is not None:
+            return cached
+
+        try:
+            data = list(HopeClient().get(endpoint))
+        except RemoteError:
+            data = []
+
+        cache_manager.store(key, data, timeout=self.cache_timeout)
+        return data
 
 
-class DynamicChoiceField(ChildFieldMixin, forms.ChoiceField):
-    level = -1
+class CountryChoice(APIChoicesMixin, forms.ChoiceField):
+    path: str = "lookups/country"
 
-    def validate_with_parent(self, parent_value: Any, value: Any) -> None:
-        choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
-        if parent_value and value not in choices:
-            raise ValidationError("Not valid child for selected parent")
-
-    def get_choices_for_parent_value(self, parent_value: Any, only_codes: bool | None = False) -> list[tuple[str, str]]:
-        if not parent_value:
-            return []
-        key = slugify(f"{parent_value}-{self.level}")
-        ret = []
-        if not (data := cache_manager.retrieve(key)):
-            client = HopeClient()
-            try:
-                data = list(
-                    client.get("areas", params={"area_type_area_level": self.level, "country_iso_code2": parent_value}),
-                )
-                cache_manager.store(key, data, timeout=300)
-            except RemoteError as e:
-                logger.exception(e)
-                return ret
-
-        for record in data:
-            if only_codes:
-                ret.append(record["p_code"])
-            else:
-                ret.append((record["p_code"], record["name"]))
-        return ret
-
-
-class CountryChoice(forms.ChoiceField):
-    def __init__(self, choices: tuple[tuple[str, str]] = (), **kwargs: Any) -> None:
-        super().__init__(choices=choices, **kwargs)
-        self.iso3_to_iso2 = {}
+    def __init__(self, choices: list[tuple[str, str]] | None = None, **kwargs: Any) -> None:
+        super().__init__(choices=choices or [], **kwargs)
+        self.iso3_to_iso2: dict[str, str] = {}
         self.choices = self.get_choices()
 
-    def get_choices(self) -> tuple[tuple[str, str]]:
-        key = "lookups/country"
-        if data := cache_manager.retrieve(key):
-            return self._set_choices(data)
-        try:
-            client = HopeClient()
-            data = list(client.get("lookups/country"))
-            cache_manager.store(key, data, timeout=300)
-            return self._set_choices(data)
-        except RemoteError as e:
-            logger.exception(e)
-            return ()
+    def get_choices(self) -> list[tuple[str, str]]:
+        data = self.fetch_api()
+        return [
+            (
+                self.iso3_to_iso2.setdefault(rec["iso_code3"], rec["iso_code2"]),
+                rec["name"],
+            )
+            for rec in data
+        ]
 
     def prepare_value(self, value: Any) -> str | None:
         return super().prepare_value(self.iso3_to_iso2.get(value, value))
@@ -71,21 +57,58 @@ class CountryChoice(forms.ChoiceField):
     def to_python(self, value: Any) -> str | None:
         return super().to_python(self.iso3_to_iso2.get(value, value))
 
-    def _set_choices(self, data: list[dict[str, str]]) -> tuple[tuple[str, str]]:
-        return tuple([(self.iso3_to_iso2.setdefault(rec["iso_code3"], rec["iso_code2"]), rec["name"]) for rec in data])
+
+class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
+    path: str = "{}/geo/areas/"
+    level: int = -1
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.choices = self.get_choices_for_parent_value(parent_value=state.tenant.slug)
+
+    def validate_with_parent(self, parent_value: Any, value: Any) -> None:
+        choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
+        if parent_value and value not in choices:
+            raise ValidationError("Not valid child for selected parent")
+
+    def get_choices_for_parent_value(
+        self, parent_value: Any, only_codes: bool | None = False
+    ) -> list[tuple[str, str]] | list[str]:
+        if (
+            not parent_value
+            or not (data := self.fetch_api(parent_value))
+            or not (valid_types := self._get_valid_area_types())
+            or not (filtered := self._filter_by_area_types(data, valid_types))
+        ):
+            return [] if only_codes else [("", "")]
+        return {
+            True: [r["p_code"] for r in filtered],
+            False: [("", ""), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]],
+        }[only_codes]
+
+    def _get_valid_area_types(self) -> set[Any]:
+        key = f"area_types_level_{self.level}"
+        if (types := cache_manager.retrieve(key)) is None:
+            AreaType = apps.get_model("country_workspace", "AreaType")
+            types = set(AreaType.objects.filter(area_level=self.level).values_list("hope_id", flat=True))
+            cache_manager.store(key, types, timeout=self.cache_timeout)
+        return types
+
+    def _filter_by_area_types(self, data: list[dict[str, Any]], valid_types: set[Any]) -> list[dict[str, Any]]:
+        return [r for r in data if r.get("area_type") in valid_types]
 
 
-class Admin1Choice(DynamicChoiceField):
+class Admin1Choice(AdminLevelChoice):
     level = 1
 
 
-class Admin2Choice(DynamicChoiceField):
+class Admin2Choice(AdminLevelChoice):
     level = 2
 
 
-class Admin3Choice(DynamicChoiceField):
+class Admin3Choice(AdminLevelChoice):
     level = 3
 
 
-class Admin4Choice(DynamicChoiceField):
+class Admin4Choice(AdminLevelChoice):
     level = 4

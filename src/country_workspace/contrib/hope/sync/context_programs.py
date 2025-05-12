@@ -3,11 +3,12 @@ from typing import Any, Final
 from dataclasses import dataclass, field
 from enum import auto
 from django.db.models import Model
+
 from hope_flex_fields.models import DataChecker
 
 from ....models import BeneficiaryGroup, Office, Program
 from .. import constants
-from .base import BaseSync, SyncConfig, SkipRecordError, BaseSyncStep, sync_context
+from .base import BaseSync, SyncConfig, SkipRecordError, EndpointConfig, BaseSyncStep, sync_context
 
 
 MODELS: Final[tuple[type[Model], ...]] = (Office, Program, BeneficiaryGroup)
@@ -43,7 +44,7 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Office,
-                path="business_areas",
+                endpoint=EndpointConfig(path="business_areas"),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name", "active")},
                 should_process=lambda r: r.get("active"),
                 should_deactivate=lambda r: not r.get("active"),
@@ -55,7 +56,7 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=BeneficiaryGroup,
-                path="beneficiary-groups",
+                endpoint=EndpointConfig(path="beneficiary-groups"),
                 prepare_defaults=lambda r: {
                     f: r.get(f)
                     for f in (
@@ -86,12 +87,12 @@ class SyncContextPrograms(BaseSync):
         def _prepare_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
             try:
                 office = Office.objects.get(code=record["business_area_code"])
-            except Office.DoesNotExist:
-                raise SkipRecordError(f"Office '{record['business_area_code']}' not found in local database")
+            except Office.DoesNotExist as e:
+                raise SkipRecordError("Office not found") from e
             try:
                 bg = BeneficiaryGroup.objects.get(hope_id=record["beneficiary_group"])
-            except BeneficiaryGroup.DoesNotExist:
-                raise SkipRecordError(f"Beneficiary group '{record['beneficiary_group']}' not found in local database")
+            except BeneficiaryGroup.DoesNotExist as e:
+                raise SkipRecordError("Beneficiary group not found") from e
             return {
                 "name": record["name"],
                 "code": record["programme_code"],
@@ -116,7 +117,10 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Program,
-                path="programs",
+                endpoint=EndpointConfig(
+                    path="programs",
+                    params={"updated_at_after": self.get_updated_at_after(Program)},
+                ),
                 prepare_defaults=_prepare_defaults,
                 should_process=_should_process,
                 post_process=_post_process,
