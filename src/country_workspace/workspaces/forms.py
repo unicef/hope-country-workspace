@@ -85,4 +85,4 @@ class SelectProgramForm(forms.Form):
         self.request = kwargs.pop("request")
         super().__init__(*args, **kwargs)
         if state.tenant:
-            self.fields["program"].queryset = state.tenant.programs.filter().order_by("name").all()
+            self.fields["program"].queryset = state.tenant.programs.filter(enabled=True).order_by("name").all()

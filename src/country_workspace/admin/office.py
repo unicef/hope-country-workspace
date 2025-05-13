@@ -11,9 +11,9 @@ from .sync import SyncAdminMixin, SyncConfig, ContextProgramsSyncHandler
 
 @admin.register(Office)
 class OfficeAdmin(SyncAdminMixin, BaseModelAdmin):
-    list_display = ("name", "long_name", "slug", "code", "active", "kobo_country_code")
+    list_display = ("name", "long_name", "slug", "code", "active", "enabled", "kobo_country_code")
     search_fields = ("name", "slug", "code")
-    list_filter = ("active",)
+    list_filter = ("active", "enabled")
     readonly_fields = ("hope_id", "slug")
     ordering = ("name",)
     sync_config = SyncConfig(model=Office, step=SyncStep.OFFICES, sync_handler=ContextProgramsSyncHandler())

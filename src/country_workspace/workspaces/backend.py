@@ -84,10 +84,10 @@ class TenantBackend(BaseBackend):
         request = request or state.request
         allowed_tenants: "QuerySet[Model] | None"
         if request.user.is_superuser:
-            allowed_tenants = Office.objects.filter(active=True)
+            allowed_tenants = Office.objects.filter(active=True, enabled=True)
         elif request.user.is_authenticated:
             allowed_tenants = (
-                Office.objects.filter(userrole__user=request.user, active=True)
+                Office.objects.filter(userrole__user=request.user, active=True, enabled=True)
                 .filter(Q(userrole__expires=None) | Q(userrole__expires__gt=today()))
                 .distinct()
             )
