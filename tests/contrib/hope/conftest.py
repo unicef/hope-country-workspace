@@ -1,4 +1,5 @@
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import Mock
 import pytest
 from django.db.models import Q
@@ -25,6 +26,7 @@ def base_sync(mocker: MockerFixture) -> BaseSync:
 @pytest.fixture
 def mock_model(mocker: MockerFixture) -> Mock:
     model = mocker.Mock()
+    model.DoesNotExist = type("DoesNotExist", (Exception,), {})
     model._meta = mocker.Mock()
     model._meta.model_name = "test_model"
     return model
