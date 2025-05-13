@@ -58,7 +58,6 @@ class Program(BaseModel):
     code = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICE, db_index=True)
     sector = models.CharField(max_length=50, choices=SECTOR_CHOICE, db_index=True)
-
     # Local Fields
     beneficiary_validator = StrategyField(
         registry=beneficiary_validator_registry,
@@ -90,6 +89,7 @@ class Program(BaseModel):
     household_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     individual_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
+    enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
 
     def __str__(self) -> str:
         return self.name

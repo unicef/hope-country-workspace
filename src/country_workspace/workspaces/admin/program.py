@@ -114,7 +114,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         )
 
     def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
-        return CountryProgram.objects.filter(country_office=state.tenant)
+        return CountryProgram.objects.filter(country_office=state.tenant, enabled=True)
 
     def has_add_permission(self, request: HttpResponse) -> bool:
         return False
