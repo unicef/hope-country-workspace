@@ -32,7 +32,10 @@ class SyncContextGeo(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Country,
-                endpoint=EndpointConfig(path="lookups/country"),
+                endpoint=EndpointConfig(
+                    path="lookups/country",
+                    params={"updated_at_after": self.get_updated_at_after(Country)},
+                ),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "iso_code2", "iso_code3")},
             ),
         )
