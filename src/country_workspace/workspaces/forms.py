@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING, Any
 
+from dateutil.utils import today
 from django import forms
 from django.contrib.admin.forms import AdminAuthenticationForm
 from django.core.exceptions import ValidationError
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Q
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from django_select2 import forms as s2forms
@@ -85,4 +86,11 @@ class SelectProgramForm(forms.Form):
         self.request = kwargs.pop("request")
         super().__init__(*args, **kwargs)
         if state.tenant:
-            self.fields["program"].queryset = state.tenant.programs.filter(enabled=True).order_by("name").all()
+            program_qs = state.tenant.programs.filter(enabled=True)
+            if not state.request.user.is_superuser:
+                roles = state.request.user.roles.filter(Q(expires=None) | Q(expires__gt=today()))
+                has_all_programs_access = roles.filter(program=None).exists()
+                if not has_all_programs_access:
+                    program_qs = program_qs.filter(id__in=roles.values("program_id"))
+
+            self.fields["program"].queryset = program_qs.order_by("name").all()
