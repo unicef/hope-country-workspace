@@ -89,7 +89,6 @@ dev-dependencies = [
     "pytest-factoryboy>=2.7.0",
     "pytest-mock>=3.14.0",
     "pytest-recording>=0.13.2",
-    "pytest-selenium>=4.1.0",
     "pytest-xdist>=3.6.1",
     "pytest>=8.2.2",
     "responses>=0.25.3",
@@ -97,6 +96,7 @@ dev-dependencies = [
     "types-requests>=2.31.0.6",
     "vcrpy>=6.0.2",
     "ruff>=0.9.3",
+    "seleniumbase>=4.35.7",
 ]
 
 
