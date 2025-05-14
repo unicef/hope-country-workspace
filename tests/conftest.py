@@ -17,25 +17,6 @@ sys.path.insert(0, str(here / "../src"))
 sys.path.insert(0, str(here / "extras"))
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--selenium",
-        action="store_true",
-        dest="enable_selenium",
-        default=False,
-        help="enable selenium tests",
-    )
-
-    parser.addoption(
-        "--show-browser",
-        "-S",
-        action="store_true",
-        dest="show_browser",
-        default=False,
-        help="will not start browsers in headless mode",
-    )
-
-
 class MockStorage(Storage):
     def __init__(self):
         self._file_content = None
@@ -69,11 +50,6 @@ def patch_asyncjob(mock_storage):
 
 
 def pytest_configure(config):
-    if not config.option.enable_selenium and ("selenium" not in getattr(config.option, "markexpr", None)):
-        if config.option.markexpr:
-            config.option.markexpr += " and not selenium"
-        else:
-            config.option.markexpr = "not selenium"
     os.environ["DJANGO_SETTINGS_MODULE"] = "country_workspace.config.settings"
     os.environ.setdefault("STATIC_URL", "/static/")
     os.environ.setdefault("MEDIA_ROOT", "/tmp/static/")
