@@ -1,4 +1,6 @@
 from typing import Generator
+
+from django.conf import settings
 from seleniumbase import config as sb_config
 from seleniumbase.core import session_helper
 import pytest
@@ -11,7 +13,7 @@ def browser(live_server, request) -> Generator[CountryWorkspaceSeleniumTC, None,
     """SeleniumBase as a pytest fixture.
     Usage example: "def test_one(sb):"
     You may need to use this for tests that use other pytest fixtures."""
-
+    settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
     if request.cls:
         if sb_config.reuse_class_session:
             the_class = str(request.cls).split(".")[-1].split("'")[0]
