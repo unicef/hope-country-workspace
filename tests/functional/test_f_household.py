@@ -1,8 +1,6 @@
 from typing import TYPE_CHECKING
 
 import pytest
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.select import Select
 
 if TYPE_CHECKING:
     from country_workspace.workspaces.models import CountryHousehold
@@ -39,7 +37,7 @@ def household(program):
 
 @pytest.mark.selenium
 @pytest.mark.xfail
-def test_list_household(selenium, admin_user, household: "CountryHousehold"):
+def test_list_household(browser, admin_user, household: "CountryHousehold"):
     from testutils.perms import user_grant_permissions
 
     with user_grant_permissions(
@@ -51,22 +49,14 @@ def test_list_household(selenium, admin_user, household: "CountryHousehold"):
         ],
         household.program.country_office,
     ):
-        selenium.get(f"{selenium.live_server.url}")
-        # Login
-        selenium.find_by_css("input[name=username").send_keys(admin_user.username)
-        selenium.find_by_css("input[name=password").send_keys(admin_user._password)
-        selenium.find_by_css("button.primary").click()
+        browser.login()
         # Select Tenant
-        Select(selenium.wait_for(By.CSS_SELECTOR, "select[name=tenant]")).select_by_visible_text(
-            household.program.country_office.name
-        )
-        selenium.select2(By.ID, "select2-id_program-container", household.program.name)
-        selenium.wait_for(By.LINK_TEXT, "Households").click()
+        browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+        browser.select2_select("id_program", household.program.name)
 
-        selenium.wait_for(By.LINK_TEXT, str(household.name)).click()
-        selenium.wait_for_url(household.get_change_url())
-        selenium.wait_for(
-            By.CSS_SELECTOR,
-            "a.closelink",
-        ).click()
-        selenium.wait_for_url("/workspaces/countryhousehold/")
+        browser.click_link("Households")
+        browser.click_link(str(household.name))
+        browser.assert_current_url(household.get_change_url())
+
+        browser.click("a.closelink")
+        browser.assert_current_url("/workspaces/countryhousehold/")
