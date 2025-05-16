@@ -45,14 +45,23 @@ def program_admin(mock_program):
 
 
 def test_import_kobo_invalid_form(program_admin, mock_request, mock_program):
-    form_data = {"kobo-batch_name": "", "kobo-project_id": "", "_selected_tab": "kobo"}
-    mock_request.POST = form_data
-    mock_request.method = "POST"
+    with patch("country_workspace.contrib.kobo.forms.make_client") as mock_make_client:
+        mock_asset = MagicMock()
+        mock_asset.uid = "test_project_123"
+        mock_asset.name = "Test Project"
 
-    result = program_admin.import_kobo(mock_request, mock_program)
+        mock_client = MagicMock()
+        mock_client.assets = [mock_asset]
+        mock_make_client.return_value = mock_client
 
-    assert isinstance(result, ImportKoboForm)
-    assert not result.is_valid()
+        form_data = {"kobo-batch_name": "", "kobo-project_id": "", "_selected_tab": "kobo"}
+        mock_request.POST = form_data
+        mock_request.method = "POST"
+
+        result = program_admin.import_kobo(mock_request, mock_program)
+
+        assert isinstance(result, ImportKoboForm)
+        assert not result.is_valid()
 
 
 def test_import_kobo_missing_country_code(program_admin, mock_request, mock_program):
