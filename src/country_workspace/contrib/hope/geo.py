@@ -64,6 +64,7 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        self.id_to_code, self.code_to_id = {}, {}
         self.choices = self.get_choices_for_parent_value(parent_value=state.tenant.slug)
 
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:
@@ -81,10 +82,22 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
             or not (filtered := self._filter_by_area_types(data, valid_types))
         ):
             return [] if only_codes else [("", "")]
+
+        self.code_to_id = {r["p_code"]: str(r["id"]) for r in filtered}
+        self.id_to_code = {v: k for k, v in self.code_to_id.items()}
+
         return {
-            True: [r["p_code"] for r in filtered],
+            True: list(self.id_to_code),
             False: [("", ""), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]],
         }[only_codes]
+
+    def prepare_value(self, value: Any) -> str | None:
+        val = super().prepare_value(value)
+        return self.id_to_code.get(str(val), val)
+
+    def to_python(self, value: Any) -> str | None:
+        val = self.code_to_id.get(value, value)
+        return super().to_python(val)
 
     def _get_valid_area_types(self) -> set[Any]:
         key = f"area_types_level_{self.level}"
