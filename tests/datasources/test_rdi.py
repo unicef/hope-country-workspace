@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import datetime, date
 from unittest.mock import Mock, call, MagicMock
 
 import pytest
@@ -8,7 +9,6 @@ from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.rdi import (
     ColumnConfigurationError,
     Config,
-    # HouseholdValidationError,
     Record,
     Sheet,
     SheetProcessingError,
@@ -23,8 +23,9 @@ from country_workspace.datasources.rdi import (
     merge_images,
     read_sheets,
     full_name_column,
-    # validate_households,
+    postprocess_cell,
 )
+from country_workspace.datasources.utils import strip_time_iso
 from country_workspace.models import Household
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 from country_workspace.validators.beneficiaries import validate_beneficiaries
@@ -272,7 +273,7 @@ def test_extract_images(mocker: MockerFixture) -> None:
 
     result = list(extract_images(filepath := "test", sheet_index := 0))
 
-    assert result == [{row: {column: VALUE_FORMAT.format(mimetype=content_type, content=content)}}]
+    assert result == [{row - 1: {column: VALUE_FORMAT.format(mimetype=content_type, content=content)}}]
     load_workbook_mock.assert_called_once_with(filepath)
     load_workbook_mock.return_value.worksheets.__getitem__.assert_called_once_with(sheet_index)
     image_location_mock.assert_called_once_with(image)
@@ -292,8 +293,11 @@ def test_merge_images() -> None:
 
 
 def test_read_sheets(mocker: MockerFixture) -> None:
+    fake_sheets = ((Mock(), sheet := Mock()),)
+    postprocess_cell_mock = mocker.patch("country_workspace.datasources.rdi.postprocess_cell")
+    postprocess_cell_mock.return_value = fake_sheets
     open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
-    open_xls_multi_mock.return_value = ((Mock(), sheet := Mock()),)
+    open_xls_multi_mock.return_value = fake_sheets
     extract_images_mock = mocker.patch("country_workspace.datasources.rdi.extract_images")
     extract_images_mock.return_value = ((images := Mock()),)
     merge_images_mock = mocker.patch("country_workspace.datasources.rdi.merge_images")
@@ -319,3 +323,41 @@ def test_read_sheets(mocker: MockerFixture) -> None:
 )
 def test_full_name_column(record: Record, expected: str | None) -> None:
     assert full_name_column(record) == expected
+
+
+@pytest.mark.parametrize(
+    ("inp", "expected"),
+    [
+        ("2025-05-15 12:34:56", "2025-05-15"),
+        ("2025-05-15", "2025-05-15"),
+        ("foo bar", "foo bar"),
+        (123, 123),
+        (datetime.fromisoformat("2025-05-15 00:00:00"), datetime.fromisoformat("2025-05-15 00:00:00")),
+        (date(2020, 1, 1), date(2020, 1, 1)),
+    ],
+    ids=["str_with_time", "str_date_only", "str_non_date", "numeric", "datetime_obj", "date_obj"],
+)
+def test_strip_time_iso(inp, expected):
+    assert strip_time_iso(inp) == expected
+
+
+def test_postprocess_cell_simple():
+    sheets = [
+        (
+            7,
+            [
+                {"a": "2025-05-15 08:00:00", "b": "hello"},
+                {"a": "nope", "b": "2025-05-16 00:00:00"},
+            ],
+        )
+    ]
+    out = list(postprocess_cell(sheets))
+    idx, rows_gen = out[0]
+    assert len(out) == 1
+    assert idx == 7
+
+    rows = list(rows_gen)
+    assert rows == [
+        {"a": "2025-05-15", "b": "hello"},
+        {"a": "nope", "b": "2025-05-16"},
+    ]
