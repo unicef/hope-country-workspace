@@ -63,10 +63,10 @@ def pytest_configure(config):
     os.environ["CELERY_TASK_ALWAYS_EAGER"] = "1"
     os.environ["CELERY_TASK_STORE_EAGER_RESULT"] = "1"
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
-    os.environ["SECRET_KEY"] = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
     os.environ["FILE_STORAGE_DEFAULT"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
     os.environ["FILE_STORAGE_MEDIA"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
+    os.environ.setdefault("SECRET_KEY", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")
     os.environ.setdefault("HOPE_API_TOKEN", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")
     os.environ.setdefault("AURORA_API_TOKEN", "aurora_token")
 
@@ -75,7 +75,6 @@ def pytest_configure(config):
 
     settings.ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
     settings.SIGNING_BACKEND = "testutils.signers.PlainSigner"
-    settings.SECRET_KEY = "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu"
     settings.CSRF_TRUSTED_ORIGINS = ["http://testserver"]
     settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
