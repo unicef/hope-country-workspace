@@ -7,6 +7,7 @@ from hope_flex_fields.mixin import ChildFieldMixin
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.state import state
+from country_workspace.utils.fields import extract_uuid
 
 from ...exceptions import RemoteError
 
@@ -69,7 +70,7 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
 
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:
         choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
-        if parent_value and value not in choices:
+        if parent_value and self.prepare_value(value) not in choices:
             raise ValidationError("Not valid child for selected parent")
 
     def get_choices_for_parent_value(
@@ -83,13 +84,12 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
         ):
             return [] if only_codes else [("", "")]
 
-        self.code_to_id = {r["p_code"]: str(r["id"]) for r in filtered}
+        self.code_to_id = {r["p_code"]: str(extract_uuid(str(r["id"]), "Area:")) for r in filtered}
         self.id_to_code = {v: k for k, v in self.code_to_id.items()}
 
-        return {
-            True: list(self.id_to_code),
-            False: [("", ""), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]],
-        }[only_codes]
+        if only_codes:
+            return list(self.code_to_id)
+        return [("", ""), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]]
 
     def prepare_value(self, value: Any) -> str | None:
         val = super().prepare_value(value)

@@ -3,6 +3,8 @@ from unittest.mock import Mock
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_mock import MockerFixture
+from base64 import b64encode
+from uuid import uuid4, UUID
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.utils.fields import (
@@ -10,6 +12,7 @@ from country_workspace.utils.fields import (
     TO_REMOVE_VALUES,
     clean_field_names,
     map_fields,
+    extract_uuid,
 )
 from country_workspace.utils.flex_fields import Base64ImageInput, Base64ImageField
 
@@ -72,3 +75,38 @@ def test_base64_image_field_content_is_encoded(mocker: MockerFixture) -> None:
     instance = Mock(spec=Base64ImageField)
 
     assert Base64ImageField.clean(instance, file) == VALUE_FORMAT.format(mimetype=content_type, content=data)
+
+
+FAKE_UUID = uuid4()
+FAKE_PREFIX = "Area:"
+ENC_B64_PREF = b64encode(f"{FAKE_PREFIX}{FAKE_UUID}".encode()).decode()
+ENC_B64 = b64encode(str(FAKE_UUID).encode()).decode()
+ENC_B64_BAD = b64encode("hello-world".encode()).decode()
+
+
+@pytest.mark.parametrize(
+    ("value", "prefix", "expected"),
+    [
+        (str(FAKE_UUID), None, FAKE_UUID),
+        (ENC_B64_PREF, FAKE_PREFIX, FAKE_UUID),
+        (ENC_B64, None, FAKE_UUID),
+    ],
+    ids=["raw-uuid", "b64-with-prefix", "b64-no-prefix"],
+)
+def test_extract_uuid_success(value: str, prefix: str | None, expected: UUID) -> None:
+    assert extract_uuid(value, prefix) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "prefix", "exc_type"),
+    [
+        ("not-a-uuid-or-base64", None, ValueError),
+        (ENC_B64_BAD, None, ValueError),
+        (123, None, TypeError),
+        (str(FAKE_UUID), 123, TypeError),
+    ],
+    ids=["invalid-string", "b64-not-uuid", "value-not-str", "prefix-not-str"],
+)
+def test_extract_uuid_errors(value: str | int, prefix: str | int | None, exc_type: type[Exception]) -> None:
+    with pytest.raises(exc_type):
+        extract_uuid(value, prefix)
