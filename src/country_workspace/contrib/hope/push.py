@@ -138,7 +138,7 @@ class PushProcessor:
 
         Args:
             response (dict | None): API response.
-            batch_ids (list[int]): List of household IDs in the batch.
+            batch_ids (list[int]): List of IDs for the batch that was pushed.
 
         Returns:
             list[int]: List of successfully processed IDs.
