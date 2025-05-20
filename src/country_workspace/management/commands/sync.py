@@ -5,6 +5,8 @@ from typing import Any
 from django.core.management import BaseCommand
 
 from country_workspace.contrib.hope.sync.context_programs import sync_context_programs
+from country_workspace.contrib.hope.sync.context_geo import sync_context_geo
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,26 @@ class Command(BaseCommand):
             default=False,
             help="Do not ask confirmation",
         )
+        parser.add_argument(
+            "--only-context-programs",
+            action="store_true",
+            dest="only_context_programs",
+            default=False,
+            help="Only sync context programs",
+        )
+        parser.add_argument(
+            "--only-context-geo",
+            action="store_true",
+            dest="only_context_geo",
+            default=False,
+            help="Only sync context geo",
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        sync_context_programs(stdout=self.stdout)
+        if options["only_context_programs"]:
+            sync_context_programs(stdout=self.stdout)
+        elif options["only_context_geo"]:
+            sync_context_geo(stdout=self.stdout)
+        else:
+            sync_context_programs(stdout=self.stdout)
+            sync_context_geo(stdout=self.stdout)
