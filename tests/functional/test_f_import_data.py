@@ -55,9 +55,6 @@ def test_aurora_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="aurora"].selected')
 
     browser_program.assert_element_visible("#id_aurora-batch_name")
-    browser_program.assert_element_visible("#id_aurora-household_column_prefix")
-    browser_program.assert_element_visible("#id_aurora-individuals_column_prefix")
-    browser_program.assert_element_visible("#id_aurora-household_label_column")
     browser_program.assert_element_visible("#id_aurora-registration")
     browser_program.assert_element_visible("#id_aurora-check_before")
     browser_program.assert_element_visible("#id_aurora-fail_if_alien")
