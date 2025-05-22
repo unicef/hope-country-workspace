@@ -40,10 +40,14 @@ class Base64ImageInput(forms.ClearableFileInput):
 class Base64ImageField(forms.ImageField):
     widget = Base64ImageInput
 
-    def clean(self, data: UploadedFile | Literal[False], initial: str | None = None) -> str | None:
+    def clean(self, data: UploadedFile | Literal[False] | None, initial: str | None = None) -> str | None:
         if cleaned_data := super().clean(data, initial):
-            content = b64encode(cleaned_data.read()).decode()
-            return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
+            match cleaned_data:
+                case str():
+                    return cleaned_data
+                case UploadedFile():
+                    content = b64encode(cleaned_data.read()).decode()
+                    return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
 
         # if we return cleaned_data here, False will be stored, so we return None explicitly
         return None

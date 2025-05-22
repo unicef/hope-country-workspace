@@ -62,19 +62,36 @@ def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
     super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
     super_clean_mock.return_value = False
     instance = Mock(spec=Base64ImageField)
+    initial_data = None
 
-    assert Base64ImageField.clean(instance, False) is None
+    assert Base64ImageField.clean(instance, False, initial_data) is None
+    super_clean_mock.assert_called_once_with(False, initial_data)
 
 
 def test_base64_image_field_content_is_encoded(mocker: MockerFixture) -> None:
     super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
     b64encode_mock = mocker.patch("country_workspace.utils.flex_fields.b64encode")
     b64encode_mock.return_value.decode.return_value = (data := "decoded")
-    file = SimpleUploadedFile("test.txt", b"test", content_type=(content_type := "text/plain"))
+    file = SimpleUploadedFile("test.txt", content := b"test", content_type=(content_type := "text/plain"))
     super_clean_mock.return_value = file
     instance = Mock(spec=Base64ImageField)
+    initial_data = None
 
-    assert Base64ImageField.clean(instance, file) == VALUE_FORMAT.format(mimetype=content_type, content=data)
+    assert Base64ImageField.clean(instance, file, initial_data) == VALUE_FORMAT.format(
+        mimetype=content_type, content=data
+    )
+    super_clean_mock.assert_called_once_with(file, initial_data)
+    b64encode_mock.assert_called_once_with(content)
+
+
+def test_base64_image_field_content_is_unchanged(mocker: MockerFixture) -> None:
+    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
+    super_clean_mock.return_value = (initial_data := "initial_data")
+    instance = Mock(spec=Base64ImageField)
+    data = None
+
+    assert Base64ImageField.clean(instance, data, initial_data) == initial_data
+    super_clean_mock.assert_called_once_with(data, initial_data)
 
 
 FAKE_UUID = uuid4()
