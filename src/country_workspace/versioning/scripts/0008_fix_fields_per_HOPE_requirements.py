@@ -3,6 +3,7 @@ from django.db import transaction
 from django import forms
 from django.utils.text import slugify
 from packaging.version import Version
+from django.contrib.contenttypes.models import ContentType
 
 from hope_flex_fields.models import FieldDefinition, Fieldset, DataChecker, FlexField
 from country_workspace.contrib.hope.constants import (
@@ -15,6 +16,7 @@ from country_workspace.utils.flex_fields import ConsentSharingChoice, Base64Imag
 from concurrency.utils import fqn
 from hope_flex_fields.registry import field_registry
 from hope_flex_fields.utils import get_kwargs_from_field_class, get_common_attrs
+from country_workspace.models import SyncLog
 
 
 _script_for_version = Version("0.1.0")
@@ -27,63 +29,11 @@ field_registry.register(Base64ImageField)
 attrs_default = lambda cls: get_kwargs_from_field_class(cls, get_common_attrs())
 
 DEFS = {
-    "field_disability": {
-        "name": "HOPE IND Disability",
+    "field_photo_base64": {
+        "name": Base64ImageField.__name__,
         "defaults": {
-            "slug": slugify("HOPE IND Disability"),
-            "field_type": fqn(forms.ChoiceField),
-            "attrs": {
-                **attrs_default(forms.ChoiceField),
-                "choices": [
-                    ["not disabled", "not disabled"],
-                    ["disabled", "disabled"],
-                ],
-            },
-        },
-    },
-    "field_relationship": {
-        "name": "HOPE IND Relationship",
-        "defaults": {
-            "slug": slugify("HOPE IND Relationship"),
-            "field_type": fqn(forms.ChoiceField),
-            "attrs": {
-                **attrs_default(forms.ChoiceField),
-                "choices": [
-                    ["RELATIONSHIP_UNKNOWN", "Unknown"],
-                    ["AUNT_UNCLE", "Aunt / Uncle"],
-                    ["BROTHER_SISTER", "Brother / Sister"],
-                    ["COUSIN", "Cousin"],
-                    ["DAUGHTERINLAW_SONINLAW", "Daughter-in-law / Son-in-law"],
-                    ["GRANDDAUGHER_GRANDSON", "Granddaughter / Grandson"],
-                    ["GRANDMOTHER_GRANDFATHER", "Grandmother / Grandfather"],
-                    ["HEAD", "Head of household (self)"],
-                    ["MOTHER_FATHER", "Mother / Father"],
-                    ["MOTHERINLAW_FATHERINLAW", "Mother-in-law / Father-in-law"],
-                    ["NEPHEW_NIECE", "Nephew / Niece"],
-                    ["NON_BENEFICIARY", "Not a Family Member. Can only act as a recipient."],
-                    ["RELATIONSHIP_OTHER", "Other"],
-                    ["SISTERINLAW_BROTHERINLAW", "Sister-in-law / Brother-in-law"],
-                    ["SON_DAUGHTER", "Son / Daughter"],
-                    ["WIFE_HUSBAND", "Wife / Husband"],
-                    ["FOSTER_CHILD", "Foster child"],
-                    ["FREE_UNION", "Free union"],
-                ],
-            },
-        },
-    },
-    "field_collector_role": {
-        "name": "HOPE IND Collector Role",
-        "defaults": {
-            "slug": slugify("HOPE IND Collector Role"),
-            "field_type": fqn(forms.ChoiceField),
-            "attrs": {
-                **attrs_default(forms.ChoiceField),
-                "choices": [
-                    ["NO_ROLE", "None"],
-                    ["PRIMARY", "Primary collector"],
-                    ["ALTERNATE", "Alternate collector"],
-                ],
-            },
+            "field_type": fqn(Base64ImageField),
+            "attrs": attrs_default(Base64ImageField),
         },
     },
     "field_consent_sharing": {
@@ -103,23 +53,35 @@ DEFS = {
             },
         },
     },
-    "field_photo_base64": {
-        "name": Base64ImageField.__name__,
+    "field_disability": {
+        "name": "HOPE IND Disability",
         "defaults": {
-            "field_type": fqn(Base64ImageField),
-            "attrs": attrs_default(Base64ImageField),
+            "slug": slugify("HOPE IND Disability"),
+            "field_type": fqn(forms.ChoiceField),
+            "attrs": {
+                **attrs_default(forms.ChoiceField),
+                "choices": [
+                    ["not disabled", "not disabled"],
+                    ["disabled", "disabled"],
+                ],
+            },
+        },
+    },
+    "field_gender": {
+        "name": "HOPE IND Gender",
+        "defaults": {
+            "slug": slugify("HOPE IND Gender"),
+            "field_type": fqn(forms.ChoiceField),
+            "attrs": attrs_default(forms.ChoiceField),
         },
     },
 }
 
-
 HOPE_SPECS = {
     INDIVIDUAL_CHECKER_NAME: [
         ("disability", "field_disability"),
-        ("relationship", "field_relationship"),
-        ("role", "field_collector_role"),
         ("photo", "field_photo_base64"),
-        ("national_id_photo", "field_photo_base64"),
+        ("gender", "field_gender"),
     ],
     HOUSEHOLD_CHECKER_NAME: [
         ("consent_sharing", "field_consent_sharing"),
@@ -127,7 +89,7 @@ HOPE_SPECS = {
     PEOPLE_CHECKER_NAME: [
         ("disability", "field_disability"),
         ("photo", "field_photo_base64"),
-        ("national_id_photo", "field_photo_base64"),
+        ("gender", "field_gender"),
     ],
 }
 
@@ -148,6 +110,9 @@ def forward() -> None:
                     },
                 )
             dc.fieldsets.set([fs])
+    _create_lookup_for_gender_field()
+    SyncLog.objects.create_lookups()
+    SyncLog.objects.refresh()
 
 
 def backward() -> None:
@@ -165,6 +130,14 @@ def backward() -> None:
                 qs = FieldDefinition.objects.filter(name=name)
                 if qs.exists() and not FlexField.objects.filter(definition__name=name).exists():
                     qs.delete()
+
+
+def _create_lookup_for_gender_field() -> dict[str, Any]:
+    SyncLog.objects.get_or_create(
+        content_type=ContentType.objects.get_for_model(FieldDefinition),
+        object_id=FieldDefinition.objects.get(name="HOPE IND Gender").pk,
+        data={"remote_url": "lookups/sex"},
+    )
 
 
 class Scripts:
