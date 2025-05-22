@@ -42,12 +42,10 @@ class Base64ImageField(forms.ImageField):
 
     def clean(self, data: UploadedFile | Literal[False] | None, initial: str | None = None) -> str | None:
         if cleaned_data := super().clean(data, initial):
-            match cleaned_data:
-                case str():
-                    return cleaned_data
-                case UploadedFile():
-                    content = b64encode(cleaned_data.read()).decode()
-                    return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
+            if hasattr(cleaned_data, "read"):
+                content = b64encode(cleaned_data.read()).decode()
+                return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
+            return cleaned_data
 
         # if we return cleaned_data here, False will be stored, so we return None explicitly
         return None
