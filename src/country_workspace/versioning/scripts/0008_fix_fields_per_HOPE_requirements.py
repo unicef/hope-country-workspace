@@ -101,7 +101,7 @@ def forward() -> None:
             fs, _ = Fieldset.objects.get_or_create(name=checker_name)
 
             for field_name, def_key in specs:
-                fd, _ = FieldDefinition.objects.update_or_create(**DEFS[def_key])
+                fd, __ = FieldDefinition.objects.update_or_create(**DEFS[def_key])
                 fs.fields.update_or_create(
                     name=field_name,
                     defaults={
@@ -112,7 +112,6 @@ def forward() -> None:
             dc.fieldsets.set([fs])
     _create_lookup_for_gender_field()
     SyncLog.objects.create_lookups()
-    SyncLog.objects.refresh()
 
 
 def backward() -> None:

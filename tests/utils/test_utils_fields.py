@@ -2,7 +2,9 @@ from unittest.mock import Mock
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ValidationError
 from pytest_mock import MockerFixture
+
 from base64 import b64encode
 from uuid import uuid4, UUID
 
@@ -14,7 +16,7 @@ from country_workspace.utils.fields import (
     map_fields,
     extract_uuid,
 )
-from country_workspace.utils.flex_fields import Base64ImageInput, Base64ImageField
+from country_workspace.utils.flex_fields import Base64ImageInput, Base64ImageField, ConsentSharingChoice
 
 
 @pytest.mark.parametrize(
@@ -127,3 +129,51 @@ def test_extract_uuid_success(value: str, prefix: str | None, expected: UUID) ->
 def test_extract_uuid_errors(value: str | int, prefix: str | int | None, exc_type: type[Exception]) -> None:
     with pytest.raises(exc_type):
         extract_uuid(value, prefix)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_py", "expected_prep"),
+    [
+        ("a,b,c", ["a", "b", "c"], ["a", "b", "c"]),
+        ("  a , b ,c  ", ["a", "b", "c"], ["  a ", " b ", "c  "]),
+        ("", [], []),
+        (None, [], None),
+        (["x", "y"], ["x", "y"], ["x", "y"]),
+    ],
+    ids=["comma", "spaces", "empty", "none", "list"],
+)
+def test_consent_sharing_choice_to_python_and_prepare_value(raw, expected_py, expected_prep):
+    field = ConsentSharingChoice(choices=[])
+    assert field.to_python(raw) == expected_py
+    assert field.prepare_value(raw) == expected_prep
+
+
+@pytest.mark.parametrize(
+    ("input_value", "expected"),
+    [
+        ("a,b,c", "a,b,c"),
+        (["a", "b", "c"], "a,b,c"),
+        (" x , y ", "x,y"),
+    ],
+    ids=["str", "list", "str_with_spaces"],
+)
+def test_consent_sharing_choice_clean_valid(input_value, expected):
+    choices = [("a", "A"), ("b", "B"), ("c", "C"), ("x", "X"), ("y", "Y")]
+    field = ConsentSharingChoice(choices=choices)
+    assert field.clean(input_value) == expected
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        "a,invalid",
+        ["x", "z"],
+        123,
+    ],
+    ids=["unknown_str", "unknown_list", "wrong_type"],
+)
+def test_consent_sharing_choice_clean_invalid(bad_value):
+    choices = [("a", "A"), ("b", "B"), ("x", "X")]
+    field = ConsentSharingChoice(choices=choices)
+    with pytest.raises(ValidationError):
+        field.clean(bad_value)

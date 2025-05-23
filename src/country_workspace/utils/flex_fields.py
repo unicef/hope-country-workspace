@@ -52,19 +52,9 @@ class Base64ImageField(forms.ImageField):
 
 
 class ConsentSharingChoice(forms.MultipleChoiceField):
-    def __init__(self, *args: str | None, **kwargs: str | None) -> None:
-        super().__init__(*args, **kwargs)
-        self.choices = [
-            ["", "None"],
-            ["GOVERNMENT_PARTNER", "Government partner"],
-            ["HUMANITARIAN_PARTNER", "Humanitarian partner"],
-            ["PRIVATE_PARTNER", "Private partner"],
-            ["UNICEF", "UNICEF"],
-        ]
-
     def to_python(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
-            return [v.strip() for v in value.split(",") if v.strip()]
+            return [stripped for v in value.split(",") if (stripped := v.strip())]
         return super().to_python(value)
 
     def prepare_value(self, value: str | list[str] | None) -> list[str]:

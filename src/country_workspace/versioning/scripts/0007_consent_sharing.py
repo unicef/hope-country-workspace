@@ -20,7 +20,7 @@ def forward() -> None:
 
 
 def backward() -> None:
-    FlexField.objects.get(name=CONSENT_SHARING).delete()
+    FlexField.objects.filter(name=CONSENT_SHARING).delete()
 
 
 class Scripts:
