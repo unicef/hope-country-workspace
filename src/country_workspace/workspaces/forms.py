@@ -76,7 +76,7 @@ def get_available_programs(office: Office, user: User) -> QuerySet[Program]:
             # if there is only one role with program_id == None, user can access all programs,
             # otherwise we allow access to programs assigned to roles
             if roles_count > 1 or roles[0].program_id:
-                program_ids: Iterable[int] = filter(None, map(attrgetter("program_id"), roles))
+                program_ids: "Iterable[int]" = filter(None, map(attrgetter("program_id"), roles))
                 program_qs = program_qs.filter(id__in=program_ids)
         else:
             program_qs = Program.objects.none()
