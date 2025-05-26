@@ -1,3 +1,4 @@
+from operator import attrgetter
 from typing import TYPE_CHECKING, Any
 
 from dateutil.utils import today
@@ -9,11 +10,12 @@ from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from django_select2 import forms as s2forms
 
-from ..models import Program
+from ..models import Program, Office, User
 from ..state import state
 from .config import conf
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from django.contrib.auth.base_user import AbstractBaseUser
 
 
@@ -65,6 +67,23 @@ class ProgramWidget(s2forms.ModelSelect2Widget):
         )
 
 
+def get_available_programs(office: Office, user: User) -> QuerySet[Program]:
+    program_qs = office.programs.filter(enabled=True)
+
+    if not user.is_superuser:
+        roles = tuple(user.roles.filter(Q(expires=None) | Q(expires__gt=today()), country_office=office))
+        if (roles_count := len(roles)) > 0:
+            # if there is only one role with program_id == None, user can access all programs,
+            # otherwise we allow access to programs assigned to roles
+            if roles_count > 1 or roles[0].program_id:
+                program_ids: "Iterable[int]" = filter(None, map(attrgetter("program_id"), roles))
+                program_qs = program_qs.filter(id__in=program_ids)
+        else:
+            program_qs = Program.objects.none()
+
+    return program_qs.order_by("name").all()
+
+
 class SelectProgramForm(forms.Form):
     program = forms.ModelChoiceField(
         label=_("Program"),
@@ -86,11 +105,4 @@ class SelectProgramForm(forms.Form):
         self.request = kwargs.pop("request")
         super().__init__(*args, **kwargs)
         if state.tenant:
-            program_qs = state.tenant.programs.filter(enabled=True)
-            if not state.request.user.is_superuser:
-                roles = state.request.user.roles.filter(Q(expires=None) | Q(expires__gt=today()))
-                has_all_programs_access = roles.filter(program=None).exists()
-                if not has_all_programs_access:
-                    program_qs = program_qs.filter(id__in=roles.values("program_id"))
-
-            self.fields["program"].queryset = program_qs.order_by("name").all()
+            self.fields["program"].queryset = get_available_programs(state.tenant, state.request.user)
