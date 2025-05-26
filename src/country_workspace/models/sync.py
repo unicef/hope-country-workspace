@@ -7,6 +7,8 @@ from django.db import models
 from django.utils import timezone
 
 from country_workspace.models.base import BaseManager, BaseModel
+from country_workspace.contrib.hope.client import HopeClient
+from hope_flex_fields.models import FlexField
 
 if TYPE_CHECKING:
     from django.db.models import Model
@@ -53,20 +55,14 @@ class SyncLog(BaseModel):
     objects = SyncManager()
 
     def refresh(self) -> None:
-        from country_workspace.contrib.hope.client import HopeClient
-
-        fd = self.content_object
-        if not fd:
+        if not (fd := self.content_object) or "remote_url" not in self.data:
             return
-        if "remote_url" in self.data:
-            client = HopeClient()
-            record = client.get_lookup(self.data["remote_url"])
-            choices = []
-            for k, v in record.items():
-                choices.append((k, v))
-            if not fd.attrs:
-                fd.attrs = {}
-            fd.attrs["choices"] = choices
-            fd.save()
-            self.last_update_date = timezone.now()
-            self.save()
+
+        client = HopeClient()
+        choices = list(client.get_lookup(self.data["remote_url"]).items())
+        for obj in (fd, *FlexField.objects.filter(definition=fd)):
+            obj.attrs = {**(obj.attrs or {}), "choices": choices}
+            obj.save(update_fields=["attrs"])
+
+        self.last_update_date = timezone.now()
+        self.save(update_fields=["last_update_date"])

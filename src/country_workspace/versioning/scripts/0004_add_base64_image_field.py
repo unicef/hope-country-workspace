@@ -20,7 +20,7 @@ def forward() -> None:
 
 
 def backward() -> None:
-    FieldDefinition.objects.get(
+    FieldDefinition.objects.filter(
         name=Base64ImageField.__name__,
         field_type=fqn(Base64ImageField),
     ).delete()

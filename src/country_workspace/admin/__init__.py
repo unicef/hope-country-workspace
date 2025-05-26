@@ -40,7 +40,6 @@ __all__ = [
     "OfficeAdmin",
     "ProgramAdmin",
     "SyncLog",
-    "SyncLog",
     "UserAdmin",
     "UserRoleAdmin",
 ]

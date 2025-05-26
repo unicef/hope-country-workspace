@@ -10,6 +10,7 @@ from constance.test import override_config
 from django.core.management import call_command
 from responses import RequestsMock
 
+
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
 
@@ -127,10 +128,7 @@ def test_upgrade_admin(mocked_responses: RequestsMock, environment: dict[str, st
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.default_cassette("test_sync_all.yaml")
-@pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
-@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_sync(environment: dict[str, str]) -> None:
     out = StringIO()
     with mock.patch.dict(os.environ, environment, clear=True):
@@ -140,11 +138,23 @@ def test_upgrade_sync(environment: dict[str, str]) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.default_cassette("test_sync_all.yaml")
-@pytest.mark.vcr
 @pytest.mark.xdist_group("remote")
-@override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
-def test_sync(environment: dict[str, str]) -> None:
+@pytest.mark.parametrize(
+    ("cli_args", "expect_prog", "expect_geo"),
+    [
+        ([], True, True),
+        (["--only-context-programs"], True, False),
+        (["--only-context-geo"], False, True),
+    ],
+)
+def test_sync(environment: dict[str, str], cli_args: list[str], expect_prog: bool, expect_geo: bool) -> None:
     out = StringIO()
-    with mock.patch.dict(os.environ, environment, clear=True):
-        call_command("sync", stdout=out)
+    with (
+        mock.patch.dict(os.environ, environment, clear=True),
+        mock.patch("country_workspace.management.commands.sync.sync_context_programs") as mock_prog,
+        mock.patch("country_workspace.management.commands.sync.sync_context_geo") as mock_geo,
+    ):
+        call_command("sync", *cli_args, stdout=out)
+
+    assert mock_prog.call_count == (1 if expect_prog else 0)
+    assert mock_geo.call_count == (1 if expect_geo else 0)

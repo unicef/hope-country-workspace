@@ -14,7 +14,7 @@ Record = Mapping[str, Any]
 
 
 TO_REMOVE_VALUES = "_h_c", "_h_f", "_i_c", "_i_f"
-TO_UPPERCASE_FIELDS = "relationship", "gender", "disability", "residence_status"
+TO_UPPERCASE_FIELDS = "relationship", "gender", "residence_status"
 TO_MAP_FIELDS = {"gender": "sex"}
 
 

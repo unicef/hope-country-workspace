@@ -49,3 +49,18 @@ class Base64ImageField(forms.ImageField):
 
         # if we return cleaned_data here, False will be stored, so we return None explicitly
         return None
+
+
+class ConsentSharingChoice(forms.MultipleChoiceField):
+    def to_python(self, value: str | list[str] | None) -> list[str]:
+        if isinstance(value, str):
+            return [stripped for v in value.split(",") if (stripped := v.strip())]
+        return super().to_python(value)
+
+    def prepare_value(self, value: str | list[str] | None) -> list[str]:
+        if isinstance(value, str):
+            return [v for v in value.split(",") if v]
+        return super().prepare_value(value)
+
+    def clean(self, value: str | list[str] | None) -> str:
+        return ",".join(super().clean(value))
