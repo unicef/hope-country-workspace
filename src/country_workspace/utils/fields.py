@@ -70,7 +70,7 @@ def map_fields(fields: dict[str, str]) -> dict[str, str]:
         dict[str, str]: A new dictionary with keys mapped according to the predefined mapping.
 
     """
-    return {TO_MAP_FIELDS.get(k, k): v for k, v in fields.items()}
+    return {TO_MAP_FIELDS.get(k, k): v for k, v in fields.items() if v is not None}
 
 
 def extract_uuid(value: str, prefix: str | None = None) -> UUID:
