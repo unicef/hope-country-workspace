@@ -86,26 +86,15 @@ def test_list_household_select_all_fields(browser, household: "CountryHousehold"
 
 @pytest.mark.selenium
 def test_list_household_clickable_row(browser, admin_user, household: "CountryHousehold"):
-    from testutils.perms import user_grant_permissions
+    browser.login_as_user()
+    browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+    browser.select2_select("id_program", household.program.name)
+    browser.click_link("Households")
 
-    with user_grant_permissions(
-        admin_user,
-        [
-            "workspaces.view_countryhousehold",
-            "workspaces.view_countryindividual",
-            "workspaces.view_countryprogram",
-        ],
-        household.program.country_office,
-    ):
-        browser.login_as_user()
-        browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
-        browser.select2_select("id_program", household.program.name)
-        browser.click_link("Households")
+    field_cell = browser.find_element("#result_list tbody tr .field")
+    field_cell.click()
 
-        field_cell = browser.find_element("#result_list tbody tr .field")
-        field_cell.click()
-
-        browser.assert_url(f"{browser.live_server_url}{household.get_change_url()}")
+    browser.assert_url(f"{browser.live_server_url}{household.get_change_url()}")
 
 
 @pytest.mark.selenium
