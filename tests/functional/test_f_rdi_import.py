@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+
+from country_workspace.models import Household, Individual
 from testutils.factories import OfficeFactory
 from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.factories import CountryProgramFactory
@@ -38,15 +40,9 @@ def program(office, household_checker, individual_checker, beneficiary_group):
     )
 
 
-@pytest.fixture
-def household(program):
-    from testutils.factories import CountryHouseholdFactory
-
-    return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
-
-
+@pytest.mark.django_db
 @pytest.mark.selenium
-def test_rdi_import_form_submission(browser, program, household):
+def test_rdi_import_household(browser, program):
     browser.login_as_user()
     browser.select_option_by_text("select[name=tenant]", program.country_office.name)
     browser.select2_select("id_program", program.name)
@@ -54,8 +50,11 @@ def test_rdi_import_form_submission(browser, program, household):
     browser.click("#btn-import_data")
     browser.fill('input[name="rdi-batch_name"]', "Test Batch")
     test_file_path = Path(__file__).parent.parent / "data/rdi_one.xlsx"
-    file_input = browser.find_element('input[type="file"]')
-    file_input.send_keys(str(test_file_path))
+    browser.choose_file('input[type="file"]', str(test_file_path))
     browser.click('input[type="submit"][value="Import"]')
-
     browser.click_link("Households")
+    rows = browser.find_elements("#result_list tbody tr")
+    assert len(rows) == Household.objects.count()
+    browser.click_link("Individuals")
+    rows = browser.find_elements("#result_list tbody tr")
+    assert len(rows) == Individual.objects.count()
