@@ -96,7 +96,7 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
     browser.click("#select-all")
     browser.click("input[name='_export']")
 
-    browser.click_link("Async Jobs")
+    browser.click('//a[div[text()="Async Jobs"]]')
     browser.wait_for_element("table#result_list", timeout=10)
     rows = browser.find_elements("table#result_list tbody tr")
     assert any("Export records as .xlsx for bulk updates" in row.text for row in rows)
