@@ -3,18 +3,17 @@ from typing import TYPE_CHECKING
 from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.forms import PushToHopeForm
 from country_workspace.contrib.hope.push import push_to_hope_core
+from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 
-from ...models import CountryIndividual, CountryHousehold
 from .bulk_update import bulk_update_export_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
@@ -194,33 +193,32 @@ def push_to_hope(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    ctx = model_admin.get_common_context(request, title=_(push_to_hope.short_description))
-    form = PushToHopeForm(request.POST)
-    ctx["form"] = form
-    if "_push" in request.POST and form.is_valid():
-        if (program := model_admin.get_selected_program(request)) and program.beneficiary_group:
-            expected_model = CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual
-            if not isinstance(queryset.model, expected_model.__class__):
-                model_admin.message_user(
-                    request,
-                    "Program, beneficiary group not set, or action unavailable for this model.",
-                    messages.ERROR,
-                )
-                return redirect(request.path)
-        job = AsyncJob.objects.create(
-            description=push_to_hope.short_description,
-            type=AsyncJob.JobType.TASK,
-            owner=state.request.user,
-            action=fqn(push_to_hope_core),
-            program=state.program,
-            config={
-                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
-                "master_detail": program.beneficiary_group.master_detail,
-                "pks": list(queryset.values_list("pk", flat=True)),
+    program = model_admin.get_selected_program(request)
+    if request.method == "POST" and "_push" in request.POST:
+        if (form := PushToHopeForm(request.POST, program=program)).is_valid():
+            AsyncJob.objects.create(
+                description=push_to_hope.short_description,
+                type=AsyncJob.JobType.TASK,
+                owner=state.request.user,
+                action=fqn(push_to_hope_core),
+                program=program,
+                config={
+                    "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                    "batch_size": form.cleaned_data["batch_size"] or PUSH_BATCH_SIZE,
+                    "master_detail": program.beneficiary_group.master_detail,
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                },
+            ).queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            return redirect("workspace:workspaces_countryasyncjob_changelist")
+    else:
+        form = PushToHopeForm(
+            program=program,
+            initial={
+                "action": request.POST.get("action", ""),
+                "select_across": request.POST.get("select_across", False),
+                "_selected_action": request.POST.getlist("_selected_action"),
             },
         )
-        job.queue()
-        model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-        return redirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-
+    ctx = model_admin.get_common_context(request, title=push_to_hope.short_description, form=form)
     return render(request, "workspace/actions/push_to_hope.html", ctx)

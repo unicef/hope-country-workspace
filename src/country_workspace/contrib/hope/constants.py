@@ -1,6 +1,6 @@
 from typing import Final
 
-HOUSEHOLD_PUSH_BATCH_SIZE: Final[int] = 25
+PUSH_BATCH_SIZE: Final[int] = 25
 
 # NEVER CHANGE THIS VALUES
 HOUSEHOLD_CHECKER_NAME: Final[str] = "HOPE Household core"

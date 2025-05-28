@@ -9,7 +9,7 @@ from django.db.models import QuerySet
 from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
-from country_workspace.contrib.hope.constants import HOUSEHOLD_PUSH_BATCH_SIZE
+from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -206,7 +206,7 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     def steps() -> Iterator[Callable[[], None]]:
         """Yield steps for pushing beneficiaries data in batches."""
         yield processor.rdi_create
-        for batch_pks in batched(job.config["pks"], HOUSEHOLD_PUSH_BATCH_SIZE):
+        for batch_pks in batched(job.config["pks"], job.config.get("batch_size", PUSH_BATCH_SIZE)):
             processor.set_queryset(batch_pks)
             yield from (processor.check_beneficiaries_validity, processor.rdi_push)
         yield processor.rdi_complete
