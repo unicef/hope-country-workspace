@@ -17,7 +17,7 @@ def get_ind_fields(individual: "CountryIndividual"):
     fname = hh.name if hh else fake.last_name()
     return {
         "alternate_collector_id": "",
-        "birth_date": "",
+        "birth_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
         "disability": "",
         "estimated_birth_date": "",
         "family_name": fname,

@@ -2,11 +2,17 @@ from typing import Generator
 
 import pytest
 from django.conf import settings
+from django.core.management import call_command
 from seleniumbase import config as sb_config
 from seleniumbase.core import session_helper
 from testutils.factories import CountryProgramFactory
 from testutils.factories import OfficeFactory
 from testutils.selenium import CountryWorkspaceSeleniumTC
+
+
+@pytest.fixture(autouse=True)
+def prepare_checkers() -> None:
+    call_command("upgradescripts", ["apply"])
 
 
 @pytest.fixture
