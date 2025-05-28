@@ -7,8 +7,9 @@ from admin_extra_buttons.mixins import ExtraButtonsMixin
 
 from ..contrib.hope.sync.context_programs import sync_context_programs, SyncStep as ContextProgramsSyncStep
 from ..contrib.hope.sync.context_geo import sync_context_geo, SyncStep as ContextGeoSyncStep
+from ..contrib.aurora.context_aurora import sync_context_aurora, SyncStep as ContextAuroraSyncStep
 
-T_SyncStep = TypeVar("T_SyncStep", bound=ContextProgramsSyncStep | ContextGeoSyncStep)
+T_SyncStep = TypeVar("T_SyncStep", bound=ContextProgramsSyncStep | ContextGeoSyncStep | ContextAuroraSyncStep)
 type SyncHandlerResp = dict[str, list[str] | dict[str, int]]
 
 
@@ -25,6 +26,11 @@ class ContextProgramsSyncHandler:
 class ContextGeoSyncHandler:
     def sync(self, step: ContextGeoSyncStep) -> SyncHandlerResp:
         return sync_context_geo(step)
+
+
+class ContextAuroraSyncHandler:
+    def sync(self, step: ContextAuroraSyncStep) -> SyncHandlerResp:
+        return sync_context_aurora(step)
 
 
 class SyncConfig(TypedDict):
