@@ -1,7 +1,7 @@
 import logging
 import urllib.parse
 from typing import Any
-
+from urllib.parse import urlparse, urlunparse
 from django import template
 from django.apps import apps
 from django.contrib.admin import ModelAdmin
@@ -12,8 +12,6 @@ from django.contrib.admin.templatetags.admin_urls import (
     resolve,
     unquote,
     urlencode,
-    urlparse,
-    urlunparse,
 )
 from django.db.models import Model
 from django.db.models.options import Options

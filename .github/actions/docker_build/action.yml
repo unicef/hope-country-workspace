@@ -17,7 +17,7 @@ inputs:
     description: 'DockerHub password '
     required: false
   code_checksum:
-    description: 'Current codde checksum'
+    description: 'Current code checksum'
     required: false
   rebuild:
     description: 'Always rebuild image, Ignore checksum'
