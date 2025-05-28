@@ -95,6 +95,7 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
     browser.click("button[name='index'][value='0']")
     browser.click("#select-all")
     browser.click("input[name='_export']")
+    browser.sleep(3)
 
     browser.click('//a[div[text()="Async Jobs"]]')
     browser.wait_for_element("table#result_list", timeout=10)
