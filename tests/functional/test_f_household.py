@@ -3,9 +3,11 @@ from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
+from testutils.factories import CountryProgramFactory
 from testutils.factories import OfficeFactory
 from testutils.factories.program import BeneficiaryGroupFactory
-from testutils.factories import CountryProgramFactory
 
 from tests.extras.testutils.selenium import CountryWorkspaceSeleniumTC
 
@@ -137,7 +139,7 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
 @pytest.mark.selenium
 @patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
 def test_households_export_generation(
-    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+        mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
 ):
     mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Households")
@@ -146,7 +148,78 @@ def test_households_export_generation(
 @pytest.mark.selenium
 @patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
 def test_individuals_export_generation(
-    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+        mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
 ):
     mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Individuals")
+
+
+def _test_update_with_regex(
+        browser,
+        household: "CountryHousehold",
+        link: str,
+        field: str,
+        regex: str,
+        subst: str,
+):
+    browser.login_as_user()
+    browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+    browser.select2_select("id_program", household.program.name)
+    browser.click_link(link)
+
+    browser.click("#action-toggle")
+    browser.select_option_by_text("select[name=action]", "Update fields using RegEx")
+    browser.click("button[name='index'][value='0']")
+
+    browser.assert_element_visible("#id_field")
+    browser.assert_element_visible("#id_regex")
+    browser.assert_element_visible("#id_subst")
+
+    assert not browser.execute_script("return document.querySelector('#id_regex').checkValidity();")
+    assert not browser.execute_script("return document.querySelector('#id_subst').checkValidity();")
+
+    select_element = browser.find_element("#id_field")
+    select = Select(select_element)
+    select.select_by_value(field)
+    browser.fill("#id_regex", regex)
+    browser.fill("#id_subst", subst)
+
+    browser.click('input[name="_preview"]')
+    headers = browser.find_elements(By.XPATH, "//table//tr[1]/th")
+    header_texts = [h.text.strip().lower() for h in headers]
+    for hdr in ["pk", "old", "new"]:
+        assert hdr in header_texts
+
+    cells = browser.find_elements(By.XPATH, "//table//tr[2]/td")
+    third_cell_text = cells[3].text.strip()
+    assert subst in third_cell_text
+
+    browser.click('input[name="_apply"]')
+    browser.click('//a[div[text()="Async Jobs"]]')
+    browser.wait_for_element("table#result_list", timeout=10)
+    rows = browser.find_elements("table#result_list tbody tr")
+    assert any("Update fields using RegEx" in row.text for row in rows)
+
+
+@pytest.mark.selenium
+def test_households_update_with_regex(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"):
+    _test_update_with_regex(
+        browser=browser,
+        household=household,
+        link="Households",
+        field="address",
+        regex=r"^\d",  # contains number
+        subst="Subst Text",
+    )
+
+
+@pytest.mark.selenium
+def test_individuals_update_with_regex(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"):
+    _test_update_with_regex(
+        browser=browser,
+        household=household,
+        link="Individuals",
+        field="address",
+        regex="^$",  # empty string
+        subst="New address",
+    )
