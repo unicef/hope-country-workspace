@@ -42,10 +42,22 @@ def test_aurora_import_tab(browser_program):
     browser_program.assert_element_not_visible("#tab-kobo")
     browser_program.assert_element_present('button[data-input-value="aurora"].selected')
 
-    browser_program.assert_element_visible("#id_aurora-batch_name")
-    browser_program.assert_element_visible("#id_aurora-registration")
-    browser_program.assert_element_visible("#id_aurora-check_before")
-    browser_program.assert_element_visible("#id_aurora-fail_if_alien")
+    aurora_input_ids = [
+        "#id_aurora-batch_name",
+        "#id_aurora-registration",
+        "#id_aurora-household_column_prefix",
+        "#id_aurora-individuals_column_prefix",
+        "#id_aurora-household_label_column",
+        "#id_aurora-check_before",
+        "#id_aurora-fail_if_alien",
+    ]
+
+    for input_id in aurora_input_ids:
+        browser_program.assert_element_visible(input_id)
+
+    assert browser_program.get_value("#id_aurora-household_column_prefix") == "household_"
+    assert browser_program.get_value("#id_aurora-individuals_column_prefix") == "individuals_"
+    assert browser_program.get_value("#id_aurora-household_label_column") == "family_name"
 
 
 @pytest.mark.selenium
