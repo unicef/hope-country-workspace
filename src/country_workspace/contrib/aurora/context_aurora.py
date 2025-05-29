@@ -40,7 +40,10 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Project,
                 reference_id="reference_pk",
-                endpoint=EndpointConfig(path="project"),
+                endpoint=EndpointConfig(
+                    path="project",
+                    params={"modified_after": self.get_updated_at_after(Project)},
+                ),
                 prepare_defaults=lambda r: {"name": r["name"]},
             ),
         )
@@ -66,7 +69,10 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Registration,
                 reference_id="reference_pk",
-                endpoint=EndpointConfig(path="registration"),
+                endpoint=EndpointConfig(
+                    path="registration",
+                    params={"modified_after": self.get_updated_at_after(Registration)},
+                ),
                 prepare_defaults=_prepare_defaults,
             ),
         )

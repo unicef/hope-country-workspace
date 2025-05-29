@@ -44,6 +44,7 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Office,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(
                     path="business_areas",
                     params={"updated_at_after": self.get_updated_at_after(Office)},
@@ -58,6 +59,7 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=BeneficiaryGroup,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(path="beneficiary-groups"),
                 prepare_defaults=lambda r: {
                     f: r.get(f)
@@ -119,6 +121,7 @@ class SyncContextPrograms(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Program,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(
                     path="programs",
                     params={"updated_at_after": self.get_updated_at_after(Program)},

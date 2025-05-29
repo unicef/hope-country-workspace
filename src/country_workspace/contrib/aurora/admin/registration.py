@@ -45,4 +45,4 @@ class RegistrationAdmin(BaseModelAdmin):
             file=None,
             config={"ct_id": ContentType.objects.get_for_model(Registration).id, "step": SyncStep.REGISTRATIONS.name},
         ).queue()
-        self.message_user(request, _("Synchronization is scheduled."), messages.SUCCESS)
+        self.message_user(request, _("Synchronization is scheduled."), level=messages.SUCCESS)

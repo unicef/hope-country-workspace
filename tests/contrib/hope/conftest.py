@@ -45,6 +45,7 @@ def records() -> list[dict[str, Any]]:
 def success_config(mock_model: Mock) -> SyncConfig:
     return SyncConfig(
         model=mock_model,
+        reference_id="reference_id",
         endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
         should_process=lambda r: r.get("active"),
