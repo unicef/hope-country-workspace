@@ -1,22 +1,10 @@
 import pytest
 from django.core.management import call_command
-from testutils.factories import OfficeFactory
-from testutils.factories import CountryProgramFactory
 
 
 @pytest.fixture(autouse=True)
 def create_checkers() -> None:
     call_command("upgradescripts", ["apply"])
-
-
-@pytest.fixture
-def office(db, worker_id):
-    return OfficeFactory()
-
-
-@pytest.fixture
-def program(office):
-    return CountryProgramFactory(country_office=office)
 
 
 @pytest.fixture

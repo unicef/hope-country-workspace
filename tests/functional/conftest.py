@@ -1,10 +1,11 @@
 from typing import Generator
 
+import pytest
 from django.conf import settings
 from seleniumbase import config as sb_config
 from seleniumbase.core import session_helper
-import pytest
-
+from testutils.factories import CountryProgramFactory
+from testutils.factories import OfficeFactory
 from testutils.selenium import CountryWorkspaceSeleniumTC
 
 
@@ -44,3 +45,13 @@ def browser(live_server, request) -> Generator[CountryWorkspaceSeleniumTC, None,
         if sb._needs_tearDown:
             sb.tearDown()
             sb._needs_tearDown = False
+
+
+@pytest.fixture
+def office(db, worker_id):
+    return OfficeFactory()
+
+
+@pytest.fixture
+def program(office):
+    return CountryProgramFactory(country_office=office)
