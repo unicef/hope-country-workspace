@@ -69,7 +69,7 @@ def households_for_regex(program):
 def individuals_for_regex(program):
     from testutils.factories import CountryIndividualFactory
 
-    for add in ["", r"\[", "123 Cool Street"]:
+    for add in ["123 Cool Street", "", r"\["]:
         indv = CountryIndividualFactory(
             household__batch__program=program, household__batch__country_office=program.country_office
         )
