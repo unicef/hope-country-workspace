@@ -20,38 +20,45 @@ from django.db.models.options import Options
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
 
+from country_workspace.state import state
+
 logger = logging.getLogger(__name__)
 register = template.Library()
 
 
+ADMIN_CHANGE_VIEW = "admin:{app}_{model}_change"
+ADMIN_CHANGELIST_VIEW = "admin:{app}_{model}_changelist"
+ADMIN_URL = """
+<a class="admin-change-link" target="_admin" href="{url}?{query}">'
+    <span class="icon icon-shield1"></span>'
+"</a>"
+"""
+
+
 @register.simple_tag()
-def admin_url(obj: Model, **extra: dict[str, Any]) -> str:
+def admin_url(obj: Model | ModelAdmin | str | None, **extra: dict[str, Any]) -> str:
     url = ""
     filters = ""
-    if obj:
+    if state.request.user.is_staff and obj:
         try:
             if isinstance(obj, Model):
                 if obj._meta.proxy_for_model:
                     opts = obj._meta.proxy_for_model._meta
                 else:
                     opts = obj._meta
-                url = reverse("admin:%s_%s_change" % (opts.app_label, opts.model_name), args=(obj.pk,))
+                url = reverse(ADMIN_CHANGE_VIEW.format(app=opts.app_label, model=opts.model_name), args=(obj.pk,))
             elif isinstance(obj, ModelAdmin):
                 opts = obj.opts.proxy_for_model._meta
-                url = reverse("admin:%s_%s_changelist" % (opts.app_label, opts.model_name))
+                url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
             elif isinstance(obj, str):
                 model = apps.get_model(obj)
                 opts = model._meta
-                url = reverse("admin:%s_%s_changelist" % (opts.app_label, opts.model_name))
+                url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
 
             if extra:
                 filters = urllib.parse.urlencode(extra)
 
-            return mark_safe(  # noqa: S308
-                f'<a class="admin-change-link" target="_admin" href="{url}?{filters}">'
-                '<span class="icon icon-shield1"></span>'
-                "</a>",
-            )
+            return mark_safe(ADMIN_URL.format(url=url, query=filters))  # noqa: S308
         except NoReverseMatch as e:
             logger.exception(e)
 
