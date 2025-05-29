@@ -161,7 +161,7 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
 @pytest.mark.selenium
 @patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
 def test_households_export_generation(
-        mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
 ):
     mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Households")
@@ -170,7 +170,7 @@ def test_households_export_generation(
 @pytest.mark.selenium
 @patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
 def test_individuals_export_generation(
-        mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
 ):
     mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Individuals")
