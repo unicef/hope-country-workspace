@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
@@ -95,7 +96,6 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
     browser.click("button[name='index'][value='0']")
     browser.click("#select-all")
     browser.click("input[name='_export']")
-    browser.sleep(3)
 
     browser.click('//a[div[text()="Async Jobs"]]')
     browser.wait_for_element("table#result_list", timeout=10)
@@ -104,10 +104,18 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
 
 
 @pytest.mark.selenium
-def test_households_export_generation(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"):
+@patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
+def test_households_export_generation(
+    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+):
+    mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Households")
 
 
 @pytest.mark.selenium
-def test_individuals_export_generation(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"):
+@patch("country_workspace.workspaces.admin.cleaners.bulk_update.bulk_update_export_template")
+def test_individuals_export_generation(
+    mocked_exporter, browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold"
+):
+    mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Individuals")
