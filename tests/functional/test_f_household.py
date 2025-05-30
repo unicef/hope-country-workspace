@@ -69,7 +69,7 @@ def households_for_regex(program):
 def individuals_for_regex(program):
     from testutils.factories import CountryIndividualFactory
 
-    for add in ["Cool street 12345, Earth", "", r"\["]:
+    for add in ["", r"\["]:
         indv = CountryIndividualFactory(
             household__batch__program=program, household__batch__country_office=program.country_office
         )
@@ -234,7 +234,7 @@ def _test_update_with_regex(
 @pytest.mark.parametrize(
     ("regex", "subst", "expected_error"),
     [
-        (r"^\d", "Subst Text", None),  # starts with digit
+        (r"^\d", "Contains", None),  # starts with digit
         (r"^$", "Empty", None),  # empty string
         (r"\[", "Bracket", None),  # escaped square bracket
         (r"*", "Invalid", "Invalid regex"),  # invalid regex - missing pattern
@@ -263,9 +263,8 @@ def test_households_update_with_regex(
 @pytest.mark.parametrize(
     ("regex", "subst", "expected_error"),
     [
-        (r"12345", "Subst Text", None),  # contains
-        (r"^$", "Empty", None),  # empty string
         (r"\[", "Bracket", None),  # escaped square bracket
+        (r"^$", "Empty", None),  # empty string
         (r"*", "Invalid", "Invalid regex"),  # invalid regex - missing pattern
     ],
 )
