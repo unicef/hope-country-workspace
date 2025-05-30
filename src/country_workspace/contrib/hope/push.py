@@ -24,6 +24,7 @@ class PushProcessor:
     batch_name: str
     program_id: str
     master_detail: bool
+    imported_by_email: str
     queryset: QuerySet[CountryHousehold] = field(default_factory=lambda: CountryHousehold.objects.none())
     client: HopeClient = field(default_factory=HopeClient)
     total: dict[str, Any] = field(default_factory=lambda: {"errors": []})
@@ -62,7 +63,7 @@ class PushProcessor:
         Sets `self.rdi_id` if the creation is successful.
         """
         path = f"{self.base_path}create/"
-        data = {"name": self.batch_name, "program": self.program_id}
+        data = {"name": self.batch_name, "program": self.program_id, "imported_by_email": self.imported_by_email}
         if response := self.safe_post(path, data, "Error creating RDI"):
             self.rdi_id = response.get("id")
 
@@ -219,6 +220,7 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
         batch_name=job.config.get("batch_name"),
         program_id=job.program.hope_id,
         master_detail=job.program.beneficiary_group.master_detail,
+        imported_by_email=job.owner.email,
     )
 
     for step in steps():
