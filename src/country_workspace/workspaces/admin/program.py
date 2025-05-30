@@ -80,6 +80,9 @@ class ProgramForm(forms.ModelForm):
         )
 
 
+KOBO_IMPORT_JOB_DESCRIPTION = "Kobo import: {program_name}"
+
+
 @register(CountryProgram, site=workspace)
 class CountryProgramAdmin(WorkspaceModelAdmin):
     list_display = (
@@ -402,6 +405,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
+                description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_kobo),
                 file=None,
