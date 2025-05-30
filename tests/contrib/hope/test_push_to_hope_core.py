@@ -54,10 +54,11 @@ def beneficiary_instance(program: CountryProgram) -> CountryHousehold | CountryI
 def job(program: CountryProgram, beneficiary_instance: CountryHousehold | CountryIndividual) -> AsyncJob:
     from testutils.factories import AsyncJobFactory
 
-    return AsyncJobFactory(
-        program=program,
-        config={"pks": [beneficiary_instance.pk], "batch_name": f"Test Batch - {program.name}"},
+    async_job = AsyncJobFactory(
+        program=program, config={"pks": [beneficiary_instance.pk], "batch_name": f"Test Batch - {program.name}"}
     )
+    async_job.config["imported_by_email"] = async_job.owner.email
+    return async_job
 
 
 @pytest.fixture
@@ -65,6 +66,7 @@ def push_processor(program: CountryProgram) -> PushProcessor:
     return PushProcessor(
         co_slug=program.country_office.slug,
         batch_name=f"Test Batch - {program.name}",
+        imported_by_email="fake_email",
         program_id=program.hope_id,
         master_detail=program.beneficiary_group.master_detail,
     )
@@ -441,6 +443,7 @@ def test_push_to_hope_core_success(mocker: MockerFixture, job: AsyncJob) -> None
     processor_class_mock.assert_called_once_with(
         co_slug=job.program.country_office.slug,
         batch_name=job.config.get("batch_name"),
+        imported_by_email=job.config.get("imported_by_email"),
         program_id=job.program.hope_id,
         master_detail=job.program.beneficiary_group.master_detail,
     )
