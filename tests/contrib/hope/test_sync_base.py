@@ -49,7 +49,7 @@ def test_safe_get_errors(base_sync: BaseSync, exception: Exception, expected_err
         (
             "RECORD_SYNC_FAILURE",
             LogLevel.ERROR,
-            {"hope_id": "123", "error": "Test error"},
+            {"reference_id_val": "123", "error": "Test error"},
             "Failed to sync DB record '123'",
             ["Failed to sync DB record '123': Test error"],
         ),
@@ -89,10 +89,10 @@ def test_emit_log_errors(base_sync: BaseSync, key: str, kwargs: dict, expected_e
     ],
     ids=["valid_id", "missing_id"],
 )
-def test_validated_hope_id(
+def test_validated_reference_id(
     base_sync: BaseSync, record: dict, expected_id: str | None, stdout_contains: str | None
 ) -> None:
-    assert base_sync.validated_hope_id(record) == expected_id
+    assert base_sync.validated_reference_id(record) == expected_id
     if stdout_contains:
         assert_stdout_contains(base_sync.stdout, stdout_contains)
     assert base_sync.total.get("errors") is None
@@ -109,10 +109,10 @@ def test_sync_entity_success(
     sync_entity_context(records=[records[0]], config=success_config)
     assert base_sync.total["test_model"] == {"add": 1, "upd": 0}
     assert base_sync.total.get("errors") is None
-    mock_model.objects.update_or_create.assert_called_once_with(hope_id="1", defaults={"key": "test"})
+    mock_model.objects.update_or_create.assert_called_once_with(reference_id="1", defaults={"key": "test"})
 
 
-def test_sync_entity_missing_hope_id(
+def test_sync_entity_missing_reference_id(
     base_sync: BaseSync,
     mock_model: Mock,
     sync_entity_context: Callable,
@@ -194,6 +194,7 @@ def test_sync_entity_post_process(
     post_process = mocker.Mock()
     config = SyncConfig(
         model=mock_model,
+        reference_id="reference_id",
         endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
         post_process=post_process,
@@ -202,7 +203,7 @@ def test_sync_entity_post_process(
     sync_entity_context(records=[records[0]], config=config)
     assert base_sync.total["test_model"] == {"add": 1, "upd": 0}
     assert base_sync.total.get("errors") is None
-    mock_model.objects.update_or_create.assert_called_once_with(hope_id="1", defaults={"key": "test"})
+    mock_model.objects.update_or_create.assert_called_once_with(reference_id="1", defaults={"key": "test"})
     post_process.assert_called_once()
 
 
@@ -251,7 +252,7 @@ def test_sync_context(
     def mock_error_step(step):
         def mock_step_func(sync):
             def inner():
-                sync.emit_log("RECORD_SYNC_FAILURE", LogLevel.ERROR, hope_id="test", error="Test error")
+                sync.emit_log("RECORD_SYNC_FAILURE", LogLevel.ERROR, reference_id_val="test", error="Test error")
 
             return inner
 

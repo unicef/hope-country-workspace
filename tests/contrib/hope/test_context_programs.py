@@ -31,6 +31,7 @@ def test_sync_programs_post_process_save(base_sync: BaseSync, mock_model: Mock, 
     base_sync.sync_entity(
         SyncConfig(
             model=mock_model,
+            reference_id="hope_id",
             endpoint=EndpointConfig(path="fake_path"),
             prepare_defaults=lambda r: {
                 "beneficiary_group": BeneficiaryGroup.objects.get(hope_id=r["beneficiary_group"])

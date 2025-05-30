@@ -32,6 +32,7 @@ class SyncContextGeo(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Country,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(
                     path="lookups/country",
                     params={"updated_at_after": self.get_updated_at_after(Country)},
@@ -69,6 +70,7 @@ class SyncContextGeo(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=AreaType,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(
                     path="areatypes",
                     params={"updated_at_after": self.get_updated_at_after(AreaType)},
@@ -108,6 +110,7 @@ class SyncContextGeo(BaseSync):
         self.sync_entity(
             SyncConfig(
                 model=Area,
+                reference_id="hope_id",
                 endpoint=EndpointConfig(
                     path="areas",
                     params={"updated_at_after": self.get_updated_at_after(Area)},
@@ -127,7 +130,7 @@ class SyncContextGeo(BaseSync):
             except model.DoesNotExist:
                 self.emit_log(
                     "RECORD_SKIPPED",
-                    hope_id=child_id,
+                    reference_id_val=child_id,
                     error=f"{model._meta.model_name}: child '{child_id}' not found for parent assignment",
                 )
                 continue
@@ -136,7 +139,7 @@ class SyncContextGeo(BaseSync):
             except model.DoesNotExist:
                 self.emit_log(
                     "RECORD_SKIPPED",
-                    hope_id=child_id,
+                    reference_id_val=child_id,
                     error=f"{model._meta.model_name} parent '{parent_id}' not found for assignment",
                 )
                 continue
@@ -150,7 +153,7 @@ class SyncContextGeo(BaseSync):
                 self.emit_log(
                     "RECORD_SYNC_FAILURE",
                     LogLevel.ERROR,
-                    hope_id="multiple",
+                    reference_id_val="multiple",
                     error=f"Invalid MPTT move during bulk update for '{model._meta.model_name}': {e}",
                 )
 

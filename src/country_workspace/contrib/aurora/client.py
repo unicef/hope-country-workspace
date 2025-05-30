@@ -43,25 +43,12 @@ class AuroraClient:
             url = url + "/"
         return url
 
-    def get(self, path: str) -> Generator[dict[str, Any], None, None]:
-        """
-        Fetch records from the Aurora API with automatic pagination.
-
-        Args:
-            path (str): The relative API path to fetch data from.
-
-        Yields:
-            dict[str, Any]: Individual JSON records from the API.
-
-        Raises:
-            RemoteError: If the HTTP request fails (non-200 status, network issues, etc.) or if the
-                        response cannot be decoded as valid JSON.
-
-        """
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Generator[dict[str, Any], None, None]:
+        """Fetch records from the Aurora API with automatic pagination."""
         url = self._get_url(path)
         while url:
             try:
-                ret = requests.get(url, headers={"Authorization": f"Token {self.token}"}, timeout=10)
+                ret = requests.get(url, params=params, headers={"Authorization": f"Token {self.token}"}, timeout=10)
                 ret.raise_for_status()
             except requests.RequestException as e:
                 raise RemoteError(f"Remote Error fetching {url}: {e}") from e

@@ -22,9 +22,9 @@ T = TypeVar("T", bound="BaseSync")
 MESSAGES: Final[dict[str, str]] = {
     "DEACTIVATION_FAILURE": "Failed during deactivation for '{entity}' : {error}",
     "RECORDS_DEACTIVATED": "Deactivated '{count}' records '{entity}' (obsolete or marked inactive in source).",
-    "RECORD_MISSING_ID": "Skipping record due to missing 'id': {record}",
-    "RECORD_SKIPPED": "Skipped record '{hope_id}': {error}",
-    "RECORD_SYNC_FAILURE": "Failed to sync DB record '{hope_id}': {error}",
+    "RECORD_MISSING_REFERENCE_ID": "Skipping record due to missing 'id': {record}",
+    "RECORD_SKIPPED": "Skipped record '{reference_id_val}': {error}",
+    "RECORD_SYNC_FAILURE": "Failed to sync DB record '{reference_id_val}': {error}",
     "REMOTE_API_FAILURE": "API Error fetching '{path}': {error}",
     "SYNC_COMPLETE": "Sync complete for '{entity}' with result {result} with '{errors_count}' erors.",
     "SYNC_START": "Start fetching '{entity}' data from HOPE core...",
@@ -53,6 +53,7 @@ class SyncConfig(TypedDict):
     Attributes:
         model: The Django model class to synchronize.
         endpoint: The API endpoint configuration with path and optional query parameters.
+        reference_id: The field name used as the system reference ID for the model.
         prepare_defaults: Function to prepare default values for the model.
         should_process: Optional function to filter records before processing.
         post_process: Optional function to process the model instance after creation/update.
@@ -62,6 +63,7 @@ class SyncConfig(TypedDict):
 
     model: type[Model]
     endpoint: EndpointConfig
+    reference_id: str
     should_process: NotRequired[Callable[[dict[str, Any]], bool] | None]
     prepare_defaults: Callable[[dict[str, Any]], dict[str, Any] | None]
     post_process: NotRequired[Callable[[Model, bool], None] | None]
@@ -125,12 +127,12 @@ class BaseSync:
         else:
             raise KeyError(f"Log key '{key}' not found in MESSAGES configuration.")
 
-    def validated_hope_id(self, record: dict[str, Any]) -> str | None:
-        """Validate and retrieve the HOPE core ID from the record."""
-        hope_id = record.get("id")
-        if not hope_id:
-            self.emit_log("RECORD_MISSING_ID", record=record)
-        return hope_id
+    def validated_reference_id(self, record: dict[str, Any]) -> str | None:
+        """Validate and retrieve the system reference ID from the record."""
+        reference_id_val = record.get("id")
+        if not reference_id_val:
+            self.emit_log("RECORD_MISSING_REFERENCE_ID", record=record)
+        return reference_id_val
 
     def sync_entity(self, config: SyncConfig) -> None:
         """Synchronize an entity with the remote API.
@@ -146,13 +148,14 @@ class BaseSync:
         """
         model, model_name = config["model"], config["model"]._meta.model_name
         self.total.setdefault(model_name, {"add": 0, "upd": 0})
-        should_process, prepare_defaults, post_process, should_deactivate = (
+        should_process, prepare_defaults, post_process, should_deactivate, reference_id = (
             config.get(k, v)
             for k, v in (
                 ("should_process", None),
                 ("prepare_defaults", lambda _: {}),
                 ("post_process", None),
                 ("should_deactivate", None),
+                ("reference_id", None),
             )
         )
 
@@ -160,11 +163,11 @@ class BaseSync:
             self.emit_log("SYNC_START", entity=model_name)
             all_processed, inactive = set(), set()
             for record in self.safe_get(config["endpoint"]):
-                if not (hope_id := self.validated_hope_id(record)):
+                if not (reference_id_val := self.validated_reference_id(record)):
                     continue
-                all_processed.add(hope_id)
+                all_processed.add(reference_id_val)
                 if should_deactivate and should_deactivate(record):
-                    inactive.add(hope_id)
+                    inactive.add(reference_id_val)
                     continue
                 if should_process and not should_process(record):
                     continue
@@ -172,14 +175,18 @@ class BaseSync:
                     defaults = prepare_defaults(record)
                     if defaults is None or not defaults:
                         continue
-                    instance, created = model.objects.update_or_create(hope_id=hope_id, defaults=defaults)
+                    instance, created = model.objects.update_or_create(
+                        defaults=defaults, **{reference_id: reference_id_val}
+                    )
                     if post_process:
                         post_process(instance, created)
                     self.total[model_name]["add" if created else "upd"] += 1
                 except SkipRecordError as e:
-                    self.emit_log("RECORD_SKIPPED", hope_id=hope_id, error=str(e))
+                    self.emit_log("RECORD_SKIPPED", reference_id_val=reference_id_val, error=str(e))
                 except (DatabaseError, KeyError, AttributeError) as e:
-                    self.emit_log("RECORD_SYNC_FAILURE", LogLevel.ERROR, hope_id=hope_id, error=str(e))
+                    self.emit_log(
+                        "RECORD_SYNC_FAILURE", LogLevel.ERROR, reference_id_val=reference_id_val, error=str(e)
+                    )
             if should_deactivate:
                 self._deactivate_records(model, model_name, all_processed, inactive)
             SyncLog.objects.register_sync(model)
