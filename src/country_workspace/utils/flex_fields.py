@@ -61,6 +61,3 @@ class ConsentSharingChoice(forms.MultipleChoiceField):
         if isinstance(value, str):
             return [v for v in value.split(",") if v]
         return super().prepare_value(value)
-
-    def clean(self, value: str | list[str] | None) -> str:
-        return ",".join(super().clean(value))
