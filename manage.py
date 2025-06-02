@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 import os
 import sys
+from pathlib import Path
 
-SRC = os.path.abspath("src")
+SRC = Path.resolve("src")
 sys.path.insert(0, SRC)
 
 if __name__ == "__main__":
