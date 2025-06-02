@@ -10,11 +10,11 @@ from country_workspace.contrib.hope.sync.base import (
     BaseSync,
     BaseSyncStep,
     SyncConfig,
-    EndpointConfig,
     sync_context,
     SkipRecordError,
 )
 from country_workspace.contrib.aurora.client import AuroraClient
+
 
 MODELS: Final[tuple[type[Model], ...]] = (Project, Registration)
 """List of models to synchronize."""
@@ -40,10 +40,7 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Project,
                 reference_id="reference_pk",
-                endpoint=EndpointConfig(
-                    path="project",
-                    params={"modified_after": self.get_updated_at_after(Project)},
-                ),
+                endpoint=self._build_endpoint("project", Project),
                 prepare_defaults=lambda r: {"name": r["name"]},
             ),
         )
@@ -69,10 +66,7 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Registration,
                 reference_id="reference_pk",
-                endpoint=EndpointConfig(
-                    path="registration",
-                    params={"modified_after": self.get_updated_at_after(Registration)},
-                ),
+                endpoint=self._build_endpoint("registration", Registration),
                 prepare_defaults=_prepare_defaults,
             ),
         )
@@ -96,12 +90,16 @@ class SyncContextAurora(BaseSync):
 
 
 def sync_context_aurora(
+    *,
+    delta_sync: bool = False,
     step: SyncStep | None = None,
     stdout: TextIOBase | None = None,
 ) -> dict[str, Any]:
     """Run synchronization for geo-related models.
 
     Args:
+        delta_sync (bool): If True, only synchronize records updated after the last sync,
+            otherwise synchronize all records.
         step (SyncStep | None): Specific step to execute (e.g., SyncStep.REGISTRATIONS). If None, all steps are run.
         stdout (TextIOBase | None): Optional output stream for logging.
 
@@ -111,6 +109,7 @@ def sync_context_aurora(
     """
     return sync_context(
         SyncContextAurora,
+        delta_sync=delta_sync,
         step=step,
         stdout=stdout,
     )

@@ -5,8 +5,15 @@ from enum import auto
 from django.db.models import Model
 from mptt.exceptions import InvalidMove
 
-from ....models import Country, AreaType, Area
-from .base import BaseSync, SyncConfig, BaseSyncStep, sync_context, SkipRecordError, LogLevel, EndpointConfig
+from country_workspace.contrib.hope.sync.base import (
+    BaseSync,
+    BaseSyncStep,
+    SyncConfig,
+    sync_context,
+    SkipRecordError,
+    LogLevel,
+)
+from country_workspace.models import Country, AreaType, Area
 
 
 MODELS: Final[tuple[type[Model], ...]] = (Country,)
@@ -33,10 +40,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=Country,
                 reference_id="hope_id",
-                endpoint=EndpointConfig(
-                    path="lookups/country",
-                    params={"updated_at_after": self.get_updated_at_after(Country)},
-                ),
+                endpoint=self._build_endpoint("lookups/country", Country),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "iso_code2", "iso_code3")},
             ),
         )
@@ -71,10 +75,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=AreaType,
                 reference_id="hope_id",
-                endpoint=EndpointConfig(
-                    path="areatypes",
-                    params={"updated_at_after": self.get_updated_at_after(AreaType)},
-                ),
+                endpoint=self._build_endpoint("areatypes", AreaType),
                 prepare_defaults=_prepare_defaults,
             ),
         )
@@ -111,10 +112,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=Area,
                 reference_id="hope_id",
-                endpoint=EndpointConfig(
-                    path="areas",
-                    params={"updated_at_after": self.get_updated_at_after(Area)},
-                ),
+                endpoint=self._build_endpoint("areas", Area),
                 prepare_defaults=_prepare_defaults,
             ),
         )
@@ -159,14 +157,20 @@ class SyncContextGeo(BaseSync):
 
 
 def sync_context_geo(
+    *,
+    delta_sync: bool,
     step: SyncStep | None = None,
     stdout: TextIOBase | None = None,
 ) -> dict[str, Any]:
     """Run synchronization for geo-related models.
 
     Args:
+        delta_sync (bool): If True, only synchronize records updated after the last sync,
+            otherwise synchronize all records.
         step (SyncStep | None): Specific step to execute (e.g., SyncStep.COUNTRIES). If None, all steps are run.
         stdout (TextIOBase | None): Optional output stream for logging.
+        delta_sync (bool): If True, only synchronize records updated after the last sync,
+            otherwise synchronize all records.
 
     Returns:
         dict[str, Any]: Synchronization results, including counts and errors.
@@ -174,6 +178,7 @@ def sync_context_geo(
     """
     return sync_context(
         SyncContextGeo,
+        delta_sync=delta_sync,
         step=step,
         stdout=stdout,
     )

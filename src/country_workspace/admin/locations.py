@@ -9,9 +9,8 @@ from django.contrib.admin import ModelAdmin, RelatedFieldListFilter
 from django.db.models import Field
 from django.forms import FileField, FileInput, Form
 
-from ..models.locations import Area, AreaType, Country
-from ..contrib.hope.sync.context_geo import SyncStep
-from .sync import SyncAdminMixin, SyncConfig, ContextGeoSyncHandler
+from country_workspace.models.locations import Area, AreaType, Country
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, StepConfig
 
 
 if TYPE_CHECKING:
@@ -36,7 +35,10 @@ class CountryAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
         "iso_code2",
         "iso_code3",
     )
-    sync_config = SyncConfig(model=Country, step=SyncStep.COUNTRIES, sync_handler=ContextGeoSyncHandler())
+    sync_config = SyncAdminConfig(
+        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="COUNTRIES"),
+        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+    )
 
 
 @admin.register(AreaType)
@@ -46,7 +48,10 @@ class AreaTypeAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     search_fields = ("name",)
     autocomplete_fields = ("country",)
     raw_id_fields = ("country", "parent")
-    sync_config = SyncConfig(model=AreaType, step=SyncStep.AREATYPES, sync_handler=ContextGeoSyncHandler())
+    sync_config = SyncAdminConfig(
+        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="AREATYPES"),
+        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+    )
 
 
 class AreaTypeFilter(RelatedFieldListFilter):
@@ -69,4 +74,7 @@ class AreaAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     )
     search_fields = ("name", "p_code")
     raw_id_fields = ("area_type", "parent")
-    sync_config = SyncConfig(model=Area, step=SyncStep.AREAS, sync_handler=ContextGeoSyncHandler())
+    sync_config = SyncAdminConfig(
+        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="AREAS"),
+        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+    )

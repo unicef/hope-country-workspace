@@ -6,9 +6,20 @@ from django.db.models import Model
 
 from hope_flex_fields.models import DataChecker
 
-from ....models import BeneficiaryGroup, Office, Program
-from .. import constants
-from .base import BaseSync, SyncConfig, SkipRecordError, EndpointConfig, BaseSyncStep, sync_context
+from country_workspace.contrib.hope.constants import (
+    HOUSEHOLD_CHECKER_NAME,
+    INDIVIDUAL_CHECKER_NAME,
+    PEOPLE_CHECKER_NAME,
+)
+from country_workspace.contrib.hope.sync.base import (
+    BaseSync,
+    SyncConfig,
+    SkipRecordError,
+    EndpointConfig,
+    BaseSyncStep,
+    sync_context,
+)
+from country_workspace.models import BeneficiaryGroup, Office, Program
 
 
 MODELS: Final[tuple[type[Model], ...]] = (Office, Program, BeneficiaryGroup)
@@ -32,9 +43,9 @@ class SyncContextPrograms(BaseSync):
         default_factory=lambda: {
             name: DataChecker.objects.filter(name=const_name).first()
             for name, const_name in (
-                ("hh", constants.HOUSEHOLD_CHECKER_NAME),
-                ("ind", constants.INDIVIDUAL_CHECKER_NAME),
-                ("ppl", constants.PEOPLE_CHECKER_NAME),
+                ("hh", HOUSEHOLD_CHECKER_NAME),
+                ("ind", INDIVIDUAL_CHECKER_NAME),
+                ("ppl", PEOPLE_CHECKER_NAME),
             )
         }
     )
@@ -45,10 +56,7 @@ class SyncContextPrograms(BaseSync):
             SyncConfig(
                 model=Office,
                 reference_id="hope_id",
-                endpoint=EndpointConfig(
-                    path="business_areas",
-                    params={"updated_at_after": self.get_updated_at_after(Office)},
-                ),
+                endpoint=self._build_endpoint("business_areas", Office),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name", "active")},
                 should_process=lambda r: r.get("active"),
             ),
@@ -122,10 +130,7 @@ class SyncContextPrograms(BaseSync):
             SyncConfig(
                 model=Program,
                 reference_id="hope_id",
-                endpoint=EndpointConfig(
-                    path="programs",
-                    params={"updated_at_after": self.get_updated_at_after(Program)},
-                ),
+                endpoint=self._build_endpoint("programs", Program),
                 prepare_defaults=_prepare_defaults,
                 should_process=_should_process,
                 post_process=_post_process,
@@ -134,6 +139,8 @@ class SyncContextPrograms(BaseSync):
 
 
 def sync_context_programs(
+    *,
+    delta_sync: bool,
     step: SyncStep | None = None,
     stdout: TextIOBase | None = None,
     programs_limit_to_office: Office | None = None,
@@ -141,6 +148,8 @@ def sync_context_programs(
     """Run synchronization for program-related models.
 
     Args:
+        delta_sync (bool): If True, only synchronize records updated after the last sync,
+            otherwise synchronize all records.
         step (SyncStep | None): Specific step to execute (e.g., SyncStep.OFFICES). If None, all steps are run.
         stdout (TextIOBase | None): Optional output stream for logging.
         programs_limit_to_office (Office | None): Optional Office to limit program synchronization.
@@ -151,6 +160,7 @@ def sync_context_programs(
     """
     return sync_context(
         SyncContextPrograms,
+        delta_sync=delta_sync,
         step=step,
         stdout=stdout,
         programs_limit_to_office=programs_limit_to_office,
