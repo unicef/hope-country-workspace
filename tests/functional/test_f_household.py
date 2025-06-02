@@ -112,7 +112,7 @@ def test_program_list_redirects(browser, admin_user, program):
         browser.select_option_by_text("select[name=tenant]", program.country_office.name)
         browser.select2_select("id_program", program.name)
 
-        browser.visit(f"{browser.live_server_url}/workspaces/countryprogram/")
+        browser.assert_url(f"{browser.live_server_url}/workspaces/countryprogram/{program.pk}/change/")
 
 
 def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold", link: str):
