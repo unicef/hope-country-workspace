@@ -84,6 +84,37 @@ def test_list_household_select_all_fields(browser, household: "CountryHousehold"
         assert cb.is_selected()
 
 
+@pytest.mark.selenium
+def test_list_household_clickable_row(browser, admin_user, household: "CountryHousehold"):
+    browser.login_as_user()
+    browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+    browser.select2_select("id_program", household.program.name)
+    browser.click_link("Households")
+
+    field_cell = browser.find_element("#result_list tbody tr .field")
+    field_cell.click()
+
+    browser.assert_url(f"{browser.live_server_url}{household.get_change_url()}")
+
+
+@pytest.mark.selenium
+def test_program_list_redirects(browser, admin_user, program):
+    from testutils.perms import user_grant_permissions
+
+    with user_grant_permissions(
+        admin_user,
+        [
+            "workspaces.view_countryprogram",
+        ],
+        program.country_office,
+    ):
+        browser.login_as_user()
+        browser.select_option_by_text("select[name=tenant]", program.country_office.name)
+        browser.select2_select("id_program", program.name)
+
+        browser.assert_url(f"{browser.live_server_url}/workspaces/countryprogram/{program.pk}/change/")
+
+
 def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "CountryHousehold", link: str):
     browser.login_as_user()
     browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
