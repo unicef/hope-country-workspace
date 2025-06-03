@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-SRC = Path.resolve("src")
+SRC = Path("src").resolve()
 sys.path.insert(0, SRC)
 
 if __name__ == "__main__":
