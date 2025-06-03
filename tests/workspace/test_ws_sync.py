@@ -45,8 +45,9 @@ def test_sync_log_refresh_success(mocker: MockerFixture):
 
     sync_log = SyncLogFactory(content_object=field_def, data={"remote_url": "lookups/test"})
 
-    mock_client = mocker.patch("country_workspace.contrib.hope.client.HopeClient")
-    mock_client.return_value.get_lookup.return_value = {"key1": "value1", "key2": "value2"}
+    mock_client = mocker.patch("country_workspace.models.sync.HopeClient")
+    mock_instance = mock_client.return_value
+    mock_instance.get_lookup.return_value = {"key1": "value1", "key2": "value2"}
 
     before_update = timezone.now()
     sync_log.refresh()
@@ -54,7 +55,7 @@ def test_sync_log_refresh_success(mocker: MockerFixture):
     field_def.refresh_from_db()
     assert field_def.attrs.get("choices") == [["key1", "value1"], ["key2", "value2"]]
     assert sync_log.last_update_date > before_update
-    mock_client.return_value.get_lookup.assert_called_once_with("lookups/test")
+    mock_instance.get_lookup.assert_called_once_with("lookups/test")
 
 
 @pytest.mark.django_db
@@ -65,8 +66,9 @@ def test_sync_log_refresh_existing_attrs(mocker: MockerFixture):
 
     sync_log = SyncLogFactory(content_object=field_def, data={"remote_url": "lookups/test"})
 
-    mock_client = mocker.patch("country_workspace.contrib.hope.client.HopeClient")
-    mock_client.return_value.get_lookup.return_value = {"key1": "value1"}
+    mock_client = mocker.patch("country_workspace.models.sync.HopeClient")
+    mock_instance = mock_client.return_value
+    mock_instance.get_lookup.return_value = {"key1": "value1"}
 
     sync_log.refresh()
 
@@ -74,16 +76,18 @@ def test_sync_log_refresh_existing_attrs(mocker: MockerFixture):
     assert "existing" in field_def.attrs
     assert field_def.attrs["existing"] == "data"
     assert field_def.attrs.get("choices") == [["key1", "value1"]]
-    mock_client.return_value.get_lookup.assert_called_once_with("lookups/test")
+    mock_instance.get_lookup.assert_called_once_with("lookups/test")
 
 
 @pytest.mark.django_db
 def test_sync_log_refresh_none_attrs(mocker: MockerFixture):
     mock_field_def = MagicMock()
     mock_field_def.attrs = None
+    mock_field_def.pk = 1
+    mock_field_def.id = 1
     saved_attrs = None
 
-    def mock_save():
+    def mock_save(*args, **kwargs):
         nonlocal saved_attrs
         saved_attrs = mock_field_def.attrs
 
@@ -95,9 +99,11 @@ def test_sync_log_refresh_none_attrs(mocker: MockerFixture):
     sync_log.save()
 
     mocker.patch("django.contrib.contenttypes.fields.GenericForeignKey.__get__", return_value=mock_field_def)
+    mocker.patch("hope_flex_fields.models.FlexField.objects.filter", return_value=[])
 
-    mock_client = mocker.patch("country_workspace.contrib.hope.client.HopeClient")
-    mock_client.return_value.get_lookup.return_value = {"key1": "value1"}
+    mock_client = mocker.patch("country_workspace.models.sync.HopeClient")
+    mock_instance = mock_client.return_value
+    mock_instance.get_lookup.return_value = {"key1": "value1"}
 
     sync_log.refresh()
 
@@ -106,7 +112,7 @@ def test_sync_log_refresh_none_attrs(mocker: MockerFixture):
 
     choices = [list(choice) if isinstance(choice, tuple) else choice for choice in saved_attrs["choices"]]
     assert choices == [["key1", "value1"]]
-    mock_client.return_value.get_lookup.assert_called_once_with("lookups/test")
+    mock_instance.get_lookup.assert_called_once_with("lookups/test")
 
 
 @pytest.mark.django_db
