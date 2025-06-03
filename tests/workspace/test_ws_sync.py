@@ -17,24 +17,22 @@ if TYPE_CHECKING:
 @pytest.mark.django_db
 def test_sync_log_refresh_no_content_object():
     content_type = ContentType.objects.get_for_model(SyncLog)
-    sync_log = SyncLogFactory(content_type=content_type, object_id=None)
+    sync_log = SyncLogFactory(content_type=content_type, object_id=None, last_update_date=None)
 
-    sync_log.last_update_date = None
     sync_log.save()
-
     sync_log.refresh()
+
     assert sync_log.last_update_date is None
 
 
 @pytest.mark.django_db
 def test_sync_log_refresh_no_remote_url():
     field_def = FieldDefinitionFactory()
-    sync_log = SyncLogFactory(content_object=field_def, data={})
+    sync_log = SyncLogFactory(content_object=field_def, data={}, last_update_date=None)
 
-    sync_log.last_update_date = None
     sync_log.save()
-
     sync_log.refresh()
+
     assert sync_log.last_update_date is None
 
 
@@ -112,14 +110,10 @@ def test_sync_log_refresh_none_attrs(mocker: MockerFixture):
 
 
 @pytest.mark.django_db
-def test_sync_manager_refresh(mocker: MockerFixture):
-    sync_logs = [SyncLogFactory(), SyncLogFactory(), SyncLogFactory()]
+def test_sync_manager_refresh():
+    SyncLogFactory.create_batch(3)
 
-    mock_queryset = mocker.patch("country_workspace.models.sync.SyncManager.all")
-    mock_queryset.return_value = sync_logs
-
-    SyncLog.objects.refresh()
-
+    sync_logs = SyncLog.objects.all()
     for sync_log in sync_logs:
         assert sync_log.last_update_date is not None
 
