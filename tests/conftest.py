@@ -49,6 +49,36 @@ def patch_asyncjob(mock_storage):
     AsyncJob._meta.get_field("file").__class__ = models.FileField
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--with-integration",
+        action="store_true",
+        dest="with_integration",
+        default=False,
+        help="Run integration tests in addition to unit tests",
+    )
+    parser.addoption(
+        "--only-integration",
+        action="store_true",
+        dest="only_integration",
+        default=False,
+        help="Run only integration tests",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    with_integration = config.option.with_integration
+    only_integration = config.option.only_integration
+    skip_integration = pytest.mark.skip(reason="need --with-integration or --only-integration option to run")
+
+    for item in items:
+        if "integration" in item.keywords:
+            if not (with_integration or only_integration):
+                item.add_marker(skip_integration)
+        elif only_integration:
+            item.add_marker(pytest.mark.skip(reason="not an integration test"))
+
+
 def pytest_configure(config):
     os.environ["DJANGO_SETTINGS_MODULE"] = "country_workspace.config.settings"
     os.environ.setdefault("STATIC_URL", "/static/")
