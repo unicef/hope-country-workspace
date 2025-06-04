@@ -1,13 +1,12 @@
 from typing import Any, Final, TypedDict, NotRequired, TypeVar
 from collections.abc import Generator, Callable
 from io import TextIOBase
-
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from django.core.cache import cache
 from django.db import DatabaseError
-from django.db.models import Model, Q
+from django.db.models import Model
 from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.exceptions import RemoteError
@@ -20,8 +19,6 @@ T = TypeVar("T", bound="BaseSync")
 
 
 MESSAGES: Final[dict[str, str]] = {
-    "DEACTIVATION_FAILURE": "Failed during deactivation for '{entity}' : {error}",
-    "RECORDS_DEACTIVATED": "Deactivated '{count}' records '{entity}' (obsolete or marked inactive in source).",
     "RECORD_MISSING_REFERENCE_ID": "Skipping record due to missing 'id': {record}",
     "RECORD_SKIPPED": "Skipped record '{reference_id_val}': {error}",
     "RECORD_SYNC_FAILURE": "Failed to sync DB record '{reference_id_val}': {error}",
@@ -42,6 +39,13 @@ class LogLevel(Enum):
     ERROR = auto()
 
 
+class ParamDateName(Enum):
+    """Parameter names for date filtering in API requests."""
+
+    UPDATED = "updated_at_after"
+    MODIFIED = "modified_after"
+
+
 class EndpointConfig(TypedDict):
     path: str
     params: NotRequired[dict[str, Any] | None]
@@ -52,22 +56,22 @@ class SyncConfig(TypedDict):
 
     Attributes:
         model: The Django model class to synchronize.
+        delta_sync: If True, only new records will be processed; otherwise, existing records will be updated.
         endpoint: The API endpoint configuration with path and optional query parameters.
         reference_id: The field name used as the system reference ID for the model.
         prepare_defaults: Function to prepare default values for the model.
         should_process: Optional function to filter records before processing.
         post_process: Optional function to process the model instance after creation/update.
-        should_deactivate: Optional function to determine if a record should be deactivated.
 
     """
 
     model: type[Model]
+    delta_sync: bool
     endpoint: EndpointConfig
     reference_id: str
     should_process: NotRequired[Callable[[dict[str, Any]], bool] | None]
     prepare_defaults: Callable[[dict[str, Any]], dict[str, Any] | None]
     post_process: NotRequired[Callable[[Model, bool], None] | None]
-    should_deactivate: NotRequired[Callable[["dict[str, Any]"], bool] | None]
 
 
 class BaseSyncStep(Enum):
@@ -99,6 +103,7 @@ class BaseSync:
 
     """
 
+    delta_sync: bool
     client: HopeClient = field(default_factory=HopeClient)
     stdout: TextIOBase | None = None
     total: dict[str, Any] = field(default_factory=dict)
@@ -143,31 +148,24 @@ class BaseSync:
         Notes:
             - Fetches records from the API, processes them, and updates/creates model instances.
             - Logs synchronization start, errors, and completion.
-            - Deactivates records based on the should_deactivate function, if specified.
 
         """
         model, model_name = config["model"], config["model"]._meta.model_name
         self.total.setdefault(model_name, {"add": 0, "upd": 0})
-        should_process, prepare_defaults, post_process, should_deactivate, reference_id = (
+        should_process, prepare_defaults, post_process, reference_id = (
             config.get(k, v)
             for k, v in (
                 ("should_process", None),
                 ("prepare_defaults", lambda _: {}),
                 ("post_process", None),
-                ("should_deactivate", None),
                 ("reference_id", None),
             )
         )
 
         with cache.lock(f"sync-{model_name.lower()}"):
             self.emit_log("SYNC_START", entity=model_name)
-            all_processed, inactive = set(), set()
             for record in self.safe_get(config["endpoint"]):
                 if not (reference_id_val := self.validated_reference_id(record)):
-                    continue
-                all_processed.add(reference_id_val)
-                if should_deactivate and should_deactivate(record):
-                    inactive.add(reference_id_val)
                     continue
                 if should_process and not should_process(record):
                     continue
@@ -187,8 +185,6 @@ class BaseSync:
                     self.emit_log(
                         "RECORD_SYNC_FAILURE", LogLevel.ERROR, reference_id_val=reference_id_val, error=str(e)
                     )
-            if should_deactivate:
-                self._deactivate_records(model, model_name, all_processed, inactive)
             SyncLog.objects.register_sync(model)
             self.emit_log(
                 "SYNC_COMPLETE",
@@ -197,28 +193,23 @@ class BaseSync:
                 errors_count=len(self.total.get("errors", [])),
             )
 
-    def _deactivate_records(self, model: type[Model], model_name: str, processed: set[str], inactive: set[str]) -> None:
-        """Deactivate existed records in the database that are inactive or not present in the source."""
-        self.total.setdefault(model_name, {})
-        try:
-            deactivated_count = model.objects.filter(
-                Q(active=True) & (~Q(hope_id__in=processed) | Q(hope_id__in=inactive))
-            ).update(active=False)
-            if deactivated_count:
-                self.total[model_name]["deactivated"] = deactivated_count
-                self.emit_log("RECORDS_DEACTIVATED", count=deactivated_count, entity=model_name)
-        except DatabaseError as e:
-            self.emit_log("DEACTIVATION_FAILURE", LogLevel.ERROR, entity=model_name, error=str(e))
-
-    def get_updated_at_after(self, model: type[Model]) -> str | None:
+    def _get_last_updated_date(self, model: type[Model]) -> str | None:
         """Get the last update date for the given model."""
         ct = ContentType.objects.get_for_model(model)
         last_sync = SyncLog.objects.filter(content_type=ct).order_by("-last_update_date").first()
         return last_sync.last_update_date.date().isoformat() if last_sync else None
 
+    def _build_endpoint(self, path: str, model: type[Model], param_date_name: ParamDateName) -> EndpointConfig:
+        """Build the endpoint configuration for the API request."""
+        if self.delta_sync and (last_date := self._get_last_updated_date(model)):
+            return EndpointConfig(path=path, params={param_date_name.value: last_date})
+        return EndpointConfig(path=path)
+
 
 def sync_context(
     context_class: type[T],
+    *,
+    delta_sync: bool,
     step: BaseSyncStep | None,
     stdout: TextIOBase | None = None,
     **context_kwargs: Any,
@@ -227,6 +218,8 @@ def sync_context(
 
     Args:
         context_class (type[T]): The synchronization context class (inheriting from BaseSync).
+        delta_sync (bool): If True, only synchronize records updated after the last sync,
+            otherwise synchronize all records.
         step (BaseSyncStep | None): Specific step to execute. If None, all steps are run.
         stdout (TextIOBase | None): Optional output stream for logging.
         **context_kwargs (Any): Additional keyword arguments to pass to the context class.
@@ -239,7 +232,7 @@ def sync_context(
         Stops on errors.
 
     """
-    sync = context_class(stdout=stdout, **context_kwargs)
+    sync = context_class(delta_sync=delta_sync, stdout=stdout, **context_kwargs)
     steps = (step,) if step else tuple(sync.__class__.SyncStep)
     for current_step in steps:
         current_step.func(sync)()

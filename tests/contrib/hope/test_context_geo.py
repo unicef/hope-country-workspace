@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from unittest.mock import Mock
 from datetime import datetime, timezone, timedelta
 import pytest
@@ -7,7 +6,7 @@ from mptt.exceptions import InvalidMove
 from uuid import uuid4
 from io import StringIO
 
-from country_workspace.contrib.hope.sync.base import BaseSync, SkipRecordError
+from country_workspace.contrib.hope.sync.base import BaseSync, SkipRecordError, ParamDateName
 from country_workspace.contrib.hope.sync.context_geo import SyncContextGeo, SyncStep, sync_context_geo
 from country_workspace.models import Country, AreaType, Area
 
@@ -64,21 +63,24 @@ AREAS = {
 
 
 @pytest.fixture
-def sync_geo(base_sync: BaseSync) -> Callable:
-    return SyncContextGeo(client=base_sync.client, stdout=base_sync.stdout)
+def sync_geo(base_sync: BaseSync) -> SyncContextGeo:
+    return SyncContextGeo(delta_sync=base_sync.delta_sync, client=base_sync.client, stdout=base_sync.stdout)
 
 
 def test_sync_countries(mocker: MockerFixture, sync_geo: SyncContextGeo) -> None:
     mock_sync_entity = mocker.patch.object(sync_geo, "sync_entity")
-    mocker.patch.object(sync_geo, "get_updated_at_after", return_value=COUNTRY["updated_at_after"])
+    mocker.patch.object(sync_geo, "_get_last_updated_date", return_value=COUNTRY["updated_at_after"])
 
     sync_geo.sync_countries()
 
     mock_sync_entity.assert_called_once()
     config = mock_sync_entity.call_args.args[0]
     assert config["model"] is Country
-    ep = config["endpoint"]
-    assert (ep["path"], ep.get("params")) == (COUNTRY["path"], {"updated_at_after": COUNTRY["updated_at_after"]})
+    assert config["endpoint"]["path"] == COUNTRY["path"]
+    if sync_geo.delta_sync:
+        assert config["endpoint"].get("params") == {ParamDateName.UPDATED.value: COUNTRY["updated_at_after"]}
+    else:
+        assert config["endpoint"].get("params") is None
 
     expected_defaults = {k: COUNTRY["results"][0][k] for k in ("name", "iso_code2", "iso_code3")}
     defaults = config["prepare_defaults"](COUNTRY["results"][0])
@@ -89,7 +91,7 @@ def test_sync_countries(mocker: MockerFixture, sync_geo: SyncContextGeo) -> None
 def test_sync_area_types(mocker: MockerFixture, sync_geo: SyncContextGeo, expect_error: bool) -> None:
     mocker.patch.object(sync_geo, "sync_countries")
     m_entity = mocker.patch.object(sync_geo, "sync_entity")
-    mocker.patch.object(sync_geo, "get_updated_at_after", return_value=AREA_TYPES["updated_at_after"])
+    mocker.patch.object(sync_geo, "_get_last_updated_date", return_value=AREA_TYPES["updated_at_after"])
     m_assign = mocker.patch.object(sync_geo, "_assign_parents")
     m_rebuild = mocker.patch.object(AreaType.objects, "rebuild")
 
@@ -122,7 +124,7 @@ def test_sync_area_types(mocker: MockerFixture, sync_geo: SyncContextGeo, expect
 def test_sync_areas(mocker: MockerFixture, sync_geo: SyncContextGeo, expect_error: bool) -> None:
     mocker.patch.object(sync_geo, "sync_area_types")
     m_entity = mocker.patch.object(sync_geo, "sync_entity")
-    mocker.patch.object(sync_geo, "get_updated_at_after", return_value=AREAS["updated_at_after"])
+    mocker.patch.object(sync_geo, "_get_last_updated_date", return_value=AREAS["updated_at_after"])
     m_assign = mocker.patch.object(sync_geo, "_assign_parents")
     m_rebuild = mocker.patch.object(Area.objects, "rebuild")
 
@@ -200,7 +202,8 @@ def test_assign_parents(
     assert keys == expected_logs
 
 
-def test_sync_context_geo_invokes_sync_context(mocker):
+@pytest.mark.parametrize("delta_sync", [True, False], ids=["delta_sync_true", "delta_sync_false"])
+def test_sync_context_geo_invokes_sync_context(mocker: MockerFixture, delta_sync: bool) -> None:
     fake_result = {"ok": True}
     patch = mocker.patch(
         "country_workspace.contrib.hope.sync.context_geo.sync_context",
@@ -208,7 +211,7 @@ def test_sync_context_geo_invokes_sync_context(mocker):
     )
     stdout = StringIO()
 
-    result = sync_context_geo(step=SyncStep.AREAS, stdout=stdout)
+    result = sync_context_geo(delta_sync=delta_sync, step=SyncStep.AREAS, stdout=stdout)
 
-    patch.assert_called_once_with(SyncContextGeo, step=SyncStep.AREAS, stdout=stdout)
+    patch.assert_called_once_with(SyncContextGeo, delta_sync=delta_sync, step=SyncStep.AREAS, stdout=stdout)
     assert result is fake_result

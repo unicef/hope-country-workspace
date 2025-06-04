@@ -40,9 +40,9 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         if options["only_context_programs"]:
-            sync_context_programs(stdout=self.stdout)
+            sync_context_programs(delta_sync=False, stdout=self.stdout)
         elif options["only_context_geo"]:
-            sync_context_geo(stdout=self.stdout)
+            sync_context_geo(delta_sync=False, stdout=self.stdout)
         else:
-            sync_context_programs(stdout=self.stdout)
-            sync_context_geo(stdout=self.stdout)
+            sync_context_programs(delta_sync=False, stdout=self.stdout)
+            sync_context_geo(delta_sync=False, stdout=self.stdout)

@@ -1,9 +1,8 @@
-from collections.abc import Callable
 import pytest
 from pytest_mock import MockerFixture
 from io import StringIO
 
-from country_workspace.contrib.hope.sync.base import BaseSync, SkipRecordError
+from country_workspace.contrib.hope.sync.base import BaseSync, SkipRecordError, ParamDateName
 from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.aurora.context_aurora import SyncContextAurora, SyncStep, sync_context_aurora
 from country_workspace.contrib.aurora.client import AuroraClient
@@ -32,30 +31,33 @@ REGISTRATION = {
 }
 
 
-@pytest.fixture
-def base_sync(mocker: MockerFixture) -> BaseSync:
+@pytest.fixture(params=[True, False], ids=["delta_sync_true", "delta_sync_false"])
+def base_sync(request: pytest.FixtureRequest, mocker: MockerFixture) -> BaseSync:
     client = mocker.Mock(spec=AuroraClient)
     client.get = mocker.Mock()
     stdout = mocker.Mock()
-    return BaseSync(client=client, stdout=stdout)
+    return BaseSync(delta_sync=request.param, client=client, stdout=stdout)
 
 
 @pytest.fixture
-def sync_aurora(base_sync: BaseSync) -> Callable:
-    return SyncContextAurora(client=base_sync.client, stdout=base_sync.stdout)
+def sync_aurora(base_sync: BaseSync) -> SyncContextAurora:
+    return SyncContextAurora(delta_sync=base_sync.delta_sync, client=base_sync.client, stdout=base_sync.stdout)
 
 
 def test_sync_projects(sync_aurora: SyncContextAurora, mocker: MockerFixture) -> None:
     mock_sync_entity = mocker.patch.object(sync_aurora, "sync_entity")
-    mocker.patch.object(sync_aurora, "get_updated_at_after", return_value=PROJECT["modified_after"])
+    mocker.patch.object(sync_aurora, "_get_last_updated_date", return_value=PROJECT["modified_after"])
 
     sync_aurora.sync_projects()
 
     mock_sync_entity.assert_called_once()
     config = mock_sync_entity.call_args.args[0]
     assert config["model"] is Project
-    ep = config["endpoint"]
-    assert (ep["path"], ep.get("params")) == (PROJECT["path"], {"modified_after": PROJECT["modified_after"]})
+    assert config["endpoint"]["path"] == PROJECT["path"]
+    if sync_aurora.delta_sync:
+        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: PROJECT["modified_after"]}
+    else:
+        assert config["endpoint"].get("params") is None
 
     expected_defaults = {k: PROJECT["results"][0][k] for k in ("name",)}
     defaults = config["prepare_defaults"](PROJECT["results"][0])
@@ -65,7 +67,7 @@ def test_sync_projects(sync_aurora: SyncContextAurora, mocker: MockerFixture) ->
 @pytest.mark.parametrize("expect_error", [False, True], ids=["Project-Exist", "Project-DoesNotExist"])
 def test_sync_registrations(sync_aurora: SyncContextAurora, mocker: MockerFixture, expect_error: bool) -> None:
     mocker.patch.object(sync_aurora, "sync_projects")
-    mocker.patch.object(sync_aurora, "get_updated_at_after", return_value=REGISTRATION["modified_after"])
+    mocker.patch.object(sync_aurora, "_get_last_updated_date", return_value=REGISTRATION["modified_after"])
     mock_sync_entity = mocker.patch.object(sync_aurora, "sync_entity")
     if expect_error:
         mock_project = mocker.patch.object(Project.objects, "get", side_effect=Project.DoesNotExist)
@@ -78,8 +80,11 @@ def test_sync_registrations(sync_aurora: SyncContextAurora, mocker: MockerFixtur
 
     config = mock_sync_entity.call_args.args[0]
     assert config["model"] is Registration
-    ep = config["endpoint"]
-    assert (ep["path"], ep.get("params")) == (REGISTRATION["path"], {"modified_after": REGISTRATION["modified_after"]})
+    assert config["endpoint"]["path"] == REGISTRATION["path"]
+    if sync_aurora.delta_sync:
+        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: REGISTRATION["modified_after"]}
+    else:
+        assert config["endpoint"].get("params") is None
 
     if expect_error:
         with pytest.raises(SkipRecordError, match="Project not found."):
@@ -97,7 +102,7 @@ def test_sync_registrations(sync_aurora: SyncContextAurora, mocker: MockerFixtur
 
 def test_prepare_defaults_registration_invalid_url(sync_aurora: SyncContextAurora, mocker: MockerFixture) -> None:
     mocker.patch.object(sync_aurora, "sync_projects")
-    mocker.patch.object(sync_aurora, "get_updated_at_after", return_value=REGISTRATION["modified_after"])
+    mocker.patch.object(sync_aurora, "_get_last_updated_date", return_value=REGISTRATION["modified_after"])
     mock_sync_entity = mocker.patch.object(sync_aurora, "sync_entity")
 
     sync_aurora.sync_registrations()
@@ -112,15 +117,18 @@ def test_prepare_defaults_registration_invalid_url(sync_aurora: SyncContextAuror
         config["prepare_defaults"](bad_rec)
 
 
-def test_sync_context_aurora_invokes_sync_context(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize("delta_sync", [True, False], ids=["delta_sync_true", "delta_sync_false"])
+def test_sync_context_aurora_invokes_sync_context(mocker: MockerFixture, delta_sync: bool) -> None:
     fake_result = {"ok": True}
-    patch = mocker.patch(
+    mock_sync_context = mocker.patch(
         "country_workspace.contrib.aurora.context_aurora.sync_context",
         return_value=fake_result,
     )
     stdout = StringIO()
 
-    result = sync_context_aurora(step=SyncStep.REGISTRATIONS, stdout=stdout)
+    result = sync_context_aurora(delta_sync=delta_sync, step=SyncStep.REGISTRATIONS, stdout=stdout)
 
-    patch.assert_called_once_with(SyncContextAurora, step=SyncStep.REGISTRATIONS, stdout=stdout)
+    mock_sync_context.assert_called_once_with(
+        SyncContextAurora, delta_sync=delta_sync, step=SyncStep.REGISTRATIONS, stdout=stdout
+    )
     assert result is fake_result
