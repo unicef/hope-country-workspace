@@ -23,7 +23,7 @@ class RegexFormField(forms.CharField):
         super().clean(value)
         try:
             re.compile(value)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, re.error):
             raise forms.ValidationError("Invalid regex")
         else:
             return value

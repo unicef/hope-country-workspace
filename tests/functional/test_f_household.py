@@ -3,9 +3,11 @@ from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
+from testutils.factories import CountryProgramFactory
 from testutils.factories import OfficeFactory
 from testutils.factories.program import BeneficiaryGroupFactory
-from testutils.factories import CountryProgramFactory
 
 from tests.extras.testutils.selenium import CountryWorkspaceSeleniumTC
 
@@ -51,6 +53,28 @@ def household(program):
     from testutils.factories import CountryHouseholdFactory
 
     return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
+
+
+@pytest.fixture
+def households_for_regex(program):
+    from testutils.factories import CountryHouseholdFactory
+
+    for add in ["", r"\["]:
+        hsld = CountryHouseholdFactory.create(batch__program=program, batch__country_office=program.country_office)
+        hsld.flex_fields["address"] = add
+        hsld.save()
+
+
+@pytest.fixture
+def individuals_for_regex(program):
+    from testutils.factories import CountryIndividualFactory
+
+    for add in ["", r"\["]:
+        indv = CountryIndividualFactory(
+            household__batch__program=program, household__batch__country_office=program.country_office
+        )
+        indv.flex_fields["address"] = add
+        indv.save()
 
 
 @pytest.mark.selenium
@@ -150,3 +174,114 @@ def test_individuals_export_generation(
 ):
     mocked_exporter.return_value = None
     _test_export_generation(browser=browser, household=household, link="Individuals")
+
+
+def _test_update_with_regex(
+    browser,
+    household: "CountryHousehold",
+    link: str,
+    field: str,
+    regex: str,
+    subst: str,
+    expected_error: str | None,
+):
+    browser.login_as_user()
+    browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+    browser.select2_select("id_program", household.program.name)
+    browser.click_link(link)
+
+    browser.click("#action-toggle")
+    browser.select_option_by_text("select[name=action]", "Update fields using RegEx")
+    browser.click("button[name='index'][value='0']")
+
+    browser.assert_element_visible("#id_field")
+    browser.assert_element_visible("#id_regex")
+    browser.assert_element_visible("#id_subst")
+
+    assert not browser.execute_script("return document.querySelector('#id_regex').checkValidity();")
+    assert not browser.execute_script("return document.querySelector('#id_subst').checkValidity();")
+
+    select_element = browser.find_element("#id_field")
+    select = Select(select_element)
+    select.select_by_value(field)
+    browser.fill("#id_regex", regex)
+    browser.fill("#id_subst", subst)
+
+    browser.click('input[name="_preview"]')
+
+    if expected_error:
+        error_message = browser.find_element(By.CLASS_NAME, "errorlist").text
+        assert expected_error == error_message
+        return
+
+    headers = browser.find_elements(By.XPATH, "//table//tr[1]/th")
+    header_texts = [h.text.strip().lower() for h in headers]
+    for hdr in ["pk", "old", "new"]:
+        assert hdr in header_texts
+
+    cells = browser.find_elements(By.XPATH, "//table//tr/td")
+    found = any(subst in cell.text.strip() for cell in cells)
+    assert found, f"'{subst}' not found in any table cell."
+
+    browser.click('input[name="_apply"]')
+    browser.click('//a[div[text()="Async Jobs"]]')
+    browser.wait_for_element("table#result_list", timeout=10)
+    rows = browser.find_elements("table#result_list tbody tr")
+    assert any("Update fields using RegEx" in row.text for row in rows)
+
+
+@pytest.mark.selenium
+@pytest.mark.parametrize(
+    ("regex", "subst", "expected_error"),
+    [
+        (r"^\d", "Contains", None),  # starts with digit
+        (r"^$", "Empty", None),  # empty string
+        (r"\[", "Bracket", None),  # escaped square bracket
+        (r"*", "Invalid", "Invalid regex"),  # invalid regex - missing pattern
+    ],
+)
+def test_households_update_with_regex(
+    households_for_regex,
+    browser: CountryWorkspaceSeleniumTC,
+    household: "CountryHousehold",
+    regex: str,
+    subst: str,
+    expected_error: str | None,
+):
+    _test_update_with_regex(
+        browser=browser,
+        household=household,
+        link="Households",
+        field="address",
+        regex=regex,
+        subst=subst,
+        expected_error=expected_error,
+    )
+
+
+@pytest.mark.selenium
+@pytest.mark.parametrize(
+    ("regex", "subst", "expected_error"),
+    [
+        (r"\[", "Bracket", None),  # escaped square bracket
+        (r"^$", "Empty", None),  # empty string
+        (r"*", "Invalid", "Invalid regex"),  # invalid regex - missing pattern
+    ],
+)
+def test_individuals_update_with_regex(
+    individuals_for_regex,
+    browser: CountryWorkspaceSeleniumTC,
+    household: "CountryHousehold",
+    regex: str,
+    subst: str,
+    expected_error: str | None,
+):
+    _test_update_with_regex(
+        browser=browser,
+        household=household,
+        link="Individuals",
+        field="address",
+        regex=regex,
+        subst=subst,
+        expected_error=expected_error,
+    )
