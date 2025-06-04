@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 SRC = Path("src").resolve()
-sys.path.insert(0, SRC)
+sys.path.insert(0, str(SRC))
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "country_workspace.config.settings")
