@@ -1,7 +1,6 @@
 from typing import Any, Final, TypedDict, NotRequired, TypeVar
 from collections.abc import Generator, Callable
 from io import TextIOBase
-
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
@@ -38,6 +37,13 @@ class LogLevel(Enum):
 
     INFO = auto()
     ERROR = auto()
+
+
+class ParamDateName(Enum):
+    """Parameter names for date filtering in API requests."""
+
+    UPDATED = "updated_at_after"
+    MODIFIED = "modified_after"
 
 
 class EndpointConfig(TypedDict):
@@ -193,10 +199,10 @@ class BaseSync:
         last_sync = SyncLog.objects.filter(content_type=ct).order_by("-last_update_date").first()
         return last_sync.last_update_date.date().isoformat() if last_sync else None
 
-    def _build_endpoint(self, path: str, model: type[Model]) -> EndpointConfig:
+    def _build_endpoint(self, path: str, model: type[Model], param_date_name: ParamDateName) -> EndpointConfig:
         """Build the endpoint configuration for the API request."""
         if self.delta_sync and (last_date := self._get_last_updated_date(model)):
-            return EndpointConfig(path=path, params={"updated_at_after": last_date})
+            return EndpointConfig(path=path, params={param_date_name.value: last_date})
         return EndpointConfig(path=path)
 
 

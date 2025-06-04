@@ -26,7 +26,7 @@ class SyncAdminMixin(ExtraButtonsMixin):
     @button()
     def sync(self, request: HttpRequest) -> None:
         AsyncJob.objects.create(
-            description=_("Sync with ...."),
+            description=(f"Sync {self.model._meta.verbose_name_plural}"),
             program=None,
             owner=request.user,
             type=AsyncJob.JobType.TASK,
@@ -41,9 +41,14 @@ class SyncAdminMixin(ExtraButtonsMixin):
     def sync_delta(self, request: HttpRequest) -> None:
         totals = run_sync(config={**self.sync_config, "delta_sync": True})
         if errors := totals.get("errors"):
-            self.message_user(request, "; ".join(errors), level=messages.ERROR)
+            self.message_user(request, " | ".join(errors), level=messages.ERROR)
         else:
-            self.message_user(request, totals, level=messages.SUCCESS)
+            summary = " | ".join(
+                f"{model_name.upper()}: {counts.get('add', 0)} created - {counts.get('upd', 0)} updated"
+                for model_name, counts in totals.items()
+                if isinstance(counts, dict)
+            )
+            self.message_user(request, summary, level=messages.SUCCESS)
 
 
 def task(job: AsyncJob) -> dict[str, Any]:

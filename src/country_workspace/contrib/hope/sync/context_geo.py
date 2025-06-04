@@ -11,6 +11,7 @@ from country_workspace.contrib.hope.sync.base import (
     SyncConfig,
     sync_context,
     SkipRecordError,
+    ParamDateName,
     LogLevel,
 )
 from country_workspace.models import Country, AreaType, Area
@@ -40,7 +41,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=Country,
                 reference_id="hope_id",
-                endpoint=self._build_endpoint("lookups/country", Country),
+                endpoint=self._build_endpoint("lookups/country", Country, ParamDateName.UPDATED),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "iso_code2", "iso_code3")},
             ),
         )
@@ -75,7 +76,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=AreaType,
                 reference_id="hope_id",
-                endpoint=self._build_endpoint("areatypes", AreaType),
+                endpoint=self._build_endpoint("areatypes", AreaType, ParamDateName.UPDATED),
                 prepare_defaults=_prepare_defaults,
             ),
         )
@@ -112,7 +113,7 @@ class SyncContextGeo(BaseSync):
             SyncConfig(
                 model=Area,
                 reference_id="hope_id",
-                endpoint=self._build_endpoint("areas", Area),
+                endpoint=self._build_endpoint("areas", Area, ParamDateName.UPDATED),
                 prepare_defaults=_prepare_defaults,
             ),
         )

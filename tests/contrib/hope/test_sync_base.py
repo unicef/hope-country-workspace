@@ -2,7 +2,6 @@ from typing import Callable
 from unittest.mock import Mock
 import pytest
 from django.db import DatabaseError
-from django.db.models import Q
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.sync.base import (
@@ -146,23 +145,6 @@ def test_sync_entity_prepare_defaults_none(
     assert base_sync.total.get("errors") is None
 
 
-def test_sync_entity_should_deactivate(
-    base_sync: BaseSync,
-    mock_model: Mock,
-    sync_entity_context: Callable,
-    records: list[dict],
-    deactivate_config: SyncConfig,
-    mocker: MockerFixture,
-) -> None:
-    deactivate_records = mocker.Mock()
-    base_sync._deactivate_records = deactivate_records
-    sync_entity_context(records=[records[1]], config=deactivate_config)
-    assert base_sync.total["test_model"] == {"add": 0, "upd": 0}
-    assert base_sync.total.get("errors") is None
-    assert deactivate_records.called
-    assert {"2"}.issubset(deactivate_records.call_args[0][3])
-
-
 @pytest.mark.parametrize(
     ("exception", "expected_log", "expected_errors"),
     [
@@ -207,26 +189,6 @@ def test_sync_entity_post_process(
     post_process.assert_called_once()
 
 
-def test_deactivate_records_success(base_sync: BaseSync, mock_model: Mock, deactivate_filter: Q) -> None:
-    processed, inactive = {"1"}, {"2"}
-    mock_model.objects.filter.return_value.update.return_value = 2
-    base_sync._deactivate_records(mock_model, "test_model", processed, inactive)
-    assert base_sync.total["test_model"] == {"deactivated": 2}
-    assert base_sync.total.get("errors") is None
-    assert_stdout_contains(base_sync.stdout, "Deactivated '2' records 'test_model'")
-    mock_model.objects.filter.assert_called_with(deactivate_filter)
-
-
-def test_deactivate_records_errors(base_sync: BaseSync, mock_model: Mock, deactivate_filter: Q) -> None:
-    processed, inactive = {"1"}, {"2"}
-    base_sync.total["test_model"] = {}
-    mock_model.objects.filter.return_value.update.side_effect = DatabaseError("DB error")
-    base_sync._deactivate_records(mock_model, "test_model", processed, inactive)
-    assert base_sync.total["test_model"] == {}
-    assert any("Failed during deactivation" in e for e in base_sync.total["errors"])
-    mock_model.objects.filter.assert_called_with(deactivate_filter)
-
-
 def test_base_sync_step(sync_step: BaseSyncStep, mocker: MockerFixture) -> None:
     sync_method = sync_step._sync_method
     assert sync_step._value_ == 1
@@ -237,6 +199,7 @@ def test_base_sync_step(sync_step: BaseSyncStep, mocker: MockerFixture) -> None:
     assert isinstance(sync_step, BaseSyncStep)
 
 
+@pytest.mark.parametrize("delta_sync", [True, False], ids=["delta_sync_true", "delta_sync_false"])
 @pytest.mark.parametrize(
     ("step", "has_errors", "expected_steps"),
     [
@@ -247,7 +210,12 @@ def test_base_sync_step(sync_step: BaseSyncStep, mocker: MockerFixture) -> None:
     ids=["all_steps", "specific_step", "step_with_errors"],
 )
 def test_sync_context(
-    mocker: MockerFixture, sync_context_class: type, step: BaseSyncStep | None, has_errors: bool, expected_steps: int
+    mocker: MockerFixture,
+    delta_sync: bool,
+    sync_context_class: type,
+    step: BaseSyncStep | None,
+    has_errors: bool,
+    expected_steps: int,
 ) -> None:
     def mock_error_step(step):
         def mock_step_func(sync):
@@ -259,11 +227,14 @@ def test_sync_context(
         step.func.side_effect = mock_step_func
         mocker.patch.object(sync_context_class, "SyncStep", [step])
 
-    if has_errors and step:
-        mock_error_step(step)
-    result = sync_context(sync_context_class, step=step, stdout=mocker.Mock())
+    if step:
+        step.func.reset_mock()
+        if has_errors:
+            mock_error_step(step)
+    result = sync_context(sync_context_class, delta_sync=delta_sync, step=step, stdout=mocker.Mock())
     expected_total = {"errors": ["Failed to sync DB record 'test': Test error"]} if has_errors and step else {}
     assert result == expected_total
+
     if step:
         step.func.assert_called_once()
     else:

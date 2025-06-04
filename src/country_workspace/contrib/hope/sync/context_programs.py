@@ -17,6 +17,7 @@ from country_workspace.contrib.hope.sync.base import (
     SkipRecordError,
     EndpointConfig,
     BaseSyncStep,
+    ParamDateName,
     sync_context,
 )
 from country_workspace.models import BeneficiaryGroup, Office, Program
@@ -56,7 +57,7 @@ class SyncContextPrograms(BaseSync):
             SyncConfig(
                 model=Office,
                 reference_id="hope_id",
-                endpoint=self._build_endpoint("business_areas", Office),
+                endpoint=self._build_endpoint("business_areas", Office, ParamDateName.UPDATED),
                 prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name", "active")},
                 should_process=lambda r: r.get("active"),
             ),
@@ -130,7 +131,7 @@ class SyncContextPrograms(BaseSync):
             SyncConfig(
                 model=Program,
                 reference_id="hope_id",
-                endpoint=self._build_endpoint("programs", Program),
+                endpoint=self._build_endpoint("programs", Program, ParamDateName.UPDATED),
                 prepare_defaults=_prepare_defaults,
                 should_process=_should_process,
                 post_process=_post_process,

@@ -9,9 +9,10 @@ from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.hope.sync.base import (
     BaseSync,
     BaseSyncStep,
+    ParamDateName,
     SyncConfig,
-    sync_context,
     SkipRecordError,
+    sync_context,
 )
 from country_workspace.contrib.aurora.client import AuroraClient
 
@@ -40,7 +41,7 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Project,
                 reference_id="reference_pk",
-                endpoint=self._build_endpoint("project", Project),
+                endpoint=self._build_endpoint("project", Project, ParamDateName.MODIFIED),
                 prepare_defaults=lambda r: {"name": r["name"]},
             ),
         )
@@ -66,7 +67,7 @@ class SyncContextAurora(BaseSync):
             SyncConfig(
                 model=Registration,
                 reference_id="reference_pk",
-                endpoint=self._build_endpoint("registration", Registration),
+                endpoint=self._build_endpoint("registration", Registration, ParamDateName.MODIFIED),
                 prepare_defaults=_prepare_defaults,
             ),
         )

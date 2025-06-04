@@ -15,12 +15,12 @@ from country_workspace.contrib.hope.sync.base import (
 from tests.extras.testutils.utils import assert_stdout_contains
 
 
-@pytest.fixture
-def base_sync(mocker: MockerFixture) -> BaseSync:
+@pytest.fixture(params=[True, False], ids=["delta_sync_true", "delta_sync_false"])
+def base_sync(request: pytest.FixtureRequest, mocker: MockerFixture) -> BaseSync:
     client = mocker.Mock()
     client.get = mocker.Mock()
     stdout = mocker.Mock()
-    return BaseSync(client=client, stdout=stdout)
+    return BaseSync(delta_sync=request.param, client=client, stdout=stdout)
 
 
 @pytest.fixture
