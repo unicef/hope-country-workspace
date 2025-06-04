@@ -96,7 +96,7 @@ docs = [
   "mkdocstrings-python",
 ]
 
-[uv]
+[tool.uv]
 package = true
 
 [tool.django-stubs]
