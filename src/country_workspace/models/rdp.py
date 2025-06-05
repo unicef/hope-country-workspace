@@ -1,0 +1,42 @@
+from django.db import models
+from django.utils.translation import gettext as _
+
+from .base import BaseModel
+from .user import User
+
+
+class Rdp(BaseModel):
+    """Represents a Registration Data Push (RDP) object in the system."""
+
+    class PushStatus(models.TextChoices):
+        PENDING = "PENDING", _("Pending")
+        SUCCESS = "SUCCESS", _("Success")
+        FAILURE = "FAILURE", _("Failure")
+
+    country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
+    program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
+    name = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=10, choices=PushStatus.choices, null=True, blank=True)
+    push_date = models.DateTimeField(auto_now=True)
+    pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = (("program", "name"),)
+        verbose_name = _("Registration Data Push")
+        verbose_name_plural = _("Registration Data Pushes")
+
+    def __str__(self) -> str:
+        return self.name or f"RDP {self.pk} ({self.country_office})"
+
+    def add_beneficiaries(self, pks: list[int], master_detail: bool = True) -> None:
+        """Add beneficiaries to this RDP.
+
+        Args:
+            pks: List of beneficiary IDs to add
+            master_detail: Value corresponds to BeneficiaryGroup.master_detail field
+
+        """
+        if not pks:
+            return
+        beneficiaries = "households" if master_detail else "individuals"
+        getattr(self, beneficiaries).set(pks)

@@ -7,7 +7,7 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.forms import PushToHopeForm
-from country_workspace.contrib.hope.push import push_to_hope_core
+from country_workspace.contrib.hope.push import push_to_hope_core, PushConfig
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
@@ -196,19 +196,27 @@ def push_to_hope(
     program = model_admin.get_selected_program(request)
     if request.method == "POST" and "_push" in request.POST:
         if (form := PushToHopeForm(request.POST, program=program)).is_valid():
-            AsyncJob.objects.create(
+            config: PushConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                "batch_size": form.cleaned_data["batch_size"] or PUSH_BATCH_SIZE,
+                "co_slug": program.country_office.slug,
+                "country_office_id": program.country_office.id,
+                "imported_by_email": state.request.user.email,
+                "master_detail": program.beneficiary_group.master_detail,
+                "pks": list(queryset.values_list("pk", flat=True)),
+                "program_id": program.id,
+                "program_hope_id": program.hope_id,
+                "pushed_by_id": state.request.user.id,
+            }
+            job = AsyncJob.objects.create(
                 description=push_to_hope.short_description,
                 type=AsyncJob.JobType.TASK,
                 owner=state.request.user,
                 action=fqn(push_to_hope_core),
                 program=program,
-                config={
-                    "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
-                    "batch_size": form.cleaned_data["batch_size"] or PUSH_BATCH_SIZE,
-                    "master_detail": program.beneficiary_group.master_detail,
-                    "pks": list(queryset.values_list("pk", flat=True)),
-                },
-            ).queue()
+                config=config,
+            )
+            job.queue()
             model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
             return redirect("workspace:workspaces_countryasyncjob_changelist")
     else:

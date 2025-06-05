@@ -21,9 +21,11 @@ class TenantBackend(BaseBackend):
             CountryHousehold,
             CountryIndividual,
             CountryProgram,
+            CountryRdp,
             Household,
             Individual,
             Program,
+            Rdp,
         )
 
         if user.is_anonymous:
@@ -36,7 +38,7 @@ class TenantBackend(BaseBackend):
             program = None
             country_office = obj
             filters = {"group__userrole__country_office": country_office}
-        elif isinstance(obj, (CountryBatch | Batch)):
+        elif isinstance(obj, (CountryBatch | Batch | CountryRdp | Rdp)):
             program = obj.program
             country_office = obj.country_office
             filters = {"group__userrole__country_office": country_office, "group__userrole__program": program}

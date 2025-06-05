@@ -14,6 +14,7 @@ from .job import AsyncJobAdmin
 from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin
 from .office import OfficeAdmin
 from .program import ProgramAdmin
+from .rdp import RdpAdmin
 from .role import UserRoleAdmin
 from .sync_log import SyncLog
 from .user import UserAdmin
@@ -39,6 +40,7 @@ __all__ = [
     "IndividualAdmin",
     "OfficeAdmin",
     "ProgramAdmin",
+    "RdpAdmin",
     "SyncLog",
     "UserAdmin",
     "UserRoleAdmin",

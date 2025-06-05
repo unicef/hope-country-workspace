@@ -4,7 +4,7 @@ from django.db import models
 from django.utils.functional import cached_property
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import AsyncJob, Batch, Household, Individual, Office, Program
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Office, Program, Rdp
 
 __all__ = ["CountryBatch", "CountryHousehold", "CountryIndividual", "CountryProgram"]
 
@@ -50,3 +50,10 @@ class CountryAsyncJob(AsyncJob):
         proxy = True
         verbose_name = "Background Job"
         verbose_name_plural = "Background Jobs"
+
+
+class CountryRdp(Rdp):
+    class Meta:
+        proxy = True
+        verbose_name = "Country Registration Data Push"
+        verbose_name_plural = "Country Registration Data Pushes"

@@ -19,6 +19,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
     program = models.ForeignKey("Program", related_name="jobs", on_delete=models.CASCADE, null=True, blank=True)
     batch = models.ForeignKey("Batch", related_name="jobs", on_delete=models.CASCADE, null=True, blank=True)
     file = models.FileField(storage=MEDIA_STORAGE, upload_to="updates", null=True, blank=True)
+    rdp = models.ForeignKey("Rdp", related_name="jobs", on_delete=models.CASCADE, null=True, blank=True)
     config = models.JSONField(default=dict, blank=True)
     action = models.CharField(max_length=500, blank=True, null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
@@ -31,7 +32,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
         verbose_name_plural = "Async Jobs"
 
     def __str__(self) -> str:
-        return self.description or f"Background Job #{self.pk}"
+        return f"{self.description or 'Background Job'} #{self.pk}"
 
     @property
     def queue_position(self) -> int:
