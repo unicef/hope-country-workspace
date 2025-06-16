@@ -33,3 +33,5 @@ black.txt
 flake8
 act.*
 root/
+/src/country_workspace/data/name_parser/input/
+/src/country_workspace/data/name_parser/tmp/
