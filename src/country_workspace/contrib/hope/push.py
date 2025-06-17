@@ -214,7 +214,7 @@ class PushProcessor(BatchErrorHandlerMixin):
                     self.total["errors"].append(f"Error pushing data for IDs: {batch_ids} - {response}")
                     self.save_batch_errors_to_beneficiaries(response["people"], batch_ids)
                 elif e > 0:
-                    self.total["errors"].append(f"Error pushing data for IDs: {batch_ids}")
+                    self.total["errors"].append(f"Error pushing data for IDs: {batch_ids} - {response}")
                     self.save_batch_errors_to_beneficiaries(response, batch_ids)
                 else:
                     self.total["errors"].append(f"Unexpected error format for IDs: {batch_ids} - {response}")

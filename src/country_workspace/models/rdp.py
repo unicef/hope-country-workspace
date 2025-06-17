@@ -28,15 +28,15 @@ class Rdp(BaseModel):
     def __str__(self) -> str:
         return self.name or f"RDP {self.pk} ({self.country_office})"
 
-    def add_beneficiaries(self, pks: list[int], master_detail: bool = True) -> None:
+    def add_beneficiaries(self, pks: list[int], is_household: bool = True) -> None:
         """Add beneficiaries to this RDP.
 
         Args:
             pks: List of beneficiary IDs to add
-            master_detail: Value corresponds to BeneficiaryGroup.master_detail field
+            is_household: Value corresponds to BeneficiaryGroup.master_detail field
 
         """
         if not pks:
             return
-        beneficiaries = "households" if master_detail else "individuals"
+        beneficiaries = "households" if is_household else "individuals"
         getattr(self, beneficiaries).set(pks)

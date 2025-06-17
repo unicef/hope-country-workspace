@@ -47,7 +47,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return "-"
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
-        return super().get_queryset(request).select_related("program").filter(program=state.program)
+        return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
     def has_add_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False

@@ -5,10 +5,12 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from country_workspace.storages import MEDIA_STORAGE
+
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0014_office_enabled_program_enabled_alter_office_active"),
+        ("country_workspace", "0016_alter_asyncjob_file"),
     ]
 
     operations = [
@@ -55,6 +57,11 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "Registration Data Pushes",
                 "unique_together": {("program", "name")},
             },
+        ),
+        migrations.AlterField(
+            model_name="asyncjob",
+            name="file",
+            field=models.FileField(blank=True, null=True, storage=MEDIA_STORAGE, upload_to="updates"),
         ),
         migrations.AddField(
             model_name="asyncjob",

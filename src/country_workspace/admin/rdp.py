@@ -2,6 +2,7 @@ from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
@@ -31,6 +32,9 @@ class RdpAdmin(BaseModelAdmin):
             url = reverse("admin:country_workspace_asyncjob_change", args=[job.pk])
             return format_html('<a href="{}">{}</a>', url, str(job))
         return "-"
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Rdp]:
+        return super().get_queryset(request).select_related("program__beneficiary_group", "country_office")
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, button: LinkButton) -> None:
