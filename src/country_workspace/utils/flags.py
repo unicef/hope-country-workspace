@@ -53,7 +53,7 @@ def hostname(value: str, request: "HttpRequest|None", **kwargs: "Any") -> bool:
 def env_var(value: str, **kwargs: Any) -> bool:
     if "=" in value:
         key, value = value.split("=")
-        return os.environ.get(key, -1) == value
+        return os.environ.get(key, "-1") == value
     return value.strip() in os.environ
 
 

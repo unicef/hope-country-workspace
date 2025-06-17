@@ -79,7 +79,7 @@ def create_household(batch: Batch, submission: Submission, config: Config) -> Ho
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = normalize_json(raw_household_fields)
     return cast(
-        Household,
+        "Household",
         batch.program.households.create(
             batch=batch,
             flex_fields=clean_field_names(household_fields),

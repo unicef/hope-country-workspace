@@ -27,9 +27,9 @@ register = template.Library()
 ADMIN_CHANGE_VIEW = "admin:{app}_{model}_change"
 ADMIN_CHANGELIST_VIEW = "admin:{app}_{model}_changelist"
 ADMIN_URL = """
-<a class="admin-change-link" target="_admin" href="{url}?{query}">'
-    <span class="icon icon-shield1"></span>'
-"</a>"
+<a class="admin-change-link" target="_admin" href="{url}?{query}">
+    <span class="icon icon-star1" style="font-size: 15px;"></span>
+</a>
 """
 
 

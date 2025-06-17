@@ -5,7 +5,10 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT, download_attachments, filter_out_meta_data
-from country_workspace.contrib.kobo.api.data.submission import Submission
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from country_workspace.contrib.kobo.api.data.submission import Submission
 
 
 def test_filter_out_meta_data() -> None:
@@ -35,7 +38,7 @@ def test_download_attachments(mocker: MockerFixture, top_level_attachment: bool)
     submission.__contains__.return_value = not top_level_attachment
     value = VALUE_FORMAT.format(mimetype=mime_type, content=content)
 
-    assert download_attachments(data_getter, cast(Submission, submission)) == submission
+    assert download_attachments(data_getter, cast("Submission", submission)) == submission
     data_getter.assert_called_once_with(download_url)
     b64encode.assert_called_once_with(data_getter.return_value.content)
 
