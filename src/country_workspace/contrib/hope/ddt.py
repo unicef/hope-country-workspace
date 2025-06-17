@@ -13,7 +13,7 @@ class ApiCall:
     def __init__(self, panel: "WSHopePanel", data: dict[str, Any]) -> None:
         self.panel = panel
         self.url = data["url"]
-        self.params = data["params"]
+        self.params = data.get("params", {})
         self.signature = data["signature"]
 
     def timing(self) -> Any:

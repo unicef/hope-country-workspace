@@ -46,11 +46,11 @@ def handle_paginated_response[T, U](
 
 
 def get_raw_asset_list(data: raw_common.ListResponse) -> list[raw_asset_list.Asset]:
-    return [datum for datum in cast(raw_asset_list.AssetList, data)["results"] if datum["has_deployment"]]
+    return [datum for datum in cast("raw_asset_list.AssetList", data)["results"] if datum["has_deployment"]]
 
 
 def get_raw_submission_list(data: raw_common.ListResponse) -> list[raw_submission_list.Submission]:
-    return cast(raw_submission_list.SubmissionList, data)["results"]
+    return cast("raw_submission_list.SubmissionList", data)["results"]
 
 
 def get_asset_list(data_getter: DataGetter, url: str) -> Generator[Asset, None, None]:

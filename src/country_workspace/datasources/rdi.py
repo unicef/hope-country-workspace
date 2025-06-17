@@ -83,7 +83,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
 
         try:
             mapping[household_key] = cast(
-                Household,
+                "Household",
                 job.program.households.create(
                     batch=batch,
                     name=label,

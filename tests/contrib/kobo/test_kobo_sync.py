@@ -4,8 +4,7 @@ from unittest.mock import Mock
 import pytest
 from constance.test.unittest import override_config
 from pytest_mock import MockerFixture
-
-from country_workspace.contrib.kobo.api.data.submission import Submission
+from typing import TYPE_CHECKING
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
     ASSET_CACHE_KEY,
@@ -19,6 +18,9 @@ from country_workspace.contrib.kobo.sync import (
     is_submission_data_url,
     make_client,
 )
+
+if TYPE_CHECKING:
+    from country_workspace.contrib.kobo.api.data.submission import Submission
 
 EMPTY = ""
 TOKEN = "token"
@@ -92,7 +94,7 @@ def test_extract_household_data() -> None:
         (household_field := "a"): 1,
         (individual_records_field := "b"): 2,
     }
-    household_data = extract_household_data(cast(Submission, data), individual_records_field)
+    household_data = extract_household_data(cast("Submission", data), individual_records_field)
     assert individual_records_field not in household_data
     assert household_field in household_data
     assert household_data[household_field] == data[household_field]
@@ -115,7 +117,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     individuals = create_individuals(
         batch_mock := Mock(name="batch"),
         household_mock := Mock(name="household"),
-        cast(Submission, data),
+        cast("Submission", data),
         config,
     )
 

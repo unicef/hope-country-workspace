@@ -14,8 +14,11 @@ from country_workspace.contrib.kobo.api.client.helpers import (
     handle_paginated_response,
 )
 from country_workspace.contrib.kobo.api.data.helpers import download_attachments
-from country_workspace.contrib.kobo.api.raw.asset_list import Asset
-from country_workspace.contrib.kobo.api.raw.common import ListResponse
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from country_workspace.contrib.kobo.api.raw.asset_list import Asset
+    from country_workspace.contrib.kobo.api.raw.common import ListResponse
 
 BASE_URL = "https://test.org"
 PROJECT_VIEW_ID = "project-view-id"
@@ -79,12 +82,12 @@ def test_get_raw_asset_list() -> None:
         "previous": None,
         "results": [asset0, asset1],
     }
-    assert get_raw_asset_list(cast(ListResponse, data)) == [asset0]
+    assert get_raw_asset_list(cast("ListResponse", data)) == [asset0]
 
 
 def test_get_raw_submission_list() -> None:
     data = {"count": 0, "next": None, "previous": None, "results": (results := object())}
-    assert get_raw_submission_list(cast(ListResponse, data)) == results
+    assert get_raw_submission_list(cast("ListResponse", data)) == results
 
 
 def test_get_asset_list(mocker: MockerFixture) -> None:
@@ -125,7 +128,7 @@ def test_get_asset(mocker: MockerFixture) -> None:
     response.json.return_value = (raw_asset_data := {"data": (data := Mock())})
     raw = {"url": BASE_URL}
 
-    result = get_asset(data_getter, cast(Asset, raw))
+    result = get_asset(data_getter, cast("Asset", raw))
 
     data_getter.assert_called_once_with(BASE_URL)
     response.raise_for_status.assert_called_once()

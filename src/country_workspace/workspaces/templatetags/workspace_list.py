@@ -113,7 +113,7 @@ def result_headers(cl: "WorkspaceChangeList | ChangeList") -> "Generator[dict[st
                     "text": mark_safe(  # noqa: S308
                         f'<input type="checkbox" id="action-toggle" aria-label="{aria_label}">',
                     ),
-                    "class_attrib": mark_safe(' class="action-checkbox-column"'),  # noqa: S308
+                    "class_attrib": ' class="action-checkbox-column"',
                     "sortable": False,
                 }
                 continue
