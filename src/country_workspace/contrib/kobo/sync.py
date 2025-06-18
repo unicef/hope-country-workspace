@@ -1,5 +1,5 @@
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from functools import reduce, partial
 from typing import Any, Final, TypedDict, cast
 
@@ -77,15 +77,23 @@ def uppercase_fields(fields: tuple[str], entry: dict) -> dict:
     return entry
 
 
+def preprocess_individual(individual: dict) -> dict:
+    processors = (
+        normalize_json,
+        partial(clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS),
+    )
+    return reduce(apply_processor, processors, individual)
+
+
+def get_fullname_key(individual: Iterable[str]) -> str | None:
+    return next((key for key in individual if key.startswith("full_name")), None)
+
+
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
-        processors = (
-            normalize_json,
-            partial(clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS),
-        )
-        individual = reduce(apply_processor, processors, raw_individual)
-        fullname = next((key for key in individual if key.startswith("full_name")), None)
+        individual = preprocess_individual(raw_individual)
+        fullname = get_fullname_key(individual)
         individuals.append(
             Individual(
                 batch=batch,
