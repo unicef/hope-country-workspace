@@ -17,6 +17,8 @@ from country_workspace.contrib.kobo.sync import (
     import_data,
     is_submission_data_url,
     make_client,
+    apply_processor,
+    uppercase_fields,
 )
 
 if TYPE_CHECKING:
@@ -203,3 +205,20 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     )
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
     import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config)
+
+
+def test_apply_processor() -> None:
+    entry_mock = Mock()
+    processor_mock = Mock()
+    assert apply_processor(entry_mock, processor_mock) == processor_mock.return_value
+    processor_mock.assert_called_once_with(entry_mock)
+
+
+def test_uppercase_fields_field_exists() -> None:
+    result = uppercase_fields((field := "test",), {field: "test"})
+    assert result[field].isupper()
+
+
+def test_uppercase_fields_field_does_not_exist() -> None:
+    result = uppercase_fields((field := "test",), {})
+    assert field not in result
