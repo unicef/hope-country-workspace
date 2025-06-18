@@ -28,7 +28,7 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
         "owner",
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
-    search_fields = ("name",)
+    search_fields = ("description",)
     fields = ("description",)
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
