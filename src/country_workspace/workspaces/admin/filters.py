@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any
 
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from adminfilters.combo import ChoicesFieldComboFilter
+from adminfilters.value import MultiValueTextFieldFilter
 from django.http import HttpRequest
 from django.urls import reverse
 
@@ -108,3 +109,18 @@ class UserAutoCompleteFilter(AutoCompleteFilter):
             "class": classes,
             "id": "_".join(self.expected_parameters()),
         }
+
+
+class MultiValueFilter(MultiValueTextFieldFilter):
+    template = "workspace/adminfilters/value_multi.html"
+
+    def get_parameters(
+        self, param_name: str, default: str = "", multi: bool = False, pop: bool = False, separator: str = ","
+    ) -> str:
+        val = self._params.pop(param_name, default) if pop else self._params.get(param_name, default)
+        if val:
+            if multi:
+                val = val[-1].split(separator)
+            else:
+                val = val[-1]
+        return val
