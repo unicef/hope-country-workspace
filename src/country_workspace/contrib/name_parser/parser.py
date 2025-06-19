@@ -38,7 +38,7 @@ class LSTM(nn.Module):
 
 def get_parser(country_code: str) -> Parser:
     with (BASE_PATH / f"data/name_parser/models/{country_code}.txt").open() as f:
-        lines = f.readlines()
+        lines = tuple(line.rstrip("\n") for line in f.readlines())
 
     unknown = "_"
     alphabet = tuple(lines[0])
