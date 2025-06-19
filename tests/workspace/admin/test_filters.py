@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from country_workspace.workspaces.admin.filters import (
     CWLinkedAutoCompleteFilter,
     HouseholdFilter,
+    MultiValueFilter,
 )
 
 
@@ -239,3 +240,33 @@ def test_html_attrs_with_lookup_val(filter_instance):
     attrs = filter_instance.html_attrs()
 
     assert "active" in attrs["class"]
+
+
+@pytest.fixture
+def multi_value_filter_instance(mock_request, mock_model_admin):
+    return MultiValueFilter(
+        field=MagicMock(),
+        request=mock_request,
+        params={},
+        model=MagicMock(),
+        model_admin=mock_model_admin,
+        field_path="test_field",
+    )
+
+
+def test_multi_value_filter_get_parameters_val(multi_value_filter_instance):
+    multi_value_filter_instance._params = {"foo": ["bar"]}
+    result = multi_value_filter_instance.get_parameters("foo")
+    assert result == "bar"
+
+
+def test_multi_value_filter_get_parameters_val_multi(multi_value_filter_instance):
+    multi_value_filter_instance._params = {"foo": ["a,b,c"]}
+    result = multi_value_filter_instance.get_parameters("foo", multi=True)
+    assert result == ["a", "b", "c"]
+
+
+def test_multi_value_filter_get_parameters_no_val(multi_value_filter_instance):
+    multi_value_filter_instance._params = {}
+    result = multi_value_filter_instance.get_parameters("foo")
+    assert result == ""
