@@ -151,7 +151,10 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
 
     @button(
         label=_("Validate Programme"),
-        html_attrs={"title": "Validate Entire Programme: Beneficiaries, Households and Individuals"},
+        html_attrs={
+            "title": "Validate Entire Programme: Beneficiaries, Households and Individuals",
+            "onclick": "return !document.querySelector('input[name=_selected_action]:checked');",
+        },
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         opts = self.model._meta
