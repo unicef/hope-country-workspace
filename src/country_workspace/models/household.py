@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from .base import BaseModel, Validable
+from ..contrib.aurora.pipeline import ROLE_PRIMARY, ROLE_ALTERNATE
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -58,7 +59,7 @@ class Household(Validable, BaseModel):
         return self.members.filter(flex_fields__relationship="HEAD")
 
     def collectors_primary(self) -> "QuerySet[Individual]":
-        return self.members.filter(flex_fields__primary_collector_id=self.flex_fields["household_id"])
+        return self.members.filter(flex_fields__role=ROLE_PRIMARY)
 
     def collectors_alternate(self) -> "QuerySet[Individual]":
-        return self.members.filter(flex_fields__alternate_collector_id=self.flex_fields["household_id"])
+        return self.members.filter(flex_fields__role=ROLE_ALTERNATE)

@@ -4,6 +4,7 @@ import factory
 import pytest
 from faker import Faker
 
+from country_workspace.contrib.aurora.pipeline import ROLE_ALTERNATE, ROLE_PRIMARY
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
 
 if TYPE_CHECKING:
@@ -52,34 +53,18 @@ def test_head(household: "Household"):
     household.members.add(IndividualFactory(household=household, flex_fields={"relationship": "HEAD"}))
     assert v.validate(household) == ["This Household does not have Primary Collector"]
 
-    household.members.add(
-        IndividualFactory(
-            household=household, flex_fields={"primary_collector_id": household.flex_fields["household_id"]}
-        )
-    )
+    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_PRIMARY}))
     assert v.validate(household) == []
 
     household.members.add(IndividualFactory(household=household, flex_fields={"relationship": "HEAD"}))
     assert v.validate(household) == ["This Household has multiple heads"]
-    household.members.add(
-        IndividualFactory(
-            household=household, flex_fields={"primary_collector_id": household.flex_fields["household_id"]}
-        )
-    )
+    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_PRIMARY}))
     assert v.validate(household) == [
         "This Household has multiple heads",
         "This Household has multiple Primary Collectors",
     ]
-    household.members.add(
-        IndividualFactory(
-            household=household, flex_fields={"alternate_collector_id": household.flex_fields["household_id"]}
-        )
-    )
-    household.members.add(
-        IndividualFactory(
-            household=household, flex_fields={"alternate_collector_id": household.flex_fields["household_id"]}
-        )
-    )
+    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_ALTERNATE}))
+    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_ALTERNATE}))
     assert v.validate(household) == [
         "This Household has multiple heads",
         "This Household has multiple Primary Collectors",

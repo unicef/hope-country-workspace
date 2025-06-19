@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from django_celery_results.models import TaskResult
 
+from country_workspace.contrib.aurora.pipeline import ROLE_PRIMARY
 from country_workspace.models import AsyncJob
 from testutils.factories import CountryHouseholdFactory
 from testutils.factories.program import BeneficiaryGroupFactory, CountryProgramFactory
@@ -60,7 +61,7 @@ def household(program):
             "primary_collector_id": household.flex_fields["household_id"],
         }
         if first_member:
-            member.flex_fields["role"] = "PRIMARY"
+            member.flex_fields["role"] = ROLE_PRIMARY
         member.save()
         first_member = False
 

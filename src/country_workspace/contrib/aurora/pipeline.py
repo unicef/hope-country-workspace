@@ -21,6 +21,9 @@ class Config(BatchNameConfig, FailIfAlienConfig):
 RELATIONSHIP_HEAD: Final[str] = "HEAD"
 RELATIONSHIP_FIELDNAME: Final[str] = "relationship"
 
+ROLE_PRIMARY = "PRIMARY"
+ROLE_ALTERNATE = "ALTERNATE"
+
 
 def import_from_aurora(job: AsyncJob) -> dict[str, int]:
     """Import data from the Aurora system into the database within an atomic transaction.
