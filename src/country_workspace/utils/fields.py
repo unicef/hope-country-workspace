@@ -1,5 +1,5 @@
 import binascii
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Iterable
 from functools import reduce
 from typing import Any
 from base64 import b64decode
@@ -31,32 +31,34 @@ def clean_field_name(v: str) -> str:
     return reduce(lambda name, substr: name.replace(substr, ""), TO_REMOVE_VALUES, v.lower())
 
 
-def clean_field_names(record: Record) -> Record:
+def clean_field_names(record: Record, fields_to_uppercase: Iterable[str] = TO_UPPERCASE_FIELDS) -> Record:
     """Clean all field names in a record by normalizing them.
 
     Args:
         record (dict): A dictionary with field names as keys and their values.
+        fields_to_uppercase (Iterable[str]): A list of field names to uppercase.
 
     Returns:
         dict: A new dictionary with cleaned field names and original values.
 
     """
-    return {clean_field_name(k): uppercase_field_value(k, v) for k, v in record.items()}
+    return {clean_field_name(k): uppercase_field_value(k, v, fields_to_uppercase) for k, v in record.items()}
 
 
-def uppercase_field_value(k: str, v: Any) -> str:
+def uppercase_field_value(k: str, v: Any, fields_to_uppercase: Iterable[str] = TO_UPPERCASE_FIELDS) -> str:
     """
     Convert the given field value to uppercase if its name starts with specific prefixes.
 
     Args:
         k (str): The name of the field.
         v (Any): The value associated with the field.
+        fields_to_uppercase (Iterable[str]): A list of field names to uppercase.
 
     Returns:
         str: The uppercase value if applicable or the original value.
 
     """
-    return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in TO_UPPERCASE_FIELDS) else v
+    return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in fields_to_uppercase) else v
 
 
 def map_fields(fields: dict[str, str]) -> dict[str, str]:

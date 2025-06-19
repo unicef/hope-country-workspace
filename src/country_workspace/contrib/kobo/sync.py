@@ -1,4 +1,6 @@
 import re
+from collections.abc import Callable, Iterable
+from functools import reduce, partial
 from typing import Any, Final, TypedDict, cast
 
 from constance import config as constance_config
@@ -13,7 +15,7 @@ from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
-from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
@@ -25,12 +27,14 @@ ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 
 SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
 
+FIELDS_TO_UPPERCASE = ("role",)
+
 
 def is_submission_data_url(url: str) -> bool:
     return bool(SUBMISSION_URL_RE.match(url))
 
 
-def make_client(country_code: str | None) -> Client:
+def make_client(country_code: str) -> Client:
     session = Session()
     token = constance_config.KOBO_MASTER_API_TOKEN or constance_config.KOBO_API_TOKEN
     session.auth = Auth(token)
@@ -58,17 +62,44 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
     return {key.split("/")[-1]: value for key, value in data.items()}
 
 
+EntryProcessor = Callable[[dict], dict]
+
+
+def apply_processor(entry: dict, processor: EntryProcessor) -> dict:
+    return processor(entry)
+
+
+def uppercase_fields(fields: tuple[str], entry: dict) -> dict:
+    for field in fields:
+        if field in entry:
+            entry[field] = entry[field].upper()
+
+    return entry
+
+
+def preprocess_individual(individual: dict) -> dict:
+    processors = (
+        normalize_json,
+        partial(clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS),
+    )
+    return reduce(apply_processor, processors, individual)
+
+
+def get_fullname_key(individual: Iterable[str]) -> str | None:
+    return next((key for key in individual if key.startswith("full_name")), None)
+
+
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual = normalize_json(raw_individual)
-        fullname = next((key for key in individual if key.startswith("full_name")), None)
+        individual = preprocess_individual(raw_individual)
+        fullname = get_fullname_key(individual)
         individuals.append(
             Individual(
                 batch=batch,
                 household=household,
                 name=individual.get(fullname, ""),
-                flex_fields=clean_field_names(individual),
+                flex_fields=individual,
             ),
         )
     household.program.individuals.bulk_create(individuals)
@@ -99,6 +130,7 @@ def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
     household_counter = 0
     individual_counter = 0
 
+    # TODO(Sergey Misuk): remove lock usage as task can't have multiple running instances
     with cache.lock(ASSET_CACHE_KEY.format(asset_id=asset.uid)):
         submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
         for submission in asset.submissions:
