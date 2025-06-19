@@ -2,7 +2,8 @@ import io
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Iterable, Generator
-from typing import Any, Mapping, cast
+from contextlib import suppress
+from typing import Any, Mapping, cast, NotRequired
 
 import openpyxl
 from PIL import Image
@@ -11,7 +12,7 @@ from hope_smart_import.readers import open_xls_multi
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.models import AsyncJob, Batch, Household
+from country_workspace.models import AsyncJob, Batch, Household, MappingProfile
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
@@ -32,6 +33,7 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     household_pk_col: str
     master_column_label: str
     detail_column_label: str
+    mapping_profile_pk: NotRequired[int]
 
 
 class ColumnConfigurationError(Exception):
@@ -69,21 +71,21 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     return filter(has_household_pk, sheet)
 
 
-def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
+def process_households(
+    sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, mapping_profile: MappingProfile | None = None
+) -> Mapping[int, Household]:
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
         household_key = get_value(row, config["household_pk_col"])
         label = get_value(row, config["detail_column_label"])
+        cleaned_row = clean_field_names(row)
+        flex_fields = mapping_profile.apply_all_rules(cleaned_row) if mapping_profile else cleaned_row
 
         try:
             mapping[household_key] = cast(
                 "Household",
-                job.program.households.create(
-                    batch=batch,
-                    name=label,
-                    flex_fields=clean_field_names(row),
-                ),
+                job.program.households.create(batch=batch, name=label, flex_fields=flex_fields),
             )
         except Exception as e:
             raise SheetProcessingError(HOUSEHOLD, i) from e
@@ -99,23 +101,25 @@ def full_name_column(row: Record) -> str | None:
 
 
 def process_individuals(
-    sheet: Sheet, household_mapping: Mapping[int, Household], job: AsyncJob, batch: Batch, config: Config
+    sheet: Sheet,
+    household_mapping: Mapping[int, Household],
+    job: AsyncJob,
+    batch: Batch,
+    mapping_profile: MappingProfile | None = None,
 ) -> int:
-    processed = 0
+    processed, name_column = 0, None
 
     for i, row in enumerate(sheet, 1):
-        name_column = full_name_column(row)
+        if name_column is None:
+            name_column = full_name_column(row)
         name = get_value(row, name_column) if name_column else None
-        household_key = get_value(row, config["master_column_label"])
+        cleaned_row = clean_field_names(row)
+        flex_fields = mapping_profile.apply_all_rules(cleaned_row) if mapping_profile else cleaned_row
+        household_key = get_value(row, job.config["master_column_label"])
         household = household_mapping.get(household_key)
 
         try:
-            job.program.individuals.create(
-                batch=batch,
-                name=name,
-                household_id=household.pk,
-                flex_fields=clean_field_names(row),
-            )
+            job.program.individuals.create(batch=batch, name=name, household_id=household.pk, flex_fields=flex_fields)
         except Exception as e:
             raise SheetProcessingError(INDIVIDUAL, i) from e
 
@@ -169,6 +173,12 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
         config: Config = job.config
         rdi = job.file
+
+        mapping_profile = None
+        if config.get("mapping_profile_pk"):
+            with suppress(MappingProfile.DoesNotExist):
+                mapping_profile = MappingProfile.objects.get(id=config["mapping_profile_pk"], is_active=True)
+
         batch = Batch.objects.create(
             name=config["batch_name"],
             program=job.program,
@@ -179,8 +189,8 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 
         household_sheet, individual_sheet = read_sheets(config, rdi, 0, 1)
 
-        household_mapping = process_households(household_sheet, job, batch, config)
-        individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
+        household_mapping = process_households(household_sheet, job, batch, config, mapping_profile)
+        individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, mapping_profile)
 
         validate_beneficiaries(config, household_mapping)
 

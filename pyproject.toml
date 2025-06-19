@@ -48,6 +48,7 @@ dependencies = [
   "hope-smart-import>=0.4",
   "notebook>=7.4.3",
   "numpy>=2.3",
+  "jmespath>=1.0.1",
   "openpyxl>=3.1.5",
   "pandas>=2.3",
   "pillow>=11.2.1",

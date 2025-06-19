@@ -1,11 +1,13 @@
+from dataclasses import dataclass, field
 from typing import Any, Mapping, NotRequired
+from contextlib import suppress
 
 from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
-from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
+from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingProfile
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.validators.beneficiaries import validate_beneficiaries
@@ -17,61 +19,63 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     household_column_prefix: NotRequired[str]
     individuals_column_prefix: str
     household_label_column: NotRequired[str]
+    mapping_profile_pk: NotRequired[int]
 
+@dataclass
+class AuroraImporter:
+    """Aurora data importer with mapping profile support."""
 
-def import_from_aurora(job: AsyncJob) -> dict[str, int]:
-    """Import data from the Aurora system into the database within an atomic transaction.
+    job: AsyncJob
+    cfg: Config
+    client: AuroraClient = field(default_factory=AuroraClient)
+    mapping_profile: MappingProfile | None = field(init=False, default=None)
 
-    Args:
-        job (AsyncJob): The job instance containing the configuration and context for data import.
-            Expected keys in `job.config` correspond to the `Config` TypedDict.
-
-    Returns:
-        dict[str, int]: Counts of imported records:
-            - "households": Number of households imported (0 if `master_detail` is False or None).
-            - "individuals": Total number of individuals imported.
-
-    Raises:
-        ValueError: If record ID is invalid or missing.
-
-    """
-    with atomic():
-        total = {"households": 0, "individuals": 0}
-        records_data = []
-        cfg: Config = job.config
-
-        batch = Batch.objects.create(
-            name=cfg["batch_name"],
-            program=job.program,
-            country_office=job.program.country_office,
-            imported_by=job.owner,
+    def __post_init__(self) -> None:
+        self.batch = Batch.objects.create(
+            name=self.cfg["batch_name"],
+            program=self.job.program,
+            country_office=self.job.program.country_office,
+            imported_by=self.job.owner,
             source=Batch.BatchSource.AURORA,
         )
+        if self.cfg.get("mapping_profile_pk"):
+            with suppress(MappingProfile.DoesNotExist):
+                self.mapping_profile = MappingProfile.objects.get(id=self.cfg["mapping_profile_pk"], is_active=True)
 
-        client = AuroraClient()
-        for record in client.get(f"registration/{cfg['registration_reference_pk']}/records/"):
-            try:
-                record_id = int(record["flatten"]["id"])
-            except (ValueError, TypeError, KeyError):
-                raise ValueError(f"Invalid or missing record ID: {record.get('flatten', {}).get('id')}")
+    def run_import(self) -> dict[str, int]:
+        """Execute the Aurora import process.
 
-            individuals = create_individuals(batch, record["flatten"], cfg)
+        Returns:
+            dict[str, int]: Counts of imported records:
+                - "households": Number of households imported.
+                - "individuals": Number of individuals imported.
+
+        """
+        total = {"households": 0, "individuals": 0}
+        records_data = []
+
+        for record in self.client.get(f"registration/{self.cfg['registration_reference_pk']}/records/"):
+            record_id = _extract_record_id(record)
+            individuals = create_individuals(self.batch, record["flatten"], self.cfg, self.mapping_profile)
             total["individuals"] += len(individuals)
-            if cfg["master_detail"] and individuals and individuals[0].household_id:
+            if self.cfg["master_detail"] and individuals and individuals[0].household_id:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-        validate_records(records_data, cfg)
+        validate_records(records_data, self.cfg)
+        return total
 
-    return total
+
+def import_from_aurora(job: AsyncJob) -> dict[str, int]:
+    """Import data from the Aurora system into the database within an atomic transaction."""
+    with atomic():
+        cfg: Config = job.config
+        importer = AuroraImporter(job=job, cfg=cfg)
+        return importer.run_import()
 
 
 def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config) -> None:
     """Validate beneficiaries based on configuration and record data.
-
-    Args:
-        records_data: List of tuples containing record ID and created individuals.
-        cfg: Configuration for validation and mapping.
 
     Raises:
         TooManyBeneficiaryError: If more than one Individual is created when master_detail is False.
@@ -92,13 +96,10 @@ def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Conf
         validate_beneficiaries(cfg, mapping)
 
 
-def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:
+def create_household(
+    batch: Batch, data: dict[str, Any], prefix: str, mapping_profile: MappingProfile | None = None
+) -> Household:
     """Create a Household object from the provided data and associate it with a batch.
-
-    Args:
-        batch (Batch): The batch to which the household will be linked.
-        data (dict[str, Any]): A dictionary containing household-related information.
-        prefix (str): The prefix used to filter and group household-related information.
 
     Returns:
         Household: The newly created household instance.
@@ -111,7 +112,10 @@ def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Househo
     count = len(hh_data)
     if count > 1:
         raise TooManyBeneficiaryError("Household", record_id=data["id"], count=count)
-    flex_fields = clean_field_names(next(iter(hh_data.values()), {}))
+
+    raw_fields = clean_field_names(next(iter(hh_data.values()), {}))
+    flex_fields = mapping_profile.apply_all_rules(raw_fields) if mapping_profile else raw_fields
+
     return batch.program.households.create(batch=batch, flex_fields=flex_fields)
 
 
@@ -119,13 +123,9 @@ def create_individuals(
     batch: Batch,
     data: dict[str, Any],
     cfg: Config,
+    mapping_profile: MappingProfile | None = None,
 ) -> list[Individual]:
     """Create and associate Individual objects with an optional Household.
-
-    Args:
-        batch (Batch): The batch to which individuals will be linked.
-        data (dict[str, Any]): A dictionary containing related information.
-        cfg (Config): Configuration dictionary containing various settings for the import process.
 
     Returns:
         list[Individual]: A list of successfully created Individual instances.
@@ -137,10 +137,11 @@ def create_individuals(
     inds_data = _collect_by_prefix(data, cfg.get("individuals_column_prefix"))
 
     if inds_data and cfg["master_detail"] and (hh_prefix := cfg.get("household_column_prefix")):
-        household = create_household(batch, data, hh_prefix)
+        household = create_household(batch, data, hh_prefix, mapping_profile)
 
     for ind_data in inds_data.values():
-        flex_fields = clean_field_names(ind_data)
+        cleaned_data = clean_field_names(ind_data)
+        flex_fields = mapping_profile.apply_all_rules(cleaned_data) if mapping_profile else cleaned_data
         if household and (hh_label := cfg.get("household_label_column")) and not head_found:
             head_found = _update_household_label_from_individual(household, flex_fields, hh_label)
         individuals.append(
@@ -152,6 +153,19 @@ def create_individuals(
             )
         )
     return batch.program.individuals.bulk_create(individuals, batch_size=1000)
+
+
+def _extract_record_id(record: dict[str, Any]) -> int:
+    """Extract and validate record ID from Aurora record.
+
+    Raises:
+        ValueError: If record ID is invalid or missing.
+
+    """
+    try:
+        return int(record["flatten"]["id"])
+    except (ValueError, TypeError, KeyError):
+        raise ValueError(f"Invalid or missing record ID: {record.get('flatten', {}).get('id')}")
 
 
 def _collect_by_prefix(data: dict[str, Any], prefix: str) -> dict[str, dict[str, Any]]:
@@ -193,13 +207,6 @@ def _update_household_label_from_individual(
     household: Household, ind_data: Mapping[str, Any], household_label_column: str
 ) -> bool:
     """Update the household's name based on an individual's role and specified name field.
-
-    Args:
-        household (Household): The household instance to update.
-        ind_data (dict[str, Any]): A dictionary containing the individual's data,
-            including relationship status and potential household name.
-        household_label_column (str): The key in the individual's data that stores
-            the name to assign to the household.
 
     Returns:
         bool: True if the household name was updated (individual is head and name provided), False otherwise.

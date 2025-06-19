@@ -324,7 +324,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     if not (form_kobo := self.import_kobo(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
         else:
-            form_rdi = ImportFileForm(prefix="rdi")
+            form_rdi = ImportFileForm(prefix="rdi", program=program)
             form_aurora = ImportAuroraForm(prefix="aurora", program=program)
             form_kobo = ImportKoboForm(prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
 
@@ -335,13 +335,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/import.html", context)
 
     def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
-        form = ImportFileForm(request.POST, request.FILES, prefix="rdi")
+        form = ImportFileForm(request.POST, request.FILES, prefix="rdi", program=program)
         if form.is_valid():
             config: RDIConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "household_pk_col": form.cleaned_data["pk_column_name"],
                 "master_column_label": form.cleaned_data["master_column_label"],
                 "detail_column_label": form.cleaned_data["detail_column_label"],
+                "mapping_profile_pk": getattr(form.cleaned_data.get("mapping_profile"), "id", None),
                 "check_before": (check_before := form.cleaned_data.get("check_before", False)),
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
@@ -369,6 +370,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "master_detail": (
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
+                "mapping_profile_pk": getattr(form.cleaned_data.get("mapping_profile"), "id", None),
                 "check_before": (check_before := form.cleaned_data.get("check_before", False)),
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
                 **(

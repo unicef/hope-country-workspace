@@ -64,6 +64,12 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         obj = btn.context["original"]
         btn.href = f"{base}?program__exact={obj.pk}&country_office__exact={obj.country_office.pk}"
 
+    @link(change_list=False)
+    def mapping_profiles(self, btn: "LinkButton") -> None:
+        obj = btn.context["original"]
+        base = reverse("admin:country_workspace_mappingprofile_changelist")
+        btn.href = f"{base}?program__id__exact={obj.pk}"
+
     @button()
     def zap(self, request: HttpRequest, pk: str) -> None:
         obj: Program = self.get_object(request, pk)

@@ -134,3 +134,14 @@ class BaseModel(models.Model):
             "%s:%s_%s_change" % (namespace, self._meta.app_label, self._meta.model_name),
             args=[self.pk],
         )
+
+
+class TimestampMixin(models.Model):
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)ss", verbose_name="Created by"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Created at")
+    updated_at = models.DateTimeField(auto_now=True, db_index=True, verbose_name="Updated at")
+
+    class Meta:
+        abstract = True

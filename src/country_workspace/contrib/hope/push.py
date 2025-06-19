@@ -14,7 +14,6 @@ from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-from country_workspace.utils.fields import map_fields
 
 
 type Beneficiary = CountryHousehold | CountryIndividual
@@ -194,9 +193,9 @@ class PushProcessor(BatchErrorHandlerMixin):
         for item in self.queryset:
             ids.append(item.id)
             data.append(
-                {**map_fields(item.flex_fields), "members": [map_fields(m.flex_fields) for m in item.members.all()]}
+                {**item.flex_fields, "members": [m.flex_fields for m in item.members.all()]}
                 if self.master_detail
-                else map_fields(item.flex_fields)
+                else item.flex_fields
             )
         return ids, data
 
