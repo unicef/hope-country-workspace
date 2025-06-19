@@ -114,8 +114,8 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if prg := self.get_selected_program(request):
-            return qs.filter(batch__program=prg).exclude(removed=True)
-        return qs
+            return qs.filter(batch__program=prg, removed=False)
+        return qs.none()
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         context = super().get_common_context(request, pk, **kwargs)

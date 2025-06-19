@@ -69,7 +69,6 @@ class HopeClient:
         url = self.get_url(path)
         signature = hashlib.sha256(f"{url}{data}{time.perf_counter_ns()}".encode()).hexdigest()
         hope_request_start.send(self.__class__, url=url, data=data, signature=signature)
-        response = None
 
         try:
             response = requests.post(
@@ -78,25 +77,27 @@ class HopeClient:
                 headers={"Authorization": f"Token {self.token}"},
                 timeout=10,  # nosec
             )
+
+            # people endpoint
+            if response.status_code == 400 and path.endswith("/push/people/"):
+                return {"errors": True, "people": response.json()}
+
             response.raise_for_status()
+            result = response.json()
+
         except HTTPError as http_err:
             resp = http_err.response
             error_details = resp.text[:1000] + "..." if len(resp.text) > 1000 else resp.text
             raise RemoteError(
-                f"HTTP error posting to {url}: {http_err}. "
-                f"Status Code: {resp.status_code}. Response Body: {error_details}"
+                f"HTTP error posting to {url}: {http_err}. Status: {resp.status_code}. Response Body: {error_details}"
             ) from http_err
-        except RequestException as req_err:
-            raise RemoteError(f"Request failed for {url}: {req_err}") from req_err
-
-        try:
-            result = response.json()
-        except JSONDecodeError as json_err:
+        except requests.exceptions.JSONDecodeError as json_err:
             response_text = response.text if response else "N/A"
             raise RemoteError(
                 f"Wrong JSON response posting to {url}. Status: {response.status_code}. Response text: {response_text}"
             ) from json_err
+        except RequestException as req_err:
+            raise RemoteError(f"Request failed for {url}: {req_err}") from req_err
 
         hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
-
         return result

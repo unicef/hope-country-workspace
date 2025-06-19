@@ -8,7 +8,7 @@ from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 
 class PushToHopeForm(BaseActionForm):
     batch_name = forms.CharField(
-        required=False, help_text="Label for this RDI to HOPE batch. Defaults is the current date and time."
+        required=False, help_text="Label for this push to HOPE batch. Defaults is the current date and time."
     )
     batch_size = forms.IntegerField(
         required=False,

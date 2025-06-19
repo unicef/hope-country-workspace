@@ -8,7 +8,7 @@ from uuid import UUID
 from django.utils import timezone
 
 batch_name_default: Callable[[], str] = lambda: f"Batch {timezone.now()}"
-rdi_name_default: Callable[[], str] = lambda: f"RDI to HOPE {timezone.now()}"
+rdi_name_default: Callable[[], str] = lambda: f"Push to HOPE {timezone.now()}"
 
 Record = Mapping[str, Any]
 

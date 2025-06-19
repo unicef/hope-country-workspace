@@ -89,6 +89,17 @@ class HouseholdFactory(AutoRegisterModelFactory):
                 for __ in range(size):
                     IndividualFactory(batch=self.batch, household=self)
 
+    @factory.post_generation
+    def rdps(self, create, extracted, **kwargs):
+        """Handle rdp ManyToMany relationship."""
+        if not create:
+            return
+        if extracted:
+            if isinstance(extracted, (list, tuple)):
+                self.rdp.set(extracted)
+            else:
+                self.rdp.add(extracted)
+
 
 class CountryHouseholdFactory(HouseholdFactory):
     class Meta:

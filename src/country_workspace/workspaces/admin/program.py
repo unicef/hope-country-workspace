@@ -346,7 +346,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
-                description="RDI importing",
+                description="RDI import",
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_rdi),
                 file=request.FILES["rdi-file"],

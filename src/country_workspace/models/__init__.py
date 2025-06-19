@@ -9,6 +9,7 @@ from .locations import Area, AreaType, Country
 from .office import Office
 from .program import Program
 from .rdi import Rdi
+from .rdp import Rdp
 from .role import UserRole
 from .sync import SyncLog
 from .user import User
@@ -26,6 +27,7 @@ __all__ = [
     "Office",
     "Program",
     "Rdi",
+    "Rdp",
     "SyncLog",
     "User",
     "UserRole",

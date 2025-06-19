@@ -12,6 +12,7 @@ class AsyncJobFactory(AutoRegisterModelFactory):
     program = factory.SubFactory(ProgramFactory)
     owner = factory.SubFactory(UserFactory)
     batch = None
+    rdp = None
     file = None
     config = {}
 

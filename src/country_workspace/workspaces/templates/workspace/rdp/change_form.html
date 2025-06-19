@@ -1,0 +1,7 @@
+{% extends "workspace/change_form.html" %}
+{% load admin_modify i18n static workspace_modify workspace_urls %}
+{% block page-title %}
+    {% url "workspace:workspaces_countryrdp_changelist" as wcl %}
+    &rsaquo; <a href="{% add_preserved_filters wcl %}">Rdps</a>{% admin_url modeladmin %}
+    &rsaquo; {{ original }}{% admin_url original %}
+{% endblock page-title %}
