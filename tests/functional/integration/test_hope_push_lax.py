@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import pytest
 from django_celery_results.models import TaskResult
 
-from country_workspace.contrib.aurora.pipeline import ROLE_PRIMARY
 from country_workspace.models import AsyncJob
+from country_workspace.models.household import ROLE_PRIMARY
 from testutils.factories import CountryHouseholdFactory
 from testutils.factories.program import BeneficiaryGroupFactory, CountryProgramFactory
 

@@ -4,8 +4,8 @@ import factory
 import pytest
 from faker import Faker
 
-from country_workspace.contrib.aurora.pipeline import ROLE_ALTERNATE, ROLE_PRIMARY
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
+from country_workspace.models.household import ROLE_PRIMARY, ROLE_ALTERNATE
 
 if TYPE_CHECKING:
     from country_workspace.models import Household

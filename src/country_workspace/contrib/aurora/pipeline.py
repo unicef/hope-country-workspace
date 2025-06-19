@@ -1,10 +1,11 @@
-from typing import Any, Final, Mapping, NotRequired
+from typing import Any, Mapping, NotRequired
 
 from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.validators.beneficiaries import validate_beneficiaries
@@ -16,13 +17,6 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     household_column_prefix: NotRequired[str]
     individuals_column_prefix: str
     household_label_column: NotRequired[str]
-
-
-RELATIONSHIP_HEAD: Final[str] = "HEAD"
-RELATIONSHIP_FIELDNAME: Final[str] = "relationship"
-
-ROLE_PRIMARY = "PRIMARY"
-ROLE_ALTERNATE = "ALTERNATE"
 
 
 def import_from_aurora(job: AsyncJob) -> dict[str, int]:

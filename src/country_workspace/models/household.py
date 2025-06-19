@@ -1,12 +1,11 @@
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import pghistory
 from django.db import models
 from django.utils import timezone
 
 from .base import BaseModel, Validable
-from ..contrib.aurora.pipeline import ROLE_PRIMARY, ROLE_ALTERNATE
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -15,6 +14,13 @@ if TYPE_CHECKING:
     from .individual import Individual
     from .office import Office
     from .program import Program
+
+
+RELATIONSHIP_HEAD: Final[str] = "HEAD"
+RELATIONSHIP_FIELDNAME: Final[str] = "relationship"
+
+ROLE_PRIMARY: Final[str] = "PRIMARY"
+ROLE_ALTERNATE: Final[str] = "ALTERNATE"
 
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
