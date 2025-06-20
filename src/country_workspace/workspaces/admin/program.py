@@ -324,7 +324,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     if not (form_kobo := self.import_kobo(request, program)):
                         return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
         else:
-            form_rdi = ImportFileForm(prefix="rdi")
+            form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group)
             form_aurora = ImportAuroraForm(prefix="aurora", program=program)
             form_kobo = ImportKoboForm(prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
 
@@ -335,15 +335,27 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/import.html", context)
 
     def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
-        form = ImportFileForm(request.POST, request.FILES, prefix="rdi")
+        form = ImportFileForm(request.POST, request.FILES, prefix="rdi", beneficiary_group=program.beneficiary_group)
         if form.is_valid():
             config: RDIConfig = {
+                "master_detail": (
+                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
+                ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "household_pk_col": form.cleaned_data["pk_column_name"],
-                "master_column_label": form.cleaned_data["master_column_label"],
-                "detail_column_label": form.cleaned_data["detail_column_label"],
+                "first_line": form.cleaned_data["first_line"],
                 "check_before": (check_before := form.cleaned_data.get("check_before", False)),
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
+                **(
+                    {
+                        "household_pk_col": form.cleaned_data.get("pk_column_name"),
+                        "master_column_label": form.cleaned_data.get("master_column_label"),
+                        "detail_column_label": form.cleaned_data.get("detail_column_label"),
+                    }
+                    if master_detail
+                    else {
+                        "people_column_prefix": form.cleaned_data.get("people_column_prefix"),
+                    }
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",

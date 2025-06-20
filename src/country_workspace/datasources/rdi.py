@@ -1,8 +1,9 @@
 import io
 from base64 import b64encode
+from enum import Enum
 from collections import defaultdict
 from collections.abc import Iterable, Generator
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, cast, NotRequired
 
 import openpyxl
 from PIL import Image
@@ -11,7 +12,7 @@ from hope_smart_import.readers import open_xls_multi
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.models import AsyncJob, Batch, Household
+from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
@@ -29,9 +30,18 @@ HOUSEHOLD = "household"
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
-    household_pk_col: str
-    master_column_label: str
-    detail_column_label: str
+    master_detail: bool
+    household_pk_col: NotRequired[str]
+    master_column_label: NotRequired[str]
+    detail_column_label: NotRequired[str]
+    people_column_prefix: NotRequired[str]
+    first_line: int
+
+
+class SheetName(Enum):
+    HHs: int = 0
+    INDs: int = 1
+    PP: int = 2
 
 
 class ColumnConfigurationError(Exception):
@@ -98,30 +108,42 @@ def full_name_column(row: Record) -> str | None:
     return None
 
 
-def process_individuals(
-    sheet: Sheet, household_mapping: Mapping[int, Household], job: AsyncJob, batch: Batch, config: Config
-) -> int:
-    processed = 0
+def process_beneficiaries(
+    sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
+) -> Mapping[int, Individual]:
+    mapping, name_column = {}, None
+    pp_column_prefix = config.get("people_column_prefix")
 
     for i, row in enumerate(sheet, 1):
-        name_column = full_name_column(row)
-        name = get_value(row, name_column) if name_column else None
-        household_key = get_value(row, config["master_column_label"])
-        household = household_mapping.get(household_key)
+        cleaned_row = (
+            {k.removeprefix(pp_column_prefix): v for k, v in row.items()}
+            if household_mapping is None and pp_column_prefix
+            else row
+        )
+
+        if name_column is None:
+            name_column = full_name_column(cleaned_row)
+        name = get_value(cleaned_row, name_column) if name_column else None
+
+        household = None
+        if household_mapping:
+            household_key = get_value(cleaned_row, config["master_column_label"])
+            household = household_mapping.get(household_key)
 
         try:
-            job.program.individuals.create(
-                batch=batch,
-                name=name,
-                household_id=household.pk,
-                flex_fields=clean_field_names(row),
+            mapping[i] = cast(
+                "Individual",
+                job.program.individuals.create(
+                    batch=batch,
+                    name=name,
+                    household=household,
+                    flex_fields=clean_field_names(cleaned_row),
+                ),
             )
         except Exception as e:
             raise SheetProcessingError(INDIVIDUAL, i) from e
 
-        processed += 1
-
-    return processed
+    return mapping
 
 
 def image_location(image: RDIImage) -> tuple[int, int]:
@@ -162,13 +184,15 @@ def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator
     sheet_images = extract_images(filepath, *sheet_indices)
     for (_, sheet), images in zip(sheets, sheet_images, strict=False):
         sheet_with_images = merge_images(sheet, images)
-        yield filter_rows_with_household_pk(config, sheet_with_images)
+        if config["master_detail"]:
+            yield filter_rows_with_household_pk(config, sheet_with_images)
+        else:
+            yield sheet_with_images
 
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
-        config: Config = job.config
-        rdi = job.file
+        config = job.config
         batch = Batch.objects.create(
             name=config["batch_name"],
             program=job.program,
@@ -176,15 +200,20 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
         )
+        if config["master_detail"]:
+            return _import_master_detail(job, batch, config)
+        return _import_people_only(job, batch, config)
 
-        household_sheet, individual_sheet = read_sheets(config, rdi, 0, 1)
 
-        household_mapping = process_households(household_sheet, job, batch, config)
-        individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
+def _import_master_detail(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
+    household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HHs.value, SheetName.INDs.value)
+    household_mapping = process_households(household_sheet, job, batch, config)
+    individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
+    validate_beneficiaries(config, household_mapping)
+    return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
-        validate_beneficiaries(config, household_mapping)
 
-        return {
-            "household": len(household_mapping),
-            "individual": individuals_number,
-        }
+def _import_people_only(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
+    (people_sheet,) = read_sheets(config, job.file, SheetName.PP.value)
+    validate_beneficiaries(config, people_mapping := process_beneficiaries(people_sheet, job, batch, config))
+    return {"people": len(people_mapping)}
