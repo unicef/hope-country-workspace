@@ -12,6 +12,9 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 BASE_PATH = Path(__file__).parent.parent.parent
 
+CONFIG_PATH_TEMPLATE = "data/name_parser/models/{country_code}.txt"
+MODEL_PATH_TEMPLATE = "data/name_parser/models/{country_code}.pt"
+
 
 class LSTM(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, num_layers: int = 1) -> None:
@@ -42,7 +45,7 @@ UNKNOWN_CHAR = "_"
 
 
 def read_config(country_code: str) -> tuple[Alphabet, int, ModelArgs]:
-    with (BASE_PATH / f"data/name_parser/models/{country_code}.txt").open() as f:
+    with (BASE_PATH / CONFIG_PATH_TEMPLATE.format(country_code=country_code)).open() as f:
         lines = tuple(line.rstrip("\n") for line in f.readlines())
 
     return (
@@ -54,7 +57,7 @@ def read_config(country_code: str) -> tuple[Alphabet, int, ModelArgs]:
 
 def load_model(country_code: str, *args: int) -> nn.Module:
     rnn = LSTM(*args, num_layers=2)
-    rnn.load_state_dict(torch.load(BASE_PATH / f"data/name_parser/models/{country_code}.pt"))
+    rnn.load_state_dict(torch.load(BASE_PATH / MODEL_PATH_TEMPLATE.format(country_code=country_code)))
     rnn.to(DEVICE)
     rnn.eval()
     return rnn
