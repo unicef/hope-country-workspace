@@ -23,7 +23,6 @@ from country_workspace.datasources.rdi import (
     merge_images,
     read_sheets,
     full_name_column,
-    postprocess_cell,
 )
 from country_workspace.datasources.utils import strip_time_iso
 from country_workspace.models import Household
@@ -294,8 +293,7 @@ def test_merge_images() -> None:
 
 def test_read_sheets(mocker: MockerFixture) -> None:
     fake_sheets = ((Mock(), sheet := Mock()),)
-    postprocess_cell_mock = mocker.patch("country_workspace.datasources.rdi.postprocess_cell")
-    postprocess_cell_mock.return_value = fake_sheets
+    strip_time_iso_mock = mocker.patch("country_workspace.datasources.rdi.strip_time_iso")
     open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
     open_xls_multi_mock.return_value = fake_sheets
     extract_images_mock = mocker.patch("country_workspace.datasources.rdi.extract_images")
@@ -307,7 +305,7 @@ def test_read_sheets(mocker: MockerFixture) -> None:
     result = list(read_sheets(config_mock, filepath := "test", sheet_index := 0))
 
     assert result == [filter_rows_with_household_pk_mock.return_value]
-    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index])
+    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index], value_mapper=strip_time_iso_mock)
     extract_images_mock.assert_called_once_with(filepath, sheet_index)
     merge_images_mock.assert_called_once_with(sheet, images)
     filter_rows_with_household_pk_mock.assert_called_once_with(config_mock, merge_images_mock.return_value)
@@ -339,25 +337,3 @@ def test_full_name_column(record: Record, expected: str | None) -> None:
 )
 def test_strip_time_iso(inp, expected):
     assert strip_time_iso(inp) == expected
-
-
-def test_postprocess_cell_simple():
-    sheets = [
-        (
-            7,
-            [
-                {"a": "2025-05-15 08:00:00", "b": "hello"},
-                {"a": "nope", "b": "2025-05-16 00:00:00"},
-            ],
-        )
-    ]
-    out = list(postprocess_cell(sheets))
-    idx, rows_gen = out[0]
-    assert len(out) == 1
-    assert idx == 7
-
-    rows = list(rows_gen)
-    assert rows == [
-        {"a": "2025-05-15", "b": "hello"},
-        {"a": "nope", "b": "2025-05-16"},
-    ]

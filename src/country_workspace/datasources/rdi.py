@@ -68,12 +68,6 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     return filter(has_household_pk, sheet)
 
 
-def postprocess_cell(sheets: MultiSheet) -> MultiSheet:
-    for sheet_idx, rows in sheets:
-        formated_rows = ({k: strip_time_iso(v) for k, v in row.items()} for row in rows)
-        yield sheet_idx, formated_rows
-
-
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
@@ -162,7 +156,7 @@ def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) ->
 
 
 def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator[Sheet, None, None]:
-    sheets = postprocess_cell(open_xls_multi(filepath, sheets=list(sheet_indices)))
+    sheets = open_xls_multi(filepath, sheets=list(sheet_indices), value_mapper=strip_time_iso)
     sheet_images = extract_images(filepath, *sheet_indices)
     for (_, sheet), images in zip(sheets, sheet_images, strict=False):
         sheet_with_images = merge_images(sheet, images)
