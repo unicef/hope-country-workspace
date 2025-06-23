@@ -1414,7 +1414,7 @@ requires-dist = [
     { name = "flower", specifier = ">=2.0.1" },
     { name = "hope-flex-fields", specifier = ">=0.6.2" },
     { name = "hope-smart-export", specifier = ">=0.3" },
-    { name = "hope-smart-import", specifier = ">=0.3" },
+    { name = "hope-smart-import", specifier = ">=0.4" },
     { name = "notebook", specifier = ">=7.4.3" },
     { name = "numpy", specifier = ">=2.3" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -1513,16 +1513,16 @@ wheels = [
 
 [[package]]
 name = "hope-smart-import"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django-admin-extra-buttons" },
     { name = "hope-flex-fields" },
     { name = "openpyxl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/e3/4d3586d4fa1cfa784f6f60aa24a7ce09821a0e3d59c3ff4e641077828ded/hope_smart_import-0.3.0.tar.gz", hash = "sha256:7e7244be0a1e42ac7f0a0bbcb310fa1a93b69f22664da7ee7e220a88d06458af", size = 1418607, upload-time = "2024-10-14T08:31:39.135Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/55/466de9f4fda029b948574622ef056e41a76a36446803b4bb159f1b8b6704/hope_smart_import-0.4.0.tar.gz", hash = "sha256:9efa779f552b0a261bdbc5a2452fc8623e37ab339eb01920c0a1c60b3cdead07", size = 1226473, upload-time = "2025-06-20T07:41:59.041Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/a9/f8aa11327aeaac7e2c365f14eac1200b0c5b790d4cf43056773efc2a04ca/hope_smart_import-0.3.0-py3-none-any.whl", hash = "sha256:da66b64fca04685b19a45dd7b0f36d797d5c99c4778fe97537fbf668f217712e", size = 5682, upload-time = "2024-10-14T08:31:07.276Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/f4/cfbe7404fb03e58122c63b40049f7e8cd022dba4aea7bdef526339cdd349/hope_smart_import-0.4.0-py3-none-any.whl", hash = "sha256:2895cf7c414c8ce29681cdb46e8234087b2a36b1106ea6abb7de737d46fc7d72", size = 5351, upload-time = "2025-06-20T07:41:56.987Z" },
 ]
 
 [[package]]
