@@ -76,6 +76,7 @@ ignore = [
   "SLF001", # Private member accessed:
   "TD003", #  Missing issue link for this TODO
   "TID252", # Prefer absolute imports over relative imports from parent modules
+  "TRY400", # Use logging.exception instead of logging.error in exception handlers
   "TRY401", # Redundant exception object included in `logging.exception` call
   "TRY003", # Avoid specifying long messages outside the exception class
   "UP031", # Use format specifiers instead of percent format

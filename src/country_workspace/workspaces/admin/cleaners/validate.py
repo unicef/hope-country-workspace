@@ -21,7 +21,7 @@ def validate_queryset(queryset: QuerySet[Model], **kwargs: Any) -> dict[str, int
             else:
                 invalid += 1
     except Exception as e:  # pragma: no cover
-        logger.exception(e)
+        logger.error(e)
         raise
 
     return {"valid": valid, "invalid": invalid}
@@ -38,7 +38,7 @@ def validate_program(job: AsyncJob) -> dict[str, int]:
             else:
                 invalid += 1
     except Exception as e:  # pragma: no cover
-        logger.exception(e)
+        logger.error(e)
         raise
 
     return {"valid": valid, "invalid": invalid}
