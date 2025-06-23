@@ -6,3 +6,6 @@ PUSH_BATCH_SIZE: Final[int] = 25
 HOUSEHOLD_CHECKER_NAME: Final[str] = "HOPE Household core"
 INDIVIDUAL_CHECKER_NAME: Final[str] = "HOPE Individual core"
 PEOPLE_CHECKER_NAME: Final[str] = "HOPE People core"
+
+DOCUMENT_FIELDSET_NAME = "HOPE Document"
+ACCOUNT_FIELDSET_NAME = "HOPE Account"
