@@ -27,11 +27,13 @@ document_fields = [
     ("photo", {"field_type": Base64ImageField}, {}),
     ("issuance_date", {"field_type": forms.DateField}, {}),
     ("expiry_date", {"field_type": forms.DateField}, {}),
+    ("country", {"name": "CountryChoice"}, {}),
 ]
 
 account_fields = [
     ("number", {"field_type": forms.CharField}, {}),
     ("data", {"field_type": forms.JSONField}, {}),
+    ("unique_key", {"field_type": forms.CharField}, {}),
 ]
 
 
