@@ -1,13 +1,14 @@
 from typing import Any
-from datetime import date
+from datetime import date, datetime
 
 
-def strip_time_iso(v: Any) -> Any:
-    if not isinstance(v, str):
-        return v
-    date_part = v.split(" ", 1)[0]
-    try:
-        d = date.fromisoformat(date_part)
-        return d.isoformat()
-    except ValueError:
-        return v
+def datetime_to_date(v: Any) -> Any:
+    if isinstance(v, datetime):
+        return v.date()
+    return v
+
+
+def date_to_iso_string(v: Any) -> Any:
+    if isinstance(v, date):
+        return v.isoformat()
+    return v

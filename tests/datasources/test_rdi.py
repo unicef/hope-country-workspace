@@ -1,5 +1,6 @@
 from collections.abc import Mapping
-from datetime import datetime, date
+from datetime import datetime, date, timezone
+from typing import Any
 from unittest.mock import Mock, call, MagicMock
 
 import pytest
@@ -24,7 +25,7 @@ from country_workspace.datasources.rdi import (
     read_sheets,
     full_name_column,
 )
-from country_workspace.datasources.utils import strip_time_iso
+from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Household
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 from country_workspace.validators.beneficiaries import validate_beneficiaries
@@ -293,7 +294,9 @@ def test_merge_images() -> None:
 
 def test_read_sheets(mocker: MockerFixture) -> None:
     fake_sheets = ((Mock(), sheet := Mock()),)
-    strip_time_iso_mock = mocker.patch("country_workspace.datasources.rdi.strip_time_iso")
+    compose_mock = mocker.patch("country_workspace.datasources.rdi.compose")
+    datetime_to_date_mock = mocker.patch("country_workspace.datasources.rdi.datetime_to_date")
+    date_to_iso_string_mock = mocker.patch("country_workspace.datasources.rdi.date_to_iso_string")
     open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
     open_xls_multi_mock.return_value = fake_sheets
     extract_images_mock = mocker.patch("country_workspace.datasources.rdi.extract_images")
@@ -305,7 +308,8 @@ def test_read_sheets(mocker: MockerFixture) -> None:
     result = list(read_sheets(config_mock, filepath := "test", sheet_index := 0))
 
     assert result == [filter_rows_with_household_pk_mock.return_value]
-    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index], value_mapper=strip_time_iso_mock)
+    compose_mock.assert_called_once_with(datetime_to_date_mock, date_to_iso_string_mock)
+    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index], value_mapper=compose_mock.return_value)
     extract_images_mock.assert_called_once_with(filepath, sheet_index)
     merge_images_mock.assert_called_once_with(sheet, images)
     filter_rows_with_household_pk_mock.assert_called_once_with(config_mock, merge_images_mock.return_value)
@@ -326,14 +330,25 @@ def test_full_name_column(record: Record, expected: str | None) -> None:
 @pytest.mark.parametrize(
     ("inp", "expected"),
     [
-        ("2025-05-15 12:34:56", "2025-05-15"),
-        ("2025-05-15", "2025-05-15"),
-        ("foo bar", "foo bar"),
-        (123, 123),
-        (datetime.fromisoformat("2025-05-15 00:00:00"), datetime.fromisoformat("2025-05-15 00:00:00")),
-        (date(2020, 1, 1), date(2020, 1, 1)),
+        (s := "foo", s),
+        (i := 123, i),
+        (d := date(2020, 1, 1), d),
+        (dt := datetime(2020, 1, 1, 1, 1, 1, tzinfo=timezone.utc), dt.date()),
     ],
-    ids=["str_with_time", "str_date_only", "str_non_date", "numeric", "datetime_obj", "date_obj"],
+    ids=["string", "integer", "date", "datetime"],
 )
-def test_strip_time_iso(inp, expected):
-    assert strip_time_iso(inp) == expected
+def test_datetime_to_date(inp: Any, expected: Any) -> None:
+    assert datetime_to_date(inp) == expected
+
+
+@pytest.mark.parametrize(
+    ("inp", "expected"),
+    [
+        (s := "foo", s),
+        (i := 123, i),
+        (d := date(2020, 1, 1), d.isoformat()),
+    ],
+    ids=["string", "integer", "date"],
+)
+def test_date_to_iso_string(inp: Any, expected: Any) -> None:
+    assert date_to_iso_string(inp) == expected
