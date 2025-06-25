@@ -3,13 +3,12 @@ from mptt.models import MPTTModel
 from mptt.fields import TreeForeignKey
 from functools import reduce
 
-from jmespath import search, Options, exceptions
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 
 from country_workspace.models.base import TimestampMixin
-from country_workspace.validators.mapping import JMESPathValidator
+from country_workspace.mapping.models.field_mapping_rule import FieldMappingRule
 
 
 class MappingProfile(TimestampMixin, MPTTModel):
@@ -29,7 +28,10 @@ class MappingProfile(TimestampMixin, MPTTModel):
     name = models.CharField(max_length=255)
     description = models.CharField(max_length=255, blank=True)
     program = models.ManyToManyField(
-        "Program", blank=True, related_name="%(class)ss", help_text=_("Programs this profile is associated with")
+        "country_workspace.Program",
+        blank=True,
+        related_name="%(class)ss",
+        help_text=_("Programs this profile is associated with"),
     )
     parent = TreeForeignKey(
         "self",
@@ -76,7 +78,7 @@ class MappingProfile(TimestampMixin, MPTTModel):
         ancestors = self.get_ancestors(include_self=True)
         return "-" if len(ancestors) == 1 else " → ".join(ancestor.name for ancestor in ancestors)
 
-    def get_all_rules(self) -> list["FieldMappingRule"]:
+    def get_all_rules(self) -> list[FieldMappingRule]:
         """Get active rules from profile hierarchy, sorted by order, with child overriding parent rules."""
         ancestors = self.get_ancestors(include_self=True).prefetch_related("rules")
         unique_rules = {rule.name: rule for ancestor in ancestors for rule in ancestor.rules.all() if rule.is_active}
@@ -87,58 +89,3 @@ class MappingProfile(TimestampMixin, MPTTModel):
         if not data:
             return data
         return reduce(lambda result, rule: rule.apply(result), self.get_all_rules(), data)
-
-
-class FieldMappingRule(TimestampMixin, models.Model):
-    profile = models.ForeignKey(
-        "MappingProfile",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="rules",
-        help_text="Mapping profile this rule belongs to",
-    )
-    name = models.CharField(max_length=255)
-    expression = models.TextField(
-        blank=True,
-        validators=[JMESPathValidator()],
-        help_text="JMESPath expression that returns object with new/modified fields only",
-    )
-    description = models.CharField(max_length=255, blank=True)
-    order = models.PositiveIntegerField(default=100, help_text="Order of execution for the rule (lower is earlier)")
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        verbose_name = "Field Mapping Rule"
-        verbose_name_plural = "Field Mapping Rules"
-        ordering = ["order", "name"]
-        indexes = [
-            models.Index(fields=["profile", "is_active", "order"]),
-        ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["profile", "name"],
-                name="unique_rule_name_per_profile",
-                violation_error_message=_("Rule name must be unique within profile"),
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return self.name
-
-    def clean(self) -> None:
-        super().clean()
-        if not (self.expression and self.expression.strip()):
-            raise ValidationError({"expression": _("Expression is required")})
-
-    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(data, dict):
-            return {}
-        if not (self.expression and self.expression.strip()):
-            return data
-
-        try:
-            mapped_fields = search(self.expression.strip(), data, options=Options(custom_functions=None))
-            return {**data, **mapped_fields} if isinstance(mapped_fields, dict) else data
-        except exceptions.JMESPathError:
-            return data

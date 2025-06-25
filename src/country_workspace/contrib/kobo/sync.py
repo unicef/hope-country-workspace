@@ -1,9 +1,10 @@
 import re
 from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Any, Final, TypedDict, cast
+from typing import Any, Final, TypedDict, cast, NotRequired
 
 from constance import config as constance_config
+from contextlib import suppress
 from django.core.cache import cache
 from requests import Session
 
@@ -14,6 +15,7 @@ from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.mapping.models import MappingProfile
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
@@ -22,6 +24,7 @@ from country_workspace.utils.functional import compose
 class Config(BatchNameConfig, FailIfAlienConfig):
     project_id: str
     individual_records_field: str
+    mapping_profile_pk: NotRequired[int]
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -145,6 +148,9 @@ def import_data(job: AsyncJob) -> ImportResult:
         imported_by=job.owner,
         source=Batch.BatchSource.KOBO,
     )
+    if config.get("mapping_profile_pk"):
+        with suppress(MappingProfile.DoesNotExist):
+            MappingProfile.objects.get(id=config["mapping_profile_pk"], is_active=True)
     client = make_client(job.program.country_office.kobo_country_code)
 
     household_counter = 0

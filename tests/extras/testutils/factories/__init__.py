@@ -13,6 +13,7 @@ from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
 from .job import AsyncJobFactory  # noqa
 from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
+from .mapping import FieldMappingRuleFactory, MappingProfileFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .rdp import CountryRdpFactory, RdpFactory  # noqa

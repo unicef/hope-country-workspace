@@ -67,7 +67,7 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     @link(change_list=False)
     def mapping_profiles(self, btn: "LinkButton") -> None:
         obj = btn.context["original"]
-        base = reverse("admin:country_workspace_mappingprofile_changelist")
+        base = reverse("admin:mapping_mappingprofile_changelist")
         btn.href = f"{base}?program__id__exact={obj.pk}"
 
     @button()

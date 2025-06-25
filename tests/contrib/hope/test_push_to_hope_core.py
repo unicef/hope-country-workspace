@@ -264,17 +264,16 @@ def test_safe_post(mocker, simple_processor, exception, expected_in_error):
 
 # Batch preparation tests
 @pytest.mark.django_db
-def test_prepare_batch(mocker, push_processor, beneficiary_instance):
+def test_prepare_batch(push_processor, beneficiary_instance):
     push_processor.set_queryset([beneficiary_instance.pk])
-    mocker.patch("country_workspace.contrib.hope.push.map_fields", return_value={"field": "value"})
     ids, data = push_processor.prepare_batch()
-    assert ids == [beneficiary_instance.pk]
 
+    assert ids == [beneficiary_instance.pk]
     if push_processor.master_detail:
-        assert len(data) == 1
         assert "members" in data[0]
+        assert len(data) == 1
     else:
-        assert data == [{"field": "value"}]
+        assert data[0] == beneficiary_instance.flex_fields
 
 
 # Batch response processing tests

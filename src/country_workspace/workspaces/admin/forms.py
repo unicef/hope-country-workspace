@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING, Any
 from django import forms
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
-from country_workspace.models import MappingProfile, Program
+from country_workspace.models import Program
+from country_workspace.mapping.models import MappingProfile
+
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker

@@ -7,7 +7,8 @@ from django.db.transaction import atomic
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
-from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingProfile
+from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.mapping.models import MappingProfile
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.validators.beneficiaries import validate_beneficiaries

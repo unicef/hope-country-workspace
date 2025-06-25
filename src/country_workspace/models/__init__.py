@@ -6,7 +6,6 @@ from .household import Household
 from .individual import Individual
 from .jobs import AsyncJob
 from .locations import Area, AreaType, Country
-from .mapping import FieldMappingRule, MappingProfile
 from .office import Office
 from .program import Program
 from .rdi import Rdi
@@ -22,11 +21,9 @@ __all__ = [
     "Batch",
     "BeneficiaryGroup",
     "Country",
-    "FieldMappingRule",
     "Household",
     "Individual",
     "KoboSubmission",
-    "MappingProfile",
     "Office",
     "Program",
     "Rdi",

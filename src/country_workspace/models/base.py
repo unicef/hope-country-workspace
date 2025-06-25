@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
 from concurrency.fields import IntegerVersionField
+from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -138,10 +139,10 @@ class BaseModel(models.Model):
 
 class TimestampMixin(models.Model):
     created_by = models.ForeignKey(
-        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)ss", verbose_name="Created by"
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)ss"
     )
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Created at")
-    updated_at = models.DateTimeField(auto_now=True, db_index=True, verbose_name="Updated at")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
 
     class Meta:
         abstract = True

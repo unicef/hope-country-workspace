@@ -51,6 +51,7 @@ INSTALLED_APPS = (
     "anymail",
     "country_workspace.security",
     "country_workspace.apps.HCWConfig",
+    "country_workspace.mapping",
     "country_workspace.workspaces.apps.Config",
     "country_workspace.versioning",
     "country_workspace.cache",

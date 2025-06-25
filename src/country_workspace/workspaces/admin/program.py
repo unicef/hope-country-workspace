@@ -397,12 +397,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return form
 
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
-        form = ImportKoboForm(request.POST, prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
+        form = ImportKoboForm(request.POST, prefix="kobo", program=program)
         if form.is_valid():
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
+                "mapping_profile_pk": getattr(form.cleaned_data.get("mapping_profile"), "id", None),
                 "check_before": (check_before := form.cleaned_data.get("check_before", False)),
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }

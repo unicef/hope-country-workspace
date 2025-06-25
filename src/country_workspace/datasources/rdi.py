@@ -12,7 +12,8 @@ from hope_smart_import.readers import open_xls_multi
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.models import AsyncJob, Batch, Household, MappingProfile
+from country_workspace.models import AsyncJob, Batch, Household
+from country_workspace.mapping.models import MappingProfile
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose

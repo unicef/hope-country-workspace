@@ -3,7 +3,8 @@ from typing import Any
 from django import forms
 
 from country_workspace.contrib.aurora.models import Registration
-from country_workspace.models import MappingProfile, Program
+from country_workspace.models import Program
+from country_workspace.mapping.models import MappingProfile
 
 
 class ImportAuroraForm(forms.Form):
