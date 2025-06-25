@@ -14,8 +14,9 @@ from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
+from country_workspace.utils.functional import compose
 from country_workspace.validators.beneficiaries import validate_beneficiaries
-from country_workspace.datasources.utils import strip_time_iso
+from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 
 
 RDI = str | io.BytesIO
@@ -66,12 +67,6 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
         return bool(get_value(row, household_pk_col))
 
     return filter(has_household_pk, sheet)
-
-
-def postprocess_cell(sheets: MultiSheet) -> MultiSheet:
-    for sheet_idx, rows in sheets:
-        formated_rows = ({k: strip_time_iso(v) for k, v in row.items()} for row in rows)
-        yield sheet_idx, formated_rows
 
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
@@ -162,7 +157,8 @@ def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) ->
 
 
 def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator[Sheet, None, None]:
-    sheets = postprocess_cell(open_xls_multi(filepath, sheets=list(sheet_indices)))
+    cell_mapper = compose(datetime_to_date, date_to_iso_string)
+    sheets = open_xls_multi(filepath, sheets=list(sheet_indices), value_mapper=cell_mapper)
     sheet_images = extract_images(filepath, *sheet_indices)
     for (_, sheet), images in zip(sheets, sheet_images, strict=False):
         sheet_with_images = merge_images(sheet, images)

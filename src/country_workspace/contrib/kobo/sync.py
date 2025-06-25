@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable, Iterable
-from functools import reduce, partial
+from functools import partial
 from typing import Any, Final, TypedDict, cast
 
 from constance import config as constance_config
@@ -16,6 +16,7 @@ from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
+from country_workspace.utils.functional import compose
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
@@ -62,27 +63,18 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
     return {key.split("/")[-1]: value for key, value in data.items()}
 
 
-EntryProcessor = Callable[[dict], dict]
+type RawIndividual = dict[str, Any]
 
 
-def apply_processor(entry: dict, processor: EntryProcessor) -> dict:
-    return processor(entry)
-
-
-def uppercase_fields(fields: tuple[str], entry: dict) -> dict:
-    for field in fields:
-        if field in entry:
-            entry[field] = entry[field].upper()
-
-    return entry
-
-
-def preprocess_individual(individual: dict) -> dict:
-    processors = (
-        normalize_json,
-        partial(clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS),
+def preprocess_individual(individual: RawIndividual) -> RawIndividual:
+    clean: Callable[[RawIndividual], RawIndividual] = partial(
+        clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS
     )
-    return reduce(apply_processor, processors, individual)
+    processor = compose(
+        normalize_json,
+        clean,
+    )
+    return processor(individual)
 
 
 def get_fullname_key(individual: Iterable[str]) -> str | None:
@@ -98,7 +90,7 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
             Individual(
                 batch=batch,
                 household=household,
-                name=individual.get(fullname, ""),
+                name=individual.get(fullname, "") if fullname else "",
                 flex_fields=individual,
             ),
         )
