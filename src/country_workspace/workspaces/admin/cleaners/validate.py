@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 from django.db.models import Model, QuerySet
 
 from country_workspace.models import AsyncJob, Household, Program
+from country_workspace.state import state
 
 if TYPE_CHECKING:
     from country_workspace.models.base import Validable
@@ -32,11 +33,12 @@ def validate_program(job: AsyncJob) -> dict[str, int]:
     hh: Household
     try:
         p: Program = job.program
-        for hh in Household.objects.filter(batch__program=p):
-            if hh.validate_with_checker():
-                valid += 1
-            else:
-                invalid += 1
+        with state.set(tenant=p.country_office, program=p):
+            for hh in Household.objects.filter(batch__program=p):
+                if hh.validate_with_checker():
+                    valid += 1
+                else:
+                    invalid += 1
     except Exception as e:  # pragma: no cover
         logger.error(e)
         raise
