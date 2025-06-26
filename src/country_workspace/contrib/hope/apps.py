@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 
 from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, CountryChoice
+from .lookups import FinancialInstitutionChoice
 
 
 class Config(AppConfig):
@@ -19,6 +20,7 @@ class Config(AppConfig):
         field_registry.register(Admin2Choice)
         field_registry.register(Admin3Choice)
         field_registry.register(Admin4Choice)
+        field_registry.register(FinancialInstitutionChoice)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry
