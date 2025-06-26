@@ -13,7 +13,7 @@ from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
-from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
@@ -35,6 +35,7 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     master_column_label: NotRequired[str]
     detail_column_label: NotRequired[str]
     people_column_prefix: NotRequired[str]
+    mapping_importer_pk: NotRequired[int]
     first_line: int
 
 
@@ -93,21 +94,23 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     return filter(has_household_pk, sheet)
 
 
-def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
+def process_households(
+    sheet: Sheet, job: AsyncJob, batch: Batch, mapping_importer: MappingImporter | None = None
+) -> Mapping[int, Household]:
+    config: Config = job.config
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
         household_key = get_value(row, config["household_pk_col"])
         label = get_value(row, config["detail_column_label"])
+        cleaned_row = clean_field_names(row)
 
         try:
+            # TODO(Vitali): use real sheet name after amending smart_import library
+            flex_fields = mapping_importer.apply("Households", cleaned_row) if mapping_importer else cleaned_row
             mapping[household_key] = cast(
                 "Household",
-                job.program.households.create(
-                    batch=batch,
-                    name=label,
-                    flex_fields=clean_field_names(row),
-                ),
+                job.program.households.create(batch=batch, name=label, flex_fields=flex_fields),
             )
         except Exception as e:
             raise SheetProcessingError(HOUSEHOLD, i) from e

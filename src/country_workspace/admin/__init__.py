@@ -12,6 +12,7 @@ from .household import HouseholdAdmin
 from .individual import IndividualAdmin
 from .job import AsyncJobAdmin
 from .locations import AreaAdmin, AreaTypeAdmin, CountryAdmin
+from .mapping_importer import MappingImporterAdmin
 from .office import OfficeAdmin
 from .program import ProgramAdmin
 from .rdp import RdpAdmin
@@ -38,6 +39,7 @@ __all__ = [
     "CountryAdmin",
     "HouseholdAdmin",
     "IndividualAdmin",
+    "MappingImporterAdmin",
     "OfficeAdmin",
     "ProgramAdmin",
     "RdpAdmin",
