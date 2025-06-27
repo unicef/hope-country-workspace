@@ -1,10 +1,13 @@
 from typing import TYPE_CHECKING, Any
 
 from concurrency.fields import IntegerVersionField
+from contextlib import suppress
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
+
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.utils.flex_fields import get_obj_checksum
@@ -105,6 +108,10 @@ class Validable(Cachable, models.Model):
         raise NotImplementedError
 
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        with suppress(ObjectDoesNotExist):
+            self.checker.mappingimporter.apply(self.flex_fields)
+            self.save(update_fields=["flex_fields"])
+
         errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
         if errors:
             self.errors = errors[1]

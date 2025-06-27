@@ -35,7 +35,6 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     master_column_label: NotRequired[str]
     detail_column_label: NotRequired[str]
     people_column_prefix: NotRequired[str]
-    mapping_importer_pk: NotRequired[int]
     first_line: int
 
 
@@ -94,23 +93,21 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     return filter(has_household_pk, sheet)
 
 
-def process_households(
-    sheet: Sheet, job: AsyncJob, batch: Batch, mapping_importer: MappingImporter | None = None
-) -> Mapping[int, Household]:
-    config: Config = job.config
+def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
         household_key = get_value(row, config["household_pk_col"])
         label = get_value(row, config["detail_column_label"])
-        cleaned_row = clean_field_names(row)
 
         try:
-            # TODO(Vitali): use real sheet name after amending smart_import library
-            flex_fields = mapping_importer.apply("Households", cleaned_row) if mapping_importer else cleaned_row
             mapping[household_key] = cast(
                 "Household",
-                job.program.households.create(batch=batch, name=label, flex_fields=flex_fields),
+                job.program.households.create(
+                    batch=batch,
+                    name=label,
+                    flex_fields=clean_field_names(row),
+                ),
             )
         except Exception as e:
             raise SheetProcessingError(HOUSEHOLD, i) from e
@@ -214,7 +211,7 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
-        config = job.config
+        config: Config = job.config
         batch = Batch.objects.create(
             name=config["batch_name"],
             program=job.program,

@@ -4,7 +4,7 @@ from django import forms
 
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
-from country_workspace.models import BeneficiaryGroup, MappingImporter
+from country_workspace.models import BeneficiaryGroup
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -62,12 +62,6 @@ class ImportFileForm(forms.Form):
     )
 
     first_line = forms.IntegerField(required=True, initial=0, help_text="First line to process")
-
-    mapping_importer = forms.ModelChoiceField(
-        required=False,
-        queryset=MappingImporter.objects.none(),
-        help_text="Mapping importer to use for this import.",
-    )
 
     check_before = forms.BooleanField(
         required=False, help_text="Prevent import if errors if data is not valid against data checker."
