@@ -62,6 +62,7 @@ class SyncContextPrograms(BaseSync):
                 should_process=lambda r: r.get("active"),
             ),
         )
+        self.sync_programs()
 
     def sync_beneficiary_groups(self) -> None:
         """Fetch and process BeneficiaryGroup records from the remote API."""
