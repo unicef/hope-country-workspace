@@ -218,7 +218,7 @@ def push_to_hope(
             )
             job.queue()
             model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-            return redirect("workspace:workspaces_countryasyncjob_changelist")
+            return redirect("workspace:workspaces_countryrdp_changelist")
     else:
         form = PushToHopeForm(
             program=program,

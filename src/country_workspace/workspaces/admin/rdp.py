@@ -12,18 +12,15 @@ from ...state import state
 from ..models import CountryRdp
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
-from .filters import CWLinkedAutoCompleteFilter, ChoiceFilter
+from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
 
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "program", "push_date", "status")
-    list_filter = (
-        ("program", CWLinkedAutoCompleteFilter),
-        ("status", ChoiceFilter),
-    )
-    readonly_fields = fields = ("name", "push_date", "status", "related_job")
+    list_display = ("name", "push_date", "status")
+    list_filter = (("status", ChoiceFilter),)
+    readonly_fields = fields = ("name", "push_date", "status", "hope_rdi_id", "related_job")
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
