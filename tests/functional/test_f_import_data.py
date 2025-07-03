@@ -59,16 +59,19 @@ def browser_program_beneficiary(browser, program_beneficiary):
 
 
 @pytest.mark.selenium
-def test_rdi_import_tab(browser_program):
+def test_rdi_import_tab(browser_program, program):
     browser_program.assert_element_visible("#tab-rdi")
     browser_program.assert_element_not_visible("#tab-aurora")
     browser_program.assert_element_not_visible("#tab-kobo")
     browser_program.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program.assert_element_visible("#id_rdi-batch_name")
-    browser_program.assert_element_visible("#id_rdi-pk_column_name")
-    browser_program.assert_element_visible("#id_rdi-master_column_label")
-    browser_program.assert_element_visible("#id_rdi-detail_column_label")
+    if program.beneficiary_group.master_detail:
+        browser_program.assert_element_visible("#id_rdi-pk_column_name")
+        browser_program.assert_element_visible("#id_rdi-master_column_label")
+        browser_program.assert_element_visible("#id_rdi-detail_column_label")
+    else:
+        browser_program.assert_element_visible("#id_rdi-people_column_prefix")
     browser_program.assert_element_visible("#id_rdi-first_line")
     browser_program.assert_element_visible("#id_rdi-file")
     browser_program.assert_element_visible("#id_rdi-check_before")
