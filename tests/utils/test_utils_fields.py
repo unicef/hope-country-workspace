@@ -143,6 +143,7 @@ def test_extract_uuid_errors(value: str | int, prefix: str | int | None, exc_typ
         pytest.param("a, b,c ", abc, id="comma-strip"),
         pytest.param("a b c ", abc, id="space-strip"),
         pytest.param("", [], id="empty"),
+        pytest.param("a", ["a"], id="single"),
     ],
 )
 def test_split_consent_sharing_options(value: str, expected: list[str]) -> None:
