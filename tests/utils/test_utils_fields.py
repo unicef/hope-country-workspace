@@ -1,4 +1,4 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -15,7 +15,12 @@ from country_workspace.utils.fields import (
     map_fields,
     extract_uuid,
 )
-from country_workspace.utils.flex_fields import Base64ImageInput, Base64ImageField, ConsentSharingChoice
+from country_workspace.utils.flex_fields import (
+    Base64ImageInput,
+    Base64ImageField,
+    ConsentSharingChoice,
+    split_consent_sharing_options,
+)
 
 
 @pytest.mark.parametrize(
@@ -131,17 +136,52 @@ def test_extract_uuid_errors(value: str | int, prefix: str | int | None, exc_typ
 
 
 @pytest.mark.parametrize(
-    ("raw", "expected_py", "expected_prep"),
+    ("value", "expected"),
     [
-        ("a,b,c", ["a", "b", "c"], ["a", "b", "c"]),
-        ("  a , b ,c  ", ["a", "b", "c"], ["  a ", " b ", "c  "]),
-        ("", [], []),
-        (None, [], None),
-        (["x", "y"], ["x", "y"], ["x", "y"]),
+        pytest.param("a,b,c", abc := ["a", "b", "c"], id="comma"),
+        pytest.param("a b c", abc, id="space"),
+        pytest.param("a, b,c ", abc, id="comma-strip"),
+        pytest.param("a b c ", abc, id="space-strip"),
+        pytest.param("", [], id="empty"),
     ],
-    ids=["comma", "spaces", "empty", "none", "list"],
 )
-def test_consent_sharing_choice_to_python_and_prepare_value(raw, expected_py, expected_prep):
-    field = ConsentSharingChoice(choices=[])
-    assert field.to_python(raw) == expected_py
-    assert field.prepare_value(raw) == expected_prep
+def test_split_consent_sharing_options(value: str, expected: list[str]) -> None:
+    assert split_consent_sharing_options(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(["a", "b"], id="list"),
+    ],
+)
+def test_consent_sharing_choice_to_python_and_prepare_value_call_super_method(
+    mocker: MockerFixture, value: list[str] | None
+) -> None:
+    super_to_python_mock = mocker.patch("country_workspace.utils.flex_fields.forms.MultipleChoiceField.to_python")
+    super_prepare_value_mock = mocker.patch(
+        "country_workspace.utils.flex_fields.forms.MultipleChoiceField.prepare_value"
+    )
+    instance = Mock(spec=ConsentSharingChoice)
+
+    ConsentSharingChoice.prepare_value(instance, value)
+    ConsentSharingChoice.to_python(instance, value)
+
+    super_to_python_mock.assert_called_once_with(value)
+    super_prepare_value_mock.assert_called_once_with(value)
+
+
+def test_consent_sharing_choice_to_python_and_prepare_value_call_split_consent_sharing_options(
+    mocker: MockerFixture,
+) -> None:
+    value = "test"
+    split_consent_sharing_options_mock = mocker.patch(
+        "country_workspace.utils.flex_fields.split_consent_sharing_options"
+    )
+    instance = Mock(spec=ConsentSharingChoice)
+
+    ConsentSharingChoice.to_python(instance, value)
+    ConsentSharingChoice.prepare_value(instance, value)
+
+    split_consent_sharing_options_mock.assert_has_calls([c := call(value), c])

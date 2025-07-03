@@ -51,13 +51,29 @@ class Base64ImageField(forms.ImageField):
         return None
 
 
+def split_consent_sharing_options(value: str) -> list[str]:
+    stripped = value.strip()
+
+    if not stripped:
+        return []
+
+    # If there's a comma we split by comma, otherwise space is used as a separator
+    for separator in (",", " "):
+        if separator in stripped:
+            return [s for part in value.split(separator) if (s := part.strip())]
+
+    return [stripped]
+
+
 class ConsentSharingChoice(forms.MultipleChoiceField):
     def to_python(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
-            return [stripped for v in value.split(",") if (stripped := v.strip())]
+            return split_consent_sharing_options(value)
+
         return super().to_python(value)
 
     def prepare_value(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
-            return [v for v in value.split(",") if v]
+            return split_consent_sharing_options(value)
+
         return super().prepare_value(value)
