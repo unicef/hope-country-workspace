@@ -9,7 +9,7 @@ def is_right_phone_number_format(phone_number: str | Any) -> bool:
     # considered to be a possible number.
     #
     # so if `parse` does not throw, we may assume it's ok
-    if not isinstance(phone_number, str):
+    if not isinstance(phone_number, str):  # pragma: no cover
         phone_number = str(phone_number)
 
     phone_number = phone_number.strip()
