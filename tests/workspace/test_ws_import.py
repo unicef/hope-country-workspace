@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
 
-    from country_workspace.workspaces.models import CountryHousehold, CountryProgram
+    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 
 
 @pytest.fixture
@@ -71,16 +71,28 @@ def test_import_data_rdi(force_migrated_records, app, program):
 
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
-    res.forms["import-file"]["rdi-detail_column_label"] = "household_id"
-    res = res.forms["import-file"].submit()
-    assert res.status_code == 302
-    assert program.households.count() == 1
-    assert program.individuals.count() == 5
+    if program.beneficiary_group.master_detail:
+        res.forms["import-file"]["rdi-detail_column_label"] = "household_id"
+    else:
+        res.forms["import-file"]["rdi-people_column_prefix"] = "pp_"
 
-    hh: "CountryHousehold" = program.households.first()
-    assert hh.members.count() == 5
-    assert (head := hh.heads().first())
-    assert head.name == "Edward Jeffrey Rogers"
+    res = res.forms["import-file"].submit()
+
+    assert res.status_code == 302
+    if program.beneficiary_group.master_detail:
+        assert program.households.count() == 1
+        assert program.individuals.count() == 5
+        hh: "CountryHousehold" = program.households.first()
+        assert hh.members.count() == 5
+        assert (head := hh.heads().first())
+        assert head.name == "Edward Jeffrey Rogers"
+    else:
+        assert program.households.count() == 0
+        assert program.individuals.count() == 4
+        for individual in program.individuals.all():
+            assert individual.household is None
+        ind: "CountryIndividual" = program.individuals.first()
+        assert ind.name == "Collector ForJanIndex_3"
 
 
 @pytest.fixture

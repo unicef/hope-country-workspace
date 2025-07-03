@@ -1,8 +1,9 @@
 import io
 from base64 import b64encode
+from enum import Enum
 from collections import defaultdict
 from collections.abc import Iterable, Generator
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, cast, NotRequired
 
 import openpyxl
 from PIL import Image
@@ -11,7 +12,7 @@ from hope_smart_import.readers import open_xls_multi
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.models import AsyncJob, Batch, Household
+from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
@@ -26,12 +27,22 @@ MultiSheet = Iterable[tuple[int, Sheet]]
 
 INDIVIDUAL = "individual"
 HOUSEHOLD = "household"
+PEOPLE = "people"
 
 
 class Config(BatchNameConfig, FailIfAlienConfig):
-    household_pk_col: str
-    master_column_label: str
-    detail_column_label: str
+    master_detail: bool
+    household_pk_col: NotRequired[str]
+    master_column_label: NotRequired[str]
+    detail_column_label: NotRequired[str]
+    people_column_prefix: NotRequired[str]
+    first_line: int
+
+
+class SheetName(Enum):
+    HOUSEHOLDS: int = 0
+    INDIVIDUALS: int = 1
+    PEOPLE: int = 2
 
 
 class ColumnConfigurationError(Exception):
@@ -51,6 +62,20 @@ class SheetProcessingError(Exception):
 
     def __str__(self) -> str:
         return f"Failed to process {self.sheet_name} sheet at row {self.row_index}"
+
+
+class SheetNotFoundError(Exception):
+    def __init__(self, sheet_indices: int | tuple[int, ...]) -> None:
+        if isinstance(sheet_indices, int):
+            sheet_indices = (sheet_indices,)
+        super().__init__(sheet_indices)
+        self.sheet_indices = sheet_indices
+
+    def __str__(self) -> str:
+        if len(self.sheet_indices) == 1:
+            return f"Sheet with index {self.sheet_indices[0]} was not found in the provided file."
+        indices_str = ", ".join(map(str, self.sheet_indices))
+        return f"Sheets with indices {indices_str} were not found in the provided file."
 
 
 def get_value(row: Record, column_name: str) -> Any:
@@ -98,30 +123,44 @@ def full_name_column(row: Record) -> str | None:
     return None
 
 
-def process_individuals(
-    sheet: Sheet, household_mapping: Mapping[int, Household], job: AsyncJob, batch: Batch, config: Config
-) -> int:
-    processed = 0
+def process_beneficiaries(
+    sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
+) -> Mapping[int, Individual]:
+    mapping, name_column = {}, None
+    pp_column_prefix = config.get("people_column_prefix")
+    is_people_only_mode = household_mapping is None
 
     for i, row in enumerate(sheet, 1):
-        name_column = full_name_column(row)
-        name = get_value(row, name_column) if name_column else None
-        household_key = get_value(row, config["master_column_label"])
-        household = household_mapping.get(household_key)
+        cleaned_row = (
+            {k.removeprefix(pp_column_prefix): v for k, v in row.items()}
+            if is_people_only_mode and pp_column_prefix
+            else row
+        )
+
+        if name_column is None:
+            name_column = full_name_column(cleaned_row)
+        name = get_value(cleaned_row, name_column) if name_column else None
+
+        household = None
+        if not is_people_only_mode:
+            household_key = get_value(cleaned_row, config["master_column_label"])
+            household = household_mapping.get(household_key)
 
         try:
-            job.program.individuals.create(
-                batch=batch,
-                name=name,
-                household_id=household.pk,
-                flex_fields=clean_field_names(row),
+            mapping[i] = cast(
+                "Individual",
+                job.program.individuals.create(
+                    batch=batch,
+                    name=name,
+                    household=household,
+                    flex_fields=clean_field_names(cleaned_row),
+                ),
             )
         except Exception as e:
-            raise SheetProcessingError(INDIVIDUAL, i) from e
+            sheet_name = PEOPLE if is_people_only_mode else INDIVIDUAL
+            raise SheetProcessingError(sheet_name, i) from e
 
-        processed += 1
-
-    return processed
+    return mapping
 
 
 def image_location(image: RDIImage) -> tuple[int, int]:
@@ -158,17 +197,22 @@ def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) ->
 
 def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator[Sheet, None, None]:
     cell_mapper = compose(datetime_to_date, date_to_iso_string)
-    sheets = open_xls_multi(filepath, sheets=list(sheet_indices), value_mapper=cell_mapper)
-    sheet_images = extract_images(filepath, *sheet_indices)
-    for (_, sheet), images in zip(sheets, sheet_images, strict=False):
-        sheet_with_images = merge_images(sheet, images)
-        yield filter_rows_with_household_pk(config, sheet_with_images)
+    try:
+        sheets = open_xls_multi(filepath, sheets=list(sheet_indices), value_mapper=cell_mapper)
+        sheet_images = extract_images(filepath, *sheet_indices)
+        for (_, sheet), images in zip(sheets, sheet_images, strict=False):
+            sheet_with_images = merge_images(sheet, images)
+            if config["master_detail"]:
+                yield filter_rows_with_household_pk(config, sheet_with_images)
+            else:
+                yield sheet_with_images
+    except IndexError as e:
+        raise SheetNotFoundError(sheet_indices) from e
 
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     with atomic():
-        config: Config = job.config
-        rdi = job.file
+        config = job.config
         batch = Batch.objects.create(
             name=config["batch_name"],
             program=job.program,
@@ -176,15 +220,22 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
         )
+        if config["master_detail"]:
+            return _import_master_detail(job, batch, config)
+        return _import_people_only(job, batch, config)
 
-        household_sheet, individual_sheet = read_sheets(config, rdi, 0, 1)
 
-        household_mapping = process_households(household_sheet, job, batch, config)
-        individuals_number = process_individuals(individual_sheet, household_mapping, job, batch, config)
+def _import_master_detail(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
+    household_sheet, individual_sheet = read_sheets(
+        config, job.file, SheetName.HOUSEHOLDS.value, SheetName.INDIVIDUALS.value
+    )
+    household_mapping = process_households(household_sheet, job, batch, config)
+    individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
+    validate_beneficiaries(config, household_mapping)
+    return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
-        validate_beneficiaries(config, household_mapping)
 
-        return {
-            "household": len(household_mapping),
-            "individual": individuals_number,
-        }
+def _import_people_only(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
+    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE.value)
+    validate_beneficiaries(config, people_mapping := process_beneficiaries(people_sheet, job, batch, config))
+    return {"people": len(people_mapping)}
