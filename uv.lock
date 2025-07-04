@@ -1100,6 +1100,24 @@ wheels = [
 ]
 
 [[package]]
+name = "dukpy"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/fe/8cef39f269aed53e940c238bf9ceb3ca0f80d7f5be6df2c00a84d87ac5d8/dukpy-0.5.0.tar.gz", hash = "sha256:079fe2d65ac5e24df56806c6b4e1a26f92bb7f13dc764f4fb230a6746744c1ad", size = 2078406, upload_time = "2024-11-07T21:50:59.148Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/e1/9bc2bc0d5b2d7c0b579ae9161e0ba7a2049715dbef2b997f36ca9dfbd861/dukpy-0.5.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:5b8b28e235af8c43670b5b4ea7f2f44d3348f5f84a7b582d4016114c3a44b04d", size = 1379175, upload_time = "2024-11-07T21:47:03.034Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/19/ef6c32d789317b8055a36ff12fc6df8b17155c02f7521f5debd8b475bfbd/dukpy-0.5.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:434eb3b012a5ff5ecf3990154740da186477ecaa832da2d0a9063f0cb1080fa7", size = 1351491, upload_time = "2024-11-07T21:47:06.817Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/5d/2415c0889603fac62f699e459fbc28ba9f569aedcc16f308345b217b6aaf/dukpy-0.5.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:342ee205ba86a0d7952aaa788793bd045603f5340b9469bb5b23d14247205b65", size = 2633165, upload_time = "2024-11-07T21:47:10.84Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/4f/7ccdd6cd262b5d39137821e83b410906a6b8868a2028a08bdf7e9d6a7609/dukpy-0.5.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3794581846f16e574551b0277539e3bef5254a1e1e0749d6023697634817032a", size = 2695433, upload_time = "2024-11-07T21:47:14.892Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/d6/63abe4aae4519adc91051a59a0626f2fe9ced881f8b6203abd17ebd51bf0/dukpy-0.5.0-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:1f3528103ab1e3ef681fa76c2bcb99424f87d4032470bd1b4ca3534392c831e5", size = 2624969, upload_time = "2024-11-07T21:47:18.848Z" },
+    { url = "https://files.pythonhosted.org/packages/be/3f/cca42e927ffd37ed807593effa48aa50ed8f902f19e47d45520a93b70a87/dukpy-0.5.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:f31eab72785a36916aaf0d5ac068d4d7f51be12aee31a67a85db98ddc9c77efa", size = 2609135, upload_time = "2024-11-07T21:47:21.84Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/c9/6c3a65121bbb66ee42a53dceea3fff337a413f6710a78931742f5000aeac/dukpy-0.5.0-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:7c677a7dc784190dae985c032d01c33474bdd299c8c66cd6922693f6a54cc8da", size = 2672610, upload_time = "2024-11-07T21:47:25.125Z" },
+    { url = "https://files.pythonhosted.org/packages/79/d2/534ba58665fae7fe8c09b184364c22ac1d0cc8ef7df110e7aade8231fadf/dukpy-0.5.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:f17de94654f94b34d223a961585d99ae990fc3ee7812c0db57b07cfcaae3bb94", size = 2696015, upload_time = "2024-11-07T21:47:29.61Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/e7/f0b2828f6ababc4ae03fc32e4b285662f7aa7b5f3df7999c80fa46319e4e/dukpy-0.5.0-cp313-cp313-win32.whl", hash = "sha256:b31c89df9fa1c90205a023adc124c24ba20b33b1138138b2d7fcbbb2e48bdcab", size = 1266997, upload_time = "2024-11-07T21:47:31.936Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/2d/735c4be716e1aec7e2a515d9f80530f3a3dc5ec1531cdedc8444504c4b33/dukpy-0.5.0-cp313-cp313-win_amd64.whl", hash = "sha256:48a56ea9e41bdb15edea5a4a20f902f1726e4dae216f39a8ea1d5301f7ba2346", size = 1300597, upload_time = "2024-11-07T21:47:34.516Z" },
+]
+
+[[package]]
 name = "et-xmlfile"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1319,6 +1337,7 @@ dependencies = [
     { name = "django-sysinfo" },
     { name = "django-tailwind" },
     { name = "djangorestframework" },
+    { name = "dukpy" },
     { name = "flower" },
     { name = "hope-flex-fields" },
     { name = "hope-smart-export" },
@@ -1412,6 +1431,7 @@ requires-dist = [
     { name = "django-sysinfo", specifier = ">=2.6.2" },
     { name = "django-tailwind", specifier = ">=3.8" },
     { name = "djangorestframework", specifier = ">=3.15.1" },
+    { name = "dukpy", specifier = ">=0.5.0" },
     { name = "flower", specifier = ">=2.0.1" },
     { name = "hope-flex-fields", specifier = ">=0.6.2" },
     { name = "hope-smart-export", specifier = ">=0.3" },
