@@ -21,7 +21,7 @@ class FieldMappingRulesValidator:
         if line.count("=") != 1:
             return self._error(num, _("Invalid format. Expected one '=' character."))
 
-        old_field, new_field = (field.strip() for field in line.split("=", 1))
+        old_field, new_field = (field.strip() for field in line.split("="))
         if not old_field or not new_field:
             return self._error(num, _("Invalid format. Expected format: 'old_fieldname=new_fieldname'"))
         if old_field == new_field:

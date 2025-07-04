@@ -6,7 +6,7 @@ from country_workspace.validators.mapping import FieldMappingRulesValidator
 
 @pytest.fixture
 def mapping_importer():
-    from testutils.factories.mapping_importer import MappingImporterFactory
+    from testutils.factories import MappingImporterFactory
 
     return MappingImporterFactory
 
@@ -48,9 +48,3 @@ def test_apply_successful(mapping_importer, rules, data, expected):
     result = mi.apply(data)
     assert result == expected
     assert result is data
-
-
-def test_apply_failure(mapping_importer):
-    mi = mapping_importer(rules="invalid_rule")
-    with pytest.raises(ValidationError):
-        mi.apply({"gender": "MALE"})

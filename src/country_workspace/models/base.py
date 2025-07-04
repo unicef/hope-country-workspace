@@ -108,6 +108,7 @@ class Validable(Cachable, models.Model):
         raise NotImplementedError
 
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        # skip if mappingimporter not found
         with suppress(ObjectDoesNotExist):
             self.checker.mappingimporter.apply(self.flex_fields)
             self.save(update_fields=["flex_fields"])

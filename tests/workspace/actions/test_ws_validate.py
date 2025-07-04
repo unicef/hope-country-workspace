@@ -7,9 +7,10 @@ from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
+from django_webtest import DjangoTestApp
+from country_workspace.workspaces.models import CountryIndividual
 
 if TYPE_CHECKING:
-    from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from pytest_django.fixtures import SettingsWrapper
 
@@ -49,6 +50,22 @@ def household(program):
 
 
 @pytest.fixture
+def individual(program) -> CountryIndividual:
+    from testutils.factories import CountryIndividualFactory, MappingImporterFactory
+
+    individual = CountryIndividualFactory(
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"first_name": "name", "gender": "MALE"},
+    )
+    MappingImporterFactory(
+        data_checker=individual.program.individual_checker,
+        rules="gender=sex\nage=birth_year",
+    )
+    return individual
+
+
+@pytest.fixture
 def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     from testutils.factories import SuperUserFactory
 
@@ -78,3 +95,18 @@ def test_ws_validate(
             household.refresh_from_db()
             assert household.last_checked.date() == datetime.date(2020, 1, 1)
             assert household.errors
+
+
+def test_ws_validate_individual_with_mapping_rule(
+    app: DjangoTestApp, force_migrated_records: None, individual: CountryIndividual
+) -> None:
+    url = reverse("workspace:workspaces_countryindividual_change", args=[individual.pk])
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url).click("Validate").follow()
+        assert res.status_code == 200
+
+        individual.refresh_from_db()
+        assert "age" not in individual.flex_fields
+        assert "birth_year" not in individual.flex_fields
+        assert "gender" not in individual.flex_fields
+        assert "sex" in individual.flex_fields

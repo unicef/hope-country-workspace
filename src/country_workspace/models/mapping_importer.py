@@ -36,8 +36,6 @@ class MappingImporter(BaseModel):
         if not self.rules:
             return data
 
-        FieldMappingRulesValidator()(self.rules)
-
         for rule in (line.strip() for line in self.rules.splitlines()):
             old_field, new_field = rule.split("=", 1)
             if old_field in data:

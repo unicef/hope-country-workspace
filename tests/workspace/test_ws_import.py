@@ -14,14 +14,17 @@ from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from tests.contrib.aurora import stub
 
 if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
+
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
 
+    from country_workspace.models import Office
     from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 
 
 @pytest.fixture
-def office():
+def office() -> "Office":
     from testutils.factories import OfficeFactory
 
     co = OfficeFactory()
@@ -30,7 +33,13 @@ def office():
 
 
 @pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
-def program(request, office, force_migrated_records, household_checker, individual_checker):
+def program(
+    request: pytest.FixtureRequest,
+    office: "Office",
+    force_migrated_records: None,
+    household_checker: "DataChecker",
+    individual_checker: "DataChecker",
+) -> "CountryProgram":
     from testutils.factories import CountryProgramFactory, ProjectFactory, RegistrationFactory
 
     program = CountryProgramFactory(
@@ -58,41 +67,57 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     return django_app
 
 
-def test_import_data_rdi(force_migrated_records, app, program):
-    # NOTE: This test is linked to the content of `data/rdi_one.xlsx`
+@pytest.fixture
+def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Form:
+    # NOTE: This fixture is linked to the content of `data/rdi_one.xlsx`
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()
 
     url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
     data = (Path(__file__).parent.parent / "data/rdi_one.xlsx").read_bytes()
-
     res = app.get(url)
 
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
-    if program.beneficiary_group.master_detail:
-        res.forms["import-file"]["rdi-detail_column_label"] = "household_id"
-    else:
-        res.forms["import-file"]["rdi-people_column_prefix"] = "pp_"
 
-    res = res.forms["import-file"].submit()
+    return res.forms["import-file"]
+
+
+def test_import_rdi_hh_and_individuals(
+    force_migrated_records: None, app: "DjangoTestApp", program: "CountryProgram", form_import_rdi: forms.Form
+) -> None:
+    if not program.beneficiary_group.master_detail:
+        pytest.skip("Test requires master_detail=True")
+
+    form_import_rdi["rdi-detail_column_label"] = "household_id"
+    res = form_import_rdi.submit()
 
     assert res.status_code == 302
+    assert program.households.count() == 1
+    assert program.individuals.count() == 5
+    hh: "CountryHousehold" = program.households.first()
+    assert hh.members.count() == 5
+    assert (head := hh.heads().first())
+    assert head.name == "Edward Jeffrey Rogers"
+
+
+def test_import_rdi_people_only(
+    force_migrated_records: None, app: "DjangoTestApp", program: "CountryProgram", form_import_rdi: forms.Form
+) -> None:
     if program.beneficiary_group.master_detail:
-        assert program.households.count() == 1
-        assert program.individuals.count() == 5
-        hh: "CountryHousehold" = program.households.first()
-        assert hh.members.count() == 5
-        assert (head := hh.heads().first())
-        assert head.name == "Edward Jeffrey Rogers"
-    else:
-        assert program.households.count() == 0
-        assert program.individuals.count() == 4
-        for individual in program.individuals.all():
-            assert individual.household is None
-        ind: "CountryIndividual" = program.individuals.first()
-        assert ind.name == "Collector ForJanIndex_3"
+        pytest.skip("Test requires master_detail=False")
+
+    form_import_rdi["rdi-people_column_prefix"] = "pp_"
+    res = form_import_rdi.submit()
+
+    assert res.status_code == 302
+    assert program.households.count() == 0
+    assert program.individuals.count() == 4
+    for individual in program.individuals.all():
+        assert individual.household is None
+    ind: "CountryIndividual" = program.individuals.first()
+    assert ind.name == "Collector ForJanIndex_3"
 
 
 @pytest.fixture

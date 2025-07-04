@@ -1,3 +1,4 @@
+from typing import Self
 from dataclasses import dataclass
 from packaging.version import Version
 from django.db import transaction
@@ -14,7 +15,7 @@ class FieldRename:
     old_field: str
     new_field: str
 
-    def reverse(self) -> "FieldRename":
+    def reverse(self) -> Self:
         return FieldRename(self.new_definition, self.old_definition, self.new_field, self.old_field)
 
 
