@@ -14,6 +14,7 @@ class RdpFactory(AutoRegisterModelFactory):
     push_date = factory.LazyFunction(timezone.now)
     name = factory.Sequence(lambda n: f"RDP {n}")
     status = Rdp.PushStatus.PENDING
+    hope_rdi_id = factory.Sequence(lambda n: f"hope-rdi-{n}")
     program = factory.SubFactory(ProgramFactory)
 
     class Meta:

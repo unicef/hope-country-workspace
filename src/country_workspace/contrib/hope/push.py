@@ -120,6 +120,7 @@ class PushProcessor(BatchErrorHandlerMixin):
     model: type = field(init=False)
     push_endpoint: str = field(init=False)
     queryset: QuerySet = field(init=False)
+    hope_rdi_id: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.model, self.push_endpoint = (
@@ -152,32 +153,32 @@ class PushProcessor(BatchErrorHandlerMixin):
     def rdi_create(self) -> None:
         """Create a new RDI record in the external system.
 
-        Sets `self.rdi_id` if the creation is successful.
+        Sets `self.hope_rdi_id` if the creation is successful.
         """
         path = f"{self.base_path}create/"
         data = {"name": self.batch_name, "program": self.program_hope_id, "imported_by_email": self.imported_by_email}
         if response := self.safe_post(path, data, "Error creating RDI"):
-            self.rdi_id = response.get("id")
+            self.hope_rdi_id = response.get("id")
 
     def rdi_push(self) -> None:
         """Push a batch of beneficiaries data to the external system as RDI."""
-        if self.rdi_id is None:
-            self.total["errors"].append("Cannot push data: rdi_id is not set")
+        if self.hope_rdi_id is None:
+            self.total["errors"].append("Cannot push data: hope_rdi_id is not set")
             return
         batch_ids, batch_data = self.prepare_batch()
         if not batch_ids:
             self.total["errors"].append("No data to push")
             return
-        path = f"{self.base_path}{self.rdi_id}/{self.push_endpoint}"
+        path = f"{self.base_path}{self.hope_rdi_id}/{self.push_endpoint}"
         response = self.safe_post(path, batch_data, "Error pushing data")
         self.process_batch_response(response, batch_ids)
 
     def rdi_complete(self) -> None:
         """Mark the RDI push as completed in the external system."""
-        if self.rdi_id is None:
-            self.total["errors"].append("Cannot complete RDI: rdi_id is not set")
+        if self.hope_rdi_id is None:
+            self.total["errors"].append("Cannot complete RDI: hope_rdi_id is not set")
             return
-        path = f"{self.base_path}{self.rdi_id}/completed/"
+        path = f"{self.base_path}{self.hope_rdi_id}/completed/"
         self.safe_post(path, None, "Error completing RDI")
 
     def safe_post(self, path: str, data: Any, error_msg: str) -> dict[str, Any] | None:
@@ -206,7 +207,9 @@ class PushProcessor(BatchErrorHandlerMixin):
             case {"processed": p, "accepted": a} if p == a == len(batch_ids):
                 self.total["households"] = self.total.get("households", 0) + a
                 return batch_ids
-            case {"id": rdi_id, "people": batch_list} if rdi_id == self.rdi_id and len(batch_list) == len(batch_ids):
+            case {"id": hope_rdi_id, "people": batch_list} if hope_rdi_id == self.hope_rdi_id and len(
+                batch_list
+            ) == len(batch_ids):
                 self.total["people"] = self.total.get("people", 0) + len(batch_ids)
                 return batch_ids
             case {"errors": e} if e:
@@ -252,17 +255,23 @@ def create_processor(config: WorkflowConfig) -> PushProcessor:
     )
 
 
-def complete_rdp_success(rdp_id: int, master_detail: bool) -> None:
-    """Mark the RDP as successfully completed and update related beneficiaries as removed."""
+def complete_rdp(rdp_id: int, status: Rdp.PushStatus, hope_rdi_id: str) -> Rdp:
+    """Complete RDP with given status and update the hope_rdi_id."""
     with transaction.atomic():
-        if not Rdp.objects.filter(id=rdp_id).update(status=Rdp.PushStatus.SUCCESS):
-            raise ValueError(f"RDP with id {rdp_id} does not exist")
-        rdp = Rdp.objects.get(id=rdp_id)
-        if master_detail:
-            rdp.households.update(removed=True)
-            CountryIndividual.objects.filter(household__rdp=rdp).update(removed=True)
-        else:
-            rdp.individuals.update(removed=True)
+        rdp = Rdp.objects.select_for_update().get(id=rdp_id)
+        rdp.status = status
+        rdp.hope_rdi_id = hope_rdi_id
+        rdp.save(update_fields=["status", "hope_rdi_id"])
+        return rdp
+
+
+def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
+    """Mark all beneficiaries related to RDP as removed."""
+    if is_master_detail:
+        rdp.households.update(removed=True)
+        CountryIndividual.objects.filter(household__rdp=rdp).update(removed=True)
+    else:
+        rdp.individuals.update(removed=True)
 
 
 def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
@@ -285,9 +294,11 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     for step in steps():
         step()
         if processor.total["errors"]:
-            if not Rdp.objects.filter(id=rdp_id).update(status=Rdp.PushStatus.FAILURE):
-                raise ValueError(f"RDP with id {rdp_id} does not exist")
+            complete_rdp(rdp_id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
             return processor.total
 
-    complete_rdp_success(rdp_id, config["master_detail"])
+    with transaction.atomic():
+        rdp = complete_rdp(rdp_id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)
+        mark_rdp_beneficiaries_removed(rdp, config["master_detail"])
+
     return processor.total

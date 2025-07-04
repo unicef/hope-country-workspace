@@ -21,12 +21,12 @@ def program(office):
     return CountryProgramFactory(country_office=office)
 
 
-@pytest.fixture
-def beneficiary_group():
+@pytest.fixture(params=[True, False], ids=["master_detail", "no_master_detail"])
+def beneficiary_group(request):
     return BeneficiaryGroupFactory(
         group_label_plural="Households",
         member_label_plural="Individuals",
-        master_detail=True,
+        master_detail=request.param,
     )
 
 
@@ -59,23 +59,42 @@ def browser_program_beneficiary(browser, program_beneficiary):
 
 
 @pytest.mark.selenium
-def test_rdi_import_tab(browser_program, program):
+def test_rdi_import_tab(browser_program):
     browser_program.assert_element_visible("#tab-rdi")
     browser_program.assert_element_not_visible("#tab-aurora")
     browser_program.assert_element_not_visible("#tab-kobo")
     browser_program.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program.assert_element_visible("#id_rdi-batch_name")
-    if program.beneficiary_group.master_detail:
-        browser_program.assert_element_visible("#id_rdi-pk_column_name")
-        browser_program.assert_element_visible("#id_rdi-master_column_label")
-        browser_program.assert_element_visible("#id_rdi-detail_column_label")
-    else:
-        browser_program.assert_element_visible("#id_rdi-people_column_prefix")
     browser_program.assert_element_visible("#id_rdi-first_line")
     browser_program.assert_element_visible("#id_rdi-file")
     browser_program.assert_element_visible("#id_rdi-check_before")
     browser_program.assert_element_visible("#id_rdi-fail_if_alien")
+
+
+@pytest.mark.selenium
+def test_rdi_import_tab_with_beneficiary(browser_program_beneficiary, program_beneficiary):
+    browser_program_beneficiary.assert_element_visible("#tab-rdi")
+    browser_program_beneficiary.assert_element_not_visible("#tab-aurora")
+    browser_program_beneficiary.assert_element_not_visible("#tab-kobo")
+    browser_program_beneficiary.assert_element_present('button[data-input-value="rdi"].selected')
+
+    browser_program_beneficiary.assert_element_visible("#id_rdi-batch_name")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-first_line")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-file")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-check_before")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-fail_if_alien")
+
+    if program_beneficiary.beneficiary_group.master_detail:
+        browser_program_beneficiary.assert_element_visible("#id_rdi-pk_column_name")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-master_column_label")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-detail_column_label")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-people_column_prefix")
+    else:
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-pk_column_name")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-master_column_label")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-detail_column_label")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-people_column_prefix")
 
 
 @pytest.mark.selenium
@@ -101,29 +120,34 @@ def test_aurora_import_tab(browser_program):
 
 
 @pytest.mark.selenium
-def test_aurora_import_tab_with_beneficiary(browser_program_beneficiary):
+def test_aurora_import_tab_with_beneficiary(browser_program_beneficiary, program_beneficiary):
     browser_program_beneficiary.click('button[data-input-value="aurora"]')
     browser_program_beneficiary.assert_element_not_visible("#tab-rdi")
     browser_program_beneficiary.assert_element_visible("#tab-aurora")
     browser_program_beneficiary.assert_element_not_visible("#tab-kobo")
     browser_program_beneficiary.assert_element_present('button[data-input-value="aurora"].selected')
 
-    aurora_input_ids = [
+    common_input_ids = [
         "#id_aurora-batch_name",
         "#id_aurora-registration",
-        "#id_aurora-household_column_prefix",
         "#id_aurora-individuals_column_prefix",
-        "#id_aurora-household_label_column",
         "#id_aurora-check_before",
         "#id_aurora-fail_if_alien",
     ]
 
-    for input_id in aurora_input_ids:
+    for input_id in common_input_ids:
         browser_program_beneficiary.assert_element_visible(input_id)
 
-    assert browser_program_beneficiary.get_value("#id_aurora-household_column_prefix") == "household_"
+    if program_beneficiary.beneficiary_group.master_detail:
+        browser_program_beneficiary.assert_element_visible("#id_aurora-household_column_prefix")
+        browser_program_beneficiary.assert_element_visible("#id_aurora-household_label_column")
+        assert browser_program_beneficiary.get_value("#id_aurora-household_column_prefix") == "household_"
+        assert browser_program_beneficiary.get_value("#id_aurora-household_label_column") == "family_name"
+    else:
+        browser_program_beneficiary.assert_element_not_present("#id_aurora-household_column_prefix")
+        browser_program_beneficiary.assert_element_not_present("#id_aurora-household_label_column")
+
     assert browser_program_beneficiary.get_value("#id_aurora-individuals_column_prefix") == "individuals_"
-    assert browser_program_beneficiary.get_value("#id_aurora-household_label_column") == "family_name"
 
 
 @pytest.mark.selenium
