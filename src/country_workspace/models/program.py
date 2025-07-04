@@ -10,6 +10,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.models.beneficiary_group import BeneficiaryGroup
 from country_workspace.models.office import Office
+from .serializer import DataSerializer
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
@@ -92,6 +93,8 @@ class Program(BaseModel):
     individual_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
+
+    serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True)
 
     def __str__(self) -> str:
         return self.name
