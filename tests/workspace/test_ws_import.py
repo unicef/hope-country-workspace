@@ -9,6 +9,7 @@ from constance.test import override_config
 from django.urls import reverse
 from webtest import Upload, forms
 
+from country_workspace.models import Office, Individual, Household
 from country_workspace.state import state
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from tests.contrib.aurora import stub
@@ -40,7 +41,7 @@ def program(
     household_checker: "DataChecker",
     individual_checker: "DataChecker",
 ) -> "CountryProgram":
-    from testutils.factories import CountryProgramFactory, ProjectFactory, RegistrationFactory
+    from testutils.factories import CountryProgramFactory, ProjectFactory, RegistrationFactory, MappingImporterFactory
 
     program = CountryProgramFactory(
         country_office=office,
@@ -52,6 +53,16 @@ def program(
     )
     project = ProjectFactory(program=program)
     RegistrationFactory.create_batch(3, project=project, active=True)
+
+    MappingImporterFactory(
+        data_checker=program.get_checker_for(Individual),
+        rules="gender=sex\nage=birth_year",
+    )
+    if request.param:
+        MappingImporterFactory(
+            data_checker=program.get_checker_for(Household),
+            rules="members_count=count\n",
+        )
 
     return program
 
@@ -96,10 +107,19 @@ def test_import_rdi_hh_and_individuals(
     assert res.status_code == 302
     assert program.households.count() == 1
     assert program.individuals.count() == 5
+
     hh: "CountryHousehold" = program.households.first()
     assert hh.members.count() == 5
     assert (head := hh.heads().first())
     assert head.name == "Edward Jeffrey Rogers"
+    assert "members_count" not in hh.flex_fields
+    assert "count" not in hh.flex_fields
+
+    individual = program.individuals.first()
+    assert "age" not in individual.flex_fields
+    assert "birth_year" not in individual.flex_fields
+    assert "gender" not in individual.flex_fields
+    assert "sex" in individual.flex_fields
 
 
 def test_import_rdi_people_only(
@@ -116,8 +136,12 @@ def test_import_rdi_people_only(
     assert program.individuals.count() == 4
     for individual in program.individuals.all():
         assert individual.household is None
-    ind: "CountryIndividual" = program.individuals.first()
-    assert ind.name == "Collector ForJanIndex_3"
+    individual: "CountryIndividual" = program.individuals.first()
+    assert individual.name == "Collector ForJanIndex_3"
+    assert "age" not in individual.flex_fields
+    assert "birth_year" not in individual.flex_fields
+    assert "gender" not in individual.flex_fields
+    assert "sex" in individual.flex_fields
 
 
 @pytest.fixture

@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
+from contextlib import suppress
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.utils.translation import gettext as _
 from hope_flex_fields.models import DataChecker
@@ -120,3 +122,11 @@ class Program(BaseModel):
         if isinstance(m, (Individual | CountryIndividual)) or m in (Individual, CountryIndividual):
             return self.individual_checker
         raise ValueError(m)
+
+    def apply_mapping_importer(
+        self, m: type[Validable] | Validable, data: dict[str, str | int | bool]
+    ) -> dict[str, str | int | bool]:
+        # skip if mapping importer not found
+        with suppress(ObjectDoesNotExist):
+            self.get_checker_for(m).mappingimporter.apply(data)
+        return data

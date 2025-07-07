@@ -13,7 +13,7 @@ from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
-from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter
+from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
@@ -99,6 +99,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     for i, row in enumerate(sheet, 1):
         household_key = get_value(row, config["household_pk_col"])
         label = get_value(row, config["detail_column_label"])
+        flex_fields = job.program.apply_mapping_importer(Household, clean_field_names(row))
 
         try:
             mapping[household_key] = cast(
@@ -106,7 +107,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                 job.program.households.create(
                     batch=batch,
                     name=label,
-                    flex_fields=clean_field_names(row),
+                    flex_fields=flex_fields,
                 ),
             )
         except Exception as e:
@@ -115,35 +116,35 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     return mapping
 
 
-def full_name_column(row: Record) -> str | None:
-    for key in row:
-        if key.startswith("full") and "name" in key:
-            return key
-    return None
+def normalize_row_structure(row: Record, people_column_prefix: str | None = None) -> tuple[Record, str | None]:
+    if people_column_prefix:
+        row = {k.removeprefix(people_column_prefix): v for k, v in row.items()}
+    name_column = next((key for key in row if key.startswith("full") and "name" in key), None)
+    return row, name_column
+
+
+def get_hh_for_ind(
+    cleaned_row: dict, master_column_label: str, household_mapping: Mapping[int, Household] | None
+) -> Household | None:
+    if not household_mapping or not master_column_label:
+        return None
+    household_key = get_value(cleaned_row, master_column_label)
+    return household_mapping.get(household_key)
 
 
 def process_beneficiaries(
     sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
 ) -> Mapping[int, Individual]:
-    mapping, name_column = {}, None
-    pp_column_prefix = config.get("people_column_prefix")
-    is_people_only_mode = household_mapping is None
+    mapping = {}
+    people_column_prefix = config.get("people_column_prefix") if household_mapping is None else None
+    master_column_label = config.get("master_column_label") if household_mapping is not None else None
+    sheet_name = PEOPLE if household_mapping is None else INDIVIDUAL
 
     for i, row in enumerate(sheet, 1):
-        cleaned_row = (
-            {k.removeprefix(pp_column_prefix): v for k, v in row.items()}
-            if is_people_only_mode and pp_column_prefix
-            else row
-        )
-
-        if name_column is None:
-            name_column = full_name_column(cleaned_row)
-        name = get_value(cleaned_row, name_column) if name_column else None
-
-        household = None
-        if not is_people_only_mode:
-            household_key = get_value(cleaned_row, config["master_column_label"])
-            household = household_mapping.get(household_key)
+        cleaned_row, name_column = normalize_row_structure(row, people_column_prefix)
+        name = cleaned_row.get(name_column) if name_column else ""
+        household = get_hh_for_ind(cleaned_row, master_column_label, household_mapping)
+        flex_fields = job.program.apply_mapping_importer(Individual, clean_field_names(cleaned_row))
 
         try:
             mapping[i] = cast(
@@ -152,11 +153,10 @@ def process_beneficiaries(
                     batch=batch,
                     name=name,
                     household=household,
-                    flex_fields=clean_field_names(cleaned_row),
+                    flex_fields=flex_fields,
                 ),
             )
         except Exception as e:
-            sheet_name = PEOPLE if is_people_only_mode else INDIVIDUAL
             raise SheetProcessingError(sheet_name, i) from e
 
     return mapping

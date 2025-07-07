@@ -23,13 +23,13 @@ from country_workspace.datasources.rdi import (
     image_content,
     extract_images,
     merge_images,
+    normalize_row_structure,
     read_sheets,
-    full_name_column,
     INDIVIDUAL,
     PEOPLE,
 )
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
-from country_workspace.models import Household
+from country_workspace.models import Household, Individual
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 from country_workspace.validators.beneficiaries import validate_beneficiaries
 
@@ -169,6 +169,33 @@ def test_filter_rows_with_household_pk(
     )
 
 
+@pytest.mark.parametrize(
+    ("row", "prefix", "expected_row"),
+    [
+        ({"full_name": "John"}, None, {"full_name": "John"}),
+        ({"pp_full_name": "Jane"}, "pp_", {"full_name": "Jane"}),
+        ({"no_prefix": "value"}, "wrong_", {"no_prefix": "value"}),
+    ],
+    ids=["no_prefix", "with_prefix", "prefix_not_found"],
+)
+def test_normalize_row_structure_prefix_handling(row: Record, prefix: str | None, expected_row: Record) -> None:
+    result_row, _ = normalize_row_structure(row, prefix)
+    assert result_row == expected_row
+
+
+@pytest.mark.parametrize(
+    ("row", "expected_name_column"),
+    [
+        ({"full_name": "John"}, "full_name"),
+        ({"age": 30}, None),
+    ],
+    ids=["full_name", "no_name"],
+)
+def test_normalize_row_structure_name_column_detection(row: Record, expected_name_column: str | None) -> None:
+    _, name_column = normalize_row_structure(row)
+    assert name_column == expected_name_column
+
+
 def test_process_households(
     mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail
 ) -> None:
@@ -179,9 +206,17 @@ def test_process_households(
     assert result == {
         row[config["household_pk_col"]]: job.program.households.create.return_value for row in household_sheet
     }
+
+    job.program.apply_mapping_importer.assert_has_calls(
+        [call(Household, clean_field_names_mock.return_value) for row in household_sheet]
+    )
     job.program.households.create.assert_has_calls(
         [
-            call(batch=batch, name=row[config["detail_column_label"]], flex_fields=clean_field_names_mock.return_value)
+            call(
+                batch=batch,
+                name=row[config["detail_column_label"]],
+                flex_fields=job.program.apply_mapping_importer.return_value,
+            )
             for row in household_sheet
         ]
     )
@@ -218,13 +253,16 @@ def test_process_beneficiaries_with_households(
     )
 
     assert len(result) == len(list(individual_sheet))
+    job_mock.program.apply_mapping_importer.assert_has_calls(
+        [call(Individual, clean_field_names_mock.return_value) for row in individual_sheet]
+    )
     job_mock.program.individuals.create.assert_has_calls(
         [
             call(
                 batch=batch_mock,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["master_column_label"]]],
-                flex_fields=clean_field_names_mock.return_value,
+                flex_fields=job_mock.program.apply_mapping_importer.return_value,
             )
             for row in individual_sheet
         ]
@@ -246,19 +284,21 @@ def test_process_beneficiaries_people_only(
     )
 
     assert len(result) == len(list(people_sheet))
-    expected_calls = []
+    expected_calls, expected_apply_mapping_calls = [], []
     for __, row in enumerate(people_sheet, 1):
         prefix = config.get("people_column_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
+        expected_apply_mapping_calls.append(call(Individual, clean_field_names_mock.return_value))
         expected_calls.append(
             call(
                 batch=batch_mock,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
-                flex_fields=clean_field_names_mock.return_value,
+                flex_fields=job_mock.program.apply_mapping_importer.return_value,
             )
         )
     job_mock.program.individuals.create.assert_has_calls(expected_calls)
+    job_mock.program.apply_mapping_importer.assert_has_calls(expected_apply_mapping_calls)
 
 
 def test_process_beneficiaries_failed_to_create(
@@ -462,18 +502,6 @@ def test_read_sheets_sheet_not_found_error(mocker: MockerFixture, config: Config
 
     assert exc_info.value.sheet_names == (sheet_name,)
     assert str(sheet_name) in str(exc_info.value)
-
-
-@pytest.mark.parametrize(
-    ("record", "expected"),
-    [
-        ({"full_name": "John Smith"}, "full_name"),
-        ({}, None),
-        ({"name_full": "John Smith"}, None),
-    ],
-)
-def test_full_name_column(record: Record, expected: str | None) -> None:
-    assert full_name_column(record) == expected
 
 
 @pytest.mark.parametrize(
