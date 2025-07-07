@@ -94,7 +94,7 @@ class Program(BaseModel):
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
 
-    serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True)
+    serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self) -> str:
         return self.name
