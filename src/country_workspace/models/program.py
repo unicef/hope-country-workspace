@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from contextlib import suppress
+from typing import TYPE_CHECKING, Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -125,6 +125,11 @@ class Program(BaseModel):
         if isinstance(m, (Individual | CountryIndividual)) or m in (Individual, CountryIndividual):
             return self.individual_checker
         raise ValueError(m)
+
+    def serialize(self, data: list[dict]) -> Iterable:
+        if self.serializer:
+            return self.serializer.serialize(data)
+        return data
 
     def apply_mapping_importer(
         self, m: type[Validable] | Validable, data: dict[str, str | int | bool]
