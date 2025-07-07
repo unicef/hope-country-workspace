@@ -71,6 +71,6 @@ class JavaScriptExecutor:
     def is_valid_js(cls, js_code: str) -> bool:
         try:
             cls._eval_js(js_code)
-            return cls._get_js_func_name(js_code)
+            return bool(cls._get_js_func_name(js_code))
         except JsValidationError:
             return False
