@@ -4,7 +4,7 @@ from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
-from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Office
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
@@ -61,17 +61,18 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-        validate_records(records_data, cfg)
+        validate_records(records_data, cfg, job.program.country_office)
 
     return total
 
 
-def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config) -> None:
+def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config, office: Office) -> None:
     """Validate beneficiaries based on configuration and record data.
 
     Args:
         records_data: List of tuples containing record ID and created individuals.
         cfg: Configuration for validation and mapping.
+        office: The office context for validation.
 
     Raises:
         TooManyBeneficiaryError: If more than one Individual is created when master_detail is False.
@@ -89,7 +90,7 @@ def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Conf
                 mapping[record_id] = individuals[0]
 
     if mapping:
-        validate_beneficiaries(cfg, mapping)
+        validate_beneficiaries(cfg, mapping, office)
 
 
 def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:

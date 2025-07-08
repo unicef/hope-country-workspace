@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Generator
 from enum import StrEnum
 from typing import Any, Mapping, cast, NotRequired
+from functools import partial
 
 import openpyxl
 from PIL import Image
@@ -17,6 +18,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
+from country_workspace.utils.types import ValidateBeneficiaries
 from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 RDI = str | io.BytesIO
@@ -219,20 +221,26 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
         )
+        validate = partial(validate_beneficiaries, config=config, office=job.program.country_office)
         if config["master_detail"]:
-            return _import_master_detail(job, batch, config)
-        return _import_people_only(job, batch, config)
+            return _import_master_detail(job, batch, config, validate)
+        return _import_people_only(job, batch, config, validate)
 
 
-def _import_master_detail(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
-    household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
+def _import_master_detail(
+    job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries
+) -> dict[str, int]:
+    household_sheet, individual_sheet = read_sheets(
+        config, job.file, SheetName.HOUSEHOLDS.value, SheetName.INDIVIDUALS.value
+    )
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
-    validate_beneficiaries(config, household_mapping)
+    validate(household_mapping)
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
-def _import_people_only(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
-    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-    validate_beneficiaries(config, people_mapping := process_beneficiaries(people_sheet, job, batch, config))
+def _import_people_only(job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries) -> dict[str, int]:
+    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE.value)
+    people_mapping = process_beneficiaries(people_sheet, job, batch, config)
+    validate(people_mapping)
     return {"people": len(people_mapping)}
