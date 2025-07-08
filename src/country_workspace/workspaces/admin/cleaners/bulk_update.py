@@ -198,7 +198,7 @@ def bulk_update_collection(job: AsyncJob, collection_getter: Callable[[int], Any
     errors = {}
 
     file_data = job.file.read()
-    rows = open_xls(io.BytesIO(file_data), start_at=0)
+    rows = open_xls(io.BytesIO(file_data), start_at_row=0)
     for line_number, row in enumerate(rows, start=1):
         try:
             _id = int(row.pop("id"))
