@@ -14,7 +14,7 @@ from openpyxl.drawing.image import Image as RDIImage
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
+from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
 from country_workspace.validators.beneficiaries import validate_beneficiaries
@@ -29,7 +29,7 @@ HOUSEHOLD = "household"
 PEOPLE = "people"
 
 
-class Config(BatchNameConfig, FailIfAlienConfig):
+class Config(BatchNameConfig, ValidateModeConfig):
     master_detail: bool
     household_pk_col: NotRequired[str]
     master_column_label: NotRequired[str]

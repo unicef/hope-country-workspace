@@ -4,9 +4,10 @@ from django import forms
 
 from country_workspace.contrib.aurora.models import Registration
 from country_workspace.models import Program
+from country_workspace.workspaces.admin.forms import BaseImportForm
 
 
-class ImportAuroraForm(forms.Form):
+class ImportAuroraForm(BaseImportForm):
     batch_name = forms.CharField(required=False, help_text="Label for this batch.")
     registration = forms.ModelChoiceField(
         queryset=Registration.objects.none(),
@@ -23,12 +24,6 @@ class ImportAuroraForm(forms.Form):
         required=False,
         initial="family_name",
         help_text="Which Individual's column should be used as label for the household.",
-    )
-    check_before = forms.BooleanField(
-        required=False, help_text="Prevent import if errors if data is not valid against data checker."
-    )
-    fail_if_alien = forms.BooleanField(
-        required=False, help_text="Fails if it finds fields which do not exists in data checker."
     )
 
     def __init__(self, *args: Any, program: Program | None = None, **kwargs: Any) -> None:
