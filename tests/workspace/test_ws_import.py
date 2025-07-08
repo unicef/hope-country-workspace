@@ -11,6 +11,7 @@ from webtest import Upload, forms
 
 from country_workspace.models import Office, Individual, Household
 from country_workspace.state import state
+from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from tests.contrib.aurora import stub
 
@@ -89,6 +90,7 @@ def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Fo
     data = (Path(__file__).parent.parent / "data/rdi_one.xlsx").read_bytes()
     res = app.get(url)
 
+    res.forms["import-file"]["rdi-validate_mode"] = ValidateMode.NONE.value
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
 
@@ -161,6 +163,7 @@ def form_aurora(
 
     res = app.get(url)
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
+    res.forms["import-aurora"]["aurora-validate_mode"] = ValidateMode.NONE.value
     res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
     return res.forms["import-aurora"]

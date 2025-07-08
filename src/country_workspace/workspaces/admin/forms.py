@@ -37,7 +37,7 @@ class BulkUpdateImportForm(forms.Form):
 
 
 class ValidateMode(TextChoices):
-    NONE = "none", _("Skip validation — import data as is")
+    NONE = "none", _("Skip validation — import data as is.")
     CHECK_BEFORE = "check_before", _("Prevent import if data is not valid against data checker.")
     CHECK_AND_FAIL_IF_ALIEN = (
         "check_and_fail_if_alien",

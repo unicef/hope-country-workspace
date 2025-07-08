@@ -4,10 +4,11 @@ from django.db.transaction import atomic
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
-from country_workspace.models import AsyncJob, Batch, Household, Individual, Office
+from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.types import BeneficiaryMapping
 from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 
@@ -61,18 +62,18 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-        validate_records(records_data, cfg, job.program.country_office)
+        if mapping := validate_records(records_data, cfg):
+            validate_beneficiaries(mapping, cfg, job.program.country_office)
 
     return total
 
 
-def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config, office: Office) -> None:
+def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config) -> BeneficiaryMapping:
     """Validate beneficiaries based on configuration and record data.
 
     Args:
         records_data: List of tuples containing record ID and created individuals.
         cfg: Configuration for validation and mapping.
-        office: The office context for validation.
 
     Raises:
         TooManyBeneficiaryError: If more than one Individual is created when master_detail is False.
@@ -88,9 +89,7 @@ def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Conf
                 raise TooManyBeneficiaryError("Individual", record_id=record_id, count=len(individuals))
             if individuals:
                 mapping[record_id] = individuals[0]
-
-    if mapping:
-        validate_beneficiaries(cfg, mapping, office)
+    return mapping
 
 
 def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:

@@ -230,9 +230,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 def _import_master_detail(
     job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries
 ) -> dict[str, int]:
-    household_sheet, individual_sheet = read_sheets(
-        config, job.file, SheetName.HOUSEHOLDS.value, SheetName.INDIVIDUALS.value
-    )
+    household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     validate(household_mapping)
@@ -240,7 +238,7 @@ def _import_master_detail(
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries) -> dict[str, int]:
-    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE.value)
+    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
     people_mapping = process_beneficiaries(people_sheet, job, batch, config)
     validate(people_mapping)
     return {"people": len(people_mapping)}
