@@ -128,11 +128,11 @@ def test_household_validation_error_format() -> None:
 
 
 def test_sheet_not_found_error_format() -> None:
-    error = SheetNotFoundError(sheet_idx := 99)
-    assert str(sheet_idx) in str(error)
+    error = SheetNotFoundError(sheet_name := "first")
+    assert sheet_name in str(error)
 
-    error_multiple = SheetNotFoundError(sheet_indices := [0, 1, 99])
-    for idx in sheet_indices:
+    error_multiple = SheetNotFoundError(sheet_names := ("first", "second"))
+    for idx in sheet_names:
         assert str(idx) in str(error_multiple)
 
 
@@ -388,13 +388,13 @@ def test_extract_images(mocker: MockerFixture) -> None:
     image_content_mock = mocker.patch("country_workspace.datasources.rdi.image_content")
     image_content_mock.return_value = (content_type := "content/type", content := "content")
     image = MagicMock()
-    load_workbook_mock.return_value.worksheets.__getitem__.return_value._images = (image,)
+    load_workbook_mock.return_value.__getitem__.return_value._images = (image,)
 
-    result = list(extract_images(filepath := "test", sheet_index := 0))
+    result = list(extract_images(filepath := "test", sheet_name := "first"))
 
     assert result == [{row - 1: {column: VALUE_FORMAT.format(mimetype=content_type, content=content)}}]
     load_workbook_mock.assert_called_once_with(filepath)
-    load_workbook_mock.return_value.worksheets.__getitem__.assert_called_once_with(sheet_index)
+    load_workbook_mock.return_value.__getitem__.assert_called_once_with(sheet_name)
     image_location_mock.assert_called_once_with(image)
     image_content_mock.assert_called_once_with(image)
 
@@ -423,14 +423,14 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
     merge_images_mock = mocker.patch("country_workspace.datasources.rdi.merge_images")
 
     filepath = "test"
-    sheet_index = 0
+    sheet_name = "first"
 
     if config["master_detail"]:
         filter_rows_with_household_pk_mock = mocker.patch(
             "country_workspace.datasources.rdi.filter_rows_with_household_pk"
         )
 
-    result = list(read_sheets(config, filepath, sheet_index))
+    result = list(read_sheets(config, filepath, sheet_name))
 
     if config["master_detail"]:
         assert result == [filter_rows_with_household_pk_mock.return_value]
@@ -439,8 +439,10 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
         assert result == [merge_images_mock.return_value]
 
     compose_mock.assert_called_once_with(datetime_to_date_mock, date_to_iso_string_mock)
-    open_xls_multi_mock.assert_called_once_with(filepath, sheets=[sheet_index], value_mapper=compose_mock.return_value)
-    extract_images_mock.assert_called_once_with(filepath, sheet_index)
+    open_xls_multi_mock.assert_called_once_with(
+        filepath, indices_or_names=[sheet_name], value_mapper=compose_mock.return_value
+    )
+    extract_images_mock.assert_called_once_with(filepath, sheet_name)
     merge_images_mock.assert_called_once_with(sheet, images)
 
 
@@ -453,13 +455,13 @@ def test_read_sheets_sheet_not_found_error(mocker: MockerFixture, config: Config
     mocker.patch("country_workspace.datasources.rdi.extract_images")
 
     filepath = "test"
-    sheet_index = 99
+    sheet_name = "first"
 
     with pytest.raises(SheetNotFoundError) as exc_info:
-        list(read_sheets(config, filepath, sheet_index))
+        list(read_sheets(config, filepath, sheet_name))
 
-    assert exc_info.value.sheet_indices == (sheet_index,)
-    assert str(sheet_index) in str(exc_info.value)
+    assert exc_info.value.sheet_names == (sheet_name,)
+    assert str(sheet_name) in str(exc_info.value)
 
 
 @pytest.mark.parametrize(

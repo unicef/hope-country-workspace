@@ -1,8 +1,8 @@
 import io
 from base64 import b64encode
-from enum import Enum
 from collections import defaultdict
 from collections.abc import Iterable, Generator
+from enum import StrEnum
 from typing import Any, Mapping, cast, NotRequired
 
 import openpyxl
@@ -12,13 +12,12 @@ from hope_smart_import.readers import open_xls_multi
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
+from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
 from country_workspace.utils.fields import Record, clean_field_names
 from country_workspace.utils.functional import compose
 from country_workspace.validators.beneficiaries import validate_beneficiaries
-from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
-
 
 RDI = str | io.BytesIO
 Sheet = Iterable[Record]
@@ -39,10 +38,10 @@ class Config(BatchNameConfig, FailIfAlienConfig):
     first_line: int
 
 
-class SheetName(Enum):
-    HOUSEHOLDS: int = 0
-    INDIVIDUALS: int = 1
-    PEOPLE: int = 2
+class SheetName(StrEnum):
+    HOUSEHOLDS = "Households"
+    INDIVIDUALS = "Individuals"
+    PEOPLE = "People"
 
 
 class ColumnConfigurationError(Exception):
@@ -65,16 +64,16 @@ class SheetProcessingError(Exception):
 
 
 class SheetNotFoundError(Exception):
-    def __init__(self, sheet_indices: int | tuple[int, ...]) -> None:
-        if isinstance(sheet_indices, int):
-            sheet_indices = (sheet_indices,)
-        super().__init__(sheet_indices)
-        self.sheet_indices = sheet_indices
+    def __init__(self, sheet_names: str | tuple[str, ...]) -> None:
+        if isinstance(sheet_names, str):
+            sheet_names = (sheet_names,)
+        super().__init__(sheet_names)
+        self.sheet_names = sheet_names
 
     def __str__(self) -> str:
-        if len(self.sheet_indices) == 1:
-            return f"Sheet with index {self.sheet_indices[0]} was not found in the provided file."
-        indices_str = ", ".join(map(str, self.sheet_indices))
+        if len(self.sheet_names) == 1:
+            return f"Sheet with index {self.sheet_names[0]} was not found in the provided file."
+        indices_str = ", ".join(map(str, self.sheet_names))
         return f"Sheets with indices {indices_str} were not found in the provided file."
 
 
@@ -175,10 +174,10 @@ def image_content(rdi_image: RDIImage) -> tuple[str | None, str]:
     return content_type, content
 
 
-def extract_images(filepath: str, *sheet_indices: int) -> Generator[Mapping[int, Mapping[int, str]], None, None]:
+def extract_images(filepath: str, *sheet_names: str) -> Generator[Mapping[int, Mapping[int, str]], None, None]:
     workbook = openpyxl.load_workbook(filepath)
-    for i in sheet_indices:
-        worksheet = workbook.worksheets[i]
+    for n in sheet_names:
+        worksheet = workbook[n]
         images: dict[int, dict[int, str]] = defaultdict(dict)
         for rdi_image in worksheet._images:
             row, column = image_location(rdi_image)
@@ -195,11 +194,11 @@ def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) ->
             yield row
 
 
-def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator[Sheet, None, None]:
+def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[Sheet, None, None]:
     cell_mapper = compose(datetime_to_date, date_to_iso_string)
     try:
-        sheets = open_xls_multi(filepath, sheets=list(sheet_indices), value_mapper=cell_mapper)
-        sheet_images = extract_images(filepath, *sheet_indices)
+        sheets = open_xls_multi(filepath, indices_or_names=list(sheet_names), value_mapper=cell_mapper)
+        sheet_images = extract_images(filepath, *sheet_names)
         for (_, sheet), images in zip(sheets, sheet_images, strict=False):
             sheet_with_images = merge_images(sheet, images)
             if config["master_detail"]:
@@ -207,7 +206,7 @@ def read_sheets(config: Config, filepath: str, *sheet_indices: int) -> Generator
             else:
                 yield sheet_with_images
     except IndexError as e:
-        raise SheetNotFoundError(sheet_indices) from e
+        raise SheetNotFoundError(sheet_names) from e
 
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
@@ -226,9 +225,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 
 
 def _import_master_detail(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
-    household_sheet, individual_sheet = read_sheets(
-        config, job.file, SheetName.HOUSEHOLDS.value, SheetName.INDIVIDUALS.value
-    )
+    household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     validate_beneficiaries(config, household_mapping)
@@ -236,6 +233,6 @@ def _import_master_detail(job: AsyncJob, batch: Batch, config: dict) -> dict[str
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: dict) -> dict[str, int]:
-    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE.value)
+    (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
     validate_beneficiaries(config, people_mapping := process_beneficiaries(people_sheet, job, batch, config))
     return {"people": len(people_mapping)}
