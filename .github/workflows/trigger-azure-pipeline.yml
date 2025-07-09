@@ -1,0 +1,53 @@
+name: Trigger pipeline in Azure Pipelines
+
+on:
+  workflow_call:
+    inputs:
+      azure-organization:
+        required: true
+        type: string
+      azure-project:
+        required: true
+        type: string
+      azure-pipeline-id:
+        required: true
+        type: string
+      image-tag:
+        required: true
+        type: string
+    secrets:
+      azure-pat:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger deploy
+        run: |
+          pipelineId=${{ inputs.azure-pipeline-id }}
+
+          IFS=',' read -ra pipelines <<< "$pipelineId"
+          for pipeline in "${pipelines[@]}"; do
+            jsonBody='{"variables": {"sha": {"isSecret": false, "value": "${{ github.sha }}"}, "tag": {"isSecret": false, "value": "${{ inputs.image-tag }}"}}}'
+            contentLength=$(echo -n $jsonBody | wc -c)
+            organization=${{ inputs.azure-organization }}
+            project=${{ inputs.azure-project }}
+
+            echo Triggering deploy for pipeline $pipeline
+            echo JSON body: $jsonBody
+
+            curl -f -v -L \
+              -u ":${{ secrets.azure-pat }}" \
+              -H "Content-Type: application/json" \
+              -H "Content-Length: $contentLength" \
+              -d "$jsonBody" \
+              https://dev.azure.com/$organization/$project/_apis/pipelines/$pipeline/runs?api-version=7.1-preview.1
+            if [ $? -ne 0 ]; then
+              echo "Failed to trigger deploy for pipeline $pipeline"
+              exit 1
+            fi
+          done
