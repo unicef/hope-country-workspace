@@ -1,5 +1,6 @@
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from functools import cached_property
 from itertools import batched
 from json import JSONDecodeError
 from typing import Any, TypedDict, ReadOnly
@@ -12,7 +13,7 @@ from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.exceptions import RemoteError
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import AsyncJob, Rdp, Program
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 
@@ -188,18 +189,26 @@ class PushProcessor(BatchErrorHandlerMixin):
             self.total["errors"].append(f"{error_msg}: {e}")
             return None
 
+    @cached_property
+    def program(self) -> Program:
+        return Program.objects.get(hope_id=self.program_hope_id)
+
     def prepare_batch(self) -> tuple[list[int], list[dict]]:
         """Prepare a batch of household/individual|people data for API submission."""
         ids, data = [], []
+        filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
         for item in self.queryset:
             ids.append(item.id)
-            filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
-            data.append(
-                {**filter_none(item.flex_fields), "members": [filter_none(m.flex_fields) for m in item.members.all()]}
-                if self.master_detail
-                else filter_none(item.flex_fields)
-            )
-        return ids, data
+            flex_fields = item.apply_grouping()
+            if self.master_detail:
+                flex_fields["members"] = []
+                for member in item.members.all():
+                    flex_fields["members"].append(member.apply_grouping())
+                data.append(filter_none(flex_fields))
+            else:
+                data.append(filter_none(flex_fields))
+
+        return ids, self.program.serialize(data)
 
     def process_batch_response(self, response: dict | None, batch_ids: list[int]) -> list[int]:
         """Process the API response for a batch push operation."""
