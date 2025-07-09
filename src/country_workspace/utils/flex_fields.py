@@ -14,10 +14,13 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-def get_checker_fields(checker: DataChecker) -> Generator[tuple[str, str], None, None]:
-    for fs in checker.members.select_related("fieldset").all():
+def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Generator[tuple[str, str], None, None]:
+    for fs in checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
         for field in fs.fieldset.get_fields():
-            yield field.name, (field.attrs.get("label", field.name) or field.name)
+            yield (
+                field.name,
+                f"{fs.prefix if with_fs_prefix else ''}{(field.attrs.get('label', field.name) or field.name)}",
+            )
 
 
 def get_obj_checksum(obj: "Validable") -> str:
