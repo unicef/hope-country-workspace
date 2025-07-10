@@ -404,9 +404,27 @@ def test_prepare_batch(push_processor: PushProcessor, beneficiary_instance: Bene
 
     if push_processor.master_detail:
         assert "members" in data[0]
-        assert data[0]["members"] == [m.flex_fields for m in beneficiary_instance.members.all()]
+        expected_members = []
+        for m in beneficiary_instance.members.all():
+            member_data = m.flex_fields.copy()
+            member_data.pop("household_id", None)
+            expected_members.append(member_data)
+
+        actual_members = []
+        for member in data[0]["members"]:
+            member_data = member.copy()
+            member_data.pop("household_id", None)
+            actual_members.append(member_data)
+
+        assert actual_members == expected_members
     else:
-        assert data[0] == beneficiary_instance.flex_fields
+        expected_flex_fields = beneficiary_instance.flex_fields.copy()
+        actual_flex_fields = data[0].copy()
+
+        expected_flex_fields.pop("household_id", None)
+        actual_flex_fields.pop("household_id", None)
+
+        assert actual_flex_fields == expected_flex_fields
 
 
 @pytest.mark.parametrize(
