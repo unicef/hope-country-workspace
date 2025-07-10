@@ -24,7 +24,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
-    ordering = ("name",)
+    ordering = ("-push_date",)
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
@@ -40,7 +40,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def related_job(self, obj: CountryRdp) -> str:
         if job := obj.jobs.first():
             url = reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk])
-            return format_html('<a href="{}">{}</a>', url, str(job))
+            return format_html('<a href="{}" style="color: var(--link-fg)">{}</a>', url, str(job))
         return "-"
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:

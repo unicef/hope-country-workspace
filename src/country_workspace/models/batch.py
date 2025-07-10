@@ -14,7 +14,7 @@ class Batch(BaseModel):
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
     name = models.CharField(max_length=255, blank=True, null=True)
-    import_date = models.DateTimeField(auto_now=True)
+    import_date = models.DateTimeField(auto_now=True, db_index=True)
     imported_by = models.ForeignKey(User, on_delete=models.CASCADE)
     source = models.CharField(max_length=255, blank=True, null=True, choices=BatchSource.choices)
 
