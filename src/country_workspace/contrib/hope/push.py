@@ -193,10 +193,11 @@ class PushProcessor(BatchErrorHandlerMixin):
         ids, data = [], []
         for item in self.queryset:
             ids.append(item.id)
+            filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
             data.append(
-                {**item.flex_fields, "members": [m.flex_fields for m in item.members.all()]}
+                {**filter_none(item.flex_fields), "members": [filter_none(m.flex_fields) for m in item.members.all()]}
                 if self.master_detail
-                else item.flex_fields
+                else filter_none(item.flex_fields)
             )
         return ids, data
 
