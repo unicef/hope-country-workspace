@@ -7,6 +7,7 @@ from country_workspace.models import Individual
 from country_workspace.workspaces.models import CountryIndividual
 
 from .base import AutoRegisterModelFactory
+from .batch import CountryBatchFactory
 from .household import HouseholdFactory
 
 fake = Faker()
@@ -37,6 +38,7 @@ def get_ind_fields(individual: "CountryIndividual"):
 
 class IndividualFactory(AutoRegisterModelFactory):
     household = factory.SubFactory(HouseholdFactory)
+    batch = factory.SubFactory(CountryBatchFactory)
     name = factory.LazyAttributeSequence(
         lambda o, n: f"{fake.first_name()} {o.household.name if o.household else fake.last_name()} {n}"
     )

@@ -394,18 +394,19 @@ def test_safe_post_failure(
 
 
 @pytest.mark.django_db
-def test_prepare_batch(mocker: MockerFixture, push_processor: PushProcessor, beneficiary_instance: Beneficiary) -> None:
+def test_prepare_batch(push_processor: PushProcessor, beneficiary_instance: Beneficiary) -> None:
     push_processor.set_queryset([beneficiary_instance.pk])
-    mocker.patch("country_workspace.contrib.hope.push.map_fields", return_value={"field": "value"})
 
     ids, data = push_processor.prepare_batch()
 
     assert ids == [beneficiary_instance.pk]
+    assert len(data) == 1
+
     if push_processor.master_detail:
-        assert len(data) == 1
         assert "members" in data[0]
+        assert data[0]["members"] == [m.flex_fields for m in beneficiary_instance.members.all()]
     else:
-        assert data == [{"field": "value"}]
+        assert data[0] == beneficiary_instance.flex_fields
 
 
 @pytest.mark.parametrize(
