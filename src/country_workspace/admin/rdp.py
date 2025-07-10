@@ -23,6 +23,7 @@ class RdpAdmin(BaseModelAdmin):
     fields = ("name", "country_office", "program", "pushed_by", "push_date", "status", "hope_rdi_id", "related_job")
     readonly_fields = ("country_office", "program", "related_job", "push_date", "hope_rdi_id")
     search_fields = ("name",)
+    ordering = ("-push_date",)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

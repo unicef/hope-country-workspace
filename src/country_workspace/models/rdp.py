@@ -20,7 +20,7 @@ class Rdp(BaseModel):
     hope_rdi_id = models.CharField(
         max_length=200, null=True, editable=False, help_text=_("RDI unique ID within the HOPE core.")
     )
-    push_date = models.DateTimeField(auto_now=True)
+    push_date = models.DateTimeField(auto_now=True, db_index=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:

@@ -22,6 +22,7 @@ class BatchAdmin(BaseModelAdmin):
     )
     readonly_fields = ("country_office", "program", "imported_by")
     search_fields = ("name",)
+    ordering = ("-import_date",)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

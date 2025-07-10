@@ -25,11 +25,11 @@ class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
 
 @register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ["import_date", "name", "imported_by", "source"]
-    search_fields = ("label",)
+    list_display = ["name", "import_date", "imported_by", "source"]
+    search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
-    ordering = ("name",)
+    ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
     readonly_fields = fields = ("name", "source")
 
@@ -37,12 +37,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         kwargs["modeladmin"] = self
         kwargs["modeladmin_name"] = self.__class__.__name__
         return super().get_common_context(request, pk, **kwargs)
-
-    def get_search_results(
-        self, request: HttpRequest, queryset: QuerySet[CountryBatch], search_term: str
-    ) -> tuple[QuerySet[CountryBatch], bool]:
-        queryset = self.model.objects.filter(program=state.program)
-        return queryset, False
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryBatch]":
         return (
