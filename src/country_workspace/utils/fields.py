@@ -1,9 +1,6 @@
-import binascii
 from collections.abc import Callable, Mapping, Iterable
 from functools import reduce
 from typing import Any
-from base64 import b64decode
-from uuid import UUID
 
 from django.utils import timezone
 
@@ -58,32 +55,3 @@ def uppercase_field_value(k: str, v: Any, fields_to_uppercase: Iterable[str] = T
 
     """
     return v.upper() if isinstance(v, str) and any(k.startswith(prefix) for prefix in fields_to_uppercase) else v
-
-
-def extract_uuid(value: str, prefix: str | None = None) -> UUID:
-    """Extract a UUID from the given string.
-
-    - If `value` is already a UUID, returns it unchanged.
-    - Otherwise attempts Base64-decoding and stripping an optional `prefix`.
-
-    """
-    if not isinstance(value, str):
-        raise TypeError("value must be a str")
-    if prefix is not None and not isinstance(prefix, str):
-        raise TypeError("prefix must be a str or None")
-
-    try:
-        return UUID(value)
-    except ValueError:
-        pass
-
-    try:
-        decoded = b64decode(value, validate=True).decode()
-    except (binascii.Error, UnicodeDecodeError):
-        raise ValueError(f"value is neither a valid UUID nor valid Base64: {value!r}")
-
-    raw = decoded.removeprefix(prefix or "")
-    try:
-        return UUID(raw)
-    except ValueError:
-        raise ValueError(f"decoded data is not a valid UUID: {raw!r}")
