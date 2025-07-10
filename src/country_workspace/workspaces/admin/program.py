@@ -51,10 +51,10 @@ class SelectColumnsForm(forms.Form):
         super().__init__(*args, **kwargs)
         columns: list[tuple[str, str]] = []
 
-        for name, label in get_checker_fields(self.checker):
+        for name, label in get_checker_fields(self.checker, with_fs_prefix=True):
             columns.append((f"flex_fields__{name}", label))
 
-        self.fields["columns"].choices = self.model_core_fields + sorted(columns)
+        self.fields["columns"].choices = self.model_core_fields + columns
 
 
 class SelectIndividualColumnsForm(SelectColumnsForm):
