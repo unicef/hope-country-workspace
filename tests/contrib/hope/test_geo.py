@@ -33,7 +33,6 @@ ADMIN1_UA = {
     "previous": None,
     "results": [
         {
-            "id": str(uuid4()),
             "name": "Kyivska",
             "p_code": "UA32",
             "area_type": str(uuid4()),
@@ -85,7 +84,7 @@ def test_admin_level_choice_validate(
     FlexFieldFactory(name="region", definition=fd2, fieldset=fs, master=country_field)
 
     country = COUNTRY["results"][0]["iso_code2"]
-    area_id = ADMIN1_UA["results"][0]["id"]
+    area_id = ADMIN1_UA["results"][0]["p_code"]
     errors = fs.validate([{"country": country, "region": area_id}])
     assert errors == {}
 
@@ -176,27 +175,3 @@ def test_admin_level_choice_cached_data(
 
     assert fetched == cached_data
     mock_get.assert_not_called()
-
-
-@override_config(HOPE_API_URL="https://fake-hope.org/api/rest/")
-def test_admin_level_choice_prepare_value(
-    db,
-    mocker: MockerFixture,
-    mocked_responses: RequestsMock,
-    office: "Office",
-    mock_area_type: mock.Mock,
-    mock_cache: mock.Mock,
-):
-    mocker.patch("country_workspace.contrib.hope.geo.state.tenant", office)
-    mocked_responses.add(
-        mocked_responses.GET,
-        f"https://fake-hope.org/api/rest/{office.slug}/geo/areas/",
-        json=ADMIN1_UA,
-    )
-
-    field = Admin1Choice()
-    rec = ADMIN1_UA["results"][0]
-
-    assert field.prepare_value(rec["id"]) == rec["p_code"]
-    assert field.prepare_value(rec["p_code"]) == rec["p_code"]
-    assert field.prepare_value("UNKNOWN") == "UNKNOWN"
