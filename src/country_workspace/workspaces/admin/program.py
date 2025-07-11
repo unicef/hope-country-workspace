@@ -342,9 +342,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "validate_mode": form.cleaned_data["validate_mode"],
                 "first_line": form.cleaned_data["first_line"],
-                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
                 **(
                     {
                         "household_pk_col": form.cleaned_data.get("pk_column_name"),
@@ -376,13 +375,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if form.is_valid():
             config: AuroraConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "validate_mode": form.cleaned_data["validate_mode"],
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
                 "master_detail": (
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
-                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
                 **(
                     {
                         "household_column_prefix": form.cleaned_data.get("household_column_prefix"),
@@ -411,10 +409,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if form.is_valid():
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "validate_mode": form.cleaned_data["validate_mode"],
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
-                "check_before": (check_before := form.cleaned_data.get("check_before", False)),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien", False) if check_before else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),

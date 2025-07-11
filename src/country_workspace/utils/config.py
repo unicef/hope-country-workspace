@@ -1,13 +1,10 @@
 from typing import TypedDict
+from country_workspace.workspaces.admin.forms import ValidateMode
 
 
 class BatchNameConfig(TypedDict):
     batch_name: str
 
 
-class CheckBeforeConfig(TypedDict):
-    check_before: bool
-
-
-class FailIfAlienConfig(CheckBeforeConfig):
-    fail_if_alien: bool
+class ValidateModeConfig(TypedDict):
+    validate_mode: ValidateMode

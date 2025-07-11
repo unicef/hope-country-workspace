@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Any
 
 from django import forms
+from django.db.models import TextChoices
+from django.utils.translation import gettext_lazy as _
 
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
@@ -34,41 +36,54 @@ class BulkUpdateImportForm(forms.Form):
     )
 
 
-class ImportFileForm(forms.Form):
-    batch_name = forms.CharField(required=False, help_text="Label for this batch")
+class ValidateMode(TextChoices):
+    NONE = "none", _("Skip validation — import data as is.")
+    CHECK_BEFORE = "check_before", _("Prevent import if data is not valid against data checker.")
+    CHECK_AND_FAIL_IF_ALIEN = (
+        "check_and_fail_if_alien",
+        _("Prevent import if data is invalid AND fail if an alien field is found."),
+    )
 
+
+class BaseImportForm(forms.Form):
+    batch_name = forms.CharField(required=False, help_text="Label for this batch")
+    validate_mode = forms.TypedChoiceField(
+        choices=ValidateMode.choices,
+        coerce=ValidateMode,
+        empty_value=ValidateMode.CHECK_AND_FAIL_IF_ALIEN,
+        initial=ValidateMode.CHECK_AND_FAIL_IF_ALIEN,
+        required=True,
+        help_text=_("How to validate data before import"),
+    )
+
+
+class ImportFileForm(BaseImportForm):
     pk_column_name = forms.CharField(
         required=True,
         initial="household_id",
-        help_text="Which column contains the unique identifier of the record.It is mandatory from Master/detail",
+        help_text=_("Which column contains the unique identifier of the record. It is mandatory from Master/detail"),
     )
 
     master_column_label = forms.CharField(
         required=False,
         initial="household_id",
-        help_text="Which column contains the 'link' to the household record.",
+        help_text=_("Which column contains the 'link' to the household record."),
     )
 
     detail_column_label = forms.CharField(
         required=False,
         initial="household_id",
-        help_text="Which column should be used as label for the household. It can use interpolation",
+        help_text=_("Which column should be used as label for the household. It can use interpolation"),
     )
 
     people_column_prefix = forms.CharField(
         required=False,
         initial="pp_",
-        help_text="People' column group prefix",
+        help_text=_("People' column group prefix"),
     )
 
     first_line = forms.IntegerField(required=True, initial=0, help_text="First line to process")
 
-    check_before = forms.BooleanField(
-        required=False, help_text="Prevent import if errors if data is not valid against data checker."
-    )
-    fail_if_alien = forms.BooleanField(
-        required=False, help_text="Fails if it finds fields which do not exists in data checker."
-    )
     file = forms.FileField(validators=[ValidatableFileValidator()])
 
     def __init__(self, *args: Any, beneficiary_group: BeneficiaryGroup | None = None, **kwargs: Any) -> None:

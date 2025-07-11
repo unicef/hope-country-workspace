@@ -31,7 +31,6 @@ from country_workspace.datasources.rdi import (
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Household, Individual
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
-from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 
 HOUSEHOLD_1_PK = 1
@@ -45,13 +44,12 @@ FULL_NAME_COLUMN = "full_name"
 def config(request) -> Config:
     return {
         "batch_name": "batch_name",
+        "validate_mode": "none",
         "master_detail": request.param,
         "household_pk_col": "household_pk",
         "master_column_label": "master_column",
         "detail_column_label": "detail_column",
         "people_column_prefix": "pp_",
-        "check_before": False,
-        "fail_if_alien": False,
     }
 
 
@@ -108,6 +106,11 @@ def household_mapping() -> Mapping[int, Mock]:
         HOUSEHOLD_1_PK: Mock(name=HOUSEHOLD_1_NAME),
         HOUSEHOLD_2_PK: Mock(name=HOUSEHOLD_2_NAME),
     }
+
+
+@pytest.fixture
+def people_mapping(people_sheet: Sheet) -> Mapping[int, Mock]:
+    return {i: Mock() for i in range(len(list(people_sheet)))}
 
 
 def test_column_configuration_error_format() -> None:
@@ -317,34 +320,6 @@ def test_process_beneficiaries_failed_to_create(
     assert exc_info.value.sheet_name == expected_sheet_name
 
 
-def test_validate_beneficiaries(config: Config, household_mapping: Mapping[int, Mock]) -> None:
-    config["check_before"] = True
-
-    validate_beneficiaries(config, household_mapping)
-
-    for household in household_mapping.values():
-        household.validate_with_checker.assert_called_once()
-
-
-def test_validate_beneficiaries_raises_exception_on_failed_validation(
-    config: Config, household_mapping: Mapping[int, Mock]
-) -> None:
-    config["check_before"] = True
-    household_mapping[HOUSEHOLD_1_PK].validate_with_checker.return_value = False
-
-    with pytest.raises(BeneficiaryValidationError):
-        validate_beneficiaries(config, household_mapping)
-
-
-def test_validate_beneficiaries_check_before_is_false(config: Config, household_mapping: Mapping[int, Mock]) -> None:
-    config["check_before"] = False
-
-    validate_beneficiaries(config, household_mapping)
-
-    for household in household_mapping.values():
-        household.validate_with_checker.assert_not_called()
-
-
 def test_import_from_rdi(
     mocker: MockerFixture,
     config: Config,
@@ -352,6 +327,7 @@ def test_import_from_rdi(
     individual_sheet: Sheet,
     people_sheet: Sheet,
     household_mapping: Mapping[int, Mock],
+    people_mapping: Mapping[int, Mock],
 ) -> None:
     job = Mock()
     job.config = config
@@ -359,6 +335,7 @@ def test_import_from_rdi(
     read_sheets_mock = mocker.patch("country_workspace.datasources.rdi.read_sheets")
     process_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.process_beneficiaries")
     validate_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.validate_beneficiaries")
+    partial_mock = mocker.patch("country_workspace.datasources.rdi.partial")
     if config["master_detail"]:
         read_sheets_mock.return_value = household_sheet, individual_sheet
         process_households_mock = mocker.patch("country_workspace.datasources.rdi.process_households")
@@ -366,11 +343,11 @@ def test_import_from_rdi(
         process_beneficiaries_mock.return_value = (processed_individuals := list(individual_sheet))
     else:
         read_sheets_mock.return_value = (people_sheet,)
-        people_mapping = {i: Mock() for i in range(len(list(people_sheet)))}
         process_beneficiaries_mock.return_value = people_mapping
 
     result = import_from_rdi(job)
 
+    partial_mock.assert_called_once_with(validate_beneficiaries_mock, config=config, office=job.program.country_office)
     if config["master_detail"]:
         assert result == {"household": len(household_mapping), "individual": len(processed_individuals)}
         process_households_mock.assert_called_once_with(
@@ -383,7 +360,7 @@ def test_import_from_rdi(
             config,
             household_mapping,
         )
-        validate_beneficiaries_mock.assert_called_once_with(config, household_mapping)
+        partial_mock.return_value.assert_called_once_with(household_mapping)
     else:
         assert result == {"people": len(people_mapping)}
         process_beneficiaries_mock.assert_called_once_with(
@@ -392,7 +369,7 @@ def test_import_from_rdi(
             batch_class_mock.objects.create.return_value,
             config,
         )
-        validate_beneficiaries_mock.assert_called_once_with(config, people_mapping)
+        partial_mock.return_value.assert_called_once_with(people_mapping)
 
     batch_class_mock.objects.create.assert_called_once_with(
         name=config["batch_name"],

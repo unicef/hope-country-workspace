@@ -6,12 +6,13 @@ from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
-from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
+from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.types import BeneficiaryMapping
 from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 
-class Config(BatchNameConfig, FailIfAlienConfig):
+class Config(BatchNameConfig, ValidateModeConfig):
     registration_reference_pk: str | None
     master_detail: bool
     household_column_prefix: NotRequired[str]
@@ -61,12 +62,13 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-        validate_records(records_data, cfg)
+        if mapping := validate_records(records_data, cfg):
+            validate_beneficiaries(mapping, cfg, job.program.country_office)
 
     return total
 
 
-def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config) -> None:
+def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Config) -> BeneficiaryMapping:
     """Validate beneficiaries based on configuration and record data.
 
     Args:
@@ -87,9 +89,7 @@ def validate_records(records_data: list[tuple[int, list[Individual]]], cfg: Conf
                 raise TooManyBeneficiaryError("Individual", record_id=record_id, count=len(individuals))
             if individuals:
                 mapping[record_id] = individuals[0]
-
-    if mapping:
-        validate_beneficiaries(cfg, mapping)
+    return mapping
 
 
 def create_household(batch: Batch, data: dict[str, Any], prefix: str) -> Household:

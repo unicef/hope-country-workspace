@@ -14,12 +14,12 @@ from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.contrib.kobo.models import KoboSubmission
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.config import BatchNameConfig, FailIfAlienConfig
+from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
 
 
-class Config(BatchNameConfig, FailIfAlienConfig):
+class Config(BatchNameConfig, ValidateModeConfig):
     project_id: str
     individual_records_field: str
 

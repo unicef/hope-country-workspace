@@ -66,10 +66,9 @@ def test_rdi_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program.assert_element_visible("#id_rdi-batch_name")
+    browser_program.assert_element_visible("#id_rdi-validate_mode")
     browser_program.assert_element_visible("#id_rdi-first_line")
     browser_program.assert_element_visible("#id_rdi-file")
-    browser_program.assert_element_visible("#id_rdi-check_before")
-    browser_program.assert_element_visible("#id_rdi-fail_if_alien")
 
 
 @pytest.mark.selenium
@@ -80,10 +79,9 @@ def test_rdi_import_tab_with_beneficiary(browser_program_beneficiary, program_be
     browser_program_beneficiary.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program_beneficiary.assert_element_visible("#id_rdi-batch_name")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-validate_mode")
     browser_program_beneficiary.assert_element_visible("#id_rdi-first_line")
     browser_program_beneficiary.assert_element_visible("#id_rdi-file")
-    browser_program_beneficiary.assert_element_visible("#id_rdi-check_before")
-    browser_program_beneficiary.assert_element_visible("#id_rdi-fail_if_alien")
 
     if program_beneficiary.beneficiary_group.master_detail:
         browser_program_beneficiary.assert_element_visible("#id_rdi-pk_column_name")
@@ -107,10 +105,9 @@ def test_aurora_import_tab(browser_program):
 
     aurora_input_ids = [
         "#id_aurora-batch_name",
+        "#id_aurora-validate_mode",
         "#id_aurora-registration",
         "#id_aurora-individuals_column_prefix",
-        "#id_aurora-check_before",
-        "#id_aurora-fail_if_alien",
     ]
 
     for input_id in aurora_input_ids:
@@ -129,10 +126,9 @@ def test_aurora_import_tab_with_beneficiary(browser_program_beneficiary, program
 
     common_input_ids = [
         "#id_aurora-batch_name",
+        "#id_aurora-validate_mode",
         "#id_aurora-registration",
         "#id_aurora-individuals_column_prefix",
-        "#id_aurora-check_before",
-        "#id_aurora-fail_if_alien",
     ]
 
     for input_id in common_input_ids:
@@ -159,7 +155,6 @@ def test_kobo_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="kobo"].selected')
 
     browser_program.assert_element_visible("#id_kobo-batch_name")
+    browser_program.assert_element_visible("#id_kobo-validate_mode")
     browser_program.assert_element_visible("#id_kobo-project_id")
     browser_program.assert_element_visible("#id_kobo-individual_records_field")
-    browser_program.assert_element_visible("#id_kobo-check_before")
-    browser_program.assert_element_visible("#id_kobo-fail_if_alien")

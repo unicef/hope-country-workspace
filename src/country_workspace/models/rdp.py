@@ -20,11 +20,11 @@ class Rdp(BaseModel):
     hope_rdi_id = models.CharField(
         max_length=200, null=True, editable=False, help_text=_("RDI unique ID within the HOPE core.")
     )
-    push_date = models.DateTimeField(auto_now=True, db_index=True)
+    push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = (("program", "name"),)
+        unique_together = (("push_date", "name"),)
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")
 
