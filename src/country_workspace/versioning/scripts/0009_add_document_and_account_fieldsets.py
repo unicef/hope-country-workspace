@@ -12,6 +12,8 @@ from country_workspace.contrib.hope.constants import (
     INDIVIDUAL_CHECKER_NAME,
     DOCUMENT_FIELDSET_NAME,
     ACCOUNT_FIELDSET_NAME,
+    DOCUMENT_PREFIXES_TO_TYPE_MAPPING,
+    ACCOUNT_PREFIXES_TO_TYPE_MAPPING,
 )
 from country_workspace.contrib.hope.lookups import FinancialInstitutionChoice
 from country_workspace.utils.flex_fields import Base64ImageField
@@ -88,8 +90,8 @@ def add_account_and_document_fieldsets() -> None:
     document_fieldset, _ = Fieldset.objects.get_or_create(name=DOCUMENT_FIELDSET_NAME)
     account_fieldset, _ = Fieldset.objects.get_or_create(name=ACCOUNT_FIELDSET_NAME)
     for fieldset, prefixes in (
-        (document_fieldset, ("national_id__", "national_passport__")),
-        (account_fieldset, ("phone__", "bank__")),
+        (document_fieldset, tuple(DOCUMENT_PREFIXES_TO_TYPE_MAPPING.keys())),
+        (account_fieldset, tuple(ACCOUNT_PREFIXES_TO_TYPE_MAPPING.keys())),
     ):
         for prefix in prefixes:
             DataCheckerFieldset.objects.get_or_create(checker=ind_datachecker, fieldset=fieldset, prefix=prefix)

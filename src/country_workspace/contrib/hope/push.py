@@ -12,8 +12,10 @@ from django.utils import timezone
 from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
+from country_workspace.contrib.hope.constants import DOCUMENT_PREFIXES_TO_TYPE_MAPPING, ACCOUNT_PREFIXES_TO_TYPE_MAPPING
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
+from country_workspace.models.base import Validable
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 
@@ -193,6 +195,18 @@ class PushProcessor(BatchErrorHandlerMixin):
     def program(self) -> Program:
         return Program.objects.get(hope_id=self.program_hope_id)
 
+    @staticmethod
+    def _set_types(item: Validable) -> None:
+        for prefix in DOCUMENT_PREFIXES_TO_TYPE_MAPPING:
+            type_field = f"{prefix}type"
+            if type_field in item.flex_fields:
+                item.flex_fields[type_field] = DOCUMENT_PREFIXES_TO_TYPE_MAPPING[prefix]
+
+        for prefix in ACCOUNT_PREFIXES_TO_TYPE_MAPPING:
+            type_field = f"{prefix}account_type"
+            if type_field in item.flex_fields:
+                item.flex_fields[type_field] = ACCOUNT_PREFIXES_TO_TYPE_MAPPING[prefix]
+
     def prepare_batch(self) -> tuple[list[int], list[dict]]:
         """Prepare a batch of household/individual|people data for API submission."""
         ids, data = [], []
@@ -203,6 +217,7 @@ class PushProcessor(BatchErrorHandlerMixin):
             if self.master_detail:
                 flex_fields["members"] = []
                 for member in item.members.all():
+                    self._set_types(member)
                     flex_fields["members"].append(member.apply_grouping())
                 data.append(filter_none(flex_fields))
             else:

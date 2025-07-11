@@ -13,3 +13,13 @@ PEOPLE_FIELDSET_NAME: Final[str] = "HOPE People core"
 ADMINAREAS_FIELDSET_NAME: Final[str] = "HOPE Admin Areas"
 ACCOUNT_FIELDSET_NAME: Final[str] = "HOPE Account"
 DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
+
+DOCUMENT_PREFIXES_TO_TYPE_MAPPING = {
+    "national_id__": "national_id",
+    "national_passport__": "national_passport",
+}
+
+ACCOUNT_PREFIXES_TO_TYPE_MAPPING = {
+    "phone__": "mobile",
+    "bank__": "bank",
+}
