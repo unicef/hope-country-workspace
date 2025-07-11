@@ -22,7 +22,7 @@ from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from .cleaners import actions
 from .cleaners.validate import validate_program
-from ...utils.flex_fields import Base64ImageField
+from ...utils.flex_fields import Base64ImageField, get_checker_fields
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -248,12 +248,30 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         else:
             form = form_class(prefix="flex_field", initial=initials)
 
+        ordered_fields = self._get_ordered_fields(dc, form)
+        form.fields = ordered_fields
+
         context["show_save_invalid"] = True
         context["checker_form"] = form
         context["has_change_permission"] = self.has_change_permission(request)
         context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
 
         return TemplateResponse(request, self.change_form_template, context)
+
+    @staticmethod
+    def _get_ordered_fields(dc: "DataChecker", form: "FlexForm") -> dict:
+        ordered_fields = {}
+        ordered_field_names = [name for name, _ in get_checker_fields(dc, with_fs_prefix=False)]
+
+        for field_name in ordered_field_names:
+            if field_name in form.fields:
+                ordered_fields[field_name] = form.fields[field_name]
+
+        for field_name, field in form.fields.items():
+            if field_name not in ordered_fields:
+                ordered_fields[field_name] = field
+
+        return ordered_fields
 
     def changelist_view(self, request: HttpRequest, extra_context: dict[str, Any] | None = None) -> HttpResponse:
         context = self.get_common_context(request, title="----")
