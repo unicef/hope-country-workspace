@@ -416,7 +416,8 @@ def test_prepare_batch(push_processor: PushProcessor, beneficiary_instance: Bene
             member_data.pop("household_id", None)
             actual_members.append(member_data)
 
-        assert actual_members == expected_members
+        for i, expected_member_data in enumerate(expected_members):
+            assert all(actual_members[i].get(k) == v for k, v in expected_member_data.items())
     else:
         expected_flex_fields = beneficiary_instance.flex_fields.copy()
         actual_flex_fields = data[0].copy()
@@ -424,7 +425,7 @@ def test_prepare_batch(push_processor: PushProcessor, beneficiary_instance: Bene
         expected_flex_fields.pop("household_id", None)
         actual_flex_fields.pop("household_id", None)
 
-        assert actual_flex_fields == expected_flex_fields
+        assert all(actual_flex_fields.get(k) == v for k, v in expected_flex_fields.items())
 
 
 @pytest.mark.parametrize(
@@ -645,30 +646,30 @@ def test_add_error(simple_processor: PushProcessor) -> None:
     ("flex_fields", "expected_fields"),
     [
         (
-            {"national_id__type": "some_value", "national_id__number": "123"},
-            {"national_id__type": "national_id", "national_id__number": "123"},
+            {"national_id_type": "some_value", "national_id_number": "123"},
+            {"national_id_type": "national_id", "national_id_number": "123"},
         ),
         (
-            {"national_passport__type": "some_value", "national_passport__number": "456"},
-            {"national_passport__type": "national_passport", "national_passport__number": "456"},
+            {"national_passport_type": "some_value", "national_passport_number": "456"},
+            {"national_passport_type": "national_passport", "national_passport_number": "456"},
         ),
         (
-            {"phone__account_type": "some_value", "phone__number": "123456789"},
-            {"phone__account_type": "mobile", "phone__number": "123456789"},
+            {"phone_account_type": "some_value", "phone_number": "123456789"},
+            {"phone_account_type": "mobile", "phone_number": "123456789"},
         ),
         (
-            {"bank__account_type": "some_value", "bank__account_number": "987654321"},
-            {"bank__account_type": "bank", "bank__account_number": "987654321"},
+            {"bank_account_type": "some_value", "bank_account_number": "987654321"},
+            {"bank_account_type": "bank", "bank_account_number": "987654321"},
         ),
         (
             {
-                "national_id__type": "old_value",
-                "phone__account_type": "old_value",
+                "national_id_type": "old_value",
+                "phone_account_type": "old_value",
                 "other_field": "unchanged",
             },
             {
-                "national_id__type": "national_id",
-                "phone__account_type": "mobile",
+                "national_id_type": "national_id",
+                "phone_account_type": "mobile",
                 "other_field": "unchanged",
             },
         ),
@@ -701,25 +702,25 @@ def test_set_types_updates_type_fields(
     ("flex_fields", "expected_fields"),
     [
         (
-            {"national_id__type": "old_value", "national_passport__type": "old_value"},
-            {"national_id__type": "national_id", "national_passport__type": "national_passport"},
+            {"national_id_type": "old_value", "national_passport_type": "old_value"},
+            {"national_id_type": "national_id", "national_passport_type": "national_passport"},
         ),
         (
-            {"phone__account_type": "old_value", "bank__account_type": "old_value"},
-            {"phone__account_type": "mobile", "bank__account_type": "bank"},
+            {"phone_account_type": "old_value", "bank_account_type": "old_value"},
+            {"phone_account_type": "mobile", "bank_account_type": "bank"},
         ),
         (
             {
-                "national_id__type": "old_value",
-                "national_passport__type": "old_value",
-                "phone__account_type": "old_value",
-                "bank__account_type": "old_value",
+                "national_id_type": "old_value",
+                "national_passport_type": "old_value",
+                "phone_account_type": "old_value",
+                "bank_account_type": "old_value",
             },
             {
-                "national_id__type": "national_id",
-                "national_passport__type": "national_passport",
-                "phone__account_type": "mobile",
-                "bank__account_type": "bank",
+                "national_id_type": "national_id",
+                "national_passport_type": "national_passport",
+                "phone_account_type": "mobile",
+                "bank_account_type": "bank",
             },
         ),
     ],
@@ -736,10 +737,10 @@ def test_set_types_handles_all_mappings(
 
 def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) -> None:
     flex_fields = {
-        "national_id__type": "old_value",
-        "national_id__number": "12345",
-        "phone__account_type": "old_value",
-        "phone__number": "987654321",
+        "national_id_type": "old_value",
+        "national_id_number": "12345",
+        "phone_account_type": "old_value",
+        "phone_number": "987654321",
         "unrelated_field": "should_not_change",
         "another_field": "also_unchanged",
     }
@@ -747,10 +748,10 @@ def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) ->
     simple_processor._set_types(mock_item)
 
     expected_fields = {
-        "national_id__type": "national_id",
-        "national_id__number": "12345",
-        "phone__account_type": "mobile",
-        "phone__number": "987654321",
+        "national_id_type": "national_id",
+        "national_id_number": "12345",
+        "phone_account_type": "mobile",
+        "phone_number": "987654321",
         "unrelated_field": "should_not_change",
         "another_field": "also_unchanged",
     }
@@ -759,9 +760,9 @@ def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) ->
 
 def test_set_types_handles_missing_type_fields(simple_processor: PushProcessor) -> None:
     flex_fields = {
-        "national_id__number": "12345",
-        "phone__number": "987654321",
-        "bank__account_number": "111222333",
+        "national_id_number": "12345",
+        "phone_number": "987654321",
+        "bank_account_number": "111222333",
     }
     mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
 

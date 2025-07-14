@@ -5,9 +5,7 @@ class FlexFieldGroupingMixin:
     def get_grouping_info(self) -> dict[str, list[str]]:
         grouping_info = defaultdict(list)
         for member in self.checker.members.select_related("fieldset").all():
-            if not member.prefix:
-                continue
-            if member.group == "":
+            if not member.prefix or member.group == "":
                 continue
             if member.group is None:
                 grouping_key = member.fieldset.group

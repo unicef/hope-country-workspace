@@ -199,12 +199,12 @@ class PushProcessor(BatchErrorHandlerMixin):
     def _set_types(item: Validable) -> None:
         for prefix in DOCUMENT_PREFIXES_TO_TYPE_MAPPING:
             type_field = f"{prefix}type"
-            if type_field in item.flex_fields:
+            if any(_f.startswith(prefix) for _f in item.flex_fields):
                 item.flex_fields[type_field] = DOCUMENT_PREFIXES_TO_TYPE_MAPPING[prefix]
 
         for prefix in ACCOUNT_PREFIXES_TO_TYPE_MAPPING:
             type_field = f"{prefix}account_type"
-            if type_field in item.flex_fields:
+            if any(_f.startswith(prefix) for _f in item.flex_fields):
                 item.flex_fields[type_field] = ACCOUNT_PREFIXES_TO_TYPE_MAPPING[prefix]
 
     def prepare_batch(self) -> tuple[list[int], list[dict]]:

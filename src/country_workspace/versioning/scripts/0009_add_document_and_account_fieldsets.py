@@ -30,7 +30,6 @@ fields_to_remove = [
 
 document_fields = [
     ("document_number", {"field_type": forms.CharField}, {}),
-    ("type", {"field_type": forms.CharField}, {}),
     ("photo", {"field_type": Base64ImageField}, {}),
     ("issuance_date", {"field_type": forms.DateField}, {}),
     ("expiry_date", {"field_type": forms.DateField}, {}),
@@ -39,7 +38,6 @@ document_fields = [
 
 account_fields = [
     ("number", {"field_type": forms.CharField}, {}),
-    ("account_type", {"field_type": forms.CharField}, {}),
     ("financial_institution", {"name": "FinancialInstitutionChoice"}, {}),
     ("data", {"field_type": forms.JSONField}, {}),
 ]

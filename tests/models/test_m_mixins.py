@@ -130,22 +130,20 @@ def individual(batch):
         household=None,
         batch=batch,
         flex_fields={
-            "national_id__document_number": "NI123",
-            "national_id__photo": "",
-            "national_id__issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
-            "national_id__expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
-            "national_id__country": fake.country_code(),
-            "national_passport__document_number": "NP123",
-            "national_passport__photo": "",
-            "national_passport__issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime(
+            "national_id_document_number": "NI123",
+            "national_id_photo": "",
+            "national_id_issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
+            "national_id_expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
+            "national_id_country": fake.country_code(),
+            "national_passport_document_number": "NP123",
+            "national_passport_photo": "",
+            "national_passport_issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime(
                 "%Y-%m-%d"
             ),
-            "national_passport__expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime(
-                "%Y-%m-%d"
-            ),
-            "national_passport__country": fake.country_code(),
-            "phone__number": "P123",
-            "phone__financial_institution": "FI123",
+            "national_passport_expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
+            "national_passport_country": fake.country_code(),
+            "phone_number": "P123",
+            "phone_financial_institution": "FI123",
         },
     )
 
@@ -157,7 +155,7 @@ def test_apply_grouping_with_documents_and_accounts(individual: "CountryIndividu
     assert "accounts" in result
     assert len(result["documents"]) == 2
     assert len(result["accounts"]) == 1
-    assert "national_passport__document_number" not in result
-    assert "phone__number" not in result
-    assert result["accounts"][0]["number"] == individual.flex_fields["phone__number"]
-    assert result["accounts"][0]["financial_institution"] == individual.flex_fields["phone__financial_institution"]
+    assert "national_passport_document_number" not in result
+    assert "phone_number" not in result
+    assert result["accounts"][0]["number"] == individual.flex_fields["phone_number"]
+    assert result["accounts"][0]["financial_institution"] == individual.flex_fields["phone_financial_institution"]
