@@ -22,7 +22,6 @@ def get_hh_fields(household: "CountryHousehold"):
         "admin3": "",
         "admin4": "",
         "residence_status": "",
-        "collect_individual_data": True,
         "consent": bool(getrandbits(1)),
         "consent_sharing": "",
         "country": fake.country(),
