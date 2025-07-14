@@ -161,9 +161,10 @@ def create_xls_importer(
             worksheet.write(0, i, fld_name, header_format)
     worksheet.freeze_panes(1, 0)
 
+    fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
     for row, record in enumerate(queryset, 1):
         for col, fld in enumerate(columns):
-            worksheet.write(row, col, getattr(record, fld, record.flex_fields.get(fld)))
+            worksheet.write(row, col, fmt(getattr(record, fld, record.flex_fields.get(fld))))
 
     workbook.close()
     out.seek(0)
