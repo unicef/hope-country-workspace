@@ -1,13 +1,19 @@
+from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 import pytest
+from django.core.management import call_command
+from faker import Faker
+from hope_flex_fields.models import Fieldset
 
+from country_workspace.contrib.hope.constants import DOCUMENT_FIELDSET_NAME, ACCOUNT_FIELDSET_NAME
 from country_workspace.models.mixins import FlexFieldGroupingMixin
-from tests.extras.testutils.factories.smart_fields import (
-    DataCheckerFactory,
-    DataCheckerFieldsetFactory,
-    FieldsetFactory,
-)
+from testutils.factories import IndividualFactory, CountryBatchFactory
+from testutils.factories.program import BeneficiaryGroupFactory, CountryProgramFactory
+
+
+if TYPE_CHECKING:
+    from country_workspace.workspaces.models import CountryIndividual
 
 
 @pytest.fixture
@@ -53,7 +59,7 @@ def test_get_grouping_info_with_fieldset_group(mixin_instance, mock_checker):
     assert result == expected
 
 
-def test_apply_grouping_no_grouping_info(mixin_instance):
+def test_test_import_data_aurora_errorsapply_grouping_no_grouping_info(mixin_instance):
     mixin_instance.flex_fields = {"field1": "value1", "field2": "value2"}
 
     with patch.object(mixin_instance, "get_grouping_info", return_value={}):
@@ -82,29 +88,76 @@ def test_apply_grouping_single_group(mixin_instance):
     assert result == expected
 
 
-def test_apply_grouping_with_real_data_checker(db):
-    checker = DataCheckerFactory(name="Test Checker")
-    fieldset1 = FieldsetFactory(name="Household Fields", group="household")
-    fieldset2 = FieldsetFactory(name="Individual Fields", group="individual")
+@pytest.fixture(autouse=True)
+def add_group_to_fieldsets():
+    call_command("upgradescripts", ["apply"])
+    Fieldset.objects.filter(name=DOCUMENT_FIELDSET_NAME).update(group="documents")
+    Fieldset.objects.filter(name=ACCOUNT_FIELDSET_NAME).update(group="accounts")
 
-    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset1, prefix="household_")
-    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset2, prefix="individual_")
 
-    instance = FlexFieldGroupingMixin()
-    instance.checker = checker
-    instance.flex_fields = {
-        "household_name": "Test Family",
-        "household_address": "Test Address",
-        "individual_1_name": "John Doe",
-        "individual_1_age": "25",
-        "unprefixed_field": "value",
-    }
+@pytest.fixture
+def beneficiary_group():
+    return BeneficiaryGroupFactory(
+        group_label_plural="Households",
+        member_label_plural="Individuals",
+        master_detail=False,
+    )
 
-    result = instance.apply_grouping()
 
-    expected = {
-        "household": [{"name": "Test Family", "address": "Test Address"}],
-        "individual": [{"1_name": "John Doe", "1_age": "25"}],
-        "unprefixed_field": "value",
-    }
-    assert result == expected
+@pytest.fixture
+def program(household_checker, individual_checker, beneficiary_group):
+    return CountryProgramFactory(
+        household_columns="name\nid\n",
+        individual_columns="name\nid\n",
+        household_checker=household_checker,
+        individual_checker=individual_checker,
+        beneficiary_group=beneficiary_group,
+    )
+
+
+@pytest.fixture
+def batch(program):
+    return CountryBatchFactory(
+        program=program,
+        country_office=program.country_office,
+    )
+
+
+@pytest.fixture
+def individual(batch):
+    fake = Faker()
+    return IndividualFactory(
+        household=None,
+        batch=batch,
+        flex_fields={
+            "national_id__document_number": "NI123",
+            "national_id__photo": "",
+            "national_id__issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
+            "national_id__expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
+            "national_id__country": fake.country_code(),
+            "national_passport__document_number": "NP123",
+            "national_passport__photo": "",
+            "national_passport__issuance_date": fake.date_between(start_date="-40y", end_date="-10y").strftime(
+                "%Y-%m-%d"
+            ),
+            "national_passport__expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime(
+                "%Y-%m-%d"
+            ),
+            "national_passport__country": fake.country_code(),
+            "phone__number": "P123",
+            "phone__financial_institution": "FI123",
+        },
+    )
+
+
+@pytest.mark.django_db
+def test_apply_grouping_with_documents_and_accounts(individual: "CountryIndividual"):
+    result = individual.apply_grouping()
+    assert "documents" in result
+    assert "accounts" in result
+    assert len(result["documents"]) == 2
+    assert len(result["accounts"]) == 1
+    assert "national_passport__document_number" not in result
+    assert "phone__number" not in result
+    assert result["accounts"][0]["number"] == individual.flex_fields["phone__number"]
+    assert result["accounts"][0]["financial_institution"] == individual.flex_fields["phone__financial_institution"]

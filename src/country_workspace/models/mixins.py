@@ -30,7 +30,8 @@ class FlexFieldGroupingMixin:
                 for field_name in self.flex_fields:
                     if field_name.startswith(prefix):
                         _data[field_name.removeprefix(prefix)] = flex_fields.pop(field_name)
-                grouped_data[grouping_key].append(_data)
+                if _data:
+                    grouped_data[grouping_key].append(_data)
         grouped_data.update(flex_fields)
 
         return grouped_data
