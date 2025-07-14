@@ -17,8 +17,8 @@ from country_workspace.workspaces.models import CountryHousehold, CountryIndivid
 from country_workspace.exceptions import RemoteError
 from country_workspace.state import state
 
-
 type Beneficiary = CountryHousehold | CountryIndividual
+
 
 # ===================== FIXTURES =====================
 
@@ -639,3 +639,151 @@ def test_save_errors_to_object(simple_processor: PushProcessor, beneficiary_inst
 def test_add_error(simple_processor: PushProcessor) -> None:
     simple_processor._add_error("Test error message")
     assert "Test error message" in simple_processor.total["errors"]
+
+
+@pytest.mark.parametrize(
+    ("flex_fields", "expected_fields"),
+    [
+        (
+            {"national_id__type": "some_value", "national_id__number": "123"},
+            {"national_id__type": "national_id", "national_id__number": "123"},
+        ),
+        (
+            {"national_passport__type": "some_value", "national_passport__number": "456"},
+            {"national_passport__type": "national_passport", "national_passport__number": "456"},
+        ),
+        (
+            {"phone__account_type": "some_value", "phone__number": "123456789"},
+            {"phone__account_type": "mobile", "phone__number": "123456789"},
+        ),
+        (
+            {"bank__account_type": "some_value", "bank__account_number": "987654321"},
+            {"bank__account_type": "bank", "bank__account_number": "987654321"},
+        ),
+        (
+            {
+                "national_id__type": "old_value",
+                "phone__account_type": "old_value",
+                "other_field": "unchanged",
+            },
+            {
+                "national_id__type": "national_id",
+                "phone__account_type": "mobile",
+                "other_field": "unchanged",
+            },
+        ),
+        (
+            {"field1": "value1", "field2": "value2"},
+            {"field1": "value1", "field2": "value2"},
+        ),
+        ({}, {}),
+    ],
+    ids=[
+        "national_id_type_field",
+        "national_passport_type_field",
+        "phone_account_type_field",
+        "bank_account_type_field",
+        "mixed_type_fields",
+        "no_type_fields",
+        "empty_flex_fields",
+    ],
+)
+def test_set_types_updates_type_fields(
+    simple_processor: PushProcessor, flex_fields: dict, expected_fields: dict
+) -> None:
+    mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
+    simple_processor._set_types(mock_item)
+
+    assert mock_item.flex_fields == expected_fields
+
+
+@pytest.mark.parametrize(
+    ("flex_fields", "expected_fields"),
+    [
+        (
+            {"national_id__type": "old_value", "national_passport__type": "old_value"},
+            {"national_id__type": "national_id", "national_passport__type": "national_passport"},
+        ),
+        (
+            {"phone__account_type": "old_value", "bank__account_type": "old_value"},
+            {"phone__account_type": "mobile", "bank__account_type": "bank"},
+        ),
+        (
+            {
+                "national_id__type": "old_value",
+                "national_passport__type": "old_value",
+                "phone__account_type": "old_value",
+                "bank__account_type": "old_value",
+            },
+            {
+                "national_id__type": "national_id",
+                "national_passport__type": "national_passport",
+                "phone__account_type": "mobile",
+                "bank__account_type": "bank",
+            },
+        ),
+    ],
+    ids=["document_types_only", "account_types_only", "all_types"],
+)
+def test_set_types_handles_all_mappings(
+    simple_processor: PushProcessor, flex_fields: dict, expected_fields: dict
+) -> None:
+    mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
+    simple_processor._set_types(mock_item)
+
+    assert mock_item.flex_fields == expected_fields
+
+
+def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) -> None:
+    flex_fields = {
+        "national_id__type": "old_value",
+        "national_id__number": "12345",
+        "phone__account_type": "old_value",
+        "phone__number": "987654321",
+        "unrelated_field": "should_not_change",
+        "another_field": "also_unchanged",
+    }
+    mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
+    simple_processor._set_types(mock_item)
+
+    expected_fields = {
+        "national_id__type": "national_id",
+        "national_id__number": "12345",
+        "phone__account_type": "mobile",
+        "phone__number": "987654321",
+        "unrelated_field": "should_not_change",
+        "another_field": "also_unchanged",
+    }
+    assert mock_item.flex_fields == expected_fields
+
+
+def test_set_types_handles_missing_type_fields(simple_processor: PushProcessor) -> None:
+    flex_fields = {
+        "national_id__number": "12345",
+        "phone__number": "987654321",
+        "bank__account_number": "111222333",
+    }
+    mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
+
+    simple_processor._set_types(mock_item)
+    assert mock_item.flex_fields == flex_fields
+
+
+def test_set_types_integration_with_prepare_batch(
+    mocker: MockerFixture, push_processor: PushProcessor, beneficiary_instance: Beneficiary
+) -> None:
+    push_processor.set_queryset([beneficiary_instance.pk])
+
+    mock_set_types = mocker.patch.object(push_processor, "_set_types")
+
+    if push_processor.master_detail:
+        push_processor.prepare_batch()
+
+        expected_calls = len(beneficiary_instance.members.all())
+        assert mock_set_types.call_count == expected_calls
+
+        for call in mock_set_types.call_args_list:
+            assert call[0][0] in beneficiary_instance.members.all()
+    else:
+        push_processor.prepare_batch()
+        mock_set_types.assert_not_called()
