@@ -33,7 +33,7 @@ def program(office):
 
     return CountryProgramFactory(
         country_office=office,
-        household_checker=DataCheckerFactory(fields=["collect_individual_data"]),
+        household_checker=DataCheckerFactory(fields=["consent"]),
         individual_checker=DataCheckerFactory(fields=["gender"]),
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
@@ -80,14 +80,14 @@ def test_configure_hh_columns(app, household: "CountryHousehold", master_detail:
         if should_be_visible:
             res = res.click(button_text)
             form = res.forms["configure-columns"]
-            form["columns"] = ["name", "flex_fields__collect_individual_data"]
+            form["columns"] = ["name", "flex_fields__consent"]
             form.submit().follow()
             program.refresh_from_db()
-            assert program.household_columns == "name\nflex_fields__collect_individual_data"
+            assert program.household_columns == "name\nflex_fields__consent"
             hh_list = reverse("workspace:workspaces_countryhousehold_changelist")
             res = app.get(hh_list)
-            assert not res.pyquery("div.text a:contains('flex_fields__collect_individual_data')")
-            assert res.pyquery("div.text a:contains('Collect_individual_data')")
+            assert not res.pyquery("div.text a:contains('flex_fields__consent')")
+            assert res.pyquery("div.text a:contains('Consent')")
         else:
             assert button_text not in res.text
 

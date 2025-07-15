@@ -44,7 +44,6 @@ def household(program):
         batch__country_office=program.country_office,
         flex_fields={
             "country": program.country_office.code,
-            "collect_individual_data": True,
             "consent": True,
             "household_id": randint(1, sys.maxsize),
             "size": randint(3, 6),
