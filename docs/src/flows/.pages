@@ -1,3 +1,5 @@
 nav:
-  - import.md
   - model.md
+  - c4_1_context.md
+  - c4_2_container.md
+  - c4_3_component.md
