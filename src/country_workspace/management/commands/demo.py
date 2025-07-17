@@ -1,17 +1,33 @@
-import logging
 import sys
-from pathlib import Path
+import vcr
+from collections.abc import Callable
 from typing import Any
+from pathlib import Path
+from vcr.record_mode import RecordMode
+from vcr.errors import CannotOverwriteExistingCassetteException
 
-from django.conf import settings
 from constance import config
+from django.conf import settings
 from django.contrib.auth.models import Group
-from django.core.management import BaseCommand
-from django.utils.text import slugify
+from django.core.management import BaseCommand, call_command
+from django.core.management.base import CommandError
+from django.contrib.sites.models import Site
+from django.db import transaction
+from flags.models import FlagState
 
-from country_workspace.models import Individual, SyncLog
-
-logger = logging.getLogger(__name__)
+from country_workspace.models import (
+    SyncLog,
+    Batch,
+    Rdp,
+    AsyncJob,
+    BeneficiaryGroup,
+    Program,
+    Area,
+    AreaType,
+    Country,
+    Office,
+    User,
+)
 
 
 class Command(BaseCommand):
@@ -19,13 +35,39 @@ class Command(BaseCommand):
     requires_system_checks = []
 
     def handle(self, *args: Any, **options: Any) -> None:
-        from django.contrib.sites.models import Site
-        from flags.models import FlagState
+        self.stdout.write("Starting demo data population", self.style.WARNING)
 
-        from country_workspace.models import Office, User
+        try:
+            self.confirm()
+            test_utils_dir = self.get_test_utils_dir()
 
-        self.stdout.write("Populating demo data")
+            with transaction.atomic():
+                self.setup_site()
+                self.setup_flags()
+                self.clean_old_data()
+                self.create_base_objects()
+                self.sync_data(test_utils_dir)
+                self.generate_demo_data()
 
+            self.stdout.write("Finished demo data population", self.style.SUCCESS)
+
+        except CommandError as e:
+            self.stdout.write(f"Operation cancelled: {e}", self.style.ERROR)
+
+    def confirm(self) -> bool:
+        answer = input("This will DELETE DATA and create demo data. Type 'yes' or 'y' to continue: ").strip().lower()
+        if answer not in ("y", "yes"):
+            raise CommandError("Operation was not confirmed")
+
+    def get_test_utils_dir(self) -> Path:
+        test_utils_dir = Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
+        if not test_utils_dir.exists():
+            raise CommandError(f"{test_utils_dir.absolute()} does not exist")
+        sys.path.append(str(test_utils_dir.absolute()))
+        return test_utils_dir
+
+    def setup_site(self) -> None:
+        self.stdout.write("Configuring site settings")
         Site.objects.update_or_create(
             pk=settings.SITE_ID,
             defaults={
@@ -35,59 +77,84 @@ class Command(BaseCommand):
         )
         Site.objects.clear_cache()
 
-        for flag in settings.FLAGS:
-            FlagState.objects.get_or_create(name=flag, condition="hostname", value="127.0.0.1,localhost")
+    def setup_flags(self) -> None:
+        self.stdout.write("Setting up flags")
+        flag_states = [
+            FlagState(name=flag, condition="hostname", value="127.0.0.1,localhost") for flag in settings.FLAGS
+        ]
+        FlagState.objects.bulk_create(flag_states, ignore_conflicts=True)
 
-        Office.objects.get_or_create(
-            slug=slugify(
-                settings.TENANT_HQ,
-            ),
-            name=settings.TENANT_HQ,
-        )
-
-        analysts, __ = Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
-        user, __ = User.objects.get_or_create(username="user")
-
-        test_utils_dir = Path(__file__).parent.parent.parent.parent.parent / "tests/extras"
-        assert test_utils_dir.exists(), str(test_utils_dir.absolute()) + " does not exist"  # noqa: S101
-        sys.path.append(str(test_utils_dir.absolute()))
-
-        import vcr
-        from testutils.factories import BatchFactory, HouseholdFactory, IndividualFactory
-        from vcr.record_mode import RecordMode
-
-        from country_workspace.contrib.hope.sync.context_programs import sync_context_programs
-        from country_workspace.models import Batch, Household
-
-        SyncLog.objects.create_lookups()
-        if settings.HOPE_API_TOKEN or config.HOPE_API_TOKEN:
-            self.stdout.write("Syncing online")
-            with vcr.use_cassette(
-                test_utils_dir.parent / "sync_all.yaml",
-                record_mode=RecordMode.ALL,
-                filter_headers=["authorization"],
-            ):
-                sync_context_programs()
-        else:
-            self.stdout.write("Syncing using cassette")
-            with vcr.use_cassette(
-                test_utils_dir.parent / "sync_all.yaml",
-                record_mode=RecordMode.NONE,
-                match_on=("path",),
-                filter_headers=["authorization"],
-            ):
-                sync_context_programs()
-
+    def clean_old_data(self) -> None:
         self.stdout.write("Cleaning old data")
-        Batch.objects.all().delete()
-        Household.objects.all().delete()
-        Individual.objects.all().delete()
+        models_to_delete = [AsyncJob, Batch, Rdp, Program, BeneficiaryGroup, Area, AreaType, Office, Country, SyncLog]
+        for model in models_to_delete:
+            if model.objects.count() > 0:
+                model.objects.all().delete()
 
-        self.stdout.write("Generating new data")
-        for co in Office.objects.filter(active=True):
-            for p in co.programs.filter():
-                b = BatchFactory(country_office=co, name=f"Batch {p}", program=p)
-                if p.beneficiary_group.master_detail:
-                    HouseholdFactory.create_batch(10, batch=b)
-                else:
-                    IndividualFactory.create_batch(10, batch=b, household=None)
+    def create_base_objects(self) -> None:
+        self.stdout.write("Creating group and user")
+        Group.objects.get_or_create(name=settings.ANALYST_GROUP_NAME)
+        User.objects.get_or_create(username="user")
+
+    def _sync_with_cassette(
+        self, cassette_path: Path, record_mode: RecordMode, sync_func: Callable, message: str
+    ) -> None:
+        self.stdout.write(message)
+        vcr_kwargs = {
+            "record_mode": record_mode,
+            "filter_headers": ["authorization"],
+        }
+        if record_mode == RecordMode.NONE:
+            vcr_kwargs["match_on"] = ("path",)
+
+        try:
+            with vcr.use_cassette(cassette_path, **vcr_kwargs):
+                sync_func()
+        except CannotOverwriteExistingCassetteException:
+            if record_mode == RecordMode.NONE:
+                self.stdout.write(
+                    f"Incomplete cassette: {cassette_path.name}. "
+                    f"Some requests missing, continuing with available data...",
+                    self.style.WARNING,
+                )
+            else:
+                raise
+
+    def sync_data(self, test_utils_dir: Path) -> None:
+        cassettes_dir = test_utils_dir / "cassettes"
+        has_token = settings.HOPE_API_TOKEN or config.HOPE_API_TOKEN
+        record_mode = RecordMode.ALL if has_token else RecordMode.NONE
+        message_suffix = "online" if has_token else "using cassette"
+
+        with transaction.atomic():
+            SyncLog.objects.create_lookups()
+            self._sync_with_cassette(
+                cassettes_dir / "sync_lookups.yaml",
+                record_mode,
+                SyncLog.objects.refresh,
+                f"Syncing lookups {message_suffix}",
+            )
+            for mode in ("only_context_programs", "only_context_geo"):
+                self._sync_with_cassette(
+                    cassettes_dir / f"sync_{mode}.yaml",
+                    record_mode,
+                    lambda mode=mode: call_command("sync", **{mode: True}),
+                    f"Syncing {mode} data {message_suffix}",
+                )
+
+    def generate_demo_data(self, program_count: int = 5) -> None:
+        from testutils.factories import BatchFactory, HouseholdFactory, IndividualFactory
+
+        self.stdout.write("Generating demo data")
+
+        p_filter = {"country_office__active": True, "enabled": True}
+        programs = Program.objects.filter(**p_filter).select_related("country_office", "beneficiary_group")
+        if not programs:
+            raise CommandError("No active programs found")
+
+        for program in programs:
+            batch = BatchFactory(country_office=program.country_office, program=program)
+            if program.beneficiary_group and program.beneficiary_group.master_detail:
+                HouseholdFactory.create_batch(2, batch=batch)
+            else:
+                IndividualFactory.create_batch(2, batch=batch, household=None)
