@@ -1,7 +1,6 @@
 import logging
 from argparse import ArgumentParser
 from typing import Any
-
 from django.core.management import BaseCommand
 
 from country_workspace.contrib.hope.sync.context_programs import sync_context_programs
@@ -39,10 +38,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if options["only_context_programs"]:
-            sync_context_programs(delta_sync=False, stdout=self.stdout)
-        elif options["only_context_geo"]:
-            sync_context_geo(delta_sync=False, stdout=self.stdout)
+        if options.get("only_context_programs"):
+            funcs = (sync_context_programs,)
+        elif options.get("only_context_geo"):
+            funcs = (sync_context_geo,)
         else:
-            sync_context_programs(delta_sync=False, stdout=self.stdout)
-            sync_context_geo(delta_sync=False, stdout=self.stdout)
+            funcs = (sync_context_programs, sync_context_geo)
+        [f(delta_sync=False, stdout=options.get("stdout")) for f in funcs]

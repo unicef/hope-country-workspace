@@ -1,0 +1,260 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://stg-hope.unitst.org/api/rest/lookups/residencestatus/
+  response:
+    body:
+      string: '{"":"None","IDP":"Displaced  |  Internally Displaced People","REFUGEE":"Displaced  |  Refugee
+        / Asylum Seeker","OTHERS_OF_CONCERN":"Displaced  |  Others of Concern","HOST":"Non-displaced  |   Host","NON_HOST":"Non-displaced  |   Non-host","RETURNEE":"Displaced  |   Returnee"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '276'
+      Content-Security-Policy-Report-Only:
+      - 'font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; style-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval'' fonts.googleapis.com cdn.jsdelivr.net
+        cdnjs.cloudflare.com maxcdn.bootstrapcdn.com unpkg.com; default-src ''self'';
+        script-src ''self'' ''unsafe-inline'' ''unsafe-eval'' js-agent.newrelic.com
+        cdn.jsdelivr.net cdnjs.cloudflare.com unpkg.com; img-src ''self'' data: cdn.datatables.net
+        map1a.vis.earthdata.nasa.gov map1b.vis.earthdata.nasa.gov map1c.vis.earthdata.nasa.gov;
+        connect-src sentry.io gov-bam.nr-data.net cdn.jsdelivr.net; manifest-src ''self'';
+        frame-ancestors ''none''; media-src ''self''; report-uri'
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 18 Jul 2025 08:06:21 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://stg-hope.unitst.org/api/rest/lookups/maritalstatus/
+  response:
+    body:
+      string: '{"":"None","DIVORCED":"Divorced","MARRIED":"Married","SEPARATED":"Separated","SINGLE":"Single","WIDOWED":"Widowed"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '115'
+      Content-Security-Policy-Report-Only:
+      - 'font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; style-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval'' fonts.googleapis.com cdn.jsdelivr.net
+        cdnjs.cloudflare.com maxcdn.bootstrapcdn.com unpkg.com; default-src ''self'';
+        script-src ''self'' ''unsafe-inline'' ''unsafe-eval'' js-agent.newrelic.com
+        cdn.jsdelivr.net cdnjs.cloudflare.com unpkg.com; img-src ''self'' data: cdn.datatables.net
+        map1a.vis.earthdata.nasa.gov map1b.vis.earthdata.nasa.gov map1c.vis.earthdata.nasa.gov;
+        connect-src sentry.io gov-bam.nr-data.net cdn.jsdelivr.net; manifest-src ''self'';
+        frame-ancestors ''none''; media-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 18 Jul 2025 08:06:22 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://stg-hope.unitst.org/api/rest/lookups/observeddisability/
+  response:
+    body:
+      string: '{"NONE":"None","SEEING":"Difficulty seeing (even if wearing glasses)","HEARING":"Difficulty
+        hearing (even if using a hearing aid)","WALKING":"Difficulty walking or climbing
+        steps","MEMORY":"Difficulty remembering or concentrating","SELF_CARE":"Difficulty
+        with self care (washing, dressing)","COMMUNICATING":"Difficulty communicating
+        (e.g understanding or being understood)"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '374'
+      Content-Security-Policy-Report-Only:
+      - 'default-src ''self''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval''
+        js-agent.newrelic.com cdn.jsdelivr.net cdnjs.cloudflare.com unpkg.com; media-src
+        ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        frame-ancestors ''none''; style-src ''self'' ''unsafe-inline'' ''unsafe-eval''
+        fonts.googleapis.com cdn.jsdelivr.net cdnjs.cloudflare.com maxcdn.bootstrapcdn.com
+        unpkg.com; img-src ''self'' data: cdn.datatables.net map1a.vis.earthdata.nasa.gov
+        map1b.vis.earthdata.nasa.gov map1c.vis.earthdata.nasa.gov; connect-src sentry.io
+        gov-bam.nr-data.net cdn.jsdelivr.net; manifest-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 18 Jul 2025 08:06:22 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://stg-hope.unitst.org/api/rest/lookups/relationship/
+  response:
+    body:
+      string: '{"UNKNOWN":"Unknown","AUNT_UNCLE":"Aunt / Uncle","BROTHER_SISTER":"Brother
+        / Sister","COUSIN":"Cousin","DAUGHTERINLAW_SONINLAW":"Daughter-in-law / Son-in-law","GRANDDAUGHER_GRANDSON":"Granddaughter
+        / Grandson","GRANDMOTHER_GRANDFATHER":"Grandmother / Grandfather","HEAD":"Head
+        of household (self)","MOTHER_FATHER":"Mother / Father","MOTHERINLAW_FATHERINLAW":"Mother-in-law
+        / Father-in-law","NEPHEW_NIECE":"Nephew / Niece","NON_BENEFICIARY":"Not a
+        Family Member. Can only act as a recipient.","OTHER":"Other","SISTERINLAW_BROTHERINLAW":"Sister-in-law
+        / Brother-in-law","SON_DAUGHTER":"Son / Daughter","WIFE_HUSBAND":"Wife / Husband","FOSTER_CHILD":"Foster
+        child","FREE_UNION":"Free union"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '688'
+      Content-Security-Policy-Report-Only:
+      - 'default-src ''self''; script-src ''self'' ''unsafe-inline'' ''unsafe-eval''
+        js-agent.newrelic.com cdn.jsdelivr.net cdnjs.cloudflare.com unpkg.com; media-src
+        ''self''; font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com;
+        frame-ancestors ''none''; style-src ''self'' ''unsafe-inline'' ''unsafe-eval''
+        fonts.googleapis.com cdn.jsdelivr.net cdnjs.cloudflare.com maxcdn.bootstrapcdn.com
+        unpkg.com; img-src ''self'' data: cdn.datatables.net map1a.vis.earthdata.nasa.gov
+        map1b.vis.earthdata.nasa.gov map1c.vis.earthdata.nasa.gov; connect-src sentry.io
+        gov-bam.nr-data.net cdn.jsdelivr.net; manifest-src ''self''; report-uri'
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 18 Jul 2025 08:06:23 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      User-Agent:
+      - python-requests/2.32.3
+    method: GET
+    uri: https://stg-hope.unitst.org/api/rest/lookups/role/
+  response:
+    body:
+      string: '{"NO_ROLE":"None","ALTERNATE":"Alternate collector","PRIMARY":"Primary
+        collector"}'
+    headers:
+      Allow:
+      - GET, HEAD, OPTIONS
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '82'
+      Content-Security-Policy-Report-Only:
+      - 'font-src ''self'' data: fonts.gstatic.com maxcdn.bootstrapcdn.com; style-src
+        ''self'' ''unsafe-inline'' ''unsafe-eval'' fonts.googleapis.com cdn.jsdelivr.net
+        cdnjs.cloudflare.com maxcdn.bootstrapcdn.com unpkg.com; default-src ''self'';
+        script-src ''self'' ''unsafe-inline'' ''unsafe-eval'' js-agent.newrelic.com
+        cdn.jsdelivr.net cdnjs.cloudflare.com unpkg.com; img-src ''self'' data: cdn.datatables.net
+        map1a.vis.earthdata.nasa.gov map1b.vis.earthdata.nasa.gov map1c.vis.earthdata.nasa.gov;
+        connect-src sentry.io gov-bam.nr-data.net cdn.jsdelivr.net; manifest-src ''self'';
+        frame-ancestors ''none''; media-src ''self'''
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 18 Jul 2025 08:06:25 GMT
+      Referrer-Policy:
+      - same-origin
+      Server:
+      - gunicorn
+      Vary:
+      - Accept, Cookie, Origin
+      X-Content-Type-Options:
+      - nosniff
+      X-Hope-Backend-Version:
+      - None
+    status:
+      code: 200
+      message: OK
+version: 1
