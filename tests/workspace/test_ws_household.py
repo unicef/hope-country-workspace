@@ -127,7 +127,7 @@ def test_hh_validate_program(app: "CWTestApp", individual: "CountryIndividual"):
 
 
 @pytest.fixture
-def hh(household) -> "CountryHousehold":
+def hh_with_address(household) -> "CountryHousehold":
     dc: DataChecker = DataCheckerFactory(fields=[("address", fqn(forms.CharField))])
     fld = dc.fieldsets.first().fields.get(name="address")
     fld.attrs["required"] = True
@@ -141,11 +141,36 @@ def hh(household) -> "CountryHousehold":
     return household
 
 
-def test_hh_validate(app: "CWTestApp", hh: "CountryHousehold"):
-    assert not hh.validate_with_checker()
-    assert hh.errors == {"address": ["This field is required."]}
+def test_hh_validate(app: "CWTestApp", hh_with_address: "CountryHousehold"):
+    assert not hh_with_address.validate_with_checker()
+    assert hh_with_address.errors == {"address": ["This field is required."]}
 
-    hh.flex_fields["address"] = "abc"
-    hh.save()
-    assert hh.validate_with_checker()
-    assert hh.errors == {}
+    hh_with_address.flex_fields["address"] = "abc"
+    hh_with_address.save()
+    assert hh_with_address.validate_with_checker()
+    assert hh_with_address.errors == {}
+
+
+@pytest.fixture
+def hh_with_check_initial(household) -> "CountryHousehold":
+    dc: DataChecker = DataCheckerFactory(fields=[("field_to_check_initial", fqn(forms.CharField))])
+    fields = dc.fieldsets.first().fields
+    fields.filter(name="field_to_check_initial").update(attrs={"initial": "--unknown--"})
+
+    household.program.household_checker = dc
+    household.program.save()
+
+    return household
+
+
+def test_hh_initial_field(app: "CWTestApp", hh_with_check_initial: "CountryHousehold"):
+    form_dc = hh_with_check_initial.program.household_checker.get_form_class()()
+    value = form_dc.fields["field_to_check_initial"].initial
+
+    url = reverse("workspace:workspaces_countryhousehold_change", args=[hh_with_check_initial.pk])
+    with select_office(app, hh_with_check_initial.country_office, hh_with_check_initial.program):
+        res = app.get(url)
+        form_hh = res.forms["countryhousehold_form"]
+        value_expected = form_hh["flex_field-field_to_check_initial"].value
+
+    assert value == value_expected
