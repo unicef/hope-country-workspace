@@ -1,4 +1,4 @@
-from country_workspace.workspaces.exceptions import BeneficiaryValidationError
+from country_workspace.workspaces.exceptions import BeneficiaryValidationError, BeneficiaryValidationOrAlienError
 
 from country_workspace.models import Office
 from country_workspace.state import state
@@ -14,6 +14,9 @@ def validate_beneficiaries(beneficiary_mapping: BeneficiaryMapping, config: Vali
 
     fail_if_alien = mode is ValidateMode.CHECK_AND_FAIL_IF_ALIEN
     with state.set(tenant=office):
-        for key, beneficiary in beneficiary_mapping.items():
+        for beneficiary in beneficiary_mapping.values():
             if not beneficiary.validate_with_checker(fail_if_alien=fail_if_alien):
-                raise BeneficiaryValidationError(beneficiary._meta.object_name, key)
+                if mode is ValidateMode.CHECK_BEFORE:
+                    raise BeneficiaryValidationError
+                if mode is ValidateMode.CHECK_AND_FAIL_IF_ALIEN:
+                    raise BeneficiaryValidationOrAlienError

@@ -30,7 +30,6 @@ from country_workspace.datasources.rdi import (
 )
 from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Household, Individual
-from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 
 
 HOUSEHOLD_1_PK = 1
@@ -122,12 +121,6 @@ def test_sheet_processing_error_format() -> None:
     error = SheetProcessingError(sheet_name := "test_sheet", row_index := 42)
     assert sheet_name in str(error)
     assert str(row_index) in str(error)
-
-
-def test_household_validation_error_format() -> None:
-    error = BeneficiaryValidationError(beneficiary := HOUSEHOLD_1_NAME, key := HOUSEHOLD_1_PK)
-    assert beneficiary in str(error)
-    assert str(key) in str(error)
 
 
 def test_sheet_not_found_error_format() -> None:

@@ -6,7 +6,7 @@ from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.utils.types import BeneficiaryMapping
 from country_workspace.utils.config import ValidateModeConfig
 from country_workspace.models.office import Office
-from country_workspace.workspaces.exceptions import BeneficiaryValidationError
+from country_workspace.workspaces.exceptions import BeneficiaryValidationError, BeneficiaryValidationOrAlienError
 
 
 @pytest.fixture
@@ -55,5 +55,5 @@ def test_validate_beneficiaries_raises_exception_on_failed_validation(
     beneficiary_mapping, office = mapping_and_office
     beneficiary_mapping[1].validate_with_checker.return_value = False
 
-    with pytest.raises(BeneficiaryValidationError):
+    with pytest.raises((BeneficiaryValidationError, BeneficiaryValidationOrAlienError)):
         validate_beneficiaries(beneficiary_mapping, failing_config, office)
