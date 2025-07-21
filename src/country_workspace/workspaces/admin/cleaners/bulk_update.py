@@ -1,5 +1,6 @@
 import io
 from collections.abc import Callable
+from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,8 @@ from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
+from django.forms.fields import DateField, DateTimeField
+from django.utils import timezone
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
@@ -21,7 +24,6 @@ if TYPE_CHECKING:
     from django.db.models import QuerySet
 
     from country_workspace.types import Beneficiary
-
 
 """
 # class Criteria:
@@ -119,6 +121,46 @@ def dc_get_field(dc: "DataChecker", name: str) -> "FlexField | None":
     return None
 
 
+def _validate_date_format(value: str) -> bool:
+    for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"]:
+        try:
+            naive_dt = datetime.strptime(value, fmt)  # noqa: DTZ007
+            naive_dt.replace(tzinfo=timezone.get_current_timezone())
+        except ValueError:
+            continue
+        else:
+            return True
+    return False
+
+
+def _validate_datetime_format(value: str) -> bool:
+    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"]:
+        try:
+            naive_dt = datetime.strptime(value, fmt)  # noqa: DTZ007
+            naive_dt.replace(tzinfo=timezone.get_current_timezone())
+        except (ValueError, TypeError):
+            continue
+        else:
+            return True
+    return False
+
+
+def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int, errors: dict) -> None:
+    for k, v in row.items():
+        if v is None or v == "":
+            continue
+
+        fld = dc_get_field(dc=dc, name=k.split("__")[-1])
+        if not fld or fld.definition.field_type not in (DateField, DateTimeField) or not isinstance(v, str):
+            continue
+
+        is_valid = _validate_date_format(v) if fld.definition.field_type == DateField else _validate_datetime_format(v)
+
+        if not is_valid:
+            field_type = "date" if fld.definition.field_type == DateField else "datetime"
+            errors.setdefault(f"Invalid {field_type} format for field '{k}' on line", []).append(line_number)
+
+
 def create_xls_importer(
     queryset: "QuerySet[Beneficiary]",
     program: Program,
@@ -211,10 +253,14 @@ def bulk_update_collection(job: AsyncJob, collection_getter: Callable[[int], Any
             result["not_found"].append(_id)
             continue
 
+        dc: DataChecker = job.program.get_checker_for(entity.__class__)
+        validate_date_datetime_fields(row, dc, line_number, errors)
+
         if version_check:
             try:
-                _version = int(row.pop("version"))
-            except (KeyError, ValueError):
+                version = row.pop("version", None)
+                _version = int(version)
+            except (KeyError, ValueError, TypeError):
                 errors.setdefault("Invalid or missing 'version' on line", []).append(line_number)
                 continue
 
