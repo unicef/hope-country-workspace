@@ -14,12 +14,6 @@ ADMINAREAS_FIELDSET_NAME: Final[str] = "HOPE Admin Areas"
 ACCOUNT_FIELDSET_NAME: Final[str] = "HOPE Account"
 DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
 
-DOCUMENT_PREFIXES_TO_TYPE_MAPPING = {
-    "national_id_": "national_id",
-    "national_passport_": "national_passport",
-}
+DOCUMENT_TYPES = ("national_id", "national_passport")
 
-ACCOUNT_PREFIXES_TO_TYPE_MAPPING = {
-    "phone_": "mobile",
-    "bank_": "bank",
-}
+ACCOUNT_TYPES = ("mobile", "bank")

@@ -12,7 +12,7 @@ from django.utils import timezone
 from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
-from country_workspace.contrib.hope.constants import DOCUMENT_PREFIXES_TO_TYPE_MAPPING, ACCOUNT_PREFIXES_TO_TYPE_MAPPING
+from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, ACCOUNT_TYPES
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
 from country_workspace.models.base import Validable
@@ -197,15 +197,11 @@ class PushProcessor(BatchErrorHandlerMixin):
 
     @staticmethod
     def _set_types(item: Validable) -> None:
-        for prefix in DOCUMENT_PREFIXES_TO_TYPE_MAPPING:
-            type_field = f"{prefix}type"
+        for _type in DOCUMENT_TYPES + ACCOUNT_TYPES:
+            prefix = f"{_type}_"
+            type_field = f"{prefix}type" if _type in DOCUMENT_TYPES else f"{prefix}account_type"
             if any(_f.startswith(prefix) for _f in item.flex_fields):
-                item.flex_fields[type_field] = DOCUMENT_PREFIXES_TO_TYPE_MAPPING[prefix]
-
-        for prefix in ACCOUNT_PREFIXES_TO_TYPE_MAPPING:
-            type_field = f"{prefix}account_type"
-            if any(_f.startswith(prefix) for _f in item.flex_fields):
-                item.flex_fields[type_field] = ACCOUNT_PREFIXES_TO_TYPE_MAPPING[prefix]
+                item.flex_fields[type_field] = _type
 
     def prepare_batch(self) -> tuple[list[int], list[dict]]:
         """Prepare a batch of household/individual|people data for API submission."""

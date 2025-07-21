@@ -142,8 +142,8 @@ def individual(batch):
             ),
             "national_passport_expiry_date": fake.date_between(start_date="-40y", end_date="-10y").strftime("%Y-%m-%d"),
             "national_passport_country": fake.country_code(),
-            "phone_number": "P123",
-            "phone_financial_institution": "FI123",
+            "mobile_number": "P123",
+            "mobile_financial_institution": "FI123",
         },
     )
 
@@ -156,6 +156,6 @@ def test_apply_grouping_with_documents_and_accounts(individual: "CountryIndividu
     assert len(result["documents"]) == 2
     assert len(result["accounts"]) == 1
     assert "national_passport_document_number" not in result
-    assert "phone_number" not in result
-    assert result["accounts"][0]["number"] == individual.flex_fields["phone_number"]
-    assert result["accounts"][0]["financial_institution"] == individual.flex_fields["phone_financial_institution"]
+    assert "mobile_number" not in result
+    assert result["accounts"][0]["number"] == individual.flex_fields["mobile_number"]
+    assert result["accounts"][0]["financial_institution"] == individual.flex_fields["mobile_financial_institution"]

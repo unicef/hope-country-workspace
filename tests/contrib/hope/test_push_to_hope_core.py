@@ -654,8 +654,8 @@ def test_add_error(simple_processor: PushProcessor) -> None:
             {"national_passport_type": "national_passport", "national_passport_number": "456"},
         ),
         (
-            {"phone_account_type": "some_value", "phone_number": "123456789"},
-            {"phone_account_type": "mobile", "phone_number": "123456789"},
+            {"mobile_account_type": "some_value", "mobile_number": "123456789"},
+            {"mobile_account_type": "mobile", "mobile_number": "123456789"},
         ),
         (
             {"bank_account_type": "some_value", "bank_account_number": "987654321"},
@@ -664,12 +664,12 @@ def test_add_error(simple_processor: PushProcessor) -> None:
         (
             {
                 "national_id_type": "old_value",
-                "phone_account_type": "old_value",
+                "mobile_account_type": "old_value",
                 "other_field": "unchanged",
             },
             {
                 "national_id_type": "national_id",
-                "phone_account_type": "mobile",
+                "mobile_account_type": "mobile",
                 "other_field": "unchanged",
             },
         ),
@@ -682,7 +682,7 @@ def test_add_error(simple_processor: PushProcessor) -> None:
     ids=[
         "national_id_type_field",
         "national_passport_type_field",
-        "phone_account_type_field",
+        "mobile_account_type_field",
         "bank_account_type_field",
         "mixed_type_fields",
         "no_type_fields",
@@ -706,20 +706,20 @@ def test_set_types_updates_type_fields(
             {"national_id_type": "national_id", "national_passport_type": "national_passport"},
         ),
         (
-            {"phone_account_type": "old_value", "bank_account_type": "old_value"},
-            {"phone_account_type": "mobile", "bank_account_type": "bank"},
+            {"mobile_account_type": "old_value", "bank_account_type": "old_value"},
+            {"mobile_account_type": "mobile", "bank_account_type": "bank"},
         ),
         (
             {
                 "national_id_type": "old_value",
                 "national_passport_type": "old_value",
-                "phone_account_type": "old_value",
+                "mobile_account_type": "old_value",
                 "bank_account_type": "old_value",
             },
             {
                 "national_id_type": "national_id",
                 "national_passport_type": "national_passport",
-                "phone_account_type": "mobile",
+                "mobile_account_type": "mobile",
                 "bank_account_type": "bank",
             },
         ),
@@ -739,8 +739,8 @@ def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) ->
     flex_fields = {
         "national_id_type": "old_value",
         "national_id_number": "12345",
-        "phone_account_type": "old_value",
-        "phone_number": "987654321",
+        "mobile_account_type": "old_value",
+        "mobile_number": "987654321",
         "unrelated_field": "should_not_change",
         "another_field": "also_unchanged",
     }
@@ -750,8 +750,8 @@ def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) ->
     expected_fields = {
         "national_id_type": "national_id",
         "national_id_number": "12345",
-        "phone_account_type": "mobile",
-        "phone_number": "987654321",
+        "mobile_account_type": "mobile",
+        "mobile_number": "987654321",
         "unrelated_field": "should_not_change",
         "another_field": "also_unchanged",
     }
@@ -761,7 +761,7 @@ def test_set_types_preserves_non_type_fields(simple_processor: PushProcessor) ->
 def test_set_types_handles_missing_type_fields(simple_processor: PushProcessor) -> None:
     flex_fields = {
         "national_id_number": "12345",
-        "phone_number": "987654321",
+        "mobile_number": "987654321",
         "bank_account_number": "111222333",
     }
     mock_item = type("MockValidable", (), {"flex_fields": flex_fields})()
