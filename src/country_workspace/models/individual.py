@@ -6,13 +6,14 @@ from django.utils.functional import cached_property
 
 from .base import BaseModel, Validable
 from .household import Household
+from .mixins import FlexFieldGroupingMixin
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
-class Individual(Validable, BaseModel):
+class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
     household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
 

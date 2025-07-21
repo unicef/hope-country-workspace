@@ -77,6 +77,7 @@ class ProgramForm(forms.ModelForm):
             "household_columns",
             "individual_columns",
             "extra_fields",
+            "serializer",
         )
 
 
@@ -146,6 +147,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                         "household_columns",
                         "individual_columns",
                     ),
+                },
+            ),
+            (
+                _("Serializer"),
+                {
+                    "fields": ("serializer",),
                 },
             ),
         )

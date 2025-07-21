@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from contextlib import suppress
+from typing import TYPE_CHECKING, Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -10,6 +10,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.models.beneficiary_group import BeneficiaryGroup
 from country_workspace.models.office import Office
+from .serializer import DataSerializer
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable
@@ -93,6 +94,8 @@ class Program(BaseModel):
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
 
+    serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True, blank=True)
+
     def __str__(self) -> str:
         return self.name
 
@@ -122,6 +125,11 @@ class Program(BaseModel):
         if isinstance(m, (Individual | CountryIndividual)) or m in (Individual, CountryIndividual):
             return self.individual_checker
         raise ValueError(m)
+
+    def serialize(self, data: list[dict]) -> Iterable:
+        if self.serializer:
+            return self.serializer.serialize(data)
+        return data
 
     def apply_mapping_importer(
         self, m: type[Validable] | Validable, data: dict[str, str | int | bool]

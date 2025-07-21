@@ -71,6 +71,9 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
         if parent_value and self.prepare_value(value) not in choices:
             raise ValidationError("Not valid child for selected parent")
 
+    def validate(self, value: Any) -> None:
+        super().validate(value)
+
     def get_choices_for_parent_value(
         self, parent_value: Any, only_codes: bool | None = False
     ) -> list[tuple[str, str]] | list[str]:

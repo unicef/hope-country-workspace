@@ -12,6 +12,8 @@ from country_workspace.contrib.hope.constants import (
     INDIVIDUAL_CHECKER_NAME,
     DOCUMENT_FIELDSET_NAME,
     ACCOUNT_FIELDSET_NAME,
+    DOCUMENT_TYPES,
+    ACCOUNT_TYPES,
 )
 from country_workspace.contrib.hope.lookups import FinancialInstitutionChoice
 from country_workspace.utils.flex_fields import Base64ImageField
@@ -28,7 +30,6 @@ fields_to_remove = [
 
 document_fields = [
     ("document_number", {"field_type": forms.CharField}, {}),
-    ("type", {"field_type": forms.CharField}, {}),
     ("photo", {"field_type": Base64ImageField}, {}),
     ("issuance_date", {"field_type": forms.DateField}, {}),
     ("expiry_date", {"field_type": forms.DateField}, {}),
@@ -37,7 +38,6 @@ document_fields = [
 
 account_fields = [
     ("number", {"field_type": forms.CharField}, {}),
-    ("account_type", {"field_type": forms.CharField}, {}),
     ("financial_institution", {"name": "FinancialInstitutionChoice"}, {}),
     ("data", {"field_type": forms.JSONField}, {}),
 ]
@@ -87,12 +87,12 @@ def add_account_and_document_fieldsets() -> None:
 
     document_fieldset, _ = Fieldset.objects.get_or_create(name=DOCUMENT_FIELDSET_NAME)
     account_fieldset, _ = Fieldset.objects.get_or_create(name=ACCOUNT_FIELDSET_NAME)
-    for fieldset, prefixes in (
-        (document_fieldset, ("national_id__", "national_passport__")),
-        (account_fieldset, ("phone__", "bank__")),
+    for fieldset, types in (
+        (document_fieldset, DOCUMENT_TYPES),
+        (account_fieldset, ACCOUNT_TYPES),
     ):
-        for prefix in prefixes:
-            DataCheckerFieldset.objects.get_or_create(checker=ind_datachecker, fieldset=fieldset, prefix=prefix)
+        for _type in types:
+            DataCheckerFieldset.objects.get_or_create(checker=ind_datachecker, fieldset=fieldset, prefix=f"{_type}_")
 
     for fieldset, fields in ((document_fieldset, document_fields), (account_fieldset, account_fields)):
         add_fields_to_fieldsets(fieldset, fields)

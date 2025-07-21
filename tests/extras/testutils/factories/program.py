@@ -5,6 +5,7 @@ from country_workspace.workspaces.models import CountryProgram
 
 from .base import AutoRegisterModelFactory
 from .office import OfficeFactory
+from .serializer import DataSerializerFactory
 from .smart_import import DataCheckerFactory
 
 
@@ -29,6 +30,7 @@ class ProgramFactory(AutoRegisterModelFactory):
     household_checker = factory.SubFactory(DataCheckerFactory)
     individual_checker = factory.SubFactory(DataCheckerFactory)
     beneficiary_group = factory.SubFactory(BeneficiaryGroupFactory)
+    serializer = factory.SubFactory(DataSerializerFactory)
 
     class Meta:
         model = Program
