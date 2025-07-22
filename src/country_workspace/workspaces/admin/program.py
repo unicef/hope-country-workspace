@@ -19,7 +19,11 @@ from country_workspace.contrib.aurora.pipeline import (
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
-
+from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
+from .forms import BulkUpdateImportForm, ImportFileForm
+from ..models import CountryProgram
+from ..options import WorkspaceModelAdmin
+from ..sites import workspace
 from ...contrib.aurora.forms import ImportAuroraForm
 from ...contrib.kobo.forms import ImportKoboForm
 from ...contrib.kobo.sync import (
@@ -31,12 +35,6 @@ from ...datasources.rdi import (
     import_from_rdi,
 )
 from ...models import AsyncJob
-from ...utils.flex_fields import get_checker_fields
-from ..models import CountryProgram
-from ..options import WorkspaceModelAdmin
-from ..sites import workspace
-from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
-from .forms import BulkUpdateImportForm, ImportFileForm
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -51,8 +49,11 @@ class SelectColumnsForm(forms.Form):
         super().__init__(*args, **kwargs)
         columns: list[tuple[str, str]] = []
 
-        for name, label in get_checker_fields(self.checker, with_fs_prefix=True):
-            columns.append((f"flex_fields__{name}", label))
+        for fs in self.checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
+            for field in fs.fieldset.get_fields():
+                field_name = field.name
+                field_label = f"{fs.prefix}{(field.attrs.get('label', field.name) or field.name)}"
+                columns.append((f"flex_fields__{field_name}", field_label))
 
         self.fields["columns"].choices = self.model_core_fields + columns
 

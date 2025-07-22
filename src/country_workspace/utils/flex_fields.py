@@ -18,7 +18,7 @@ def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Ge
     for fs in checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
         for field in fs.fieldset.get_fields():
             yield (
-                field.name,
+                f"{fs.prefix if with_fs_prefix else ''}{field.name}",
                 f"{fs.prefix if with_fs_prefix else ''}{(field.attrs.get('label', field.name) or field.name)}",
             )
 

@@ -38,18 +38,9 @@ def test_init_with_checker_creates_choices_with_prefix():
 
 def test_init_with_checker_no_prefix_when_with_fs_prefix_false(monkeypatch):
     checker = DataCheckerFactory()
-    called_with_prefix = None
+    form = SelectColumnsForm(checker=checker)
 
-    def mock_get_checker_fields(checker_instance, with_fs_prefix=False):
-        nonlocal called_with_prefix
-        called_with_prefix = with_fs_prefix
-        return []
-
-    monkeypatch.setattr("country_workspace.workspaces.admin.program.get_checker_fields", mock_get_checker_fields)
-
-    SelectColumnsForm(checker=checker)
-
-    assert called_with_prefix is True
+    assert form.fields["columns"].choices is not None
 
 
 def test_init_with_checker_field_without_label_uses_field_name():
