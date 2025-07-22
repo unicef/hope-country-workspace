@@ -1,12 +1,8 @@
+import pytest
+from pytest_mock import MockerFixture
 from unittest.mock import Mock
 
-import pytest
-
 from country_workspace.workspaces.admin.cleaners.validate import validate_program
-
-
-from pytest_mock import MockerFixture
-
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 type Beneficiary = CountryHousehold | CountryIndividual

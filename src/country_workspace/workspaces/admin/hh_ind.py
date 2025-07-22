@@ -150,9 +150,9 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             self.message_user(request, _("Validation failed!"), messages.ERROR)
 
     @button(
-        label=_("Validate Program"),
+        label=_("Validate Programme"),
         html_attrs={
-            "title": _("Validate Entire Program - all beneficiaries"),
+            "title": _("Validate Entire Programme - all beneficiaries"),
             "onclick": "return !document.querySelector('input[name=_selected_action]:checked');",
         },
     )
