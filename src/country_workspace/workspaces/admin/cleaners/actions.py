@@ -37,7 +37,7 @@ def validate_records(
     job = AsyncJob.objects.create(
         description=validate_records.short_description,
         type=AsyncJob.JobType.ACTION,
-        owner=state.request.user,
+        owner=request.user,
         action=fqn(validate_queryset),
         program=state.program,
         config={"pks": list(queryset.values_list("pk", flat=True)), "model_name": opts.label},
@@ -159,7 +159,7 @@ def bulk_update_export(
         )
         job.queue()
         model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-        return redirect(".")
+        return redirect("workspace:workspaces_countryasyncjob_changelist")
 
     return render(request, "workspace/actions/bulk_update_export.html", ctx)
 
