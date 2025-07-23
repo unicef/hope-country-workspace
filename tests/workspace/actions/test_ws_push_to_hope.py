@@ -13,7 +13,6 @@ from testutils.utils import select_office
 
 STUB: Final[dict[str, str]] = {
     "batch_name": "TestBatch",
-    "batch_size": "10",
 }
 
 
@@ -71,11 +70,9 @@ def test_push_to_hope_action(
         res2 = form.submit()
         push_form = res2.forms["push-to-hope-form"]
         push_form["batch_name"] = stub.batch_name
-        push_form["batch_size"] = str(stub.batch_size)
         res3 = push_form.submit("_push")
         assert res3.status_code == 302
     job = AsyncJob.objects.get(program=program)
     assert job.config["master_detail"] == program.beneficiary_group.master_detail
     assert job.config["pks"] == [beneficiary.pk]
     assert job.config["batch_name"] == stub.batch_name
-    assert job.config["batch_size"] == stub.batch_size
