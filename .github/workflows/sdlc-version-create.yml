@@ -36,11 +36,31 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Set target input
+        id: config
+        run: |
+          version=$(uvx --with hatch-vcs hatchling metadata version)
+          COMMIT_SHA=$(git rev-parse "$GITHUB_SHA")
+          git_reference="${{ github.event.inputs.git_reference }}"
+          tag="${{ github.event.inputs.tag }}"
+          if [ -z "$tag" ]; then
+            tag="$git_reference"
+          fi
+          BUILD_DATE=$(date +"%Y-%m-%d %H:%M")
+          echo "git_reference=$git_reference" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+
       - name: Build and push versioned image
         run: |
           IMAGE_TAG="${{ needs.prepare-version.outputs.version }}"
           docker buildx create --use
           docker buildx build \
+            --build-arg VERSION="${{ steps.config.outputs.version }}" \
+            --build-arg BUILD_DATE="${{ steps.config.outputs.build_date }}" \
+            --build-arg SOURCE_COMMIT=${{ steps.config.outputs.commit_sha }} \
             --cache-from ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-develop \
             --cache-from ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG \
             --cache-to ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG \
