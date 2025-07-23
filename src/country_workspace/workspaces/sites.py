@@ -290,7 +290,7 @@ class TenantAdminSite(admin.AdminSite):
                 {
                     "name": _("Admin"),
                     "url": reverse("admin:index"),
-                    "icon": "icon-shield1",
+                    "icon": "icon-star",
                     "selected": False,
                     "target": "_admin",
                 }

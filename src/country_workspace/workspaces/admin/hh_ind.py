@@ -13,7 +13,7 @@ from django.shortcuts import render
 from django.template.defaultfilters import capfirst
 from django.template.response import TemplateResponse
 from django.urls import reverse
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy as _
 
 from ...cache.manager import cache_manager
 from ...models import AsyncJob
@@ -152,23 +152,26 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     @button(
         label=_("Validate Programme"),
         html_attrs={
-            "title": "Validate Entire Programme: Beneficiaries, Households and Individuals",
+            "title": _("Validate Entire Programme - all beneficiaries"),
             "onclick": "return !document.querySelector('input[name=_selected_action]:checked');",
         },
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
-        opts = self.model._meta
-
+        program = state.program
+        description = _("Validate Entire Program '%s' - all '%s'") % (
+            program.name,
+            self.title_group_plural if program.beneficiary_group.master_detail else self.title_member_plural,
+        )
         job = AsyncJob.objects.create(
-            description="Validate Program %s" % opts.proxy_for_model._meta.verbose_name_plural,
+            description=description,
             type=AsyncJob.JobType.TASK,
-            owner=state.request.user,
+            owner=request.user,
             action=fqn(validate_program),
-            program=state.program,
+            program=program,
             config={},
         )
         job.queue()
-        self.message_user(request, "Task scheduled", messages.SUCCESS)
+        self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 
     @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":

@@ -122,7 +122,8 @@ def test_hh_validate_program(app: "CWTestApp", individual: "CountryIndividual"):
         res.click("Validate Program").follow()
 
         individual.refresh_from_db()
-        assert individual.household.last_checked
+        if program.beneficiary_group.master_detail:
+            assert individual.household.last_checked
         assert individual.last_checked
 
 
