@@ -68,12 +68,12 @@ class FetchFromCacheMiddleware(MiddlewareMixin):
         return request.method == "POST" and ("action" in request.POST or "_selected_action" in request.POST)
 
     def process_request(self, request: HttpRequest) -> HttpResponse:
-        if request.method not in ("GET", "HEAD"):
-            request._cache_update_cache = False
-            return None
-
         if self._is_admin_action_request(request) or self._has_messages(request):
             request._cache_update_cache = True
+            return None
+
+        if request.method not in ("GET", "HEAD"):
+            request._cache_update_cache = False
             return None
 
         cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
