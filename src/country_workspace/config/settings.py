@@ -66,7 +66,6 @@ MIDDLEWARE = (
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "country_workspace.middleware.state.StateSetMiddleware",
-    "country_workspace.cache.middleware.UpdateCacheMiddleware",
     "django.middleware.common.CommonMiddleware",
     "country_workspace.middleware.history.HistoryMiddleware",
     "csp.middleware.CSPMiddleware",
@@ -75,6 +74,7 @@ MIDDLEWARE = (
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "country_workspace.middleware.exception.ExceptionMiddleware",
+    "country_workspace.cache.middleware.UpdateCacheMiddleware",
     "country_workspace.cache.middleware.FetchFromCacheMiddleware",
     *env("EXTRA_MIDDLEWARES"),
 )
