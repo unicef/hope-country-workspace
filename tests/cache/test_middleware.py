@@ -136,3 +136,47 @@ def test_update_middleware_without_etag(update_middleware, rf, mock_user):
         mock_build_key.assert_called_once_with(request, "view", mock_user.pk)
         mock_store.assert_called_once_with(generated_key, response)
         assert processed_response.headers["Etag"] == generated_key
+
+
+def test_fetch_middleware_admin_action_request(fetch_middleware, rf, mock_user):
+    request = rf.post("/test-url/", {"action": "validate_records"})
+    request.user = mock_user
+
+    response = fetch_middleware.process_request(request)
+
+    assert response is None
+    assert getattr(request, "_cache_update_cache", False) is True
+
+
+def test_update_middleware_admin_action_request(update_middleware, rf, mock_user):
+    request = rf.post("/test-url/", {"action": "validate_records"})
+    request.user = mock_user
+    request._cache_update_cache = True
+
+    response = HttpResponse()
+    response.status_code = 200
+
+    processed_response = update_middleware.process_response(request, response)
+
+    assert processed_response == response
+
+
+def test_middleware_admin_action_detection(fetch_middleware, update_middleware, rf):
+    admin_action_requests = [
+        rf.post("/test/", {"action": "validate_records"}),
+        rf.post("/test/", {"_selected_action": ["1", "2"]}),
+        rf.post("/test/", {"action": "mass_update", "_selected_action": ["1"]}),
+    ]
+
+    for request in admin_action_requests:
+        assert fetch_middleware._is_admin_action_request(request) is True
+        assert update_middleware._is_admin_action_request(request) is True
+
+    non_admin_requests = [
+        rf.get("/test/"),
+        rf.post("/test/", {"other_field": "value"}),
+    ]
+
+    for request in non_admin_requests:
+        assert fetch_middleware._is_admin_action_request(request) is False
+        assert update_middleware._is_admin_action_request(request) is False
