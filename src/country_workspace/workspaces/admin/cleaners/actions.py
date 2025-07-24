@@ -8,7 +8,6 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.forms import PushToHopeForm
 from country_workspace.contrib.hope.push import push_to_hope_core, PushConfig
-from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
@@ -195,10 +194,9 @@ def push_to_hope(
 ) -> HttpResponse:
     program = model_admin.get_selected_program(request)
     if request.method == "POST" and "_push" in request.POST:
-        if (form := PushToHopeForm(request.POST, program=program)).is_valid():
+        if (form := PushToHopeForm(request.POST)).is_valid():
             config: PushConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
-                "batch_size": form.cleaned_data["batch_size"] or PUSH_BATCH_SIZE,
                 "co_slug": program.country_office.slug,
                 "country_office_id": program.country_office.id,
                 "imported_by_email": state.request.user.email,
@@ -221,7 +219,6 @@ def push_to_hope(
             return redirect("workspace:workspaces_countryrdp_changelist")
     else:
         form = PushToHopeForm(
-            program=program,
             initial={
                 "action": request.POST.get("action", ""),
                 "select_across": request.POST.get("select_across", False),

@@ -86,7 +86,6 @@ def push_config(beneficiary_instance: Beneficiary, user: User) -> dict:
     rdp = beneficiary_instance.rdp.first()
     return {
         "batch_name": f"Test Batch - {rdp.program.name}",
-        "batch_size": 20,
         "co_slug": rdp.program.country_office.slug,
         "country_office_id": rdp.program.country_office.id,
         "master_detail": rdp.program.beneficiary_group.master_detail,
@@ -238,9 +237,9 @@ def test_push_no_beneficiary_group(job: AsyncJob) -> None:
 @pytest.mark.django_db
 def test_push_workflow_with_batching(mocker: MockerFixture, job: AsyncJob) -> None:
     job.config["pks"] = [1, 2, 3, 4, 5]
-    job.config["batch_size"] = 2
 
     mock_p = mocker.MagicMock(total={"errors": []}, hope_rdi_id="test-rdi-123")
+    mocker.patch("country_workspace.contrib.hope.push.PUSH_BATCH_SIZE", 2)
     mocker.patch("country_workspace.contrib.hope.push.create_processor", return_value=mock_p)
     mocker.patch("country_workspace.contrib.hope.push.create_rdp_records", return_value=999)
     mocker.patch("country_workspace.contrib.hope.push.complete_rdp")

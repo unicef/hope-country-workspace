@@ -12,7 +12,7 @@ from django.utils import timezone
 from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
-from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, ACCOUNT_TYPES
+from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, ACCOUNT_TYPES, PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
 from country_workspace.models.base import Validable
@@ -24,7 +24,6 @@ type Beneficiary = CountryHousehold | CountryIndividual
 
 class PushConfig(TypedDict):
     batch_name: ReadOnly[str]
-    batch_size: ReadOnly[int]
     co_slug: ReadOnly[str]
     country_office_id: ReadOnly[int]
     imported_by_email: ReadOnly[str]
@@ -300,7 +299,7 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     def steps() -> Iterator[Callable[[], None]]:
         """Yield steps for pushing beneficiaries data in batches."""
         yield processor.rdi_create
-        for batch_pks in batched(config["pks"], config["batch_size"]):
+        for batch_pks in batched(config["pks"], PUSH_BATCH_SIZE):
             processor.set_queryset(batch_pks)
             yield from (processor.check_beneficiaries_validity, processor.rdi_push)
         yield processor.rdi_complete
