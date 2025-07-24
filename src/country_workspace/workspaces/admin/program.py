@@ -19,7 +19,7 @@ from country_workspace.contrib.aurora.pipeline import (
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
-from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
+from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -287,7 +287,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context = self.get_common_context(request, pk, title="Bulk update records via .xlsx import")
         program: "CountryProgram" = context["original"]
         context["selected_program"] = context["original"]
-        function_map = {"hh": fqn(bulk_update_household), "ind": fqn(bulk_update_individual)}
+        function_map = {"hh": fqn(import_household_updates), "ind": fqn(import_individual_updates)}
         if request.method == "POST":
             form = BulkUpdateImportForm(request.POST, request.FILES)
             if form.is_valid():

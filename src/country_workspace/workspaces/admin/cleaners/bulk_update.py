@@ -12,6 +12,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
 from django.forms.fields import DateField, DateTimeField
 from django.utils import timezone
+from django.db import transaction
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
@@ -161,7 +162,7 @@ def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int
             errors.setdefault(f"Invalid {field_type} format for field '{k}' on line", []).append(line_number)
 
 
-def create_xls_importer(
+def create_bulk_update_template(
     queryset: "QuerySet[Beneficiary]",
     program: Program,
     columns: list[str],
@@ -213,75 +214,72 @@ def create_xls_importer(
     return out, workbook
 
 
-def bulk_update_export_template(job: AsyncJob) -> bytes:
+def export_bulk_update_template(job: AsyncJob) -> str:
     model = apps.get_model(job.config["model_name"])
     queryset = model.objects.filter(pk__in=job.config["pks"])
-    filename = "bulk_update_export_template/%s/%s/%s.xlsx" % (job.program.pk, job.owner.pk, job.config["model_name"])
-    out, __ = create_xls_importer(queryset, job.program, job.config["columns"])
-    path = MEDIA_STORAGE.save(filename, out)
-    mail = EmailMessage(
-        "Bulk update export",
-        "Attached please find the requested export",
-        settings.DEFAULT_FROM_EMAIL,
-        [job.config["send_to"]],
+    out, __ = create_bulk_update_template(queryset, job.program, job.config["columns"])
+    filename = f"bulk_update_export_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
+    filepath = MEDIA_STORAGE.save(filename, out)
+    email = EmailMessage(
+        subject="Bulk update export",
+        body="Please find the requested bulk update template attached.",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[job.config["send_to"]],
     )
     out.seek(0)
-    mail.attach(filename, out.read(), "application/vnd.ms-excel")
-    mail.send()
-    job.file = path
-    job.save()
-    return path
+    email.attach(filename, out.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    email.send()
+    job.file = filepath
+    job.save(update_fields=["file"])
+    return filepath
 
 
-def bulk_update_collection(job: AsyncJob, collection_getter: Callable[[int], Any]) -> dict[str, Any]:
-    result: dict[str, Any] = {"not_found": []}
-    version_check = constance_config.CONCURRENCY_GUARD
-    if version_check:
-        result["version_mismatch"] = []
-    errors = {}
+def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:
+    total = {"processed": 0, "not_found": [], "errors": {}}
+    version_check_enabled = constance_config.CONCURRENCY_GUARD
+    if version_check_enabled:
+        total["version_mismatch"] = []
 
-    file_data = job.file.read()
-    rows = open_xls(io.BytesIO(file_data), start_at_row=0)
-    for line_number, row in enumerate(rows, start=1):
-        try:
-            _id = int(row.pop("id"))
-            entity = collection_getter(_id)
-        except (KeyError, ValueError):
-            errors.setdefault("Invalid or missing 'id' on line", []).append(line_number)
-            continue
-        except ObjectDoesNotExist:
-            result["not_found"].append(_id)
-            continue
+    try:
+        file_data = job.file.read()
+        rows = open_xls(io.BytesIO(file_data), start_at_row=0)
 
-        dc: DataChecker = job.program.get_checker_for(entity.__class__)
-        validate_date_datetime_fields(row, dc, line_number, errors)
+        with transaction.atomic():
+            for line_number, row_data in enumerate(rows, start=1):
+                try:
+                    entity_id = int(row_data.pop("id"))
+                    entity = entity_getter(entity_id)
 
-        if version_check:
-            try:
-                version = row.pop("version", None)
-                _version = int(version)
-            except (KeyError, ValueError, TypeError):
-                errors.setdefault("Invalid or missing 'version' on line", []).append(line_number)
-                continue
+                    if version_check_enabled:
+                        version = int(row_data.pop("version"))
+                        if entity.version != version:
+                            total["version_mismatch"].append(entity_id)
+                            continue
 
-            if entity.version != _version:
-                result["version_mismatch"].append(_id)
-                continue
+                    if row_data:
+                        dc: DataChecker = job.program.get_checker_for(entity.__class__)
+                        validate_date_datetime_fields(row_data, dc, line_number, total["errors"])
 
-        entity.flex_fields.update(**row)
-        entity.save()
+                        entity.flex_fields.update(**row_data)
+                        entity.save(update_fields=["flex_fields"])
+                        total["processed"] += 1
 
-    if errors:
-        result["errors"] = errors
+                except (KeyError, ValueError):
+                    total["errors"].setdefault("Invalid data on line", []).append(line_number)
+                except ObjectDoesNotExist:
+                    total["not_found"].append(entity_id)
+                except Exception as e:  # noqa: BLE001
+                    total["errors"].setdefault("Processing errors", []).append(f"Line {line_number}: {e}")
 
-    return result
+    except Exception as e:  # noqa: BLE001
+        total["errors"]["file_processing"] = str(e)
 
-
-def bulk_update_individual(job: AsyncJob) -> dict[str, Any]:
-    program = job.program
-    return bulk_update_collection(job, lambda _id: program.individuals.get(id=_id))
+    return total
 
 
-def bulk_update_household(job: AsyncJob) -> dict[str, Any]:
-    program = job.program
-    return bulk_update_collection(job, lambda _id: program.households.get(id=_id))
+def import_individual_updates(job: AsyncJob) -> dict[str, Any]:
+    return import_bulk_update_file(job, lambda _id: job.program.individuals.get(id=_id))
+
+
+def import_household_updates(job: AsyncJob) -> dict[str, Any]:
+    return import_bulk_update_file(job, lambda _id: job.program.households.get(id=_id))

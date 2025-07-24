@@ -13,7 +13,7 @@ from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 
-from .bulk_update import bulk_update_export_template
+from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
@@ -147,7 +147,7 @@ def bulk_update_export(
             description=bulk_update_export.short_description,
             type=AsyncJob.JobType.TASK,
             owner=state.request.user,
-            action=fqn(bulk_update_export_template),
+            action=fqn(export_bulk_update_template),
             program=state.program,
             config={
                 "pks": list(queryset.values_list("pk", flat=True)),
