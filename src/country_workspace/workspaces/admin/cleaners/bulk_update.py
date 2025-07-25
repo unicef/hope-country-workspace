@@ -169,7 +169,7 @@ def _get_cell_format(workbook: Workbook, field: FlexField) -> Format | None:
 
 
 def _get_header_format(workbook: Workbook) -> Format:
-    header_format = workbook.add_format(
+    return workbook.add_format(
         {
             "bold": False,
             "font_color": "black",
@@ -178,13 +178,11 @@ def _get_header_format(workbook: Workbook) -> Format:
             "align": "center",
             "valign": "vcenter",
             "indent": 1,
-        },
+            "bg_color": "#DDDDDD",
+            "locked": True,
+            "bottom_color": "black",
+        }
     )
-    header_format.set_bg_color("#DDDDDD")
-    header_format.set_locked(True)
-    header_format.set_align("center")
-    header_format.set_bottom_color("black")
-    return header_format
 
 
 def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
@@ -227,6 +225,7 @@ def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[job.config["send_to"]],
     )
+    out.seek(0)
     email.attach(filename, out.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     email.send()
 
@@ -239,7 +238,6 @@ def export_bulk_update_template(job: AsyncJob) -> str:
     filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
     filepath = MEDIA_STORAGE.save(filename, out)
 
-    out.seek(0)
     _send_template_email(job, out, filename)
 
     job.file = filepath

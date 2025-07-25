@@ -12,7 +12,7 @@ from testutils.utils import select_office
 from webtest import Upload
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_xls_importer
+from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_bulk_update_template
 from tests.workspace.actions import stub
 
 if TYPE_CHECKING:
@@ -76,8 +76,8 @@ def office():
     return co
 
 
-@pytest.fixture
-def program(office, force_migrated_records, household_checker, individual_checker):
+@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
+def program(request, office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
     return CountryProgramFactory(
@@ -86,6 +86,7 @@ def program(office, force_migrated_records, household_checker, individual_checke
         individual_checker=individual_checker,
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
+        beneficiary_group__master_detail=request.param,
     )
 
 
@@ -140,9 +141,9 @@ def test_validator(field, validator):
     assert validator(flex_field)()
 
 
-def test_create_xls_importer(household: "CountryHousehold", force_migrated_records):
+def test_create_bulk_update_template(household: "CountryHousehold", force_migrated_records):
     selected_fields = stub.header_base + stub.header_add["ind"]
-    ret, __ = create_xls_importer(
+    ret = create_bulk_update_template(
         household.members.all(),
         household.program,
         selected_fields,

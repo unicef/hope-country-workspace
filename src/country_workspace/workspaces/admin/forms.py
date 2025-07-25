@@ -43,7 +43,7 @@ class BulkUpdateImportForm(forms.Form):
             self.fields["target"].widget.attrs.update(
                 {
                     "readonly": True,
-                    "style": "background-color:var(--darkened-bg);color:var(--body-quiet-color);pointer-events: none;",
+                    "style": "background-color:var(--darkened-bg); color:var(--body-quiet-color); pointer-events:none;",
                 }
             )
 
