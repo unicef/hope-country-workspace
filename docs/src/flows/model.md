@@ -24,7 +24,6 @@ This diagram represents the core data model for the Country Workspace system, wh
 
 The system supports flexible data schemas through the ff_* entities, allowing different programs to define custom fields and validation rules for their specific beneficiary data requirements. Import processing is handled through configurable mapping rules that transform incoming data to match program requirements.
 
-
 ```mermaid
 
 erDiagram
