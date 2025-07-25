@@ -141,7 +141,7 @@ def bulk_update_export(
     form = BulkUpdateExportForm(request.POST, checker=checker)
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
-        columns = ["id", "version"] + sorted(form.cleaned_data["fields"])
+        columns = ["id", "version"] + form.cleaned_data["fields"]
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=bulk_update_export.short_description,
@@ -199,17 +199,17 @@ def push_to_hope(
                 "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
                 "co_slug": program.country_office.slug,
                 "country_office_id": program.country_office.id,
-                "imported_by_email": state.request.user.email,
+                "imported_by_email": request.user.email,
                 "master_detail": program.beneficiary_group.master_detail,
                 "pks": list(queryset.values_list("pk", flat=True)),
                 "program_id": program.id,
                 "program_hope_id": program.hope_id,
-                "pushed_by_id": state.request.user.id,
+                "pushed_by_id": request.user.id,
             }
             job = AsyncJob.objects.create(
                 description=push_to_hope.short_description,
                 type=AsyncJob.JobType.TASK,
-                owner=state.request.user,
+                owner=request.user,
                 action=fqn(push_to_hope_core),
                 program=program,
                 config=config,

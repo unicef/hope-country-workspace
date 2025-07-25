@@ -289,7 +289,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["selected_program"] = context["original"]
         function_map = {"hh": fqn(import_household_updates), "ind": fqn(import_individual_updates)}
         if request.method == "POST":
-            form = BulkUpdateImportForm(request.POST, request.FILES)
+            form = BulkUpdateImportForm(request.POST, request.FILES, beneficiary_group=program.beneficiary_group)
             if form.is_valid():
                 job = AsyncJob.objects.create(
                     description=form.cleaned_data["description"] or context["title"],
@@ -306,7 +306,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
 
         else:
-            form = BulkUpdateImportForm()
+            form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
 

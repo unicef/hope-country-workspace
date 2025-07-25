@@ -17,7 +17,7 @@ from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
 from xlsxwriter import Workbook
-
+from xlsxwriter.format import Format
 from country_workspace.models import AsyncJob, Program
 from country_workspace.storages import MEDIA_STORAGE
 
@@ -146,7 +146,7 @@ def _validate_datetime_format(value: str) -> bool:
     return False
 
 
-def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int, errors: dict) -> None:
+def validate_date_datetime_fields(row: dict, dc: DataChecker, line_number: int, errors: dict) -> None:
     for k, v in row.items():
         if v is None or v == "":
             continue
@@ -162,15 +162,13 @@ def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int
             errors.setdefault(f"Invalid {field_type} format for field '{k}' on line", []).append(line_number)
 
 
-def create_bulk_update_template(
-    queryset: "QuerySet[Beneficiary]",
-    program: Program,
-    columns: list[str],
-) -> tuple[io.BytesIO, Workbook]:
-    out = BytesIO()
-    dc: DataChecker = program.get_checker_for(queryset.model)
+def _get_cell_format(workbook: Workbook, field: FlexField) -> Format | None:
+    if fmt := get_format_for_field(field):
+        return workbook.add_format(fmt)
+    return None
 
-    workbook = Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"})
+
+def _get_header_format(workbook: Workbook) -> Format:
     header_format = workbook.add_format(
         {
             "bold": False,
@@ -186,51 +184,67 @@ def create_bulk_update_template(
     header_format.set_locked(True)
     header_format.set_align("center")
     header_format.set_bottom_color("black")
-    worksheet = workbook.add_worksheet()
-    worksheet.protect()
-    worksheet.unprotect_range("C1:ZZ999", None)
+    return header_format
 
-    for i, fld_name in enumerate(columns):
-        fld = dc_get_field(dc, fld_name)
-        if fld:
-            worksheet.write(0, i, fld.name, header_format)
-            f = None
-            if fmt := get_format_for_field(fld):
-                f = workbook.add_format(fmt)
-            worksheet.set_column(i, i, 40, f)
-            if v := get_validation_for_field(fld):
-                worksheet.data_validation(0, i, 999999, i, v)
-        else:
-            worksheet.write(0, i, fld_name, header_format)
-    worksheet.freeze_panes(1, 0)
 
-    fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
-    for row, record in enumerate(queryset, 1):
-        for col, fld in enumerate(columns):
-            worksheet.write(row, col, fmt(getattr(record, fld, record.flex_fields.get(fld))))
+def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
+    out = BytesIO()
+    dc: DataChecker = program.get_checker_for(queryset.model)
 
-    workbook.close()
+    with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
+        header_format = _get_header_format(workbook)
+        worksheet = workbook.add_worksheet()
+        worksheet.protect()
+        worksheet.unprotect_range("C1:ZZ999", None)
+
+        for i, fld_name in enumerate(columns):
+            fld = dc_get_field(dc, fld_name)
+            if fld:
+                worksheet.write(0, i, fld.name, header_format)
+                cell_format = _get_cell_format(workbook, fld)
+                worksheet.set_column(i, i, 40, cell_format)
+                if v := get_validation_for_field(fld):
+                    worksheet.data_validation(0, i, 999999, i, v)
+            else:
+                worksheet.write(0, i, fld_name, header_format)
+
+        worksheet.freeze_panes(1, 0)
+
+        fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
+        for row, record in enumerate(queryset, 1):
+            for col, fld in enumerate(columns):
+                value = getattr(record, fld, record.flex_fields.get(fld))
+                worksheet.write(row, col, fmt(value))
+
     out.seek(0)
-    return out, workbook
+    return out
 
 
-def export_bulk_update_template(job: AsyncJob) -> str:
-    model = apps.get_model(job.config["model_name"])
-    queryset = model.objects.filter(pk__in=job.config["pks"])
-    out, __ = create_bulk_update_template(queryset, job.program, job.config["columns"])
-    filename = f"bulk_update_export_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
-    filepath = MEDIA_STORAGE.save(filename, out)
+def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
     email = EmailMessage(
         subject="Bulk update export",
         body="Please find the requested bulk update template attached.",
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[job.config["send_to"]],
     )
-    out.seek(0)
     email.attach(filename, out.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     email.send()
+
+
+def export_bulk_update_template(job: AsyncJob) -> str:
+    model = apps.get_model(job.config["model_name"])
+    queryset = model.objects.filter(pk__in=job.config["pks"])
+
+    out = create_bulk_update_template(queryset, job.program, job.config["columns"])
+    filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
+    filepath = MEDIA_STORAGE.save(filename, out)
+
+    out.seek(0)
+    _send_template_email(job, out, filename)
+
     job.file = filepath
     job.save(update_fields=["file"])
+
     return filepath
 
 
