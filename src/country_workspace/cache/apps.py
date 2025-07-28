@@ -6,6 +6,4 @@ class Config(AppConfig):
     verbose_name = "Cache"
 
     def ready(self) -> None:
-        from .manager import cache_manager
-
-        cache_manager.init()
+        pass

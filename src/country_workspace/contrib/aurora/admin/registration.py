@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from country_workspace.admin.base import BaseModelAdmin
 from country_workspace.contrib.aurora.models import Registration
-from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, StepConfig
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 
 
 @admin.register(Registration)
@@ -18,8 +18,10 @@ class RegistrationAdmin(SyncAdminMixin, BaseModelAdmin):
     ordering = ("name",)
     autocomplete_fields = ("project",)
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.aurora.context_aurora.SyncStep", name="REGISTRATIONS"),
-        sync_handler="country_workspace.contrib.aurora.context_aurora.sync_context_aurora",
+        targets=[
+            TargetConfig(target=Target.PROJECTS),
+            TargetConfig(target=Target.REGISTRATIONS),
+        ]
     )
 
     @admin.display(ordering="last_modified")

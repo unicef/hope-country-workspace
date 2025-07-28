@@ -10,8 +10,7 @@ from django.db.models import Field
 from django.forms import FileField, FileInput, Form
 
 from country_workspace.models.locations import Area, AreaType, Country
-from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, StepConfig
-
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -36,8 +35,11 @@ class CountryAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
         "iso_code3",
     )
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="COUNTRIES"),
-        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+        targets=[
+            TargetConfig(target=Target.COUNTRIES),
+            TargetConfig(target=Target.AREA_TYPES),
+            TargetConfig(target=Target.AREAS),
+        ],
     )
 
 
@@ -49,8 +51,10 @@ class AreaTypeAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     autocomplete_fields = ("country",)
     raw_id_fields = ("country", "parent")
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="AREATYPES"),
-        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+        targets=[
+            TargetConfig(target=Target.AREA_TYPES),
+            TargetConfig(target=Target.AREAS),
+        ],
     )
 
 
@@ -75,6 +79,7 @@ class AreaAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     search_fields = ("name", "p_code")
     raw_id_fields = ("area_type", "parent")
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_geo.SyncStep", name="AREAS"),
-        sync_handler="country_workspace.contrib.hope.sync.context_geo.sync_context_geo",
+        targets=[
+            TargetConfig(target=Target.AREAS),
+        ],
     )

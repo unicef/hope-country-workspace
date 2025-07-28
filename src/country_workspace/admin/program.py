@@ -10,8 +10,7 @@ from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
 from ..models import Program
 from .base import BaseModelAdmin
-from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, StepConfig
-
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
@@ -43,8 +42,9 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     ordering = ("name",)
     autocomplete_fields = ("country_office",)
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_programs.SyncStep", name="PROGRAMS"),
-        sync_handler="country_workspace.contrib.hope.sync.context_programs.sync_context_programs",
+        targets=[
+            TargetConfig(target=Target.PROGRAMS),
+        ],
     )
 
     @button()
@@ -68,7 +68,7 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     def zap(self, request: HttpRequest, pk: str) -> None:
         obj: Program = self.get_object(request, pk)
 
-        def _action(request: HttpRequest) -> HttpResponse:
+        def _action(_: HttpRequest) -> HttpResponse:
             obj.households.all().delete()
 
         return confirm_action(

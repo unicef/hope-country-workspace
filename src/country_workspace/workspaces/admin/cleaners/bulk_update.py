@@ -254,7 +254,7 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
 
     try:
         file_data = job.file.read()
-        rows = open_xls(io.BytesIO(file_data), start_at_row=0)
+        rows = open_xls(io.BytesIO(file_data))
 
         with transaction.atomic():
             for line_number, row_data in enumerate(rows, start=1):

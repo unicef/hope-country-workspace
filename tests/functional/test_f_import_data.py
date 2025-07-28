@@ -3,7 +3,7 @@ from django.core.management import call_command
 from testutils.factories import CountryProgramFactory
 from testutils.factories import OfficeFactory
 
-from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
+from testutils.factories.program import BeneficiaryGroupFactory
 
 
 @pytest.fixture(autouse=True)

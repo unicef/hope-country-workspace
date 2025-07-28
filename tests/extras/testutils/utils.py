@@ -54,8 +54,8 @@ def select_office(app, country_office, program=None):
     yield
 
 
-def assert_stdout_contains(stdout: Mock, *patterns: str, not_contains: list[str] | None = None) -> None:
-    calls = [call[0][0] for call in stdout.write.call_args_list]
+def assert_stdout_contains(out: Mock, *patterns: str, not_contains: list[str] | None = None) -> None:
+    calls = [call[0][0] for call in out.write.call_args_list]
     for pattern in patterns:
         assert any(pattern in c for c in calls), f"Expected '{pattern}' not in stdout"
     if not_contains:

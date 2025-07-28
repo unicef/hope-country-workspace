@@ -1433,7 +1433,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.15.1" },
     { name = "dukpy", specifier = ">=0.5" },
     { name = "flower", specifier = ">=2.0.1" },
-    { name = "hope-flex-fields", specifier = ">=0.7" },
+    { name = "hope-flex-fields", specifier = ">=0.7.2" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },
     { name = "notebook", specifier = ">=7.4.3" },
