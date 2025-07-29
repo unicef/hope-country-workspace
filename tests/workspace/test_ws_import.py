@@ -203,9 +203,9 @@ def test_import_data_aurora_success(
     if master_detail:
         if hh_count == 2:
             assert {hh.members.count() for hh in households} == {1, 2}
-            assert {hh.heads().first().name for hh in households} == {"John", "Jane"}
+            assert {hh.heads().first().name for hh in households} == {"John 5", "Jane 6"}
         elif hh_count == 1 and stub_data == stub.imported["update_head_name"]:
-            assert households.first().name == "Doe"
+            assert households.first().name == "Doe 10"
 
 
 @pytest.mark.django_db(transaction=True)
