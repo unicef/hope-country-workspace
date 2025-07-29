@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any, Final, Mapping
 
 from django.db.models import Model
@@ -21,6 +22,22 @@ from country_workspace.models import BeneficiaryGroup, Office, Program
 MODELS: Final[tuple[type[Model], ...]] = (Office, Program, BeneficiaryGroup)
 """List of models to synchronize."""
 
+OFFICE_FIELDS = "name", "slug", "code", "long_name", "active"
+BENEFICIARY_GROUP_FIELDS = (
+    "name",
+    "group_label",
+    "group_label_plural",
+    "member_label",
+    "member_label_plural",
+    "master_detail",
+)
+Program_FIELDS = "name", "code", "status", "sector", "country_office", "beneficiary_group"
+
+HOPE_ID = "hope_id"
+BUSINESS_AREAS = "business_areas"
+BENEFICIARY_GROUPS = "beneficiary-groups"
+PROGRAMS = "programs"
+
 
 def get_default_checkers() -> Mapping[str, DataChecker]:
     return {
@@ -33,15 +50,26 @@ def get_default_checkers() -> Mapping[str, DataChecker]:
     }
 
 
+def get_field_extractor(fields: tuple[str, ...]) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    def field_extractor(record: dict[str, Any]) -> dict[str, Any]:
+        return {field: record.get(field) for field in fields}
+
+    return field_extractor
+
+
+def should_process_office(record: dict[str, Any]) -> bool:
+    return bool(record.get("active"))
+
+
 def sync_offices(delta_sync: bool = False) -> None:
     """Fetch and process Office records from the remote API, deactivating those not present in the source."""
     sync_entity(
-        SyncConfig(
+        SyncConfig[Office](
             model=Office,
-            reference_id="hope_id",
-            endpoint=build_endpoint("business_areas", Office, ParamDateName.UPDATED, delta_sync),
-            prepare_defaults=lambda r: {f: r.get(f) for f in ("name", "slug", "code", "long_name", "active")},
-            should_process=lambda r: r.get("active"),
+            reference_id=HOPE_ID,
+            endpoint=build_endpoint(BUSINESS_AREAS, Office, ParamDateName.UPDATED, delta_sync),
+            prepare_defaults=get_field_extractor(OFFICE_FIELDS),
+            should_process=should_process_office,
             delta_sync=delta_sync,
         )
     )
@@ -50,24 +78,55 @@ def sync_offices(delta_sync: bool = False) -> None:
 def sync_beneficiary_groups(delta_sync: bool = False) -> None:
     """Fetch and process BeneficiaryGroup records from the remote API."""
     sync_entity(
-        SyncConfig(
+        SyncConfig[BeneficiaryGroup](
             model=BeneficiaryGroup,
-            reference_id="hope_id",
-            endpoint=EndpointConfig(path="beneficiary-groups"),
-            prepare_defaults=lambda r: {
-                f: r.get(f)
-                for f in (
-                    "name",
-                    "group_label",
-                    "group_label_plural",
-                    "member_label",
-                    "member_label_plural",
-                    "master_detail",
-                )
-            },
+            reference_id=HOPE_ID,
+            endpoint=EndpointConfig(path=BENEFICIARY_GROUPS),
+            prepare_defaults=get_field_extractor(BENEFICIARY_GROUP_FIELDS),
             delta_sync=delta_sync,
         )
     )
+
+
+def get_should_process_program(programs_limit_to_office: Office | None) -> Callable[[dict[str, Any]], bool]:
+    def should_process_program(record: dict[str, Any]) -> bool:
+        return record.get("status") in [Program.ACTIVE, Program.DRAFT] and (
+            not programs_limit_to_office or record["business_area_code"] == programs_limit_to_office.code
+        )
+
+    return should_process_program
+
+
+def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        office = Office.objects.get(code=record["business_area_code"])
+    except Office.DoesNotExist as e:
+        raise SkipRecordError("Office not found") from e
+
+    try:
+        bg = BeneficiaryGroup.objects.get(hope_id=record["beneficiary_group"])
+    except BeneficiaryGroup.DoesNotExist as e:
+        raise SkipRecordError("Beneficiary group not found") from e
+
+    return {
+        "name": record["name"],
+        "code": record["programme_code"],
+        "status": record["status"],
+        "sector": record["sector"],
+        "country_office": office,
+        "beneficiary_group": bg,
+    }
+
+
+def post_process_program(program: Program, created: bool) -> None:
+    default_checkers = get_default_checkers()
+    if created and default_checkers:
+        program.household_checker = default_checkers.get("hh")
+        program.individual_checker = (
+            default_checkers.get("ind") if program.beneficiary_group.master_detail else default_checkers.get("ppl")
+        )
+        if program.household_checker or program.individual_checker:
+            program.save(update_fields=("household_checker", "individual_checker"))
 
 
 def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | None = None) -> None:
@@ -77,48 +136,14 @@ def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | N
         Calls sync_beneficiary_groups to ensure dependencies are synchronized.
 
     """
-
-    def _should_process(record: dict[str, Any]) -> bool:
-        return record.get("status") in [Program.ACTIVE, Program.DRAFT] and (
-            not programs_limit_to_office or record["business_area_code"] == programs_limit_to_office.code
-        )
-
-    def _prepare_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
-        try:
-            office = Office.objects.get(code=record["business_area_code"])
-        except Office.DoesNotExist as e:
-            raise SkipRecordError("Office not found") from e
-        try:
-            bg = BeneficiaryGroup.objects.get(hope_id=record["beneficiary_group"])
-        except BeneficiaryGroup.DoesNotExist as e:
-            raise SkipRecordError("Beneficiary group not found") from e
-        return {
-            "name": record["name"],
-            "code": record["programme_code"],
-            "status": record["status"],
-            "sector": record["sector"],
-            "country_office": office,
-            "beneficiary_group": bg,
-        }
-
-    def _post_process(program: Program, created: bool) -> None:
-        default_checkers = get_default_checkers()
-        if created and default_checkers:
-            program.household_checker = default_checkers.get("hh")
-            program.individual_checker = (
-                default_checkers.get("ind") if program.beneficiary_group.master_detail else default_checkers.get("ppl")
-            )
-            if program.household_checker or program.individual_checker:
-                program.save(update_fields=("household_checker", "individual_checker"))
-
     sync_entity(
-        SyncConfig(
+        SyncConfig[Program](
             model=Program,
-            reference_id="hope_id",
-            endpoint=build_endpoint("programs", Program, ParamDateName.UPDATED, delta_sync),
-            prepare_defaults=_prepare_defaults,
-            should_process=_should_process,
-            post_process=_post_process,
+            reference_id=HOPE_ID,
+            endpoint=build_endpoint(PROGRAMS, Program, ParamDateName.UPDATED, delta_sync),
+            prepare_defaults=prepare_program_defaults,
+            should_process=get_should_process_program(programs_limit_to_office),
+            post_process=post_process_program,
             delta_sync=delta_sync,
         )
     )

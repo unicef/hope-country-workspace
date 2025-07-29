@@ -10,7 +10,7 @@ from django.core.management import call_command
 from pytest_mock import MockerFixture
 from responses import RequestsMock
 
-from country_workspace.management.commands.sync import Command as SyncCommand
+from country_workspace.management.commands.sync import Command as SyncCommand, run_program_sync, run_geo_sync
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
@@ -137,6 +137,30 @@ def test_upgrade_sync(mocker: MockerFixture, environment: dict[str, str]) -> Non
     handle_mock.return_value = None
     call_command("upgrade", stdout=out, sync_with_hope=True, migrate=False, static=False, prompt=False, checks=False)
     handle_mock.assert_called_once()
+
+
+def test_run_program_sync(mocker: MockerFixture) -> None:
+    sync_offices_mock = mocker.patch("country_workspace.management.commands.sync.sync_offices")
+    sync_beneficiary_groups_mock = mocker.patch("country_workspace.management.commands.sync.sync_beneficiary_groups")
+    sync_programs_mock = mocker.patch("country_workspace.management.commands.sync.sync_programs")
+
+    run_program_sync()
+
+    sync_offices_mock.assert_called_once()
+    sync_beneficiary_groups_mock.assert_called_once()
+    sync_programs_mock.assert_called_once()
+
+
+def test_run_geo_sync(mocker: MockerFixture) -> None:
+    sync_countries_mock = mocker.patch("country_workspace.management.commands.sync.sync_countries")
+    sync_area_types_mock = mocker.patch("country_workspace.management.commands.sync.sync_area_types")
+    sync_areas_mock = mocker.patch("country_workspace.management.commands.sync.sync_areas")
+
+    run_geo_sync()
+
+    sync_countries_mock.assert_called_once()
+    sync_area_types_mock.assert_called_once()
+    sync_areas_mock.assert_called_once()
 
 
 @pytest.mark.django_db(transaction=True)
