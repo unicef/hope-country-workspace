@@ -26,26 +26,13 @@ if TYPE_CHECKING:
     from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
 
-def _check_empty_queryset(
-    model_admin: "BeneficiaryBaseAdmin", request: HttpRequest, queryset: "QuerySet[Beneficiary]"
-) -> bool:
-    if not queryset.exists():
-        model_admin.message_user(
-            request,
-            _("No records were selected. Please select at least one record to perform this action."),
-            messages.WARNING,
-        )
-        return True
-    return False
-
-
 @admin.action(description="Validate selected records", permissions=["validate"])
 def validate_records(
     model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return None
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
@@ -67,7 +54,7 @@ def mass_update(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> "HttpResponse":
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(mass_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
@@ -102,7 +89,7 @@ def regex_update(
     request: "HttpRequest",
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(regex_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
@@ -152,7 +139,7 @@ def bulk_update_export(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(bulk_update_export.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
@@ -188,7 +175,7 @@ def calculate_checksum(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
@@ -213,7 +200,7 @@ def push_to_hope(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
-    if _check_empty_queryset(model_admin, request, queryset):
+    if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     program = model_admin.get_selected_program(request)
     if request.method == "POST" and "_push" in request.POST:

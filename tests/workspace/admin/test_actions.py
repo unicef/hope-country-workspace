@@ -5,7 +5,6 @@ from django.http import HttpResponse
 from django.test import RequestFactory
 
 from country_workspace.workspaces.admin.cleaners.actions import (
-    _check_empty_queryset,
     mass_update,
     regex_update,
     bulk_update_export,
@@ -116,5 +115,5 @@ def test_actions_continue_execution_when_queryset_not_empty(mock_admin, mock_req
     non_empty_queryset.model._meta = MagicMock()
     non_empty_queryset.values_list.return_value = [1, 2, 3]
 
-    result = _check_empty_queryset(mock_admin, mock_request, non_empty_queryset)
+    result = mock_admin._check_empty_queryset(mock_request, non_empty_queryset)
     assert result is False

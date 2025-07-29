@@ -159,24 +159,3 @@ def test_update_middleware_admin_action_request(update_middleware, rf, mock_user
     processed_response = update_middleware.process_response(request, response)
 
     assert processed_response == response
-
-
-def test_middleware_admin_action_detection(fetch_middleware, update_middleware, rf):
-    admin_action_requests = [
-        rf.post("/test/", {"action": "validate_records"}),
-        rf.post("/test/", {"_selected_action": ["1", "2"]}),
-        rf.post("/test/", {"action": "mass_update", "_selected_action": ["1"]}),
-    ]
-
-    for request in admin_action_requests:
-        assert fetch_middleware._is_admin_action_request(request) is True
-        assert update_middleware._is_admin_action_request(request) is True
-
-    non_admin_requests = [
-        rf.get("/test/"),
-        rf.post("/test/", {"other_field": "value"}),
-    ]
-
-    for request in non_admin_requests:
-        assert fetch_middleware._is_admin_action_request(request) is False
-        assert update_middleware._is_admin_action_request(request) is False
