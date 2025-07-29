@@ -35,6 +35,18 @@ class BulkUpdateImportForm(forms.Form):
         help_text=".xlsx file with the updates",
     )
 
+    def __init__(self, *args: Any, beneficiary_group: BeneficiaryGroup | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if beneficiary_group and beneficiary_group.master_detail is False:
+            self.fields["target"].initial = "ind"
+            self.fields["target"].help_text = "Only Individual updates are allowed for this program."
+            self.fields["target"].widget.attrs.update(
+                {
+                    "readonly": True,
+                    "style": "background-color:var(--darkened-bg); color:var(--body-quiet-color); pointer-events:none;",
+                }
+            )
+
 
 class ValidateMode(TextChoices):
     NONE = "none", _("Skip validation — import data as is.")

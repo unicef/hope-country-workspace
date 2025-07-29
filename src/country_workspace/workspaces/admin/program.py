@@ -19,7 +19,7 @@ from country_workspace.contrib.aurora.pipeline import (
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
-from .cleaners.bulk_update import bulk_update_household, bulk_update_individual
+from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -287,9 +287,9 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context = self.get_common_context(request, pk, title="Bulk update records via .xlsx import")
         program: "CountryProgram" = context["original"]
         context["selected_program"] = context["original"]
-        function_map = {"hh": fqn(bulk_update_household), "ind": fqn(bulk_update_individual)}
+        function_map = {"hh": fqn(import_household_updates), "ind": fqn(import_individual_updates)}
         if request.method == "POST":
-            form = BulkUpdateImportForm(request.POST, request.FILES)
+            form = BulkUpdateImportForm(request.POST, request.FILES, beneficiary_group=program.beneficiary_group)
             if form.is_valid():
                 job = AsyncJob.objects.create(
                     description=form.cleaned_data["description"] or context["title"],
@@ -306,7 +306,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
 
         else:
-            form = BulkUpdateImportForm()
+            form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
 

@@ -12,11 +12,12 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import EmailMessage
 from django.forms.fields import DateField, DateTimeField
 from django.utils import timezone
+from django.db import transaction
 from hope_flex_fields.models import DataChecker, FlexField
 from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
 from xlsxwriter import Workbook
-
+from xlsxwriter.format import Format
 from country_workspace.models import AsyncJob, Program
 from country_workspace.storages import MEDIA_STORAGE
 
@@ -145,7 +146,7 @@ def _validate_datetime_format(value: str) -> bool:
     return False
 
 
-def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int, errors: dict) -> None:
+def validate_date_datetime_fields(row: dict, dc: DataChecker, line_number: int, errors: dict) -> None:
     for k, v in row.items():
         if v is None or v == "":
             continue
@@ -161,16 +162,14 @@ def validate_date_datetime_fields(row: dict, dc: "DataChecker", line_number: int
             errors.setdefault(f"Invalid {field_type} format for field '{k}' on line", []).append(line_number)
 
 
-def create_xls_importer(
-    queryset: "QuerySet[Beneficiary]",
-    program: Program,
-    columns: list[str],
-) -> tuple[io.BytesIO, Workbook]:
-    out = BytesIO()
-    dc: DataChecker = program.get_checker_for(queryset.model)
+def _get_cell_format(workbook: Workbook, field: FlexField) -> Format | None:
+    if fmt := get_format_for_field(field):
+        return workbook.add_format(fmt)
+    return None
 
-    workbook = Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"})
-    header_format = workbook.add_format(
+
+def _get_header_format(workbook: Workbook) -> Format:
+    return workbook.add_format(
         {
             "bold": False,
             "font_color": "black",
@@ -179,109 +178,120 @@ def create_xls_importer(
             "align": "center",
             "valign": "vcenter",
             "indent": 1,
-        },
+            "bg_color": "#DDDDDD",
+            "locked": True,
+            "bottom_color": "black",
+        }
     )
-    header_format.set_bg_color("#DDDDDD")
-    header_format.set_locked(True)
-    header_format.set_align("center")
-    header_format.set_bottom_color("black")
-    worksheet = workbook.add_worksheet()
-    worksheet.protect()
-    worksheet.unprotect_range("C1:ZZ999", None)
 
-    for i, fld_name in enumerate(columns):
-        fld = dc_get_field(dc, fld_name)
-        if fld:
-            worksheet.write(0, i, fld.name, header_format)
-            f = None
-            if fmt := get_format_for_field(fld):
-                f = workbook.add_format(fmt)
-            worksheet.set_column(i, i, 40, f)
-            if v := get_validation_for_field(fld):
-                worksheet.data_validation(0, i, 999999, i, v)
-        else:
-            worksheet.write(0, i, fld_name, header_format)
-    worksheet.freeze_panes(1, 0)
 
-    fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
-    for row, record in enumerate(queryset, 1):
-        for col, fld in enumerate(columns):
-            worksheet.write(row, col, fmt(getattr(record, fld, record.flex_fields.get(fld))))
+def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
+    out = BytesIO()
+    dc: DataChecker = program.get_checker_for(queryset.model)
 
-    workbook.close()
+    with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
+        header_format = _get_header_format(workbook)
+        worksheet = workbook.add_worksheet()
+        worksheet.protect()
+        worksheet.unprotect_range("C1:ZZ999", None)
+
+        for i, fld_name in enumerate(columns):
+            fld = dc_get_field(dc, fld_name)
+            if fld:
+                worksheet.write(0, i, fld.name, header_format)
+                cell_format = _get_cell_format(workbook, fld)
+                worksheet.set_column(i, i, 40, cell_format)
+                if v := get_validation_for_field(fld):
+                    worksheet.data_validation(0, i, 999999, i, v)
+            else:
+                worksheet.write(0, i, fld_name, header_format)
+
+        worksheet.freeze_panes(1, 0)
+
+        fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
+        for row, record in enumerate(queryset, 1):
+            for col, fld in enumerate(columns):
+                value = getattr(record, fld, record.flex_fields.get(fld))
+                worksheet.write(row, col, fmt(value))
+
     out.seek(0)
-    return out, workbook
+    return out
 
 
-def bulk_update_export_template(job: AsyncJob) -> bytes:
+def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
+    email = EmailMessage(
+        subject="Bulk update export",
+        body="Please find the requested bulk update template attached.",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[job.config["send_to"]],
+    )
+    out.seek(0)
+    email.attach(filename, out.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    email.send()
+
+
+def export_bulk_update_template(job: AsyncJob) -> str:
     model = apps.get_model(job.config["model_name"])
     queryset = model.objects.filter(pk__in=job.config["pks"])
-    filename = "bulk_update_export_template/%s/%s/%s.xlsx" % (job.program.pk, job.owner.pk, job.config["model_name"])
-    out, __ = create_xls_importer(queryset, job.program, job.config["columns"])
-    path = MEDIA_STORAGE.save(filename, out)
-    mail = EmailMessage(
-        "Bulk update export",
-        "Attached please find the requested export",
-        settings.DEFAULT_FROM_EMAIL,
-        [job.config["send_to"]],
-    )
-    out.seek(0)
-    mail.attach(filename, out.read(), "application/vnd.ms-excel")
-    mail.send()
-    job.file = path
-    job.save()
-    return path
+
+    out = create_bulk_update_template(queryset, job.program, job.config["columns"])
+    filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
+    filepath = MEDIA_STORAGE.save(filename, out)
+
+    _send_template_email(job, out, filename)
+
+    job.file = filepath
+    job.save(update_fields=["file"])
+
+    return filepath
 
 
-def bulk_update_collection(job: AsyncJob, collection_getter: Callable[[int], Any]) -> dict[str, Any]:
-    result: dict[str, Any] = {"not_found": []}
-    version_check = constance_config.CONCURRENCY_GUARD
-    if version_check:
-        result["version_mismatch"] = []
-    errors = {}
+def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:
+    total = {"processed": 0, "not_found": [], "errors": {}}
+    version_check_enabled = constance_config.CONCURRENCY_GUARD
+    if version_check_enabled:
+        total["version_mismatch"] = []
 
-    file_data = job.file.read()
-    rows = open_xls(io.BytesIO(file_data), start_at_row=0)
-    for line_number, row in enumerate(rows, start=1):
-        try:
-            _id = int(row.pop("id"))
-            entity = collection_getter(_id)
-        except (KeyError, ValueError):
-            errors.setdefault("Invalid or missing 'id' on line", []).append(line_number)
-            continue
-        except ObjectDoesNotExist:
-            result["not_found"].append(_id)
-            continue
+    try:
+        file_data = job.file.read()
+        rows = open_xls(io.BytesIO(file_data), start_at_row=0)
 
-        dc: DataChecker = job.program.get_checker_for(entity.__class__)
-        validate_date_datetime_fields(row, dc, line_number, errors)
+        with transaction.atomic():
+            for line_number, row_data in enumerate(rows, start=1):
+                try:
+                    entity_id = int(row_data.pop("id"))
+                    entity = entity_getter(entity_id)
 
-        if version_check:
-            try:
-                version = row.pop("version", None)
-                _version = int(version)
-            except (KeyError, ValueError, TypeError):
-                errors.setdefault("Invalid or missing 'version' on line", []).append(line_number)
-                continue
+                    if version_check_enabled:
+                        version = int(row_data.pop("version"))
+                        if entity.version != version:
+                            total["version_mismatch"].append(entity_id)
+                            continue
 
-            if entity.version != _version:
-                result["version_mismatch"].append(_id)
-                continue
+                    if row_data:
+                        dc: DataChecker = job.program.get_checker_for(entity.__class__)
+                        validate_date_datetime_fields(row_data, dc, line_number, total["errors"])
 
-        entity.flex_fields.update(**row)
-        entity.save()
+                        entity.flex_fields.update(**row_data)
+                        entity.save(update_fields=["flex_fields"])
+                        total["processed"] += 1
 
-    if errors:
-        result["errors"] = errors
+                except (KeyError, ValueError):
+                    total["errors"].setdefault("Invalid data on line", []).append(line_number)
+                except ObjectDoesNotExist:
+                    total["not_found"].append(entity_id)
+                except Exception as e:  # noqa: BLE001
+                    total["errors"].setdefault("Processing errors", []).append(f"Line {line_number}: {e}")
 
-    return result
+    except Exception as e:  # noqa: BLE001
+        total["errors"]["file_processing"] = str(e)
 
-
-def bulk_update_individual(job: AsyncJob) -> dict[str, Any]:
-    program = job.program
-    return bulk_update_collection(job, lambda _id: program.individuals.get(id=_id))
+    return total
 
 
-def bulk_update_household(job: AsyncJob) -> dict[str, Any]:
-    program = job.program
-    return bulk_update_collection(job, lambda _id: program.households.get(id=_id))
+def import_individual_updates(job: AsyncJob) -> dict[str, Any]:
+    return import_bulk_update_file(job, lambda _id: job.program.individuals.get(id=_id))
+
+
+def import_household_updates(job: AsyncJob) -> dict[str, Any]:
+    return import_bulk_update_file(job, lambda _id: job.program.households.get(id=_id))
