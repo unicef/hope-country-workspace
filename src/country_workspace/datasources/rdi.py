@@ -199,7 +199,12 @@ def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) ->
 def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[Sheet, None, None]:
     cell_mapper = compose(datetime_to_date, date_to_iso_string)
     try:
-        sheets = open_xls_multi(filepath, indices_or_names=list(sheet_names), value_mapper=cell_mapper)
+        first_line = config.get("first_line")
+        start_at_row = first_line - 2 if first_line > 1 else 0
+
+        sheets = open_xls_multi(
+            filepath, indices_or_names=list(sheet_names), value_mapper=cell_mapper, start_at_row=start_at_row
+        )
         sheet_images = extract_images(filepath, *sheet_names)
         for (_, sheet), images in zip(sheets, sheet_images, strict=False):
             sheet_with_images = merge_images(sheet, images)

@@ -50,6 +50,7 @@ def config(request) -> Config:
         "master_column_label": "master_column",
         "detail_column_label": "detail_column",
         "people_column_prefix": "pp_",
+        "first_line": 2,
     }
 
 
@@ -456,8 +457,13 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
         assert result == [merge_images_mock.return_value]
 
     compose_mock.assert_called_once_with(datetime_to_date_mock, date_to_iso_string_mock)
+
+    expected_start_at_row = config["first_line"] - 2 if config["first_line"] > 1 else 0
     open_xls_multi_mock.assert_called_once_with(
-        filepath, indices_or_names=[sheet_name], value_mapper=compose_mock.return_value
+        filepath,
+        indices_or_names=[sheet_name],
+        value_mapper=compose_mock.return_value,
+        start_at_row=expected_start_at_row,
     )
     extract_images_mock.assert_called_once_with(filepath, sheet_name)
     merge_images_mock.assert_called_once_with(sheet, images)

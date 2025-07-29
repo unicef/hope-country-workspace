@@ -82,7 +82,12 @@ class ImportFileForm(BaseImportForm):
         help_text=_("People' column group prefix"),
     )
 
-    first_line = forms.IntegerField(required=True, initial=0, help_text="First line to process")
+    first_line = forms.IntegerField(
+        required=True,
+        initial=2,
+        min_value=2,
+        help_text="First data row to process (row 1 is headers, data starts from row 2)",
+    )
 
     file = forms.FileField(validators=[ValidatableFileValidator()])
 
