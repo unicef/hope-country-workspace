@@ -28,6 +28,19 @@ def mock_admin():
     admin.get_preserved_filters = MagicMock(return_value={})
     admin.model._meta = MagicMock()
     admin.get_selected_program = MagicMock(return_value=MagicMock())
+
+    admin._check_empty_queryset = MagicMock(
+        side_effect=lambda request, queryset: (
+            admin.message_user(
+                request,
+                "No records were selected. Please select at least one record to perform this action.",
+                "warning",
+            )
+            or True
+            if not queryset.exists()
+            else False
+        )
+    )
     return admin
 
 

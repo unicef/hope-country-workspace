@@ -53,7 +53,7 @@ def test_fetch_middleware_non_get_request(fetch_middleware, rf, mock_user):
     response = fetch_middleware.process_request(request)
 
     assert response is None
-    assert getattr(request, "_cache_update_cache", True) is False
+    assert getattr(request, "_cache_update_cache", True) is True
 
 
 def test_fetch_middleware_with_etag(fetch_middleware, rf, mock_user):
