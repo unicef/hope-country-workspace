@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from datetime import datetime, date, timezone
 from typing import Any
-from unittest.mock import Mock, call, MagicMock
+from unittest.mock import Mock, call, MagicMock, patch
 
 import pytest
 from pytest_mock import MockerFixture
@@ -200,26 +200,29 @@ def test_normalize_row_structure_name_column_detection(row: Record, expected_nam
     assert name_column == expected_name_column
 
 
+@patch("country_workspace.datasources.rdi.Household.objects")
 def test_process_households(
-    mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail
+    mock_household_objects, mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail
 ) -> None:
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
+    mock_create = mock_household_objects.create
+    mock_create.return_value = Mock()
 
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
     result = process_households(household_sheet, job := Mock(), batch := Mock(), config)
 
-    assert result == {
-        row[config["household_pk_col"]]: job.program.households.create.return_value for row in household_sheet
-    }
+    assert result == {row[config["household_pk_col"]]: mock_create.return_value for row in household_sheet}
 
     job.program.apply_mapping_importer.assert_has_calls(
         [call(Household, clean_field_names_mock.return_value) for row in household_sheet]
     )
-    job.program.households.create.assert_has_calls(
+
+    mock_create.assert_has_calls(
         [
             call(
-                batch=batch,
-                name=row[config["detail_column_label"]],
+                batch_id=batch.pk,
+                name=str(row[config["detail_column_label"]]),
                 flex_fields=job.program.apply_mapping_importer.return_value,
+                raw_data=job.program.apply_mapping_importer.return_value,
             )
             for row in household_sheet
         ]
@@ -239,13 +242,18 @@ def test_process_households_failed_to_save_household(
         process_households(household_sheet, job, batch, config)
 
 
+@patch("country_workspace.datasources.rdi.Individual.objects")
 def test_process_beneficiaries_with_households(
+    mock_individual_objects,
     mocker: MockerFixture,
     config: Config,
     individual_sheet: Sheet,
     household_mapping: Mapping[int, Household],
     skip_if_not_master_detail,
 ) -> None:
+    mock_create = mock_individual_objects.create
+    mock_create.return_value = Mock()
+
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
 
     result = process_beneficiaries(
@@ -260,13 +268,14 @@ def test_process_beneficiaries_with_households(
     job_mock.program.apply_mapping_importer.assert_has_calls(
         [call(Individual, clean_field_names_mock.return_value) for row in individual_sheet]
     )
-    job_mock.program.individuals.create.assert_has_calls(
+    mock_create.assert_has_calls(
         [
             call(
-                batch=batch_mock,
+                batch_id=batch_mock.pk,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["master_column_label"]]],
                 flex_fields=job_mock.program.apply_mapping_importer.return_value,
+                raw_data=job_mock.program.apply_mapping_importer.return_value,
             )
             for row in individual_sheet
         ]
@@ -274,9 +283,13 @@ def test_process_beneficiaries_with_households(
     clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
+@patch("country_workspace.datasources.rdi.Individual.objects")
 def test_process_beneficiaries_people_only(
-    mocker: MockerFixture, config: Config, people_sheet: Sheet, skip_if_master_detail
+    mock_individual_objects, mocker: MockerFixture, config: Config, people_sheet: Sheet, skip_if_master_detail
 ) -> None:
+    mock_create = mock_individual_objects.create
+    mock_create.return_value = Mock()
+
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
 
     result = process_beneficiaries(
@@ -295,13 +308,14 @@ def test_process_beneficiaries_people_only(
         expected_apply_mapping_calls.append(call(Individual, clean_field_names_mock.return_value))
         expected_calls.append(
             call(
-                batch=batch_mock,
+                batch_id=batch_mock.pk,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
                 flex_fields=job_mock.program.apply_mapping_importer.return_value,
+                raw_data=job_mock.program.apply_mapping_importer.return_value,
             )
         )
-    job_mock.program.individuals.create.assert_has_calls(expected_calls)
+    mock_create.assert_has_calls(expected_calls)
     job_mock.program.apply_mapping_importer.assert_has_calls(expected_apply_mapping_calls)
 
 

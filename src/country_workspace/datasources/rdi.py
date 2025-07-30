@@ -106,10 +106,11 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         try:
             mapping[household_key] = cast(
                 "Household",
-                job.program.households.create(
-                    batch=batch,
-                    name=label,
+                Household.objects.create(
+                    batch_id=batch.pk,
+                    name=str(label),
                     flex_fields=flex_fields,
+                    raw_data=flex_fields,
                 ),
             )
         except Exception as e:
@@ -151,11 +152,12 @@ def process_beneficiaries(
         try:
             mapping[i] = cast(
                 "Individual",
-                job.program.individuals.create(
-                    batch=batch,
+                Individual.objects.create(
+                    batch_id=batch.pk,
                     name=name,
                     household=household,
                     flex_fields=flex_fields,
+                    raw_data=flex_fields,
                 ),
             )
         except Exception as e:
