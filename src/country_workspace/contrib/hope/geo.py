@@ -42,7 +42,10 @@ class CountryChoice(APIChoicesMixin, forms.ChoiceField):
         self.choices = self.get_choices()
 
     def get_choices(self) -> list[tuple[str, str]]:
-        data = self.fetch_api()
+        from country_workspace.models import Country
+
+        data = Country.objects.values("iso_code2", "iso_code3", "name").all()
+
         return [
             (
                 self.iso3_to_iso2.setdefault(rec["iso_code3"], rec["iso_code2"]),
