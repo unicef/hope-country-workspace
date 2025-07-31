@@ -1,21 +1,22 @@
-import pytest
 from typing import TYPE_CHECKING
+from unittest import mock
+from uuid import uuid4
 
+import pytest
 from constance.test import override_config
 from pytest_mock import MockerFixture
-from unittest import mock
 from responses import RequestsMock
-from uuid import uuid4
+from testutils.factories import FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory, OfficeFactory
+
+from country_workspace.cache.manager import cache_manager
 from country_workspace.contrib.hope.geo import Admin1Choice, CountryChoice, HopeClient
 from country_workspace.exceptions import RemoteError
-from country_workspace.cache.manager import cache_manager
 from country_workspace.state import state
-
-from testutils.factories import FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory, OfficeFactory
+from tests.extras.testutils.factories import CountryFactory
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import Fieldset
-    from country_workspace.models import Office
+    from country_workspace.models import Office, Country
 
 COUNTRY = {
     "results": [
@@ -47,6 +48,15 @@ def mock_cache(mocker: MockerFixture) -> mock.Mock:
 
 
 @pytest.fixture
+def country() -> "Country":
+    return CountryFactory.create(
+        name="Ukraine",
+        iso_code2="UA",
+        iso_code3="UKR",
+    )
+
+
+@pytest.fixture
 def office() -> "Office":
     co = OfficeFactory(slug=COUNTRY["results"][0]["iso_code2"])
     state.tenant = co
@@ -68,9 +78,9 @@ def test_admin_level_choice_validate(
     office: "Office",
     mock_area_type: mock.Mock,
     mock_cache: mock.Mock,
+    country: "Country",
 ):
     mocker.patch("country_workspace.contrib.hope.geo.state.tenant", office)
-    mocked_responses.add(mocked_responses.GET, "https://fake-hope.org/api/rest/lookups/country/", json=COUNTRY)
     mocked_responses.add(
         mocked_responses.GET,
         f"https://fake-hope.org/api/rest/{office.slug}/geo/areas/",
@@ -110,8 +120,8 @@ def test_country_choice(
     value: str,
     expected_validate: dict,
     expected_prepare: str | None,
+    country: "Country",
 ):
-    mocked_responses.add(mocked_responses.GET, "https://fake-hope.org/api/rest/lookups/country/", json=COUNTRY)
     fd = FieldDefinitionFactory(field_type=CountryChoice)
     fs: Fieldset = FieldsetFactory()
     FlexFieldFactory(name="country", definition=fd, fieldset=fs)
