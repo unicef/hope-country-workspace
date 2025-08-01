@@ -111,6 +111,16 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def has_push_to_hope_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.push_beneficiary_to_hope")
 
+    def _check_empty_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> bool:
+        if not queryset.exists():
+            self.message_user(
+                request,
+                _("No records were selected. Please select at least one record to perform this action."),
+                messages.WARNING,
+            )
+            return True
+        return False
+
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if prg := self.get_selected_program(request):

@@ -21,7 +21,6 @@ from .validate import validate_queryset
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
-
     from country_workspace.types import Beneficiary
     from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
@@ -32,6 +31,8 @@ def validate_records(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
+    if model_admin._check_empty_queryset(request, queryset):
+        return None
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
         description=validate_records.short_description,
@@ -52,15 +53,15 @@ def mass_update(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> "HttpResponse":
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(mass_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
     form = MassUpdateForm(request.POST, checker=checker)
     ctx["form"] = form
-
     if "_apply" in request.POST and form.is_valid():
         opts = queryset.model._meta
-
         job = AsyncJob.objects.create(
             description=mass_update.short_description,
             type=AsyncJob.JobType.ACTION,
@@ -87,6 +88,8 @@ def regex_update(
     request: "HttpRequest",
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(regex_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["queryset"] = queryset
@@ -135,6 +138,8 @@ def bulk_update_export(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
     ctx = model_admin.get_common_context(request, title=_(bulk_update_export.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
@@ -169,6 +174,8 @@ def calculate_checksum(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
     opts = queryset.model._meta
     job = AsyncJob.objects.create(
         description=calculate_checksum.short_description,
@@ -192,6 +199,8 @@ def push_to_hope(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
     program = model_admin.get_selected_program(request)
     if request.method == "POST" and "_push" in request.POST:
         if (form := PushToHopeForm(request.POST)).is_valid():
