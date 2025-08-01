@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.contrib import messages
 from django.http import HttpResponse
 from django.test import RequestFactory
 
@@ -12,11 +13,19 @@ from country_workspace.workspaces.admin.cleaners.actions import (
     push_to_hope,
     validate_records,
 )
+from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
 
 @pytest.fixture
 def rf():
     return RequestFactory()
+
+
+@pytest.fixture
+def beneficiary_admin():
+    admin = BeneficiaryBaseAdmin(MagicMock(), MagicMock())
+    admin.message_user = MagicMock()
+    return admin
 
 
 @pytest.fixture
@@ -130,3 +139,17 @@ def test_actions_continue_execution_when_queryset_not_empty(mock_admin, mock_req
 
     result = mock_admin._check_empty_queryset(mock_request, non_empty_queryset)
     assert result is False
+
+
+def test_check_empty_queryset_with_empty_queryset(beneficiary_admin, mock_request):
+    empty_queryset = MagicMock()
+    empty_queryset.exists.return_value = False
+
+    result = beneficiary_admin._check_empty_queryset(mock_request, empty_queryset)
+
+    assert result is True
+    beneficiary_admin.message_user.assert_called_once_with(
+        mock_request,
+        "No records were selected. Please select at least one record to perform this action.",
+        messages.WARNING,
+    )

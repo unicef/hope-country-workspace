@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
@@ -30,6 +30,11 @@ def mock_user():
     user = MagicMock()
     user.pk = 123
     return user
+
+
+@pytest.fixture
+def middleware():
+    return FetchFromCacheMiddleware(MagicMock())
 
 
 def test_fetch_middleware_none_cache_key(fetch_middleware, rf, mock_user):
@@ -159,3 +164,29 @@ def test_update_middleware_admin_action_request(update_middleware, rf, mock_user
     processed_response = update_middleware.process_response(request, response)
 
     assert processed_response == response
+
+
+def test_process_request_returns_none_for_post_method(middleware, rf):
+    request = rf.post("/test/")
+    request.user = MagicMock()
+    request._cache_update_cache = False
+
+    result = middleware.process_request(request)
+
+    assert result is None
+    assert request._cache_update_cache is True
+
+
+@patch("country_workspace.cache.middleware.get_messages")
+def test_process_request_returns_none_when_messages_exist(mock_get_messages, middleware, rf):
+    request = rf.get("/test/")
+    request.user = MagicMock()
+    request._cache_update_cache = False
+
+    mock_get_messages.return_value = [MagicMock()]
+
+    result = middleware.process_request(request)
+
+    assert result is None
+    assert request._cache_update_cache is True
+    mock_get_messages.assert_called_once_with(request)
