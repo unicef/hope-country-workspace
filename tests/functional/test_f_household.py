@@ -9,7 +9,7 @@ from testutils.factories import CountryProgramFactory
 from testutils.factories import OfficeFactory
 from testutils.factories.program import BeneficiaryGroupFactory
 
-from tests.extras.testutils.selenium import CountryWorkspaceSeleniumTC
+from testutils.selenium import CountryWorkspaceSeleniumTC
 
 if TYPE_CHECKING:
     from country_workspace.workspaces.models import CountryHousehold

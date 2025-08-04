@@ -1,26 +1,36 @@
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import Mock
+
 import pytest
 from django.db.models import Q
 from pytest_mock import MockerFixture
 
+from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.contrib.hope.sync.base import (
-    BaseSync,
     SyncConfig,
     EndpointConfig,
-    BaseSyncStep,
+    sync_entity,
+    log_to,
+    Stats,
 )
 
 from tests.extras.testutils.utils import assert_stdout_contains
 
 
-@pytest.fixture(params=[True, False], ids=["delta_sync_true", "delta_sync_false"])
-def base_sync(request: pytest.FixtureRequest, mocker: MockerFixture) -> BaseSync:
-    client = mocker.Mock()
-    client.get = mocker.Mock()
-    stdout = mocker.Mock()
-    return BaseSync(delta_sync=request.param, client=client, stdout=stdout)
+@pytest.fixture
+def hope_client(mocker: MockerFixture) -> HopeClient:
+    return mocker.Mock(spec=HopeClient)
+
+
+@pytest.fixture(params=[True, False])
+def delta_sync(request: pytest.FixtureRequest) -> bool:
+    return request.param
+
+
+@pytest.fixture
+def out(mocker: MockerFixture) -> Mock:
+    return mocker.Mock()
 
 
 @pytest.fixture
@@ -68,33 +78,18 @@ def mock_synclog(mocker: MockerFixture) -> None:
 
 
 @pytest.fixture
-def sync_context_class(mocker: MockerFixture) -> type:
-    class TestSyncContext(BaseSync):
-        SyncStep = [Mock(func=mocker.Mock())]
-
-    return TestSyncContext
-
-
-@pytest.fixture
 def deactivate_filter() -> Q:
     return Q(active=True) & (~Q(hope_id__in={"1"}) | Q(hope_id__in={"2"}))
 
 
 @pytest.fixture
-def sync_step(mocker: MockerFixture) -> BaseSyncStep:
-    sync_method = mocker.Mock(spec=Callable[["BaseSync"], None])
-
-    class TestSyncStep(BaseSyncStep):
-        TEST_STEP = (1, sync_method)
-
-    return TestSyncStep.TEST_STEP
-
-
-@pytest.fixture
-def sync_entity_context(base_sync: BaseSync) -> Callable:
-    def _run_sync_entity(records: list[dict], config: SyncConfig) -> None:
-        base_sync.client.get.return_value = iter(records)
-        base_sync.sync_entity(config)
-        assert_stdout_contains(base_sync.stdout, "Start fetching 'test_model'", "Sync complete for 'test_model'")
+def sync_entity_context(hope_client: HopeClient, out: Mock) -> Callable[[list[dict], SyncConfig], Stats]:
+    def _run_sync_entity(records: list[dict], config: SyncConfig) -> Stats:
+        hope_client.get.return_value = iter(records)
+        stats = Stats(add=0, upd=0, errors=[])
+        with log_to(out):
+            stats = sync_entity(config, hope_client, stats)
+        assert_stdout_contains(out, "Start fetching 'test_model'", "Sync complete for 'test_model'")
+        return stats
 
     return _run_sync_entity

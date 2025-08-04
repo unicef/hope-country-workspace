@@ -1,18 +1,22 @@
 from typing import TYPE_CHECKING
-import pytest
-from django.urls import reverse
-from django.contrib import messages
-from pytest_mock import MockerFixture
-from django.db.models import Model
-from django_webtest.pytest_plugin import MixinWithInstanceVariables
-from country_workspace.models import User
 
-from country_workspace.contrib.hope.sync.context_programs import SyncStep as ContextProgramsSyncStep
-from country_workspace.contrib.hope.sync.context_geo import SyncStep as ContextGeoSyncStep
-from country_workspace.contrib.aurora.context_aurora import SyncStep as ContextAuroraSyncStep
-from country_workspace.models import Office, Program, Country, AreaType, Area
+import pytest
+from django.contrib import messages
+from django.db.models import Model
+from django.urls import reverse
+from pytest_mock import MockerFixture
+
+from country_workspace.admin.sync import (
+    SyncAdminMixin,
+    run_sync,
+    Target,
+    TARGET_TO_HANDLER_PATH_MAPPING,
+    SyncAdminConfig,
+    TargetConfig,
+    TargetArgs,
+)
 from country_workspace.contrib.aurora.models import Registration
-from country_workspace.admin.sync import SyncAdminMixin, run_sync
+from country_workspace.models import Office, Program, Country, AreaType, Area
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -49,11 +53,15 @@ def test_admin_sync(
     delta_sync: bool,
     scenario: str,
 ) -> None:
-    result = (
-        {model._meta.model_name: {"add": 1, "upd": 2}}
+    result = {
+        model._meta.model_name: {"add": 1, "upd": 2, "errors": []}
         if scenario == "success"
-        else {"errors": [f"Error 1 for {model._meta.model_name}", f"Error 2 for {model._meta.model_name}"]}
-    )
+        else {
+            "add": 0,
+            "upd": 0,
+            "errors": [f"Error 1 for {model._meta.model_name}", f"Error 2 for {model._meta.model_name}"],
+        }
+    }
     mock_run = mocker.patch("country_workspace.admin.sync.run_sync", return_value=result)
     mock_msg = mocker.patch.object(SyncAdminMixin, "message_user")
 
@@ -66,7 +74,7 @@ def test_admin_sync(
         "Synchronization is scheduled."
         if not delta_sync
         else (
-            f"{model._meta.model_name.upper()}: 1 created - 2 updated"
+            f"{model._meta.model_name}: 1 created - 2 updated"
             if scenario == "success"
             else f"Error 1 for {model._meta.model_name} | Error 2 for {model._meta.model_name}"
         )
@@ -78,61 +86,40 @@ def test_admin_sync(
     assert response.status_code == 302
     mock_run.assert_called_once()
     cfg = mock_run.call_args.kwargs["config"]
-    assert cfg["delta_sync"] is delta_sync
+    assert all(target.get("args", {}).get("delta_sync", False) is delta_sync for target in cfg["targets"])
     mock_msg.assert_called_once_with(mocker.ANY, expected_text, level=expected_level)
 
 
 @pytest.mark.parametrize(
-    ("step_member", "handler_path"),
+    "target",
     [
-        (
-            ContextProgramsSyncStep.OFFICES,
-            "hope.sync.context_programs.sync_context_programs",
-        ),
-        (
-            ContextProgramsSyncStep.PROGRAMS,
-            "hope.sync.context_programs.sync_context_programs",
-        ),
-        (
-            ContextGeoSyncStep.COUNTRIES,
-            "hope.sync.context_geo.sync_context_geo",
-        ),
-        (
-            ContextGeoSyncStep.AREATYPES,
-            "hope.sync.context_geo.sync_context_geo",
-        ),
-        (
-            ContextGeoSyncStep.AREAS,
-            "hope.sync.context_geo.sync_context_geo",
-        ),
-        (
-            ContextAuroraSyncStep.REGISTRATIONS,
-            "aurora.context_aurora.sync_context_aurora",
-        ),
+        Target.OFFICES,
+        Target.BENEFICIARY_GROUPS,
+        Target.PROGRAMS,
+        Target.COUNTRIES,
+        Target.AREA_TYPES,
+        Target.AREAS,
+        Target.PROJECTS,
+        Target.REGISTRATIONS,
     ],
-    ids=["Program_OFFICES", "Program_PROGRAMS", "Geo_COUNTRIES", "Geo_AREATYPES", "Geo_AREAS", "Aurora_REGISTRATIONS"],
 )
 @pytest.mark.parametrize("delta_sync", [False, True], ids=["full", "delta"])
 def test_run_sync_invokes_correct_handler(
     mocker: MockerFixture,
-    step_member: ContextProgramsSyncStep | ContextGeoSyncStep | ContextAuroraSyncStep,
-    handler_path: str,
+    target: Target,
     delta_sync: bool,
 ) -> None:
-    fake_return = {"marker": f"{step_member.name}-{delta_sync}"}
-    handler_path = f"country_workspace.contrib.{handler_path}"
-    mock_fn = mocker.patch(handler_path, return_value=fake_return)
+    handler_path = TARGET_TO_HANDLER_PATH_MAPPING[target]
+    handler_mock = mocker.patch(handler_path)
 
-    config = {
-        "step_handler": {
-            "path": f"{step_member.__class__.__module__}.{step_member.__class__.__qualname__}",
-            "name": step_member.name,
-        },
-        "sync_handler": handler_path,
-        "delta_sync": delta_sync,
-    }
+    result = run_sync(
+        SyncAdminConfig(
+            targets=[
+                TargetConfig(target=target, args=TargetArgs(delta_sync=delta_sync)),
+            ]
+        )
+    )
+    assert len(result) == 1
+    assert list(result.values()) == [handler_mock.return_value]
 
-    result = run_sync(config)
-    assert result is fake_return
-
-    mock_fn.assert_called_once_with(delta_sync=delta_sync, step=step_member)
+    handler_mock.assert_called_once_with(delta_sync=delta_sync)

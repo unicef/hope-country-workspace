@@ -195,22 +195,9 @@ LOGGING = {
         "": {
             "handlers": ["console"],
             "level": env("LOGGING_LEVEL"),
-            "propagate": True,
         },
         "celery": {
-            "handlers": ["console"],
             "level": "ERROR",
-            "propagate": False,
-        },
-        "faker": {
-            "handlers": ["console"],
-            "level": "ERROR",
-            "propagate": False,
-        },
-        "factory": {
-            "handlers": ["console"],
-            "level": "ERROR",
-            "propagate": False,
         },
     },
 }

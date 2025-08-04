@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from country_workspace.models import Office
 from country_workspace.admin.base import BaseModelAdmin
-from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, StepConfig
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 
 
 @admin.register(Office)
@@ -16,8 +16,10 @@ class OfficeAdmin(SyncAdminMixin, BaseModelAdmin):
     readonly_fields = ("hope_id", "slug")
     ordering = ("name",)
     sync_config = SyncAdminConfig(
-        step_handler=StepConfig(path="country_workspace.contrib.hope.sync.context_programs.SyncStep", name="OFFICES"),
-        sync_handler="country_workspace.contrib.hope.sync.context_programs.sync_context_programs",
+        targets=[
+            TargetConfig(target=Target.OFFICES),
+            TargetConfig(target=Target.PROGRAMS),
+        ],
     )
 
     @link(change_list=False)

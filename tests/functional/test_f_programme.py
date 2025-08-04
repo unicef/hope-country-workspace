@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from selenium.webdriver.support.ui import Select
 
-from tests.extras.testutils.selenium import CountryWorkspaceSeleniumTC
+from testutils.selenium import CountryWorkspaceSeleniumTC
 
 
 @pytest.fixture
