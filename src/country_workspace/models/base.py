@@ -60,6 +60,7 @@ class Validable(Cachable, models.Model):
     rdp = models.ManyToManyField("Rdp", blank=True, related_name="%(class)ss")
     last_checked = models.DateTimeField(default=None, null=True, blank=True)
     errors = models.JSONField(default=dict, blank=True, editable=False)
+    raw_data = models.JSONField(default=dict, blank=True)
     flex_fields = models.JSONField(default=dict, blank=True)
     flex_files = models.BinaryField(null=True, blank=True)
     removed = models.BooleanField(_("Removed"), default=False)
@@ -111,8 +112,9 @@ class Validable(Cachable, models.Model):
             self.errors = errors[1]
         else:
             self.errors = {}
+        self.flex_fields = self.checker.form.cleaned_data
         self.last_checked = timezone.now()
-        self.save(update_fields=["last_checked", "errors"])
+        self.save(update_fields=["last_checked", "errors", "flex_fields"])
         return not bool(errors)
 
     def is_valid(self) -> bool | None:

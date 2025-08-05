@@ -19,7 +19,7 @@
         <div id="content"  class="min-w-full">
         <div id="content-main"  class="min-w-full">
     <table>
-        {% for name, value in original.flex_fields.items %}
+        {% for name, value in original.raw_data.items %}
             <tr>
                 <th>{{ name }}</th>
                 <td>{{ value }}</td>
