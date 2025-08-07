@@ -1,8 +1,8 @@
 class BeneficiaryValidationError(Exception):
-    def __init__(self, beneficiary: str, key: int) -> None:
-        super().__init__(beneficiary, key)
+    def __init__(self, beneficiary: str, keys: list[int]) -> None:
+        super().__init__(beneficiary, keys)
         self.beneficiary = beneficiary
-        self.key = key
+        self.keys = keys
 
     def __str__(self) -> str:
-        return f"Failed to validate {self.beneficiary} with key {self.key}."
+        return f"Failed to validate {self.beneficiary} with keys {self.keys}."

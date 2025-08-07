@@ -7,28 +7,26 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.datasources.rdi import (
+from country_workspace.datasources.rdi.config import Config, Record, Sheet, SheetName
+from country_workspace.datasources.rdi.exceptions import (
     ColumnConfigurationError,
-    Config,
-    Record,
-    Sheet,
     SheetProcessingError,
     SheetNotFoundError,
+)
+from country_workspace.datasources.rdi.processors import (
     filter_rows_with_household_pk,
     get_value,
-    import_from_rdi,
     process_households,
     process_beneficiaries,
     image_location,
     image_content,
+    import_from_rdi,
     extract_images,
     merge_images,
     normalize_row_structure,
     read_sheets,
-    INDIVIDUAL,
-    PEOPLE,
 )
-from country_workspace.datasources.utils import datetime_to_date, date_to_iso_string
+from country_workspace.datasources.rdi.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Household, Individual
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 
@@ -37,21 +35,9 @@ HOUSEHOLD_1_PK = 1
 HOUSEHOLD_2_PK = 2
 HOUSEHOLD_1_NAME = "Household 1"
 HOUSEHOLD_2_NAME = "Household 2"
+INDIVIDUAL_1_PK = 1
+INDIVIDUAL_2_PK = 2
 FULL_NAME_COLUMN = "full_name"
-
-
-@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
-def config(request) -> Config:
-    return {
-        "batch_name": "batch_name",
-        "validate_mode": "none",
-        "master_detail": request.param,
-        "household_pk_col": "household_pk",
-        "master_column_label": "master_column",
-        "detail_column_label": "detail_column",
-        "people_column_prefix": "pp_",
-        "first_line": 2,
-    }
 
 
 @pytest.fixture
@@ -69,8 +55,8 @@ def skip_if_master_detail(config: Config) -> None:
 @pytest.fixture
 def household_sheet(config: Config) -> Sheet:
     return [
-        {config["detail_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_1_PK},
-        {config["detail_column_label"]: HOUSEHOLD_1_NAME, config["household_pk_col"]: HOUSEHOLD_2_PK},
+        {config["household_label"]: HOUSEHOLD_1_NAME, config["household_id_column"]: HOUSEHOLD_1_PK},
+        {config["household_label"]: HOUSEHOLD_1_NAME, config["household_id_column"]: HOUSEHOLD_2_PK},
     ]
 
 
@@ -79,24 +65,28 @@ def individual_sheet(config: Config) -> Sheet:
     return [
         {
             FULL_NAME_COLUMN: "John Doe",
-            config["master_column_label"]: HOUSEHOLD_1_PK,
+            config["household_id_column"]: HOUSEHOLD_1_PK,
+            config["beneficiary_id_column"]: INDIVIDUAL_1_PK,
         },
         {
             FULL_NAME_COLUMN: "Doe John",
-            config["master_column_label"]: HOUSEHOLD_2_PK,
+            config["household_id_column"]: HOUSEHOLD_2_PK,
+            config["beneficiary_id_column"]: INDIVIDUAL_2_PK,
         },
     ]
 
 
 @pytest.fixture
 def people_sheet(config: Config) -> Sheet:
-    prefix = config.get("people_column_prefix", "")
+    prefix = config.get("people_prefix", "")
     return [
         {
             f"{prefix}{FULL_NAME_COLUMN}": "John Doe",
+            config["beneficiary_id_column"]: INDIVIDUAL_1_PK,
         },
         {
             f"{prefix}{FULL_NAME_COLUMN}": "Jane Smith",
+            config["beneficiary_id_column"]: INDIVIDUAL_2_PK,
         },
     ]
 
@@ -107,6 +97,39 @@ def household_mapping() -> Mapping[int, Mock]:
         HOUSEHOLD_1_PK: Mock(name=HOUSEHOLD_1_NAME),
         HOUSEHOLD_2_PK: Mock(name=HOUSEHOLD_2_NAME),
     }
+
+
+@pytest.fixture
+def duplicate_household_sheet(config: Config) -> Sheet:
+    return [
+        {config["household_label"]: HOUSEHOLD_1_NAME, config["household_id_column"]: HOUSEHOLD_1_PK},
+        {config["household_label"]: HOUSEHOLD_2_NAME, config["household_id_column"]: HOUSEHOLD_1_PK},  # duplicate
+    ]
+
+
+@pytest.fixture
+def duplicate_individual_sheet(config: Config) -> Sheet:
+    return [
+        {
+            FULL_NAME_COLUMN: "John Doe",
+            config["household_id_column"]: HOUSEHOLD_1_PK,
+            config["beneficiary_id_column"]: INDIVIDUAL_1_PK,
+        },
+        {
+            FULL_NAME_COLUMN: "Jane Doe",
+            config["household_id_column"]: HOUSEHOLD_2_PK,
+            config["beneficiary_id_column"]: INDIVIDUAL_1_PK,
+        },  # duplicate
+    ]
+
+
+@pytest.fixture
+def duplicate_people_sheet(config: Config) -> Sheet:
+    prefix = config.get("people_prefix", "")
+    return [
+        {f"{prefix}{FULL_NAME_COLUMN}": "John Doe", config["beneficiary_id_column"]: INDIVIDUAL_1_PK},
+        {f"{prefix}{FULL_NAME_COLUMN}": "Jane Smith", config["beneficiary_id_column"]: INDIVIDUAL_1_PK},  # duplicate
+    ]
 
 
 @pytest.fixture
@@ -156,10 +179,10 @@ def test_get_value_raise_exception_when_key_is_missing() -> None:
 
 
 def test_filter_rows_with_household_pk(
-    mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail
+    mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail: None
 ) -> None:
     household_sheet_list = list(household_sheet)
-    get_value_mock = mocker.patch("country_workspace.datasources.rdi.get_value")
+    get_value_mock = mocker.patch("country_workspace.datasources.rdi.processors.get_value")
     get_value_mock.side_effect = True, False
 
     result = list(filter_rows_with_household_pk(config, household_sheet))
@@ -167,8 +190,8 @@ def test_filter_rows_with_household_pk(
     assert result == [household_sheet_list[0]]
     get_value_mock.assert_has_calls(
         (
-            call(household_sheet_list[0], config["household_pk_col"]),
-            call(household_sheet_list[1], config["household_pk_col"]),
+            call(household_sheet_list[0], config["household_id_column"]),
+            call(household_sheet_list[1], config["household_id_column"]),
         )
     )
 
@@ -200,17 +223,21 @@ def test_normalize_row_structure_name_column_detection(row: Record, expected_nam
     assert name_column == expected_name_column
 
 
-@patch("country_workspace.datasources.rdi.Household.objects")
+@patch("country_workspace.datasources.rdi.processors.Household.objects")
 def test_process_households(
-    mock_household_objects, mocker: MockerFixture, config: Config, household_sheet: Sheet, skip_if_not_master_detail
+    mock_household_objects,
+    mocker: MockerFixture,
+    config: Config,
+    household_sheet: Sheet,
+    skip_if_not_master_detail: None,
 ) -> None:
     mock_create = mock_household_objects.create
     mock_create.return_value = Mock()
 
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
     result = process_households(household_sheet, job := Mock(), batch := Mock(), config)
 
-    assert result == {row[config["household_pk_col"]]: mock_create.return_value for row in household_sheet}
+    assert result == {row[config["household_id_column"]]: mock_create.return_value for row in household_sheet}
 
     job.program.apply_mapping_importer.assert_has_calls(
         [call(Household, clean_field_names_mock.return_value) for row in household_sheet]
@@ -220,9 +247,9 @@ def test_process_households(
         [
             call(
                 batch_id=batch.pk,
-                name=str(row[config["detail_column_label"]]),
+                name=str(row[config["household_label"]]),
                 flex_fields=job.program.apply_mapping_importer.return_value,
-                raw_data=job.program.apply_mapping_importer.return_value,
+                raw_data=clean_field_names_mock.return_value,
             )
             for row in household_sheet
         ]
@@ -231,7 +258,7 @@ def test_process_households(
 
 
 def test_process_households_failed_to_save_household(
-    config: Config, household_sheet: Sheet, skip_if_not_master_detail
+    config: Config, household_sheet: Sheet, skip_if_not_master_detail: None
 ) -> None:
     job = Mock()
     batch = Mock()
@@ -242,19 +269,19 @@ def test_process_households_failed_to_save_household(
         process_households(household_sheet, job, batch, config)
 
 
-@patch("country_workspace.datasources.rdi.Individual.objects")
+@patch("country_workspace.datasources.rdi.processors.Individual.objects")
 def test_process_beneficiaries_with_households(
     mock_individual_objects,
     mocker: MockerFixture,
     config: Config,
     individual_sheet: Sheet,
     household_mapping: Mapping[int, Household],
-    skip_if_not_master_detail,
+    skip_if_not_master_detail: None,
 ) -> None:
     mock_create = mock_individual_objects.create
     mock_create.return_value = Mock()
 
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
 
     result = process_beneficiaries(
         individual_sheet,
@@ -273,9 +300,9 @@ def test_process_beneficiaries_with_households(
             call(
                 batch_id=batch_mock.pk,
                 name=row[FULL_NAME_COLUMN],
-                household=household_mapping[row[config["master_column_label"]]],
+                household=household_mapping[row[config["household_id_column"]]],
                 flex_fields=job_mock.program.apply_mapping_importer.return_value,
-                raw_data=job_mock.program.apply_mapping_importer.return_value,
+                raw_data=clean_field_names_mock.return_value,
             )
             for row in individual_sheet
         ]
@@ -283,14 +310,14 @@ def test_process_beneficiaries_with_households(
     clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
-@patch("country_workspace.datasources.rdi.Individual.objects")
+@patch("country_workspace.datasources.rdi.processors.Individual.objects")
 def test_process_beneficiaries_people_only(
-    mock_individual_objects, mocker: MockerFixture, config: Config, people_sheet: Sheet, skip_if_master_detail
+    mock_individual_objects, mocker: MockerFixture, config: Config, people_sheet: Sheet, skip_if_master_detail: None
 ) -> None:
     mock_create = mock_individual_objects.create
     mock_create.return_value = Mock()
 
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.clean_field_names")
+    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
 
     result = process_beneficiaries(
         people_sheet,
@@ -303,7 +330,7 @@ def test_process_beneficiaries_people_only(
     assert len(result) == len(list(people_sheet))
     expected_calls, expected_apply_mapping_calls = [], []
     for __, row in enumerate(people_sheet, 1):
-        prefix = config.get("people_column_prefix", "")
+        prefix = config.get("people_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
         expected_apply_mapping_calls.append(call(Individual, clean_field_names_mock.return_value))
         expected_calls.append(
@@ -312,7 +339,7 @@ def test_process_beneficiaries_people_only(
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
                 flex_fields=job_mock.program.apply_mapping_importer.return_value,
-                raw_data=job_mock.program.apply_mapping_importer.return_value,
+                raw_data=clean_field_names_mock.return_value,
             )
         )
     mock_create.assert_has_calls(expected_calls)
@@ -327,7 +354,7 @@ def test_process_beneficiaries_failed_to_create(
     job.program.individuals.create.side_effect = Exception("Something went wrong")
     sheet = individual_sheet if config["master_detail"] else people_sheet
     household_map = household_mapping if config["master_detail"] else None
-    expected_sheet_name = INDIVIDUAL if config["master_detail"] else PEOPLE
+    expected_sheet_name = SheetName.INDIVIDUALS if config["master_detail"] else SheetName.PEOPLE
 
     with pytest.raises(SheetProcessingError) as exc_info:
         process_beneficiaries(sheet, job, batch, config, household_map)
@@ -346,14 +373,14 @@ def test_import_from_rdi(
 ) -> None:
     job = Mock()
     job.config = config
-    batch_class_mock = mocker.patch("country_workspace.datasources.rdi.Batch")
-    read_sheets_mock = mocker.patch("country_workspace.datasources.rdi.read_sheets")
-    process_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.process_beneficiaries")
-    validate_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.validate_beneficiaries")
-    partial_mock = mocker.patch("country_workspace.datasources.rdi.partial")
+    batch_class_mock = mocker.patch("country_workspace.datasources.rdi.processors.Batch")
+    read_sheets_mock = mocker.patch("country_workspace.datasources.rdi.processors.read_sheets")
+    process_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.processors.process_beneficiaries")
+    validate_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.processors.validate_beneficiaries")
+    partial_mock = mocker.patch("country_workspace.datasources.rdi.processors.partial")
     if config["master_detail"]:
         read_sheets_mock.return_value = household_sheet, individual_sheet
-        process_households_mock = mocker.patch("country_workspace.datasources.rdi.process_households")
+        process_households_mock = mocker.patch("country_workspace.datasources.rdi.processors.process_households")
 
         household_mocks = {}
         for i, (key, _mock) in enumerate(household_mapping.items()):
@@ -426,8 +453,8 @@ def test_image_location() -> None:
 
 
 def test_image_content(mocker: MockerFixture) -> None:
-    image_module_mock = mocker.patch("country_workspace.datasources.rdi.Image")
-    b64encode_mock = mocker.patch("country_workspace.datasources.rdi.b64encode")
+    image_module_mock = mocker.patch("country_workspace.datasources.rdi.processors.Image")
+    b64encode_mock = mocker.patch("country_workspace.datasources.rdi.processors.b64encode")
 
     result = image_content(image := Mock())
 
@@ -439,10 +466,10 @@ def test_image_content(mocker: MockerFixture) -> None:
 
 
 def test_extract_images(mocker: MockerFixture) -> None:
-    load_workbook_mock = mocker.patch("country_workspace.datasources.rdi.openpyxl.load_workbook")
-    image_location_mock = mocker.patch("country_workspace.datasources.rdi.image_location")
+    load_workbook_mock = mocker.patch("country_workspace.datasources.rdi.processors.load_workbook")
+    image_location_mock = mocker.patch("country_workspace.datasources.rdi.processors.image_location")
     image_location_mock.return_value = (row := 1, column := 2)
-    image_content_mock = mocker.patch("country_workspace.datasources.rdi.image_content")
+    image_content_mock = mocker.patch("country_workspace.datasources.rdi.processors.image_content")
     image_content_mock.return_value = (content_type := "content/type", content := "content")
     image = MagicMock()
     load_workbook_mock.return_value.__getitem__.return_value._images = (image,)
@@ -470,21 +497,21 @@ def test_merge_images() -> None:
 
 def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
     fake_sheets = ((Mock(), sheet := Mock()),)
-    compose_mock = mocker.patch("country_workspace.datasources.rdi.compose")
-    datetime_to_date_mock = mocker.patch("country_workspace.datasources.rdi.datetime_to_date")
-    date_to_iso_string_mock = mocker.patch("country_workspace.datasources.rdi.date_to_iso_string")
-    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
+    compose_mock = mocker.patch("country_workspace.datasources.rdi.processors.compose")
+    datetime_to_date_mock = mocker.patch("country_workspace.datasources.rdi.processors.datetime_to_date")
+    date_to_iso_string_mock = mocker.patch("country_workspace.datasources.rdi.processors.date_to_iso_string")
+    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.processors.open_xls_multi")
     open_xls_multi_mock.return_value = fake_sheets
-    extract_images_mock = mocker.patch("country_workspace.datasources.rdi.extract_images")
+    extract_images_mock = mocker.patch("country_workspace.datasources.rdi.processors.extract_images")
     extract_images_mock.return_value = ((images := Mock()),)
-    merge_images_mock = mocker.patch("country_workspace.datasources.rdi.merge_images")
+    merge_images_mock = mocker.patch("country_workspace.datasources.rdi.processors.merge_images")
 
     filepath = "test"
     sheet_name = "first"
 
     if config["master_detail"]:
         filter_rows_with_household_pk_mock = mocker.patch(
-            "country_workspace.datasources.rdi.filter_rows_with_household_pk"
+            "country_workspace.datasources.rdi.processors.filter_rows_with_household_pk"
         )
 
     result = list(read_sheets(config, filepath, sheet_name))
@@ -509,12 +536,12 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
 
 
 def test_read_sheets_sheet_not_found_error(mocker: MockerFixture, config: Config) -> None:
-    mocker.patch("country_workspace.datasources.rdi.compose")
-    mocker.patch("country_workspace.datasources.rdi.datetime_to_date")
-    mocker.patch("country_workspace.datasources.rdi.date_to_iso_string")
-    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.open_xls_multi")
+    mocker.patch("country_workspace.datasources.rdi.processors.compose")
+    mocker.patch("country_workspace.datasources.rdi.processors.datetime_to_date")
+    mocker.patch("country_workspace.datasources.rdi.processors.date_to_iso_string")
+    open_xls_multi_mock = mocker.patch("country_workspace.datasources.rdi.processors.open_xls_multi")
     open_xls_multi_mock.side_effect = IndexError("list index out of range")
-    mocker.patch("country_workspace.datasources.rdi.extract_images")
+    mocker.patch("country_workspace.datasources.rdi.processors.extract_images")
 
     filepath = "test"
     sheet_name = "first"
@@ -551,3 +578,32 @@ def test_datetime_to_date(inp: Any, expected: Any) -> None:
 )
 def test_date_to_iso_string(inp: Any, expected: Any) -> None:
     assert date_to_iso_string(inp) == expected
+
+
+def test_duplicate_keys(
+    mocker: MockerFixture,
+    config: Config,
+    duplicate_household_sheet: Sheet,
+    duplicate_individual_sheet: Sheet,
+    duplicate_people_sheet: Sheet,
+    household_mapping: Mapping[int, Mock],
+) -> None:
+    mocker.patch("country_workspace.datasources.rdi.processors.Household.objects.create", return_value=Mock())
+    mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create", return_value=Mock())
+    mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+
+    if config["master_detail"]:
+        with pytest.raises(SheetProcessingError) as exc_info:
+            process_households(duplicate_household_sheet, Mock(), Mock(), config)
+        assert exc_info.value.sheet_name == SheetName.HOUSEHOLDS
+        assert exc_info.value.object_id == HOUSEHOLD_1_PK
+
+        with pytest.raises(SheetProcessingError) as exc_info:
+            process_beneficiaries(duplicate_individual_sheet, Mock(), Mock(), config, household_mapping)
+        assert exc_info.value.sheet_name == SheetName.INDIVIDUALS
+        assert exc_info.value.object_id == INDIVIDUAL_1_PK
+    else:
+        with pytest.raises(SheetProcessingError) as exc_info:
+            process_beneficiaries(duplicate_people_sheet, Mock(), Mock(), config, None)
+        assert exc_info.value.sheet_name == SheetName.PEOPLE
+        assert exc_info.value.object_id == INDIVIDUAL_1_PK

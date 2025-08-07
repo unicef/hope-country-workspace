@@ -363,6 +363,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     }
                 ),
                 "first_line": form.cleaned_data["first_line"],
+                "send_to": request.user.email,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",

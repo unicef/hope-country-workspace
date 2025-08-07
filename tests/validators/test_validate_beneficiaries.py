@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock
 
-from country_workspace.validators.beneficiaries import validate_beneficiaries
+from country_workspace.validators.beneficiaries import validate_beneficiaries, _collect_validation_errors
 from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.utils.types import BeneficiaryMapping
 from country_workspace.utils.config import ValidateModeConfig
@@ -36,11 +36,13 @@ def failing_config(request) -> ValidateModeConfig:
     }
 
 
-def test_validate_beneficiaries(
+def test_validate_beneficiaries_success(
     config: ValidateModeConfig, mapping_and_office: tuple[BeneficiaryMapping, Office]
 ) -> None:
     beneficiary_mapping, office = mapping_and_office
+
     validate_beneficiaries(beneficiary_mapping, config, office)
+
     for beneficiary in beneficiary_mapping.values():
         if config["validate_mode"] == ValidateMode.NONE:
             beneficiary.validate_with_checker.assert_not_called()
@@ -49,7 +51,7 @@ def test_validate_beneficiaries(
             beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)
 
 
-def test_validate_beneficiaries_raises_exception_on_failed_validation(
+def test_validate_beneficiaries_validation_error(
     failing_config: ValidateModeConfig, mapping_and_office: tuple[BeneficiaryMapping, Office]
 ) -> None:
     beneficiary_mapping, office = mapping_and_office
@@ -57,3 +59,42 @@ def test_validate_beneficiaries_raises_exception_on_failed_validation(
 
     with pytest.raises(BeneficiaryValidationError):
         validate_beneficiaries(beneficiary_mapping, failing_config, office)
+
+
+def test_validate_beneficiaries_none_mode(mapping_and_office: tuple[BeneficiaryMapping, Office]) -> None:
+    beneficiary_mapping, office = mapping_and_office
+    config = {"validate_mode": ValidateMode.NONE}
+
+    validate_beneficiaries(beneficiary_mapping, config, office)
+
+    for beneficiary in beneficiary_mapping.values():
+        beneficiary.validate_with_checker.assert_not_called()
+
+
+def test_collect_validation_errors_success() -> None:
+    beneficiary_mapping = {
+        1: Mock(validate_with_checker=Mock(return_value=True)),
+        2: Mock(validate_with_checker=Mock(return_value=True)),
+    }
+    fail_if_alien = True
+
+    result = _collect_validation_errors(beneficiary_mapping, fail_if_alien)
+
+    assert result == []
+    for beneficiary in beneficiary_mapping.values():
+        beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)
+
+
+def test_collect_validation_errors_with_failures() -> None:
+    beneficiary_mapping = {
+        1: Mock(validate_with_checker=Mock(return_value=True)),
+        2: Mock(validate_with_checker=Mock(return_value=False)),
+        3: Mock(validate_with_checker=Mock(return_value=False)),
+    }
+    fail_if_alien = False
+
+    result = _collect_validation_errors(beneficiary_mapping, fail_if_alien)
+
+    assert result == [2, 3]
+    for beneficiary in beneficiary_mapping.values():
+        beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)

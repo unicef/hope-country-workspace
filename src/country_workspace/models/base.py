@@ -95,6 +95,8 @@ class Validable(Cachable, models.Model):
     ) -> None:
         checksum = get_obj_checksum(self)
         self.checksum = checksum
+        if update_fields is not None and "checksum" not in update_fields:
+            update_fields = [*update_fields, "checksum"]
         super().save(
             *args,
             force_insert=force_insert,

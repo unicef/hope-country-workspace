@@ -81,18 +81,17 @@ def test_rdi_import_tab_with_beneficiary(browser_program_beneficiary, program_be
     browser_program_beneficiary.assert_element_visible("#id_rdi-batch_name")
     browser_program_beneficiary.assert_element_visible("#id_rdi-validate_mode")
     browser_program_beneficiary.assert_element_visible("#id_rdi-first_line")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-beneficiary_id_column")
     browser_program_beneficiary.assert_element_visible("#id_rdi-file")
 
     if program_beneficiary.beneficiary_group.master_detail:
-        browser_program_beneficiary.assert_element_visible("#id_rdi-pk_column_name")
-        browser_program_beneficiary.assert_element_visible("#id_rdi-master_column_label")
-        browser_program_beneficiary.assert_element_visible("#id_rdi-detail_column_label")
-        browser_program_beneficiary.assert_element_not_present("#id_rdi-people_column_prefix")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-household_id_column")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-household_label")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-people_prefix")
     else:
-        browser_program_beneficiary.assert_element_not_present("#id_rdi-pk_column_name")
-        browser_program_beneficiary.assert_element_not_present("#id_rdi-master_column_label")
-        browser_program_beneficiary.assert_element_not_present("#id_rdi-detail_column_label")
-        browser_program_beneficiary.assert_element_visible("#id_rdi-people_column_prefix")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-household_id_column")
+        browser_program_beneficiary.assert_element_not_present("#id_rdi-household_label")
+        browser_program_beneficiary.assert_element_visible("#id_rdi-people_prefix")
 
 
 @pytest.mark.selenium
