@@ -55,13 +55,13 @@ class ColumnConfigurationError(Exception):
 
 
 class SheetProcessingError(Exception):
-    def __init__(self, sheet_name: str, row_index: int) -> None:
-        super().__init__(sheet_name, row_index)
+    def __init__(self, sheet_name: str, object_id: int) -> None:
+        super().__init__(sheet_name, object_id)
         self.sheet_name = sheet_name
-        self.row_index = row_index
+        self.object_id = object_id
 
     def __str__(self) -> str:
-        return f"Failed to process {self.sheet_name} sheet at row {self.row_index}"
+        return f"Failed to process sheet '{self.sheet_name}' at row with object id: {self.object_id}"
 
 
 class SheetNotFoundError(Exception):
@@ -97,8 +97,11 @@ def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
 
-    for i, row in enumerate(sheet, 1):
+    for row in sheet:
         household_key = get_value(row, config["household_id_column"])
+        if household_key in mapping:
+            raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
+
         label = get_value(row, config["household_label"])
         raw_data = clean_field_names(row)
         flex_fields = job.program.apply_mapping_importer(Household, raw_data)
@@ -114,7 +117,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                 ),
             )
         except Exception as e:
-            raise SheetProcessingError(HOUSEHOLD, i) from e
+            raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key) from e
 
     return mapping
 
@@ -141,10 +144,13 @@ def process_beneficiaries(
     mapping = {}
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
-    sheet_name = PEOPLE if household_mapping is None else INDIVIDUAL
+    sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
 
-    for i, row in enumerate(sheet, 1):
+    for row in sheet:
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
+        if beneficiary_key in mapping:
+            raise SheetProcessingError(sheet_name, beneficiary_key)
+
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
@@ -163,7 +169,7 @@ def process_beneficiaries(
                 ),
             )
         except Exception as e:
-            raise SheetProcessingError(sheet_name, i) from e
+            raise SheetProcessingError(sheet_name, beneficiary_key) from e
 
     return mapping
 
