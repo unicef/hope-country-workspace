@@ -32,10 +32,10 @@ PEOPLE = "people"
 
 class Config(BatchNameConfig, ValidateModeConfig):
     master_detail: bool
-    household_pk_col: NotRequired[str]
-    master_column_label: NotRequired[str]
-    detail_column_label: NotRequired[str]
-    people_column_prefix: NotRequired[str]
+    beneficiary_id_column: str
+    household_id_column: NotRequired[str]
+    household_label: NotRequired[str]
+    people_prefix: NotRequired[str]
     first_line: int
 
 
@@ -86,10 +86,10 @@ def get_value(row: Record, column_name: str) -> Any:
 
 
 def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
-    household_pk_col = config["household_pk_col"]
+    household_id_column = config["household_id_column"]
 
     def has_household_pk(row: Record) -> bool:
-        return bool(get_value(row, household_pk_col))
+        return bool(get_value(row, household_id_column))
 
     return filter(has_household_pk, sheet)
 
@@ -98,9 +98,10 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     mapping = {}
 
     for i, row in enumerate(sheet, 1):
-        household_key = get_value(row, config["household_pk_col"])
-        label = get_value(row, config["detail_column_label"])
-        flex_fields = job.program.apply_mapping_importer(Household, clean_field_names(row))
+        household_key = get_value(row, config["household_id_column"])
+        label = get_value(row, config["household_label"])
+        raw_data = clean_field_names(row)
+        flex_fields = job.program.apply_mapping_importer(Household, raw_data)
 
         try:
             mapping[household_key] = cast(
@@ -109,7 +110,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                     batch_id=batch.pk,
                     name=str(label),
                     flex_fields=flex_fields,
-                    raw_data=flex_fields,
+                    raw_data=raw_data,
                 ),
             )
         except Exception as e:
@@ -118,19 +119,19 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     return mapping
 
 
-def normalize_row_structure(row: Record, people_column_prefix: str | None = None) -> tuple[Record, str | None]:
-    if people_column_prefix:
-        row = {k.removeprefix(people_column_prefix): v for k, v in row.items()}
+def normalize_row_structure(row: Record, people_prefix: str | None = None) -> tuple[Record, str | None]:
+    if people_prefix:
+        row = {k.removeprefix(people_prefix): v for k, v in row.items()}
     name_column = next((key for key in row if key.startswith("full") and "name" in key), None)
     return row, name_column
 
 
 def get_hh_for_ind(
-    cleaned_row: dict, master_column_label: str, household_mapping: Mapping[int, Household] | None
+    cleaned_row: dict, household_id_column: str, household_mapping: Mapping[int, Household] | None
 ) -> Household | None:
-    if not household_mapping or not master_column_label:
+    if not household_mapping or not household_id_column:
         return None
-    household_key = get_value(cleaned_row, master_column_label)
+    household_key = get_value(cleaned_row, household_id_column)
     return household_mapping.get(household_key)
 
 
@@ -138,25 +139,27 @@ def process_beneficiaries(
     sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
 ) -> Mapping[int, Individual]:
     mapping = {}
-    people_column_prefix = config.get("people_column_prefix") if household_mapping is None else None
-    master_column_label = config.get("master_column_label") if household_mapping is not None else None
+    people_prefix = config.get("people_prefix") if household_mapping is None else None
+    household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = PEOPLE if household_mapping is None else INDIVIDUAL
 
     for i, row in enumerate(sheet, 1):
-        cleaned_row, name_column = normalize_row_structure(row, people_column_prefix)
+        beneficiary_key = get_value(row, config["beneficiary_id_column"])
+        cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
-        household = get_hh_for_ind(cleaned_row, master_column_label, household_mapping)
-        flex_fields = job.program.apply_mapping_importer(Individual, clean_field_names(cleaned_row))
+        household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
+        raw_data = clean_field_names(cleaned_row)
+        flex_fields = job.program.apply_mapping_importer(Individual, raw_data)
 
         try:
-            mapping[i] = cast(
+            mapping[beneficiary_key] = cast(
                 "Individual",
                 Individual.objects.create(
                     batch_id=batch.pk,
                     name=name,
                     household=household,
                     flex_fields=flex_fields,
-                    raw_data=flex_fields,
+                    raw_data=raw_data,
                 ),
             )
         except Exception as e:

@@ -351,18 +351,18 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_mode": form.cleaned_data["validate_mode"],
-                "first_line": form.cleaned_data["first_line"],
+                "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
                 **(
                     {
-                        "household_pk_col": form.cleaned_data.get("pk_column_name"),
-                        "master_column_label": form.cleaned_data.get("master_column_label"),
-                        "detail_column_label": form.cleaned_data.get("detail_column_label"),
+                        "household_id_column": form.cleaned_data.get("household_id_column"),
+                        "household_label": form.cleaned_data.get("household_label"),
                     }
                     if master_detail
                     else {
-                        "people_column_prefix": form.cleaned_data.get("people_column_prefix"),
+                        "people_prefix": form.cleaned_data.get("people_prefix"),
                     }
                 ),
+                "first_line": form.cleaned_data["first_line"],
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",
