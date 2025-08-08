@@ -62,11 +62,11 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
 
     # Business methods
 
-    def heads(self) -> "QuerySet[Individual]":
-        return self.members.filter(flex_fields__relationship="HEAD")
+    def head(self) -> "QuerySet[Individual]":
+        return self.flex_fields.get("head_of_household_id")
 
-    def collectors_primary(self) -> "QuerySet[Individual]":
-        return self.members.filter(flex_fields__role=ROLE_PRIMARY)
+    def primary_collector(self) -> "QuerySet[Individual]":
+        return self.flex_fields.get("primary_collector_id")
 
-    def collectors_alternate(self) -> "QuerySet[Individual]":
-        return self.members.filter(flex_fields__role=ROLE_ALTERNATE)
+    def alternate_collector(self) -> "QuerySet[Individual]":
+        return self.flex_fields.get("alternate_collector_id")
