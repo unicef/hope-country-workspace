@@ -21,8 +21,8 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
 
     list_display = (
         "description",
+        "info",
         "datetime_queued",
-        "started",
         "completed_time",
         # "type",
         "queue_position",
@@ -32,6 +32,15 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
     search_fields = ("description",)
     fields = ("description",)
+
+    def info(self, obj: "CountryAsyncJob|None") -> str:
+        async_result = getattr(obj, "async_result", None)
+        if async_result and async_result.result and not isinstance(async_result.result, Exception):
+            result = ""
+            for key, value in async_result.result.items():
+                result += f"{key}: {value}\n"
+            return result
+        return "-"
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
         return False

@@ -38,10 +38,6 @@ class AsyncJob(CeleryTaskModel, models.Model):
     def queue_position(self) -> int:
         return super().queue_position
 
-    @property
-    def started(self) -> str:
-        return self.task_info.get("started_at", None)
-
     def execute(self) -> Any:
         sid = None
         func: Callable[..., Any]
