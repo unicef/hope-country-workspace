@@ -361,6 +361,7 @@ def test_import_from_rdi(
             household_mock.flex_fields = {
                 "head_of_household_id": f"ind_{i + 1}",
                 "primary_collector_id": f"ind_{i + 2}",
+                "alternate_collector_id": f"ind_{i + 3}",
             }
             household_mock.pk = key
             household_mock.save = Mock()
@@ -369,7 +370,11 @@ def test_import_from_rdi(
         process_households_mock.return_value = household_mocks
 
         processed_individuals = {}
-        for i in range(1, len(list(individual_sheet)) + 1):
+        max_individual_id = max(
+            len(list(individual_sheet)) + 1,
+            len(list(household_mapping)) * 3 + 1,
+        )
+        for i in range(1, max_individual_id):
             individual_mock = Mock()
             individual_mock.flex_fields = {"individual_id": f"ind_{i}"}
             individual_mock.pk = i
