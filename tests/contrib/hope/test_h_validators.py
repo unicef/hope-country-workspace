@@ -1,14 +1,9 @@
-from typing import TYPE_CHECKING
-
-import factory
 import pytest
 from faker import Faker
 
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
-from country_workspace.models.household import ROLE_PRIMARY, ROLE_ALTERNATE
+from tests.extras.testutils.factories import HouseholdFactory, IndividualFactory
 
-if TYPE_CHECKING:
-    from country_workspace.models import Household
 
 fake = Faker()
 
@@ -26,47 +21,71 @@ def program(household_checker, individual_checker):
 
 
 @pytest.fixture
-def household(program, worker_id) -> "Household":
-    from testutils.factories import HouseholdFactory
-
-    def name(instance: "Household", step: int) -> str:
-        name = fake.last_name()
-        return f"{name} @{worker_id} #{step}"
-
-    return HouseholdFactory(
-        name=factory.LazyAttributeSequence(name),
-        batch__program=program,
-        individuals=[],
-        batch__country_office=program.country_office,
-    )
+def full_hhv(program):
+    return FullHouseholdValidator(program)
 
 
-def test_head(household: "Household"):
-    from testutils.factories import IndividualFactory
+def test_hh_validation_with_all_errors(program, full_hhv):
+    hh = HouseholdFactory.create(batch__program=program)
 
-    v = FullHouseholdValidator(household.program)
-    assert v.validate(household) == [
+    errors = full_hhv.validate(hh)
+    assert len(errors) == 2
+    assert errors == [
         "This Household does not have Head",
         "This Household does not have Primary Collector",
     ]
 
-    household.members.add(IndividualFactory(household=household, flex_fields={"relationship": "HEAD"}))
-    assert v.validate(household) == ["This Household does not have Primary Collector"]
 
-    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_PRIMARY}))
-    assert v.validate(household) == []
+def test_hh_validation_with_existing_head(program, full_hhv):
+    individual = IndividualFactory.create()
+    hh = HouseholdFactory.create(batch__program=program)
+    hh.flex_fields["head_of_household_id"] = individual.id
+    hh.save()
+    hh.members.add(individual)
 
-    household.members.add(IndividualFactory(household=household, flex_fields={"relationship": "HEAD"}))
-    assert v.validate(household) == ["This Household has multiple heads"]
-    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_PRIMARY}))
-    assert v.validate(household) == [
-        "This Household has multiple heads",
-        "This Household has multiple Primary Collectors",
+    errors = full_hhv.validate(hh)
+    assert len(errors) == 1
+    assert errors == [
+        "This Household does not have Primary Collector",
     ]
-    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_ALTERNATE}))
-    household.members.add(IndividualFactory(household=household, flex_fields={"role": ROLE_ALTERNATE}))
-    assert v.validate(household) == [
-        "This Household has multiple heads",
-        "This Household has multiple Primary Collectors",
-        "This Household has multiple Alternate Collectors",
+
+
+def test_hh_validation_with_existing_primary_collector(program, full_hhv):
+    individual = IndividualFactory.create()
+    hh = HouseholdFactory.create(batch__program=program)
+    hh.flex_fields["primary_collector_id"] = individual.id
+    hh.save()
+    hh.members.add(individual)
+
+    errors = full_hhv.validate(hh)
+    assert len(errors) == 1
+    assert errors == [
+        "This Household does not have Head",
+    ]
+
+
+def test_hh_with_matching_collector_ids(program, full_hhv):
+    individual = IndividualFactory.create()
+    hh = HouseholdFactory.create(batch__program=program)
+    hh.flex_fields["head_of_household_id"] = hh.flex_fields["primary_collector_id"] = hh.flex_fields[
+        "alternate_collector_id"
+    ] = individual.id
+    hh.save()
+    hh.members.add(individual)
+
+    errors = full_hhv.validate(hh)
+    assert len(errors) == 1
+    assert errors == ["Primary collector and Alternate collectors can not be the same"]
+
+
+def test_hh_with_head_from_different_hh(program, full_hhv):
+    individual = IndividualFactory.create()
+    hh = HouseholdFactory.create(batch__program=program)
+    hh.flex_fields["head_of_household_id"] = hh.flex_fields["primary_collector_id"] = individual.id
+    hh.save()
+
+    errors = full_hhv.validate(hh)
+    assert len(errors) == 1
+    assert errors == [
+        "Household Head must be from the given Household",
     ]
