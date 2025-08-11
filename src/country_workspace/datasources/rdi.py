@@ -118,14 +118,6 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     return mapping
 
 
-def _extract_ind_ids(flex_fields: dict) -> dict:
-    return {
-        "head_of_household_id": flex_fields.get("head_of_household_id"),
-        "primary_collector_id": flex_fields.get("primary_collector_id"),
-        "alternate_collector_id": flex_fields.get("alternate_collector_id"),
-    }
-
-
 def normalize_row_structure(row: Record, people_column_prefix: str | None = None) -> tuple[Record, str | None]:
     if people_column_prefix:
         row = {k.removeprefix(people_column_prefix): v for k, v in row.items()}
