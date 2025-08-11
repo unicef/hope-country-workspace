@@ -14,10 +14,10 @@ class FullHouseholdValidator(BeneficiaryGroupValidator):
         if not (primary_id := hh.primary_collector()):
             errs.append("This Household does not have Primary Collector")
 
-        if primary_id == hh.alternate_collector():
+        if primary_id and (alternate_id := hh.alternate_collector()) and primary_id == alternate_id:
             errs.append("Primary collector and Alternate collectors can not be the same")
 
-        if not hh.members.filter(id=head_id).exists():
+        if head_id and not hh.members.filter(id=head_id).exists():
             errs.append("Household Head must be from the given Household")
 
         return errs
