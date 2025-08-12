@@ -1,7 +1,4 @@
 from typing import TYPE_CHECKING
-
-from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
-
 from country_workspace.validators.base import BeneficiaryGroupValidator
 
 if TYPE_CHECKING:
@@ -11,25 +8,16 @@ if TYPE_CHECKING:
 class FullHouseholdValidator(BeneficiaryGroupValidator):
     def validate(self, hh: "Household") -> list:
         errs = []
-        try:
-            hh.heads().get()
-        except ObjectDoesNotExist:
+        if not (head_id := hh.head()):
             errs.append("This Household does not have Head")
-        except MultipleObjectsReturned:
-            errs.append("This Household has multiple heads")
 
-        try:
-            hh.collectors_primary().get()
-        except ObjectDoesNotExist:
+        if not (primary_id := hh.primary_collector()):
             errs.append("This Household does not have Primary Collector")
-        except MultipleObjectsReturned:
-            errs.append("This Household has multiple Primary Collectors")
 
-        try:
-            hh.collectors_alternate().get()
-        except ObjectDoesNotExist:
-            pass
-        except MultipleObjectsReturned:
-            errs.append("This Household has multiple Alternate Collectors")
+        if primary_id and (alternate_id := hh.alternate_collector()) and primary_id == alternate_id:
+            errs.append("Primary collector and Alternate collectors can not be the same")
+
+        if head_id and not hh.members.filter(id=head_id).exists():
+            errs.append("Household Head must be from the given Household")
 
         return errs

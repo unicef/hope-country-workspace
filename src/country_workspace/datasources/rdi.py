@@ -25,7 +25,6 @@ RDI = str | io.BytesIO
 Sheet = Iterable[Record]
 MultiSheet = Iterable[tuple[int, Sheet]]
 
-
 INDIVIDUAL = "individual"
 HOUSEHOLD = "household"
 PEOPLE = "people"
@@ -240,8 +239,23 @@ def _import_master_detail(
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
+    _sync_ind_pks(household_mapping, individuals_mapping)
     validate(household_mapping)
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
+
+
+def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
+    pk_mapping = {v.flex_fields.get("individual_id"): v.pk for _, v in individuals_mapping.items()}
+
+    for v in households_mapping.values():
+        hh_flex_fields = v.flex_fields
+        hh_flex_fields["head_of_household_id"] = pk_mapping.get(v.flex_fields.get("head_of_household_id"))
+        hh_flex_fields["primary_collector_id"] = pk_mapping.get(v.flex_fields.get("primary_collector_id"))
+        if alt_id := v.flex_fields.get("alternate_collector_id"):  # is optional
+            hh_flex_fields["alternate_collector_id"] = pk_mapping.get(alt_id)
+
+        v.flex_fields = hh_flex_fields
+        v.save(update_fields=["flex_fields"])
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries) -> dict[str, int]:

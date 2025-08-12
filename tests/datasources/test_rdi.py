@@ -354,8 +354,33 @@ def test_import_from_rdi(
     if config["master_detail"]:
         read_sheets_mock.return_value = household_sheet, individual_sheet
         process_households_mock = mocker.patch("country_workspace.datasources.rdi.process_households")
-        process_households_mock.return_value = household_mapping
-        process_beneficiaries_mock.return_value = (processed_individuals := list(individual_sheet))
+
+        household_mocks = {}
+        for i, (key, _mock) in enumerate(household_mapping.items()):
+            household_mock = Mock()
+            household_mock.flex_fields = {
+                "head_of_household_id": f"ind_{i + 1}",
+                "primary_collector_id": f"ind_{i + 2}",
+                "alternate_collector_id": f"ind_{i + 3}",
+            }
+            household_mock.pk = key
+            household_mock.save = Mock()
+            household_mocks[key] = household_mock
+
+        process_households_mock.return_value = household_mocks
+
+        processed_individuals = {}
+        max_individual_id = max(
+            len(list(individual_sheet)) + 1,
+            len(list(household_mapping)) * 3 + 1,
+        )
+        for i in range(1, max_individual_id):
+            individual_mock = Mock()
+            individual_mock.flex_fields = {"individual_id": f"ind_{i}"}
+            individual_mock.pk = i
+            processed_individuals[i] = individual_mock
+
+        process_beneficiaries_mock.return_value = processed_individuals
     else:
         read_sheets_mock.return_value = (people_sheet,)
         process_beneficiaries_mock.return_value = people_mapping
@@ -364,7 +389,7 @@ def test_import_from_rdi(
 
     partial_mock.assert_called_once_with(validate_beneficiaries_mock, config=config, office=job.program.country_office)
     if config["master_detail"]:
-        assert result == {"household": len(household_mapping), "individual": len(processed_individuals)}
+        assert result == {"household": len(household_mocks), "individual": len(processed_individuals)}
         process_households_mock.assert_called_once_with(
             household_sheet, job, batch_class_mock.objects.create.return_value, config
         )
@@ -373,9 +398,9 @@ def test_import_from_rdi(
             job,
             batch_class_mock.objects.create.return_value,
             config,
-            household_mapping,
+            household_mocks,
         )
-        partial_mock.return_value.assert_called_once_with(household_mapping)
+        partial_mock.return_value.assert_called_once_with(household_mocks)
     else:
         assert result == {"people": len(people_mapping)}
         process_beneficiaries_mock.assert_called_once_with(
