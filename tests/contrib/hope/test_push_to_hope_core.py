@@ -4,6 +4,7 @@ from requests.exceptions import RequestException
 from pytest_mock import MockerFixture
 from hope_flex_fields.models import DataChecker
 
+from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push import (
     PushProcessor,
     push_to_hope_core,
@@ -221,9 +222,8 @@ def test_push_workflow_failure(mocker: MockerFixture, job: AsyncJob) -> None:
     mocker.patch("country_workspace.contrib.hope.push.create_processor", return_value=mock_p)
     mock_complete = mocker.patch("country_workspace.contrib.hope.push.complete_rdp")
 
-    result = push_to_hope_core(job)
-
-    assert any("Failed" in e for e in result["errors"])
+    with pytest.raises(HopePushError):
+        push_to_hope_core(job)
     mock_complete.assert_called_once_with(mocker.ANY, Rdp.PushStatus.FAILURE, mock_hope_rdi_id)
 
 

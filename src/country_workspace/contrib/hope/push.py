@@ -13,6 +13,7 @@ from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, ACCOUNT_TYPES, PUSH_BATCH_SIZE
+from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
 from country_workspace.models.base import Validable
@@ -314,7 +315,7 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
         step()
         if processor.total["errors"]:
             complete_rdp(rdp_id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
-            return processor.total
+            raise HopePushError(processor.total)
 
     with transaction.atomic():
         rdp = complete_rdp(rdp_id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)

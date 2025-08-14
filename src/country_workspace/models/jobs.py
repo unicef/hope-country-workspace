@@ -34,9 +34,26 @@ class AsyncJob(CeleryTaskModel, models.Model):
     def __str__(self) -> str:
         return f"{self.description or 'Background Job'} #{self.pk}"
 
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self.pk and self.description and self.program:
+            existing_count = AsyncJob.objects.filter(program=self.program, action=self.action).count()
+            next_number = existing_count + 1
+            self.description = f"{self.description} #{next_number}"
+        super().save(*args, **kwargs)
+
     @property
     def queue_position(self) -> int:
         return super().queue_position
+
+    @property
+    def info(self) -> str:
+        async_result = getattr(self, "async_result", None)
+        if async_result and async_result.result and not isinstance(async_result.result, Exception):
+            result = ""
+            for key, value in async_result.result.items():
+                result += f"{key}: {value}\n"
+            return result
+        return "-"
 
     def execute(self) -> Any:
         sid = None
