@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, override
 
 import pghistory
 from django.db import models
@@ -44,18 +44,21 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
     def country_office(self) -> "Office":
         return self.batch.program.country_office
 
+    @override
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
-        hh_valid = True
+        super().validate_with_checker(fail_if_alien=fail_if_alien)
+        members_failed = False
         for ind in self.members.all():
-            if not ind.validate_with_checker(fail_if_alien=fail_if_alien):
-                hh_valid = False
-        if hh_valid:
-            super().validate_with_checker(fail_if_alien=fail_if_alien)
-            errors = self.program.beneficiary_validator.validate(self)
-            if errors:
-                self.errors["dct"] = errors
-        else:
-            self.errors["dct"] = ["Some member did not validate"]
+            members_failed |= not ind.validate_with_checker(fail_if_alien=fail_if_alien)
+        ext_msgs = self.program.beneficiary_validator.validate(self)
+
+        if members_failed or ext_msgs:
+            dct = self.errors.setdefault("dct", [])
+            if members_failed:
+                dct.append("Some member did not validate")
+            if ext_msgs:
+                dct.extend(ext_msgs)
+
         self.last_checked = timezone.now()
         self.save(update_fields=["errors", "last_checked"])
         return not bool(self.errors)

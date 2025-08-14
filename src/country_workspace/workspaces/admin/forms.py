@@ -70,25 +70,25 @@ class BaseImportForm(forms.Form):
 
 
 class ImportFileForm(BaseImportForm):
-    pk_column_name = forms.CharField(
+    household_id_column = forms.CharField(
         required=True,
         initial="household_id",
-        help_text=_("Which column contains the unique identifier of the record. It is mandatory from Master/detail"),
+        help_text=_(
+            "Which column contains the unique identifier of the household record. It is mandatory from Master/Detail"
+        ),
     )
 
-    master_column_label = forms.CharField(
-        required=False,
-        initial="household_id",
-        help_text=_("Which column contains the 'link' to the household record."),
+    beneficiary_id_column = forms.CharField(
+        required=True,
     )
 
-    detail_column_label = forms.CharField(
+    household_label = forms.CharField(
         required=False,
         initial="household_id",
         help_text=_("Which column should be used as label for the household. It can use interpolation"),
     )
 
-    people_column_prefix = forms.CharField(
+    people_prefix = forms.CharField(
         required=False,
         initial="pp_",
         help_text=_("People' column group prefix"),
@@ -105,11 +105,21 @@ class ImportFileForm(BaseImportForm):
 
     def __init__(self, *args: Any, beneficiary_group: BeneficiaryGroup | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        if beneficiary_group:
-            exclude_fields = (
-                ("people_column_prefix",)
-                if beneficiary_group.master_detail
-                else ("pk_column_name", "master_column_label", "detail_column_label")
-            )
-            for field_name in exclude_fields:
-                self.fields.pop(field_name, None)
+        if not beneficiary_group:
+            return
+
+        is_md = beneficiary_group.master_detail
+        fields_to_exclude = ("people_prefix",) if is_md else ("household_id_column", "household_label")
+        field_cfg = {
+            "label": "Individual id column" if is_md else "People id column",
+            "initial": "individual_id" if is_md else "pp_index_id",
+            "help_text": (
+                "Which column contains the unique identifier of the individual record."
+                "It is mandatory from Master/Detail"
+                if is_md
+                else "Which column contains the unique identifier of the people record."
+            ),
+        }
+
+        [self.fields.pop(field_name, None) for field_name in fields_to_exclude]
+        [setattr(self.fields["beneficiary_id_column"], attr, v) for attr, v in field_cfg.items()]

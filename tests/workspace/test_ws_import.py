@@ -103,7 +103,7 @@ def test_import_rdi_hh_and_individuals(
     if not program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=True")
 
-    form_import_rdi["rdi-detail_column_label"] = "household_id"
+    form_import_rdi["rdi-household_id_column"] = "household_id"
     res = form_import_rdi.submit()
 
     assert res.status_code == 302
@@ -130,7 +130,7 @@ def test_import_rdi_people_only(
     if program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=False")
 
-    form_import_rdi["rdi-people_column_prefix"] = "pp_"
+    form_import_rdi["rdi-people_prefix"] = "pp_"
     res = form_import_rdi.submit()
 
     assert res.status_code == 302
