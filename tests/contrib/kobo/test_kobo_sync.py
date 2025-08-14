@@ -17,9 +17,10 @@ from country_workspace.contrib.kobo.sync import (
     import_data,
     is_submission_data_url,
     make_client,
-    FIELDS_TO_UPPERCASE,
-    preprocess_individual,
+    INDIVIDUAL_FIELDS_TO_UPPERCASE,
+    preprocess,
     get_fullname_key,
+    HOUSEHOLD_FIELDS_TO_UPPERCASE,
 )
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 
@@ -105,7 +106,7 @@ def test_extract_household_data() -> None:
 
 
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
-    preprocess_individual_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess_individual")
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
     data = {
@@ -126,21 +127,21 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     )
 
     assert individuals == len(data[INDIVIDUAL_RECORDS_FIELD])
-    preprocess_individual_mock.assert_called_once_with(individual_data)
-    get_fullname_key_mock.assert_called_once_with(preprocess_individual_mock.return_value)
+    preprocess_mock.assert_called_once_with(individual_data, INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS)
+    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
-        flex_fields=preprocess_individual_mock.return_value,
+        flex_fields=preprocess_mock.return_value,
         household=household_mock,
-        name=preprocess_individual_mock.return_value.get.return_value,
+        name=preprocess_mock.return_value.get.return_value,
     )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
     clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
-    normalize_json_mock = mocker.patch("country_workspace.contrib.kobo.sync.normalize_json")
 
     household = create_household(
         batch_mock := Mock(name="batch"),
@@ -150,11 +151,10 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
+    preprocess_mock.assert_called_once_with(extract_household_data_mock.return_value, HOUSEHOLD_FIELDS_TO_UPPERCASE)
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock, flex_fields=clean_field_names_mock.return_value
     )
-    normalize_json_mock.assert_called_once_with(extract_household_data_mock.return_value)
-    clean_field_names_mock.assert_called_once_with(normalize_json_mock.return_value)
 
 
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
@@ -221,16 +221,15 @@ def test_get_fullname_key_key_does_not_exist() -> None:
     assert get_fullname_key(()) is None
 
 
-def test_preprocess_individual(mocker: MockerFixture) -> None:
+def test_preprocess(mocker: MockerFixture) -> None:
     normalize_json_mock = mocker.patch("country_workspace.contrib.kobo.sync.normalize_json")
     clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     compose_mock = mocker.patch("country_workspace.contrib.kobo.sync.compose")
     individual = Mock()
+    fields_to_uppercase = ("first", "second")
 
-    assert preprocess_individual(individual) == compose_mock.return_value.return_value
-    partial_mock.assert_called_once_with(
-        clean_field_names_mock, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS
-    )
+    assert preprocess(individual, fields_to_uppercase) == compose_mock.return_value.return_value
+    partial_mock.assert_called_once_with(clean_field_names_mock, fields_to_uppercase=fields_to_uppercase)
     compose_mock.assert_called_once_with(normalize_json_mock, partial_mock.return_value)
     compose_mock.return_value.assert_called_once_with(individual)
