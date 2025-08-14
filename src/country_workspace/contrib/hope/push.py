@@ -4,6 +4,7 @@ from functools import cached_property
 from itertools import batched
 from json import JSONDecodeError
 from typing import Any, TypedDict, ReadOnly
+import base64
 
 from django.db import transaction
 from django.db.models import QuerySet
@@ -18,7 +19,6 @@ from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
 from country_workspace.models.base import Validable
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-
 
 type Beneficiary = CountryHousehold | CountryIndividual
 
@@ -123,10 +123,14 @@ class PushProcessor(BatchErrorHandlerMixin):
     push_endpoint: str = field(init=False)
     queryset: QuerySet = field(init=False)
     hope_rdi_id: str | None = field(default=None, init=False)
+    individual_id_mapping: dict[str, str] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
+        # Updated endpoints to match HOPE Core API
         self.model, self.push_endpoint = (
-            (CountryHousehold, "push/lax/") if self.master_detail else (CountryIndividual, "push/people/")
+            (CountryHousehold, "push/lax/households")
+            if self.master_detail
+            else (CountryIndividual, "push/lax/individuals")
         )
         self.base_path = f"{self.co_slug}/rdi/"
         self.queryset = self.model.objects.none()
@@ -162,18 +166,59 @@ class PushProcessor(BatchErrorHandlerMixin):
         if response := self.safe_post(path, data, "Error creating RDI"):
             self.hope_rdi_id = response.get("id")
 
-    def rdi_push(self) -> None:
-        """Push a batch of beneficiaries data to the external system as RDI."""
+    def rdi_push_individuals(self) -> None:
+        """Push individuals data to the external system."""
         if self.hope_rdi_id is None:
-            self.total["errors"].append("Cannot push data: hope_rdi_id is not set")
+            self.total["errors"].append("Cannot push individuals: hope_rdi_id is not set")
             return
-        batch_ids, batch_data = self.prepare_batch()
+
+        # Get all individuals from households if in master_detail mode
+        if self.master_detail:
+            individual_pks = set()
+            for household in self.queryset:
+                individual_pks.update(household.members.values_list("pk", flat=True))
+            individuals_qs = CountryIndividual.objects.filter(pk__in=individual_pks)
+        else:
+            individuals_qs = self.queryset
+
+        if not individuals_qs.exists():
+            self.total["errors"].append("No individuals to push")
+            return
+
+        # Validate individuals before pushing
+        for individual in individuals_qs:
+            self._validate_beneficiary(individual, "Ind")
+
+        if self.total["errors"]:
+            return
+
+        # Process individuals in batches
+        for batch_pks in batched(individuals_qs.values_list("pk", flat=True), PUSH_BATCH_SIZE):
+            batch_individuals = CountryIndividual.objects.filter(pk__in=batch_pks)
+            batch_data = [self._transform_individual_data(ind) for ind in batch_individuals]
+
+            path = f"{self.base_path}{self.hope_rdi_id}/push/lax/individuals/"
+            response = self.safe_post(path, batch_data, "Error pushing individuals")
+            self._process_individuals_response(response, list(batch_pks))
+
+    def rdi_push_households(self) -> None:
+        """Push households data to the external system."""
+        if self.hope_rdi_id is None:
+            self.total["errors"].append("Cannot push households: hope_rdi_id is not set")
+            return
+
+        if not self.master_detail:
+            self.total["errors"].append("Cannot push households in individual mode")
+            return
+
+        batch_ids, batch_data = self.prepare_household_batch()
         if not batch_ids:
-            self.total["errors"].append("No data to push")
+            self.total["errors"].append("No household data to push")
             return
-        path = f"{self.base_path}{self.hope_rdi_id}/{self.push_endpoint}"
-        response = self.safe_post(path, batch_data, "Error pushing data")
-        self.process_batch_response(response, batch_ids)
+
+        path = f"{self.base_path}{self.hope_rdi_id}/push/lax/households/"
+        response = self.safe_post(path, batch_data, "Error pushing households")
+        self._process_households_response(response, batch_ids)
 
     def rdi_complete(self) -> None:
         """Mark the RDI push as completed in the external system."""
@@ -203,48 +248,176 @@ class PushProcessor(BatchErrorHandlerMixin):
             if any(_f.startswith(prefix) for _f in item.flex_fields):
                 item.flex_fields[type_field] = _type
 
-    def prepare_batch(self) -> tuple[list[int], list[dict]]:
-        """Prepare a batch of household/individual|people data for API submission."""
+    def _transform_individual_data(self, individual: CountryIndividual) -> dict:
+        flex_fields = individual.apply_grouping()
+
+        transformed = {"individual_id": str(individual.pk), "flex_fields": flex_fields}
+
+        for source_field, target_field in INDIVIDUAL_FIELD_MAPPINGS.items():
+            if value := flex_fields.get(source_field):
+                transformed[target_field] = value
+
+        transformed.setdefault("first_name", "")
+        transformed.setdefault("last_name", "")
+        transformed.setdefault("marital_status", "")
+        transformed.setdefault("observed_disability", "")
+
+        if "documents" in flex_fields:
+            transformed["documents"] = self._transform_documents(flex_fields["documents"])
+
+        if "accounts" in flex_fields:
+            transformed["accounts"] = self._transform_accounts(flex_fields["accounts"])
+
+        if hasattr(individual, "photo") and individual.photo:
+            transformed["photo"] = self._encode_photo(individual.photo)
+
+        return transformed
+
+    def _transform_household_data(self, household: CountryHousehold) -> dict:
+        flex_fields = household.apply_grouping()
+
+        transformed = {"flex_fields": flex_fields}
+
+        for source_field, target_field in HOUSEHOLD_FIELD_MAPPINGS.items():
+            if value := flex_fields.get(source_field):
+                transformed[target_field] = value
+
+        for source_field, target_field in ADMIN_AREA_MAPPINGS.items():
+            if value := flex_fields.get(source_field):
+                transformed[target_field] = value
+
+        if head_id := flex_fields.get("head_of_household_id"):
+            transformed["head_of_household"] = self.individual_id_mapping.get(str(head_id))
+
+        if primary_id := flex_fields.get("primary_collector_id"):
+            transformed["primary_collector"] = self.individual_id_mapping.get(str(primary_id))
+
+        if alternate_id := flex_fields.get("alternate_collector_id"):
+            transformed["alternate_collector"] = self.individual_id_mapping.get(str(alternate_id))
+
+        transformed["members"] = [
+            self.individual_id_mapping.get(str(member.pk))
+            for member in household.members.all()
+            if self.individual_id_mapping.get(str(member.pk))
+        ]
+
+        transformed.setdefault("consent_sharing", [])
+
+        return transformed
+
+    def _transform_documents(self, documents: list[dict]) -> list[dict]:
+        return [
+            {
+                "type": doc.get("type"),
+                "country": doc.get("country"),
+                "document_number": doc.get("document_number"),
+                "issuance_date": doc.get("issuance_date"),
+                "expiry_date": doc.get("expiry_date"),
+                "image": doc.get("image", ""),
+            }
+            for doc in documents
+        ]
+
+    def _transform_accounts(self, accounts: list[dict]) -> list[dict]:
+        return [
+            {
+                "account_type": acc.get("account_type"),
+                "number": acc.get("number", ""),
+                "financial_institution": acc.get("financial_institution"),
+                "data": acc.get("data", {}),
+            }
+            for acc in accounts
+        ]
+
+    def _encode_photo(self, photo_file: Any) -> str:
+        try:
+            if photo_file and hasattr(photo_file, "read"):
+                return base64.b64encode(photo_file.read()).decode("utf-8")
+        except (OSError, ValueError) as e:
+            # Log the specific error for debugging
+            self.total.setdefault("warnings", []).append(f"Failed to encode photo: {e}")
+        return ""
+
+    def prepare_household_batch(self) -> tuple[list[int], list[dict]]:
         ids, data = [], []
         filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
-        for item in self.queryset:
-            ids.append(item.id)
-            flex_fields = item.apply_grouping()
-            if self.master_detail:
-                flex_fields["members"] = []
-                for member in item.members.all():
-                    self._set_types(member)
-                    flex_fields["members"].append(member.apply_grouping())
-                data.append(filter_none(flex_fields))
-            else:
-                data.append(filter_none(flex_fields))
+
+        for household in self.queryset:
+            ids.append(household.id)
+            household_data = self._transform_household_data(household)
+            data.append(filter_none(household_data))
 
         return ids, self.program.serialize(data)
 
+    def _process_individuals_response(self, response: dict | None, batch_ids: list[int]) -> None:
+        if not response:
+            self.total["errors"].append(f"Individuals batch failed for IDs: {batch_ids}")
+            return
+
+        processed = response.get("processed", 0)
+        accepted = response.get("accepted", 0)
+        errors = response.get("errors", 0)
+
+        if processed == len(batch_ids) and accepted == len(batch_ids):
+            self.total["people"] = self.total.get("people", 0) + accepted
+
+            if individual_mapping := response.get("individual_id_mapping"):
+                self.individual_id_mapping.update(individual_mapping)
+        elif errors > 0:
+            self.total["errors"].append(f"Individuals batch errors for IDs: {batch_ids}")
+            if results := response.get("results"):
+                self._process_validation_errors(results, batch_ids)
+
+    def _process_households_response(self, response: dict | None, batch_ids: list[int]) -> None:
+        if not response:
+            self.total["errors"].append(f"Households batch failed for IDs: {batch_ids}")
+            return
+
+        processed = response.get("processed", 0)
+        accepted = response.get("accepted", 0)
+        errors = response.get("errors", 0)
+
+        if processed == len(batch_ids) and accepted == len(batch_ids):
+            self.total["households"] = self.total.get("households", 0) + accepted
+        elif errors > 0:
+            self.total["errors"].append(f"Households batch errors for IDs: {batch_ids}")
+            if results := response.get("results"):
+                self._process_validation_errors(results, batch_ids)
+
+    def _process_validation_errors(self, results: list, batch_ids: list[int]) -> None:
+        for i, result in enumerate(results):
+            if i < len(batch_ids) and isinstance(result, dict) and result:
+                self.total["errors"].append(f"Validation error for ID {batch_ids[i]}: {result}")
+
+    def rdi_push(self) -> None:
+        if self.master_detail:
+            self.rdi_push_individuals()
+            if not self.total["errors"]:
+                self.rdi_push_households()
+        else:
+            self.rdi_push_individuals()
+
+    def prepare_batch(self) -> tuple[list[int], list[dict]]:
+        if self.master_detail:
+            return self.prepare_household_batch()
+        # For individuals, prepare individual data
+        ids, data = [], []
+        filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
+        for individual in self.queryset:
+            ids.append(individual.id)
+            individual_data = self._transform_individual_data(individual)
+            data.append(filter_none(individual_data))
+        return ids, self.program.serialize(data)
+
     def process_batch_response(self, response: dict | None, batch_ids: list[int]) -> list[int]:
-        """Process the API response for a batch push operation."""
-        match response:
-            case {"processed": p, "accepted": a} if p == a == len(batch_ids):
-                self.total["households"] = self.total.get("households", 0) + a
-                return batch_ids
-            case {"id": hope_rdi_id, "people": batch_list} if hope_rdi_id == self.hope_rdi_id and len(
-                batch_list
-            ) == len(batch_ids):
-                self.total["people"] = self.total.get("people", 0) + len(batch_ids)
-                return batch_ids
-            case {"errors": e} if e:
-                if e is True and "people" in response:
-                    self.total["errors"].append(f"Error pushing data for IDs: {batch_ids} - {response}")
-                    self.save_batch_errors_to_beneficiaries(response["people"], batch_ids)
-                elif e > 0:
-                    self.total["errors"].append(f"Error pushing data for IDs: {batch_ids} - {response}")
-                    self.save_batch_errors_to_beneficiaries(response, batch_ids)
-                else:
-                    self.total["errors"].append(f"Unexpected error format for IDs: {batch_ids} - {response}")
-            case None:
-                self.total["errors"].append(f"Batch failed for IDs: {batch_ids}")
-            case _:
-                self.total["errors"].append(f"Unexpected response for IDs: {batch_ids} - {response}")
+        if self.master_detail:
+            self._process_households_response(response, batch_ids)
+        else:
+            self._process_individuals_response(response, batch_ids)
+
+        # Return processed IDs if successful
+        if response and response.get("accepted", 0) == len(batch_ids):
+            return batch_ids
         return []
 
 
@@ -300,9 +473,15 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     def steps() -> Iterator[Callable[[], None]]:
         """Yield steps for pushing beneficiaries data in batches."""
         yield processor.rdi_create
-        for batch_pks in batched(config["pks"], PUSH_BATCH_SIZE):
-            processor.set_queryset(batch_pks)
-            yield from (processor.check_beneficiaries_validity, processor.rdi_push)
+
+        if config["master_detail"]:
+            yield processor.rdi_push_individuals
+            yield processor.rdi_push_households
+        else:
+            for batch_pks in batched(config["pks"], PUSH_BATCH_SIZE):
+                processor.set_queryset(batch_pks)
+                yield processor.rdi_push_individuals
+
         yield processor.rdi_complete
 
     if job.program.beneficiary_group is None:
@@ -311,6 +490,7 @@ def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     rdp_id = create_rdp_records(job.config, job.id)
     config: WorkflowConfig = {**job.config, "rdp_id": rdp_id}
     processor = create_processor(config)
+
     for step in steps():
         step()
         if processor.total["errors"]:
