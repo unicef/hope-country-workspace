@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from typing import Final
 from django.urls import reverse
@@ -58,9 +60,30 @@ def app(django_app_factory: MixinWithInstanceVariables) -> DjangoTestApp:
     return django_app
 
 
+@pytest.mark.django_db
+@patch("country_workspace.contrib.hope.push.PushProcessor.safe_post")
+@patch("country_workspace.contrib.hope.push.PushProcessor.check_beneficiaries_validity")
 def test_push_to_hope_action(
-    app: DjangoTestApp, program: CountryProgram, beneficiary_instance: tuple[CountryHousehold | CountryIndividual, str]
+    mocked_check_beneficiaries,
+    mocked_safe_post,
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary_instance: tuple[CountryHousehold | CountryIndividual, str],
 ) -> None:
+    def mock_safe_post_side_effect(path, data, error_msg):
+        if "create" in path:
+            return {"id": "test-rdi-123"}
+        if "push" in path:
+            if program.beneficiary_group.master_detail:
+                return {"processed": 1, "accepted": 1}
+            return {"id": "test-rdi-123", "people": [{"data": "test"}]}
+        if "completed" in path:
+            return {"status": "completed"}
+        return None
+
+    mocked_safe_post.side_effect = mock_safe_post_side_effect
+    mocked_check_beneficiaries.return_value = None
+
     beneficiary, url_name = beneficiary_instance
     with select_office(app, program.country_office, program):
         res = app.get(reverse(url_name))
