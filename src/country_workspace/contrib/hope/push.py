@@ -237,8 +237,16 @@ class PushProcessor(BatchErrorHandlerMixin):
         path = f"{self.base_path}{self.hope_rdi_id}/completed/"
         self.safe_post(path, None, "Error completing RDI")
 
+    def rdi_push(self) -> None:
+        """Legacy method - now delegates to appropriate push method."""
+        if self.master_detail:
+            self.rdi_push_individuals()
+            if not self.total["errors"]:
+                self.rdi_push_households()
+        else:
+            self.rdi_push_individuals()
+
     def safe_post(self, path: str, data: Any, error_msg: str) -> dict[str, Any] | None:
-        """Send a POST request to the HopeClient API and handles errors."""
         try:
             return self.client.post(path, data)
         except (RequestException, JSONDecodeError, RemoteError) as e:
@@ -310,20 +318,6 @@ class PushProcessor(BatchErrorHandlerMixin):
 
         return transformed
 
-    def _transform_household_data(self, household: CountryHousehold) -> dict:
-        flex_fields = household.apply_grouping()
-
-        transformed = {"flex_fields": flex_fields}
-
-        self._apply_field_mappings(transformed, flex_fields)
-        self._apply_admin_area_mappings(transformed, flex_fields)
-        self._map_individual_references(transformed, flex_fields, household)
-        self._map_household_members(transformed, household)
-
-        transformed.setdefault("consent_sharing", [])
-
-        return transformed
-
     def _apply_field_mappings(self, transformed: dict, flex_fields: dict) -> None:
         for source_field, target_field in HOUSEHOLD_FIELD_MAPPINGS.items():
             if value := flex_fields.get(source_field):
@@ -362,6 +356,18 @@ class PushProcessor(BatchErrorHandlerMixin):
                 transformed["members"].append(unicef_id)
             else:
                 self._add_error(f"Household {household.pk}: member {member.pk} not found in mapping")
+
+    def _transform_household_data(self, household: CountryHousehold) -> dict:
+        flex_fields = household.apply_grouping()
+        transformed = {"flex_fields": flex_fields}
+
+        self._apply_field_mappings(transformed, flex_fields)
+        self._apply_admin_area_mappings(transformed, flex_fields)
+        self._map_individual_references(transformed, flex_fields, household)
+        self._map_household_members(transformed, household)
+
+        transformed.setdefault("consent_sharing", [])
+        return transformed
 
     def _transform_documents(self, documents: list[dict]) -> list[dict]:
         transformed_docs = []
@@ -464,14 +470,6 @@ class PushProcessor(BatchErrorHandlerMixin):
         for i, result in enumerate(results):
             if i < len(batch_ids) and isinstance(result, dict) and result:
                 self.total["errors"].append(f"Validation error for ID {batch_ids[i]}: {result}")
-
-    def rdi_push(self) -> None:
-        if self.master_detail:
-            self.rdi_push_individuals()
-            if not self.total["errors"]:
-                self.rdi_push_households()
-        else:
-            self.rdi_push_individuals()
 
     def prepare_batch(self) -> tuple[list[int], list[dict]]:
         if self.master_detail:
