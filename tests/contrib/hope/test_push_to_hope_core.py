@@ -1303,3 +1303,407 @@ def test_map_household_members(push_processor: PushProcessor) -> None:
     assert "members" in transformed
     assert len(transformed["members"]) == len(member_ids)
     assert all(member.startswith("unicef_") for member in transformed["members"])
+
+
+@pytest.mark.django_db
+def test_rdi_push_individuals_with_validation_errors_early_return(push_processor: PushProcessor) -> None:
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    if push_processor.master_detail:
+        household = push_processor.queryset.first()
+        if household and household.members.exists():
+            individual = household.members.first()
+            individual.flex_fields.pop("birth_date", None)
+            individual.save()
+            push_processor.total["errors"].append("Validation error")
+    else:
+        individual = push_processor.queryset.first()
+        if individual:
+            individual.flex_fields.pop("birth_date", None)
+            individual.save()
+            push_processor.total["errors"].append("Validation error")
+
+    push_processor.rdi_push_individuals()
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_rdi_push_households_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = None
+    push_processor.rdi_push_households()
+
+    assert "Cannot push households: hope_rdi_id is not set" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_push_individuals_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
+    push_processor.hope_rdi_id = None
+    push_processor.rdi_push_individuals()
+
+    assert "Cannot push individuals: hope_rdi_id is not set" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_push_individuals_no_individuals_to_push(push_processor: PushProcessor) -> None:
+    push_processor.hope_rdi_id = "test-rdi-id"
+    push_processor.queryset = push_processor.model.objects.none()
+
+    push_processor.rdi_push_individuals()
+    assert "No individuals to push" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_push_households_no_household_data_to_push(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    original_prepare = push_processor.prepare_household_batch
+    push_processor.prepare_household_batch = lambda: ([], [])
+
+    push_processor.rdi_push_households()
+
+    push_processor.prepare_household_batch = original_prepare
+    assert "No household data to push" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_push_workflow_master_detail_success(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    original_push_individuals = push_processor.rdi_push_individuals
+    original_push_households = push_processor.rdi_push_households
+
+    individuals_called = False
+    households_called = False
+
+    def mock_push_individuals():
+        nonlocal individuals_called
+        individuals_called = True
+
+    def mock_push_households():
+        nonlocal households_called
+        households_called = True
+
+    push_processor.rdi_push_individuals = mock_push_individuals
+    push_processor.rdi_push_households = mock_push_households
+
+    push_processor.rdi_push()
+
+    push_processor.rdi_push_individuals = original_push_individuals
+    push_processor.rdi_push_households = original_push_households
+
+    assert individuals_called
+    assert households_called
+
+
+@pytest.mark.django_db
+def test_rdi_push_workflow_master_detail_with_errors(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    original_push_individuals = push_processor.rdi_push_individuals
+    original_push_households = push_processor.rdi_push_households
+
+    individuals_called = False
+    households_called = False
+
+    def mock_push_individuals():
+        nonlocal individuals_called
+        individuals_called = True
+        push_processor.total["errors"].append("Error in individuals")
+
+    def mock_push_households():
+        nonlocal households_called
+        households_called = True
+
+    push_processor.rdi_push_individuals = mock_push_individuals
+    push_processor.rdi_push_households = mock_push_households
+
+    push_processor.rdi_push()
+
+    push_processor.rdi_push_individuals = original_push_individuals
+    push_processor.rdi_push_households = original_push_households
+
+    assert individuals_called
+    assert not households_called
+
+
+@pytest.mark.django_db
+def test_rdi_push_workflow_individual_mode(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    original_push_individuals = push_processor.rdi_push_individuals
+
+    individuals_called = False
+
+    def mock_push_individuals():
+        nonlocal individuals_called
+        individuals_called = True
+
+    push_processor.rdi_push_individuals = mock_push_individuals
+
+    push_processor.rdi_push()
+
+    push_processor.rdi_push_individuals = original_push_individuals
+
+    assert individuals_called
+
+
+@pytest.mark.django_db
+def test_prepare_batch_individual_mode_with_data(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields["birth_date"] = "2000-01-01"
+    individual.save()
+
+    ids, data = push_processor.prepare_batch()
+
+    assert len(ids) == 1
+    assert len(data) > 0
+
+
+@pytest.mark.django_db
+def test_prepare_household_batch_with_data(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    household = push_processor.queryset.first()
+    if not household:
+        pytest.skip("No household in queryset")
+
+    household.flex_fields["household_size"] = 5
+    household.save()
+
+    ids, data = push_processor.prepare_household_batch()
+
+    assert len(ids) == 1
+    assert len(data) > 0
+
+
+@pytest.mark.django_db
+def test_process_batch_response_success_master_detail(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    response = {"accepted": 2, "processed": 2}
+    batch_ids = [1, 2]
+
+    result = push_processor.process_batch_response(response, batch_ids)
+
+    assert result == batch_ids
+
+
+@pytest.mark.django_db
+def test_process_batch_response_success_individual_mode(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    response = {"accepted": 2, "processed": 2}
+    batch_ids = [1, 2]
+
+    result = push_processor.process_batch_response(response, batch_ids)
+
+    assert result == batch_ids
+
+
+@pytest.mark.django_db
+def test_process_batch_response_none(push_processor: PushProcessor) -> None:
+    batch_ids = [1, 2]
+
+    result = push_processor.process_batch_response(None, batch_ids)
+
+    assert result == []
+
+
+@pytest.mark.django_db
+def test_rdi_complete_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
+    push_processor.hope_rdi_id = None
+    push_processor.rdi_complete()
+
+    assert "Cannot complete RDI: hope_rdi_id is not set" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_create_success(push_processor: PushProcessor) -> None:
+    original_safe_post = push_processor.safe_post
+
+    def mock_safe_post(path, data, error_msg):
+        return {"id": "test-rdi-id"}
+
+    push_processor.safe_post = mock_safe_post
+
+    push_processor.rdi_create()
+
+    push_processor.safe_post = original_safe_post
+    assert push_processor.hope_rdi_id == "test-rdi-id"
+
+
+@pytest.mark.django_db
+def test_rdi_create_failure(push_processor: PushProcessor) -> None:
+    original_safe_post = push_processor.safe_post
+
+    def mock_safe_post(path, data, error_msg):
+        return None
+
+    push_processor.safe_post = mock_safe_post
+
+    push_processor.rdi_create()
+
+    push_processor.safe_post = original_safe_post
+    assert push_processor.hope_rdi_id is None
+
+
+@pytest.mark.django_db
+def test_safe_post_with_request_exception(push_processor: PushProcessor) -> None:
+    original_post = push_processor.client.post
+
+    def mock_post(path, data):
+        from requests.exceptions import RequestException
+
+        raise RequestException("Network error")
+
+    push_processor.client.post = mock_post
+
+    result = push_processor.safe_post("test/path", {}, "Test error")
+
+    push_processor.client.post = original_post
+    assert result is None
+    assert "Test error" in push_processor.total["errors"][0]
+
+
+@pytest.mark.django_db
+def test_safe_post_with_json_decode_error(push_processor: PushProcessor) -> None:
+    original_post = push_processor.client.post
+
+    def mock_post(path, data):
+        from json import JSONDecodeError
+
+        raise JSONDecodeError("Invalid JSON", "", 0)
+
+    push_processor.client.post = mock_post
+
+    result = push_processor.safe_post("test/path", {}, "Test error")
+
+    push_processor.client.post = original_post
+    assert result is None
+    assert "Test error" in push_processor.total["errors"][0]
+
+
+@pytest.mark.django_db
+def test_safe_post_with_remote_error(push_processor: PushProcessor) -> None:
+    original_post = push_processor.client.post
+
+    def mock_post(path, data):
+        from country_workspace.exceptions import RemoteError
+
+        raise RemoteError("Remote error")
+
+    push_processor.client.post = mock_post
+
+    result = push_processor.safe_post("test/path", {}, "Test error")
+
+    push_processor.client.post = original_post
+    assert result is None
+    assert "Test error" in push_processor.total["errors"][0]
+
+
+@pytest.mark.django_db
+def test_check_beneficiaries_validity_with_invalid_beneficiary(push_processor: PushProcessor) -> None:
+    beneficiary = push_processor.queryset.first()
+    if not beneficiary:
+        pytest.skip("No beneficiary in queryset")
+
+    original_is_valid = beneficiary.is_valid
+    beneficiary.is_valid = lambda: False
+
+    push_processor.check_beneficiaries_validity()
+
+    beneficiary.is_valid = original_is_valid
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_check_beneficiaries_validity_with_existing_rdp(push_processor: PushProcessor) -> None:
+    beneficiary = push_processor.queryset.first()
+    if not beneficiary:
+        pytest.skip("No beneficiary in queryset")
+
+    from country_workspace.models import Rdp
+
+    rdp = Rdp.objects.create(
+        country_office_id=1, program_id=1, name="Test RDP", pushed_by_id=1, status=Rdp.PushStatus.PENDING
+    )
+
+    beneficiary.rdp.add(rdp)
+
+    push_processor.check_beneficiaries_validity()
+
+    beneficiary.rdp.remove(rdp)
+    rdp.delete()
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_check_beneficiaries_validity_master_detail_with_members(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    household = push_processor.queryset.first()
+    if not household or not household.members.exists():
+        pytest.skip("No household with members in queryset")
+
+    member = household.members.first()
+    original_is_valid = member.is_valid
+    member.is_valid = lambda: False
+
+    push_processor.check_beneficiaries_validity()
+
+    member.is_valid = original_is_valid
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_set_queryset_master_detail(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    pks = [1, 2, 3]
+    push_processor.set_queryset(pks)
+
+    assert push_processor.queryset is not None
+
+
+@pytest.mark.django_db
+def test_set_queryset_individual_mode(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    pks = [1, 2, 3]
+    push_processor.set_queryset(pks)
+
+    assert push_processor.queryset is not None
+
+
+@pytest.mark.django_db
+def test_program_property(push_processor: PushProcessor) -> None:
+    program = push_processor.program
+    assert program is not None
+    assert program.hope_id == push_processor.program_hope_id
