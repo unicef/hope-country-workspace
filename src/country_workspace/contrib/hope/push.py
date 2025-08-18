@@ -20,6 +20,9 @@ from country_workspace.contrib.hope.constants import (
     INDIVIDUAL_FIELD_MAPPINGS,
     HOUSEHOLD_FIELD_MAPPINGS,
     ADMIN_AREA_MAPPINGS,
+    INDIVIDUAL_REQUIRED_FIELDS,
+    DOCUMENT_TYPE_MAPPING,
+    ACCOUNT_TYPE_MAPPING,
 )
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp, Program
@@ -203,7 +206,7 @@ class PushProcessor(BatchErrorHandlerMixin):
             batch_individuals = CountryIndividual.objects.filter(pk__in=batch_pks)
             batch_data = [self._transform_individual_data(ind) for ind in batch_individuals]
 
-            path = f"{self.base_path}{self.hope_rdi_id}/push/lax/individuals/"
+            path = f"{self.base_path}{self.hope_rdi_id}/push/lax/individuals"
             response = self.safe_post(path, batch_data, "Error pushing individuals")
             self._process_individuals_response(response, list(batch_pks))
 
@@ -222,7 +225,7 @@ class PushProcessor(BatchErrorHandlerMixin):
             self.total["errors"].append("No household data to push")
             return
 
-        path = f"{self.base_path}{self.hope_rdi_id}/push/lax/households/"
+        path = f"{self.base_path}{self.hope_rdi_id}/push/lax/households"
         response = self.safe_post(path, batch_data, "Error pushing households")
         self._process_households_response(response, batch_ids)
 
@@ -251,10 +254,39 @@ class PushProcessor(BatchErrorHandlerMixin):
         for _type in DOCUMENT_TYPES + ACCOUNT_TYPES:
             prefix = f"{_type}_"
             type_field = f"{prefix}type" if _type in DOCUMENT_TYPES else f"{prefix}account_type"
-            if any(_f.startswith(prefix) for _f in item.flex_fields):
+            if type_field in item.flex_fields:
                 item.flex_fields[type_field] = _type
 
+    def _validate_individual_data(self, individual: CountryIndividual) -> list[str]:
+        errors = []
+        flex_fields = individual.apply_grouping()
+
+        if not flex_fields.get("birth_date"):
+            errors.append(f"Individual {individual.pk}: birth_date is required")
+
+        if "documents" in flex_fields:
+            for _i, doc in enumerate(flex_fields["documents"]):
+                doc_type = doc.get("type")
+                if doc_type and doc_type not in DOCUMENT_TYPE_MAPPING:
+                    errors.append(f"Individual {individual.pk}: Invalid document type '{doc_type}'")
+
+        if "accounts" in flex_fields:
+            for _i, acc in enumerate(flex_fields["accounts"]):
+                acc_type = acc.get("account_type")
+                if acc_type and acc_type not in ACCOUNT_TYPE_MAPPING:
+                    errors.append(f"Individual {individual.pk}: Invalid account type '{acc_type}'")
+
+        return errors
+
     def _transform_individual_data(self, individual: CountryIndividual) -> dict:
+        validation_errors = self._validate_individual_data(individual)
+        if validation_errors:
+            for error in validation_errors:
+                self._add_error(error)
+            return {}
+
+        self._set_types(individual)
+
         flex_fields = individual.apply_grouping()
 
         transformed = {"individual_id": str(individual.pk), "flex_fields": flex_fields}
@@ -263,10 +295,9 @@ class PushProcessor(BatchErrorHandlerMixin):
             if value := flex_fields.get(source_field):
                 transformed[target_field] = value
 
-        transformed.setdefault("first_name", "")
-        transformed.setdefault("last_name", "")
-        transformed.setdefault("marital_status", "")
-        transformed.setdefault("observed_disability", "")
+        for required_field, default_value in INDIVIDUAL_REQUIRED_FIELDS.items():
+            if required_field not in transformed:
+                transformed[required_field] = default_value
 
         if "documents" in flex_fields:
             transformed["documents"] = self._transform_documents(flex_fields["documents"])
@@ -284,63 +315,98 @@ class PushProcessor(BatchErrorHandlerMixin):
 
         transformed = {"flex_fields": flex_fields}
 
-        for source_field, target_field in HOUSEHOLD_FIELD_MAPPINGS.items():
-            if value := flex_fields.get(source_field):
-                transformed[target_field] = value
-
-        for source_field, target_field in ADMIN_AREA_MAPPINGS.items():
-            if value := flex_fields.get(source_field):
-                transformed[target_field] = value
-
-        if head_id := flex_fields.get("head_of_household_id"):
-            transformed["head_of_household"] = self.individual_id_mapping.get(str(head_id))
-
-        if primary_id := flex_fields.get("primary_collector_id"):
-            transformed["primary_collector"] = self.individual_id_mapping.get(str(primary_id))
-
-        if alternate_id := flex_fields.get("alternate_collector_id"):
-            transformed["alternate_collector"] = self.individual_id_mapping.get(str(alternate_id))
-
-        transformed["members"] = [
-            self.individual_id_mapping.get(str(member.pk))
-            for member in household.members.all()
-            if self.individual_id_mapping.get(str(member.pk))
-        ]
+        self._apply_field_mappings(transformed, flex_fields)
+        self._apply_admin_area_mappings(transformed, flex_fields)
+        self._map_individual_references(transformed, flex_fields, household)
+        self._map_household_members(transformed, household)
 
         transformed.setdefault("consent_sharing", [])
 
         return transformed
 
+    def _apply_field_mappings(self, transformed: dict, flex_fields: dict) -> None:
+        for source_field, target_field in HOUSEHOLD_FIELD_MAPPINGS.items():
+            if value := flex_fields.get(source_field):
+                transformed[target_field] = value
+
+    def _apply_admin_area_mappings(self, transformed: dict, flex_fields: dict) -> None:
+        for source_field, target_field in ADMIN_AREA_MAPPINGS.items():
+            if value := flex_fields.get(source_field):
+                transformed[target_field] = value
+
+    def _map_individual_references(self, transformed: dict, flex_fields: dict, household: CountryHousehold) -> None:
+        if head_id := flex_fields.get("head_of_household_id"):
+            unicef_id = self.individual_id_mapping.get(str(head_id))
+            if unicef_id:
+                transformed["head_of_household"] = unicef_id
+            else:
+                self._add_error(f"Household {household.pk}: head_of_household_id {head_id} not found in mapping")
+
+        if primary_id := flex_fields.get("primary_collector_id"):
+            unicef_id = self.individual_id_mapping.get(str(primary_id))
+            if unicef_id:
+                transformed["primary_collector"] = unicef_id
+            else:
+                self._add_error(f"Household {household.pk}: primary_collector_id {primary_id} not found in mapping")
+
+        if alternate_id := flex_fields.get("alternate_collector_id"):
+            unicef_id = self.individual_id_mapping.get(str(alternate_id))
+            if unicef_id:
+                transformed["alternate_collector"] = unicef_id
+
+    def _map_household_members(self, transformed: dict, household: CountryHousehold) -> None:
+        transformed["members"] = []
+        for member in household.members.all():
+            unicef_id = self.individual_id_mapping.get(str(member.pk))
+            if unicef_id:
+                transformed["members"].append(unicef_id)
+            else:
+                self._add_error(f"Household {household.pk}: member {member.pk} not found in mapping")
+
     def _transform_documents(self, documents: list[dict]) -> list[dict]:
-        return [
-            {
-                "type": doc.get("type"),
-                "country": doc.get("country"),
-                "document_number": doc.get("document_number"),
-                "issuance_date": doc.get("issuance_date"),
-                "expiry_date": doc.get("expiry_date"),
-                "image": doc.get("image", ""),
-            }
-            for doc in documents
-        ]
+        transformed_docs = []
+        for doc in documents:
+            doc_type = doc.get("type")
+            if doc_type and doc_type not in DOCUMENT_TYPE_MAPPING:
+                self._add_error(f"Invalid document type: {doc_type}")
+                continue
+
+            transformed_docs.append(
+                {
+                    "type": doc.get("type"),
+                    "country": doc.get("country"),
+                    "document_number": doc.get("document_number"),
+                    "issuance_date": doc.get("issuance_date"),
+                    "expiry_date": doc.get("expiry_date"),
+                    "image": doc.get("image", ""),
+                }
+            )
+        return transformed_docs
 
     def _transform_accounts(self, accounts: list[dict]) -> list[dict]:
-        return [
-            {
-                "account_type": acc.get("account_type"),
-                "number": acc.get("number", ""),
-                "financial_institution": acc.get("financial_institution"),
-                "data": acc.get("data", {}),
-            }
-            for acc in accounts
-        ]
+        transformed_accounts = []
+        for acc in accounts:
+            acc_type = acc.get("account_type")
+            if acc_type and acc_type not in ACCOUNT_TYPE_MAPPING:
+                self._add_error(f"Invalid account type: {acc_type}")
+                continue
+
+            transformed_accounts.append(
+                {
+                    "account_type": acc.get("account_type"),
+                    "number": acc.get("number", ""),
+                    "financial_institution": acc.get("financial_institution"),
+                    "data": acc.get("data", {}),
+                }
+            )
+        return transformed_accounts
 
     def _encode_photo(self, photo_file: Any) -> str:
         try:
             if photo_file and hasattr(photo_file, "read"):
+                photo_file.seek(0)
                 return base64.b64encode(photo_file.read()).decode("utf-8")
-        except (OSError, ValueError) as e:
-            # Log the specific error for debugging
+        except (OSError, ValueError, AttributeError) as e:
             self.total.setdefault("warnings", []).append(f"Failed to encode photo: {e}")
         return ""
 
@@ -351,6 +417,10 @@ class PushProcessor(BatchErrorHandlerMixin):
         for household in self.queryset:
             ids.append(household.id)
             household_data = self._transform_household_data(household)
+
+            if not household_data:
+                continue
+
             data.append(filter_none(household_data))
 
         return ids, self.program.serialize(data)
@@ -406,13 +476,13 @@ class PushProcessor(BatchErrorHandlerMixin):
     def prepare_batch(self) -> tuple[list[int], list[dict]]:
         if self.master_detail:
             return self.prepare_household_batch()
-        # For individuals, prepare individual data
         ids, data = [], []
         filter_none = lambda d: {k: v for k, v in d.items() if v is not None}
         for individual in self.queryset:
             ids.append(individual.id)
             individual_data = self._transform_individual_data(individual)
-            data.append(filter_none(individual_data))
+            if individual_data:
+                data.append(filter_none(individual_data))
         return ids, self.program.serialize(data)
 
     def process_batch_response(self, response: dict | None, batch_ids: list[int]) -> list[int]:
