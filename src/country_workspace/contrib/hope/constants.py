@@ -31,6 +31,20 @@ INDIVIDUAL_FIELD_MAPPINGS = {
     "gender": "gender",
     "residence_status": "residence_status",
     "consent_sharing": "consent_sharing",
+    "phone_no": "phone_no",
+    "phone_no_alternative": "phone_no_alternative",
+    "country": "country",
+    "country_origin": "country_origin",
+    "village": "village",
+}
+
+# Required fields for individual data
+INDIVIDUAL_REQUIRED_FIELDS = {
+    "first_name": "",
+    "last_name": "",
+    "birth_date": None,  # This must be provided
+    "marital_status": "",
+    "observed_disability": "",
 }
 
 HOUSEHOLD_FIELD_MAPPINGS = {
@@ -50,4 +64,20 @@ ADMIN_AREA_MAPPINGS = {
     "admin2": "admin2",
     "admin3": "admin3",
     "admin4": "admin4",
+}
+
+# Document type validation mapping
+DOCUMENT_TYPE_MAPPING = {
+    "national_id": "national_id",
+    "national_passport": "national_passport",
+    "birth_certificate": "birth_certificate",
+    "other": "other",
+}
+
+# Account type validation mapping
+ACCOUNT_TYPE_MAPPING = {
+    "mobile": "mobile",
+    "bank": "bank",
+    "cash": "cash",
+    "other": "other",
 }
