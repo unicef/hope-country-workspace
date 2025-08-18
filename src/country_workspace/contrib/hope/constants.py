@@ -53,9 +53,6 @@ HOUSEHOLD_FIELD_MAPPINGS = {
     "consent_sharing": "consent_sharing",
     "country": "country",
     "country_origin": "country_origin",
-    "head_of_household_id": "head_of_household",
-    "primary_collector_id": "primary_collector",
-    "alternate_collector_id": "alternate_collector",
 }
 
 # Administrative area field mappings

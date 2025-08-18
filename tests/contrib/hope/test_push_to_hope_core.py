@@ -1799,7 +1799,7 @@ def test_validate_individual_data_birth_date_missing_from_apply_grouping(push_pr
     original_apply_grouping = individual.apply_grouping
 
     def mock_apply_grouping():
-        return {}  # Return empty dict to simulate missing birth_date
+        return {}
 
     individual.apply_grouping = mock_apply_grouping
 
@@ -1861,7 +1861,6 @@ def test_validate_individual_data_accounts_with_invalid_type(push_processor: Pus
 
 @pytest.mark.django_db
 def test_validate_individual_data_specific_lines() -> None:
-    """Test specifically to cover the validation lines in _validate_individual_data method."""
     from testutils.factories import CountryIndividualFactory
 
     individual = CountryIndividualFactory()
@@ -1905,7 +1904,6 @@ def test_validate_individual_data_specific_lines() -> None:
 
 @pytest.mark.django_db
 def test_transform_individual_data_specific_lines() -> None:
-    """Test specifically to cover the transformation lines in _transform_individual_data method."""
     from testutils.factories import CountryIndividualFactory
 
     individual = CountryIndividualFactory()
