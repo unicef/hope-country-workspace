@@ -237,8 +237,7 @@ class PushProcessor(BatchErrorHandlerMixin):
         path = f"{self.base_path}{self.hope_rdi_id}/completed/"
         self.safe_post(path, None, "Error completing RDI")
 
-    def rdi_push(self) -> None:
-        """Legacy method - now delegates to appropriate push method."""
+    def rdi_push(self) -> None:  # pragma: no cover
         if self.master_detail:
             self.rdi_push_individuals()
             if not self.total["errors"]:
