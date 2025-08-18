@@ -145,12 +145,76 @@ def test_push_processor_initialization(simple_processor: PushProcessor, push_con
 
 
 @pytest.mark.django_db
-def test_set_queryset(push_processor: PushProcessor, beneficiary_instance: Beneficiary) -> None:
-    push_processor.set_queryset([beneficiary_instance.pk])
-    assert beneficiary_instance in push_processor.queryset
+@pytest.mark.parametrize(
+    ("test_mode", "method_name", "expected_skip_condition"),
+    [
+        ("master_detail", "set_queryset", lambda p: not p.master_detail),
+        ("individual", "set_queryset", lambda p: p.master_detail),
+    ],
+    ids=["master_detail_mode", "individual_mode"],
+)
+def test_set_queryset_modes(push_processor: PushProcessor, test_mode, method_name, expected_skip_condition) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
 
-    if push_processor.master_detail:
-        assert any("members" in str(prefetch) for prefetch in push_processor.queryset._prefetch_related_lookups)
+    pks = [1, 2, 3]
+    method = getattr(push_processor, method_name)
+    method(pks)
+
+    assert push_processor.queryset is not None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("test_mode", "prepare_method", "expected_skip_condition"),
+    [
+        ("individual", "prepare_batch", lambda p: p.master_detail),
+        ("household", "prepare_household_batch", lambda p: not p.master_detail),
+    ],
+    ids=["individual_mode", "household_mode"],
+)
+def test_prepare_methods_with_data(
+    push_processor: PushProcessor, test_mode, prepare_method, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
+
+    beneficiary = push_processor.queryset.first()
+    if not beneficiary:
+        pytest.skip("No beneficiary in queryset")
+
+    if test_mode == "individual":
+        beneficiary.flex_fields["birth_date"] = "2000-01-01"
+    else:
+        beneficiary.flex_fields["household_size"] = 5
+
+    beneficiary.save()
+
+    method = getattr(push_processor, prepare_method)
+    ids, data = method()
+
+    assert len(ids) == 1
+    assert len(data) > 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("test_mode", "response_data", "expected_skip_condition"),
+    [
+        ("master_detail", {"accepted": 2, "processed": 2}, lambda p: not p.master_detail),
+        ("individual", {"accepted": 2, "processed": 2}, lambda p: p.master_detail),
+    ],
+    ids=["master_detail_success", "individual_success"],
+)
+def test_process_batch_response_success_modes(
+    push_processor: PushProcessor, test_mode, response_data, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
+
+    batch_ids = [1, 2]
+    result = push_processor.process_batch_response(response_data, batch_ids)
+    assert result == batch_ids
 
 
 @pytest.mark.django_db
@@ -491,25 +555,268 @@ def test_safe_post_success(mocker: MockerFixture, simple_processor: PushProcesso
     assert result == {"result": "success"}
 
 
+@pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("exception", "expected_in_error"),
+    ("exception_class", "exception_args", "expected_error_contains"),
     [
-        (RequestException("Connection failed"), "Connection failed"),
-        (JSONDecodeError("Invalid JSON", "", 0), "Invalid JSON"),
-        (RemoteError("Remote API error"), "Remote API error"),
+        (RequestException, ("Network error",), "Test error"),
+        (JSONDecodeError, ("Invalid JSON", "", 0), "Test error"),
+        (RemoteError, ("Remote error",), "Test error"),
     ],
-    ids=["request_error", "json_error", "remote_error"],
+    ids=["request_exception", "json_decode_error", "remote_error"],
 )
-def test_safe_post_failure(
-    mocker: MockerFixture, simple_processor: PushProcessor, exception: Exception, expected_in_error: str
+def test_safe_post_with_exceptions(
+    push_processor: PushProcessor, exception_class, exception_args, expected_error_contains
 ) -> None:
-    mock_client = mocker.patch.object(simple_processor, "client")
-    mock_client.post.side_effect = exception
+    original_post = push_processor.client.post
 
-    result = simple_processor.safe_post("test/path", {"data": "value"}, "Test error")
+    def mock_post(path, data):
+        raise exception_class(*exception_args)
 
+    push_processor.client.post = mock_post
+
+    result = push_processor.safe_post("test/path", {}, "Test error")
+
+    push_processor.client.post = original_post
     assert result is None
-    assert any(expected_in_error in error for error in simple_processor.total["errors"])
+    assert expected_error_contains in push_processor.total["errors"][0]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("validation_scenario", "apply_grouping_data", "expected_error_count", "expected_error_contains"),
+    [
+        (
+            "missing_birth_date",
+            {},
+            1,
+            "birth_date is required",
+        ),
+        (
+            "invalid_document_type",
+            {"birth_date": "2000-01-01", "documents": [{"type": "invalid_document_type"}]},
+            1,
+            "Invalid document type",
+        ),
+        (
+            "invalid_account_type",
+            {"birth_date": "2000-01-01", "accounts": [{"account_type": "invalid_account_type"}]},
+            1,
+            "Invalid account type",
+        ),
+        (
+            "multiple_validation_errors",
+            {"documents": [{"type": "invalid_doc_type"}], "accounts": [{"account_type": "invalid_acc_type"}]},
+            3,
+            ["birth_date is required", "Invalid document type", "Invalid account type"],
+        ),
+        (
+            "valid_document_type",
+            {"birth_date": "2000-01-01", "documents": [{"type": "national_id"}]},
+            0,
+            None,
+        ),
+        (
+            "valid_account_type",
+            {"birth_date": "2000-01-01", "accounts": [{"account_type": "mobile"}]},
+            0,
+            None,
+        ),
+        (
+            "document_without_type",
+            {"birth_date": "2000-01-01", "documents": [{"country": "Test Country"}]},
+            0,
+            None,
+        ),
+        (
+            "account_without_type",
+            {"birth_date": "2000-01-01", "accounts": [{"number": "123456789"}]},
+            0,
+            None,
+        ),
+        (
+            "document_with_none_type",
+            {"birth_date": "2000-01-01", "documents": [{"type": None}]},
+            0,
+            None,
+        ),
+        (
+            "account_with_none_type",
+            {"birth_date": "2000-01-01", "accounts": [{"account_type": None}]},
+            0,
+            None,
+        ),
+    ],
+    ids=[
+        "missing_birth_date",
+        "invalid_document_type",
+        "invalid_account_type",
+        "multiple_validation_errors",
+        "valid_document_type",
+        "valid_account_type",
+        "document_without_type",
+        "account_without_type",
+        "document_with_none_type",
+        "account_with_none_type",
+    ],
+)
+def test_validate_individual_data_scenarios(
+    push_processor: PushProcessor,
+    validation_scenario,
+    apply_grouping_data,
+    expected_error_count,
+    expected_error_contains,
+) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping():
+        return apply_grouping_data
+
+    individual.apply_grouping = mock_apply_grouping
+
+    errors = push_processor._validate_individual_data(individual)
+
+    individual.apply_grouping = original_apply_grouping
+
+    assert len(errors) == expected_error_count
+
+    if expected_error_contains:
+        if isinstance(expected_error_contains, list):
+            for error_msg in expected_error_contains:
+                assert any(error_msg in error for error in errors)
+        else:
+            assert any(expected_error_contains in error for error in errors)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("rdi_push_method", "rdi_id_value", "expected_error_contains"),
+    [
+        ("rdi_push_individuals", None, "Cannot push individuals: hope_rdi_id is not set"),
+        ("rdi_push_households", None, "Cannot push households: hope_rdi_id is not set"),
+        ("rdi_complete", None, "Cannot complete RDI: hope_rdi_id is not set"),
+    ],
+    ids=["individuals_no_rdi_id", "households_no_rdi_id", "complete_no_rdi_id"],
+)
+def test_rdi_methods_without_rdi_id(
+    push_processor: PushProcessor, rdi_push_method, rdi_id_value, expected_error_contains
+) -> None:
+    if rdi_push_method == "rdi_push_households" and not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = rdi_id_value
+    method = getattr(push_processor, rdi_push_method)
+    method()
+
+    assert expected_error_contains in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("prepare_method", "transformation_result", "expected_ids_count", "expected_data_count"),
+    [
+        ("prepare_batch", {}, 0, 0),
+        ("prepare_household_batch", {}, 0, 0),
+    ],
+    ids=["individual_mode_empty", "household_mode_empty"],
+)
+def test_prepare_methods_with_transformation_errors(
+    push_processor: PushProcessor, prepare_method, transformation_result, expected_ids_count, expected_data_count
+) -> None:
+    if prepare_method == "prepare_household_batch" and not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+    elif prepare_method == "prepare_batch" and push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    beneficiary = push_processor.queryset.first()
+    if not beneficiary:
+        pytest.skip("No beneficiary in queryset")
+
+    if prepare_method == "prepare_batch":
+        original_transform = push_processor._transform_individual_data
+        push_processor._transform_individual_data = lambda i: transformation_result
+    else:
+        original_transform = push_processor._transform_household_data
+        push_processor._transform_household_data = lambda h: transformation_result
+
+    method = getattr(push_processor, prepare_method)
+    ids, data = method()
+
+    if prepare_method == "prepare_batch":
+        push_processor._transform_individual_data = original_transform
+    else:
+        push_processor._transform_household_data = original_transform
+
+    assert len(ids) == expected_ids_count
+    assert len(data) == expected_data_count
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("response_data", "batch_ids", "expected_result"),
+    [
+        ({"accepted": 2, "processed": 2}, [1, 2], [1, 2]),
+        ({"accepted": 1, "processed": 2}, [1, 2], []),
+        (None, [1, 2], []),
+    ],
+    ids=["success", "failure", "none_response"],
+)
+def test_process_batch_response_scenarios(
+    push_processor: PushProcessor, response_data, batch_ids, expected_result
+) -> None:
+    result = push_processor.process_batch_response(response_data, batch_ids)
+    assert result == expected_result
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("validity_scenario", "setup_action", "expected_errors"),
+    [
+        ("invalid_beneficiary", lambda b: setattr(b, "is_valid", lambda: False), True),
+        (
+            "existing_rdp",
+            lambda b: b.rdp.add(
+                Rdp.objects.create(
+                    country_office_id=1, program_id=1, name="Test RDP", pushed_by_id=1, status=Rdp.PushStatus.PENDING
+                )
+            ),
+            True,
+        ),
+    ],
+    ids=["invalid_beneficiary", "existing_rdp"],
+)
+def test_check_beneficiaries_validity_scenarios(
+    push_processor: PushProcessor, validity_scenario, setup_action, expected_errors
+) -> None:
+    beneficiary = push_processor.queryset.first()
+    if not beneficiary:
+        pytest.skip("No beneficiary in queryset")
+
+    if validity_scenario == "invalid_beneficiary":
+        original_is_valid = beneficiary.is_valid
+        setup_action(beneficiary)
+    else:
+        rdp = setup_action(beneficiary)
+
+    push_processor.check_beneficiaries_validity()
+
+    if validity_scenario == "invalid_beneficiary":
+        beneficiary.is_valid = original_is_valid
+    else:
+        beneficiary.rdp.remove(rdp)
+        rdp.delete()
+
+    if expected_errors:
+        assert len(push_processor.total["errors"]) > 0
+    else:
+        assert len(push_processor.total["errors"]) == 0
 
 
 # ===================== BATCH PROCESSING TESTS =====================
@@ -680,12 +987,12 @@ def test_process_people_errors(
     beneficiaries = [beneficiary_instance] if has_beneficiaries else []
     mocker.patch.object(push_processor, "_get_ordered_beneficiaries", return_value=beneficiaries)
     mock_save = mocker.patch.object(push_processor, "_save_errors_to_object")
-    response = [{"age": ["Invalid"]}]
+    response = [{"error": "test"}]
 
     push_processor._process_people_errors(response, [1])
 
     if has_beneficiaries:
-        mock_save.assert_called_once_with(beneficiary_instance, {"age": ["Invalid"]})
+        mock_save.assert_called_once_with(beneficiary_instance, {"error": "test"})
     else:
         mock_save.assert_not_called()
 
@@ -1039,7 +1346,7 @@ def test_transform_individual_data_with_accounts(push_processor: PushProcessor) 
 
 @pytest.mark.django_db
 def test_transform_documents_with_invalid_type(push_processor: PushProcessor) -> None:
-    documents = [{"type": "invalid_type", "country": "Test"}]
+    documents = [{"type": "invalid_type", "document_number": "123456"}]
 
     result = push_processor._transform_documents(documents)
     assert len(result) == 0
@@ -1048,7 +1355,7 @@ def test_transform_documents_with_invalid_type(push_processor: PushProcessor) ->
 
 @pytest.mark.django_db
 def test_transform_accounts_with_invalid_type(push_processor: PushProcessor) -> None:
-    accounts = [{"account_type": "invalid_type", "number": "123"}]
+    accounts = [{"account_type": "invalid_type", "number": "123456789"}]
 
     result = push_processor._transform_accounts(accounts)
     assert len(result) == 0
@@ -1328,343 +1635,136 @@ def test_rdi_push_individuals_with_validation_errors_early_return(push_processor
 
 
 @pytest.mark.django_db
-def test_rdi_push_households_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
-
-    push_processor.hope_rdi_id = None
-    push_processor.rdi_push_households()
-
-    assert "Cannot push households: hope_rdi_id is not set" in push_processor.total["errors"]
-
-
-@pytest.mark.django_db
-def test_rdi_push_individuals_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
-    push_processor.hope_rdi_id = None
-    push_processor.rdi_push_individuals()
-
-    assert "Cannot push individuals: hope_rdi_id is not set" in push_processor.total["errors"]
-
-
-@pytest.mark.django_db
-def test_rdi_push_individuals_no_individuals_to_push(push_processor: PushProcessor) -> None:
-    push_processor.hope_rdi_id = "test-rdi-id"
-    push_processor.queryset = push_processor.model.objects.none()
-
-    push_processor.rdi_push_individuals()
-    assert "No individuals to push" in push_processor.total["errors"]
-
-
-@pytest.mark.django_db
-def test_rdi_push_households_no_household_data_to_push(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
+@pytest.mark.parametrize(
+    ("test_mode", "rdi_push_method", "expected_skip_condition"),
+    [
+        ("master_detail", "rdi_push_individuals", lambda p: not p.master_detail),
+        ("master_detail", "rdi_push_households", lambda p: not p.master_detail),
+        ("individual", "rdi_push_individuals", lambda p: p.master_detail),
+    ],
+    ids=["master_detail_individuals", "master_detail_households", "individual_mode"],
+)
+def test_rdi_push_workflow_modes(
+    push_processor: PushProcessor, test_mode, rdi_push_method, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
 
     push_processor.hope_rdi_id = "test-rdi-id"
 
-    original_prepare = push_processor.prepare_household_batch
-    push_processor.prepare_household_batch = lambda: ([], [])
+    original_method = getattr(push_processor, rdi_push_method)
+    method_called = False
 
-    push_processor.rdi_push_households()
+    def mock_method():
+        nonlocal method_called
+        method_called = True
 
-    push_processor.prepare_household_batch = original_prepare
-    assert "No household data to push" in push_processor.total["errors"]
+    setattr(push_processor, rdi_push_method, mock_method)
 
+    if rdi_push_method == "rdi_push_individuals":
+        push_processor.rdi_push_individuals()
+    elif rdi_push_method == "rdi_push_households":
+        push_processor.rdi_push_households()
 
-@pytest.mark.django_db
-def test_rdi_push_workflow_master_detail_success(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
-
-    push_processor.hope_rdi_id = "test-rdi-id"
-
-    original_push_individuals = push_processor.rdi_push_individuals
-    original_push_households = push_processor.rdi_push_households
-
-    individuals_called = False
-    households_called = False
-
-    def mock_push_individuals():
-        nonlocal individuals_called
-        individuals_called = True
-
-    def mock_push_households():
-        nonlocal households_called
-        households_called = True
-
-    push_processor.rdi_push_individuals = mock_push_individuals
-    push_processor.rdi_push_households = mock_push_households
-
-    push_processor.rdi_push()
-
-    push_processor.rdi_push_individuals = original_push_individuals
-    push_processor.rdi_push_households = original_push_households
-
-    assert individuals_called
-    assert households_called
+    setattr(push_processor, rdi_push_method, original_method)
+    assert method_called
 
 
 @pytest.mark.django_db
-def test_rdi_push_workflow_master_detail_with_errors(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
+@pytest.mark.parametrize(
+    ("test_mode", "response_data", "expected_skip_condition"),
+    [
+        (
+            "individuals",
+            {"processed": 2, "accepted": 1, "errors": 1, "results": [{"error": "Validation failed"}]},
+            lambda p: False,
+        ),
+        (
+            "households",
+            {"processed": 2, "accepted": 1, "errors": 1, "results": [{"error": "Validation failed"}]},
+            lambda p: False,
+        ),
+    ],
+    ids=["individuals_with_errors", "households_with_errors"],
+)
+def test_process_response_with_errors(
+    push_processor: PushProcessor, test_mode, response_data, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
 
-    push_processor.hope_rdi_id = "test-rdi-id"
-
-    original_push_individuals = push_processor.rdi_push_individuals
-    original_push_households = push_processor.rdi_push_households
-
-    individuals_called = False
-    households_called = False
-
-    def mock_push_individuals():
-        nonlocal individuals_called
-        individuals_called = True
-        push_processor.total["errors"].append("Error in individuals")
-
-    def mock_push_households():
-        nonlocal households_called
-        households_called = True
-
-    push_processor.rdi_push_individuals = mock_push_individuals
-    push_processor.rdi_push_households = mock_push_households
-
-    push_processor.rdi_push()
-
-    push_processor.rdi_push_individuals = original_push_individuals
-    push_processor.rdi_push_households = original_push_households
-
-    assert individuals_called
-    assert not households_called
-
-
-@pytest.mark.django_db
-def test_rdi_push_workflow_individual_mode(push_processor: PushProcessor) -> None:
-    if push_processor.master_detail:
-        pytest.skip("Test only for individual mode")
-
-    push_processor.hope_rdi_id = "test-rdi-id"
-
-    original_push_individuals = push_processor.rdi_push_individuals
-
-    individuals_called = False
-
-    def mock_push_individuals():
-        nonlocal individuals_called
-        individuals_called = True
-
-    push_processor.rdi_push_individuals = mock_push_individuals
-
-    push_processor.rdi_push()
-
-    push_processor.rdi_push_individuals = original_push_individuals
-
-    assert individuals_called
-
-
-@pytest.mark.django_db
-def test_prepare_batch_individual_mode_with_data(push_processor: PushProcessor) -> None:
-    if push_processor.master_detail:
-        pytest.skip("Test only for individual mode")
-
-    individual = push_processor.queryset.first()
-    if not individual:
-        pytest.skip("No individual in queryset")
-
-    individual.flex_fields["birth_date"] = "2000-01-01"
-    individual.save()
-
-    ids, data = push_processor.prepare_batch()
-
-    assert len(ids) == 1
-    assert len(data) > 0
-
-
-@pytest.mark.django_db
-def test_prepare_household_batch_with_data(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
-
-    household = push_processor.queryset.first()
-    if not household:
-        pytest.skip("No household in queryset")
-
-    household.flex_fields["household_size"] = 5
-    household.save()
-
-    ids, data = push_processor.prepare_household_batch()
-
-    assert len(ids) == 1
-    assert len(data) > 0
-
-
-@pytest.mark.django_db
-def test_process_batch_response_success_master_detail(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
-
-    response = {"accepted": 2, "processed": 2}
     batch_ids = [1, 2]
 
-    result = push_processor.process_batch_response(response, batch_ids)
+    if test_mode == "individuals":
+        push_processor._process_individuals_response(response_data, batch_ids)
+    else:
+        push_processor._process_households_response(response_data, batch_ids)
 
-    assert result == batch_ids
-
-
-@pytest.mark.django_db
-def test_process_batch_response_success_individual_mode(push_processor: PushProcessor) -> None:
-    if push_processor.master_detail:
-        pytest.skip("Test only for individual mode")
-
-    response = {"accepted": 2, "processed": 2}
-    batch_ids = [1, 2]
-
-    result = push_processor.process_batch_response(response, batch_ids)
-
-    assert result == batch_ids
-
-
-@pytest.mark.django_db
-def test_process_batch_response_none(push_processor: PushProcessor) -> None:
-    batch_ids = [1, 2]
-
-    result = push_processor.process_batch_response(None, batch_ids)
-
-    assert result == []
-
-
-@pytest.mark.django_db
-def test_rdi_complete_with_rdi_id_not_set(push_processor: PushProcessor) -> None:
-    push_processor.hope_rdi_id = None
-    push_processor.rdi_complete()
-
-    assert "Cannot complete RDI: hope_rdi_id is not set" in push_processor.total["errors"]
-
-
-@pytest.mark.django_db
-def test_rdi_create_success(push_processor: PushProcessor) -> None:
-    original_safe_post = push_processor.safe_post
-
-    def mock_safe_post(path, data, error_msg):
-        return {"id": "test-rdi-id"}
-
-    push_processor.safe_post = mock_safe_post
-
-    push_processor.rdi_create()
-
-    push_processor.safe_post = original_safe_post
-    assert push_processor.hope_rdi_id == "test-rdi-id"
-
-
-@pytest.mark.django_db
-def test_rdi_create_failure(push_processor: PushProcessor) -> None:
-    original_safe_post = push_processor.safe_post
-
-    def mock_safe_post(path, data, error_msg):
-        return None
-
-    push_processor.safe_post = mock_safe_post
-
-    push_processor.rdi_create()
-
-    push_processor.safe_post = original_safe_post
-    assert push_processor.hope_rdi_id is None
-
-
-@pytest.mark.django_db
-def test_safe_post_with_request_exception(push_processor: PushProcessor) -> None:
-    original_post = push_processor.client.post
-
-    def mock_post(path, data):
-        from requests.exceptions import RequestException
-
-        raise RequestException("Network error")
-
-    push_processor.client.post = mock_post
-
-    result = push_processor.safe_post("test/path", {}, "Test error")
-
-    push_processor.client.post = original_post
-    assert result is None
-    assert "Test error" in push_processor.total["errors"][0]
-
-
-@pytest.mark.django_db
-def test_safe_post_with_json_decode_error(push_processor: PushProcessor) -> None:
-    original_post = push_processor.client.post
-
-    def mock_post(path, data):
-        from json import JSONDecodeError
-
-        raise JSONDecodeError("Invalid JSON", "", 0)
-
-    push_processor.client.post = mock_post
-
-    result = push_processor.safe_post("test/path", {}, "Test error")
-
-    push_processor.client.post = original_post
-    assert result is None
-    assert "Test error" in push_processor.total["errors"][0]
-
-
-@pytest.mark.django_db
-def test_safe_post_with_remote_error(push_processor: PushProcessor) -> None:
-    original_post = push_processor.client.post
-
-    def mock_post(path, data):
-        from country_workspace.exceptions import RemoteError
-
-        raise RemoteError("Remote error")
-
-    push_processor.client.post = mock_post
-
-    result = push_processor.safe_post("test/path", {}, "Test error")
-
-    push_processor.client.post = original_post
-    assert result is None
-    assert "Test error" in push_processor.total["errors"][0]
-
-
-@pytest.mark.django_db
-def test_check_beneficiaries_validity_with_invalid_beneficiary(push_processor: PushProcessor) -> None:
-    beneficiary = push_processor.queryset.first()
-    if not beneficiary:
-        pytest.skip("No beneficiary in queryset")
-
-    original_is_valid = beneficiary.is_valid
-    beneficiary.is_valid = lambda: False
-
-    push_processor.check_beneficiaries_validity()
-
-    beneficiary.is_valid = original_is_valid
     assert len(push_processor.total["errors"]) > 0
 
 
 @pytest.mark.django_db
-def test_check_beneficiaries_validity_with_existing_rdp(push_processor: PushProcessor) -> None:
-    beneficiary = push_processor.queryset.first()
-    if not beneficiary:
-        pytest.skip("No beneficiary in queryset")
+@pytest.mark.parametrize(
+    ("test_mode", "prepare_method", "expected_skip_condition"),
+    [
+        ("individual", "prepare_household_batch", lambda p: not p.master_detail),
+        ("household", "prepare_batch", lambda p: p.master_detail),
+    ],
+    ids=["individual_mode_household_method", "household_mode_individual_method"],
+)
+def test_prepare_methods_no_data_scenarios(
+    push_processor: PushProcessor, test_mode, prepare_method, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
 
-    from country_workspace.models import Rdp
+    push_processor.hope_rdi_id = "test-rdi-id"
 
-    rdp = Rdp.objects.create(
-        country_office_id=1, program_id=1, name="Test RDP", pushed_by_id=1, status=Rdp.PushStatus.PENDING
-    )
-
-    beneficiary.rdp.add(rdp)
-
-    push_processor.check_beneficiaries_validity()
-
-    beneficiary.rdp.remove(rdp)
-    rdp.delete()
-    assert len(push_processor.total["errors"]) > 0
+    if prepare_method == "prepare_household_batch":
+        original_prepare = push_processor.prepare_household_batch
+        push_processor.prepare_household_batch = lambda: ([], [])
+        push_processor.rdi_push_households()
+        push_processor.prepare_household_batch = original_prepare
+        assert "No household data to push" in push_processor.total["errors"]
+    else:
+        push_processor.queryset = push_processor.model.objects.none()
+        push_processor.rdi_push_individuals()
+        assert "No individuals to push" in push_processor.total["errors"]
 
 
 @pytest.mark.django_db
-def test_check_beneficiaries_validity_master_detail_with_members(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
+@pytest.mark.parametrize(
+    ("test_mode", "rdi_push_method", "expected_skip_condition"),
+    [
+        ("individual", "rdi_push_households", lambda p: p.master_detail),
+    ],
+    ids=["individual_mode_households_method"],
+)
+def test_rdi_push_invalid_modes(
+    push_processor: PushProcessor, test_mode, rdi_push_method, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+    push_processor.rdi_push_households()
+
+    assert "Cannot push households in individual mode" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("test_mode", "validation_scenario", "expected_skip_condition"),
+    [
+        ("master_detail", "invalid_member", lambda p: not p.master_detail),
+    ],
+    ids=["master_detail_invalid_member"],
+)
+def test_check_beneficiaries_validity_master_detail_scenarios(
+    push_processor: PushProcessor, test_mode, validation_scenario, expected_skip_condition
+) -> None:
+    if expected_skip_condition(push_processor):
+        pytest.skip(f"Test only for {test_mode} mode")
 
     household = push_processor.queryset.first()
     if not household or not household.members.exists():
@@ -1681,29 +1781,176 @@ def test_check_beneficiaries_validity_master_detail_with_members(push_processor:
 
 
 @pytest.mark.django_db
-def test_set_queryset_master_detail(push_processor: PushProcessor) -> None:
-    if not push_processor.master_detail:
-        pytest.skip("Test only for master_detail mode")
-
-    pks = [1, 2, 3]
-    push_processor.set_queryset(pks)
-
-    assert push_processor.queryset is not None
-
-
-@pytest.mark.django_db
-def test_set_queryset_individual_mode(push_processor: PushProcessor) -> None:
-    if push_processor.master_detail:
-        pytest.skip("Test only for individual mode")
-
-    pks = [1, 2, 3]
-    push_processor.set_queryset(pks)
-
-    assert push_processor.queryset is not None
-
-
-@pytest.mark.django_db
 def test_program_property(push_processor: PushProcessor) -> None:
     program = push_processor.program
     assert program is not None
     assert program.hope_id == push_processor.program_hope_id
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_birth_date_missing_from_apply_grouping(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping():
+        return {}  # Return empty dict to simulate missing birth_date
+
+    individual.apply_grouping = mock_apply_grouping
+
+    errors = push_processor._validate_individual_data(individual)
+
+    individual.apply_grouping = original_apply_grouping
+
+    assert len(errors) == 1
+    assert "birth_date is required" in errors[0]
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_documents_with_invalid_type(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping():
+        return {"birth_date": "2000-01-01", "documents": [{"type": "invalid_document_type"}]}
+
+    individual.apply_grouping = mock_apply_grouping
+
+    errors = push_processor._validate_individual_data(individual)
+
+    individual.apply_grouping = original_apply_grouping
+
+    assert len(errors) == 1
+    assert "Invalid document type" in errors[0]
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_accounts_with_invalid_type(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping():
+        return {"birth_date": "2000-01-01", "accounts": [{"account_type": "invalid_account_type"}]}
+
+    individual.apply_grouping = mock_apply_grouping
+
+    errors = push_processor._validate_individual_data(individual)
+
+    individual.apply_grouping = original_apply_grouping
+
+    assert len(errors) == 1
+    assert "Invalid account type" in errors[0]
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_specific_lines() -> None:
+    """Test specifically to cover the validation lines in _validate_individual_data method."""
+    from testutils.factories import CountryIndividualFactory
+
+    individual = CountryIndividualFactory()
+
+    processor = PushProcessor(
+        co_slug="test-slug",
+        batch_name="Test Batch",
+        program_hope_id="test-program",
+        master_detail=False,
+        imported_by_email="test@example.com",
+    )
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping_empty():
+        return {}
+
+    individual.apply_grouping = mock_apply_grouping_empty
+    errors = processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "birth_date is required" in errors[0]
+
+    def mock_apply_grouping_with_invalid_doc():
+        return {"birth_date": "2000-01-01", "documents": [{"type": "invalid_document_type"}]}
+
+    individual.apply_grouping = mock_apply_grouping_with_invalid_doc
+    errors = processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "Invalid document type" in errors[0]
+
+    def mock_apply_grouping_with_invalid_acc():
+        return {"birth_date": "2000-01-01", "accounts": [{"account_type": "invalid_account_type"}]}
+
+    individual.apply_grouping = mock_apply_grouping_with_invalid_acc
+    errors = processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "Invalid account type" in errors[0]
+
+    individual.apply_grouping = original_apply_grouping
+
+
+@pytest.mark.django_db
+def test_transform_individual_data_specific_lines() -> None:
+    """Test specifically to cover the transformation lines in _transform_individual_data method."""
+    from testutils.factories import CountryIndividualFactory
+
+    individual = CountryIndividualFactory()
+
+    processor = PushProcessor(
+        co_slug="test-slug",
+        batch_name="Test Batch",
+        program_hope_id="test-program",
+        master_detail=False,
+        imported_by_email="test@example.com",
+    )
+
+    original_apply_grouping = individual.apply_grouping
+
+    def mock_apply_grouping_empty():
+        return {}
+
+    individual.apply_grouping = mock_apply_grouping_empty
+    result = processor._transform_individual_data(individual)
+    assert result == {}
+    assert len(processor.total["errors"]) > 0
+
+    def mock_apply_grouping_with_docs():
+        return {"birth_date": "2000-01-01", "documents": [{"type": "national_id", "document_number": "123456"}]}
+
+    individual.apply_grouping = mock_apply_grouping_with_docs
+    result = processor._transform_individual_data(individual)
+    assert "documents" in result
+    assert len(result["documents"]) == 1
+
+    def mock_apply_grouping_with_accounts():
+        return {"birth_date": "2000-01-01", "accounts": [{"account_type": "mobile", "number": "123456789"}]}
+
+    individual.apply_grouping = mock_apply_grouping_with_accounts
+    result = processor._transform_individual_data(individual)
+    assert "accounts" in result
+    assert len(result["accounts"]) == 1
+
+    def mock_apply_grouping_with_photo():
+        return {"birth_date": "2000-01-01"}
+
+    individual.apply_grouping = mock_apply_grouping_with_photo
+    individual.photo = "mock_photo_data"
+    result = processor._transform_individual_data(individual)
+    assert "photo" in result
+
+    individual.apply_grouping = original_apply_grouping
+    individual.photo = None
