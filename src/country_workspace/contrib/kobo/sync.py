@@ -28,7 +28,8 @@ ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 
 SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
 
-FIELDS_TO_UPPERCASE = ("role",)
+INDIVIDUAL_FIELDS_TO_UPPERCASE = ("role",)
+HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method",)
 
 
 def is_submission_data_url(url: str) -> bool:
@@ -63,18 +64,16 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
     return {key.split("/")[-1]: value for key, value in data.items()}
 
 
-type RawIndividual = dict[str, Any]
+type Raw = dict[str, Any]
 
 
-def preprocess_individual(individual: RawIndividual) -> RawIndividual:
-    clean: Callable[[RawIndividual], RawIndividual] = partial(
-        clean_field_names, fields_to_uppercase=FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS
-    )
-    processor = compose(
+def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...]) -> Raw:
+    clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
+    processor: Callable[[Raw], Raw] = compose(
         normalize_json,
         clean,
     )
-    return processor(individual)
+    return processor(raw)
 
 
 def get_fullname_key(individual: Iterable[str]) -> str | None:
@@ -84,7 +83,7 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual = preprocess_individual(raw_individual)
+        individual = preprocess(raw_individual, INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS)
         fullname = get_fullname_key(individual)
         individuals.append(
             Individual(
@@ -100,7 +99,7 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 
 def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = normalize_json(raw_household_fields)
+    household_fields = preprocess(raw_household_fields, HOUSEHOLD_FIELDS_TO_UPPERCASE)
     return cast(
         "Household",
         batch.program.households.create(
