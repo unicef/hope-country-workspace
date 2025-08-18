@@ -902,3 +902,404 @@ def test_set_types_integration_with_prepare_batch(
         # For master_detail, _set_types is called during individual transformation in rdi_push_individuals
         # This is tested in the workflow tests
         pass
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_with_missing_birth_date(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields.pop("birth_date", None)
+    individual.save()
+
+    errors = push_processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "birth_date is required" in errors[0]
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_with_invalid_document_type(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields["documents"] = [{"type": "invalid_document_type"}]
+    individual.save()
+
+    errors = push_processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "Invalid document type" in errors[0]
+
+
+@pytest.mark.django_db
+def test_validate_individual_data_with_invalid_account_type(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields["accounts"] = [{"account_type": "invalid_account_type"}]
+    individual.save()
+
+    errors = push_processor._validate_individual_data(individual)
+    assert len(errors) == 1
+    assert "Invalid account type" in errors[0]
+
+
+@pytest.mark.django_db
+def test_transform_individual_data_with_validation_errors(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields.pop("birth_date", None)
+    individual.save()
+
+    result = push_processor._transform_individual_data(individual)
+    assert result == {}
+    assert len(push_processor.total["errors"]) == 1
+
+
+@pytest.mark.django_db
+def test_transform_individual_data_with_photo(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.photo = "mock_photo_data"
+
+    result = push_processor._transform_individual_data(individual)
+    assert "photo" in result
+
+
+@pytest.mark.django_db
+def test_transform_individual_data_with_documents(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields["documents"] = [
+        {
+            "type": "national_id",
+            "country": "Test Country",
+            "document_number": "123456",
+            "issuance_date": "2020-01-01",
+            "expiry_date": "2030-01-01",
+            "image": "base64_image_data",
+        }
+    ]
+    individual.save()
+
+    result = push_processor._transform_individual_data(individual)
+    assert "documents" in result
+    assert len(result["documents"]) == 1
+
+
+@pytest.mark.django_db
+def test_transform_individual_data_with_accounts(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    individual.flex_fields["accounts"] = [
+        {
+            "account_type": "mobile",
+            "number": "123456789",
+            "financial_institution": "Test Bank",
+            "data": {"additional": "info"},
+        }
+    ]
+    individual.save()
+
+    result = push_processor._transform_individual_data(individual)
+    assert "accounts" in result
+    assert len(result["accounts"]) == 1
+
+
+@pytest.mark.django_db
+def test_transform_documents_with_invalid_type(push_processor: PushProcessor) -> None:
+    documents = [{"type": "invalid_type", "country": "Test"}]
+
+    result = push_processor._transform_documents(documents)
+    assert len(result) == 0
+    assert len(push_processor.total["errors"]) == 1
+
+
+@pytest.mark.django_db
+def test_transform_accounts_with_invalid_type(push_processor: PushProcessor) -> None:
+    accounts = [{"account_type": "invalid_type", "number": "123"}]
+
+    result = push_processor._transform_accounts(accounts)
+    assert len(result) == 0
+    assert len(push_processor.total["errors"]) == 1
+
+
+@pytest.mark.django_db
+def test_encode_photo_success(push_processor: PushProcessor) -> None:
+    from io import BytesIO
+
+    photo_data = b"fake_photo_data"
+    photo_file = BytesIO(photo_data)
+
+    result = push_processor._encode_photo(photo_file)
+    assert result == "ZmFrZV9waG90b19kYXRh"
+
+
+@pytest.mark.django_db
+def test_encode_photo_with_error(push_processor: PushProcessor) -> None:
+    class MockPhotoFile:
+        def read(self):
+            raise OSError("File read error")
+
+    result = push_processor._encode_photo(MockPhotoFile())
+    assert result == ""
+    assert len(push_processor.total.get("warnings", [])) == 1
+
+
+@pytest.mark.django_db
+def test_encode_photo_none(push_processor: PushProcessor) -> None:
+    result = push_processor._encode_photo(None)
+    assert result == ""
+
+
+@pytest.mark.django_db
+def test_transform_household_data_with_missing_mappings(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    household = push_processor.queryset.first()
+    if not household:
+        pytest.skip("No household in queryset")
+
+    household.flex_fields["head_of_household_id"] = 99999
+    household.save()
+
+    result = push_processor._transform_household_data(household)
+    assert "head_of_household" not in result
+    assert len(push_processor.total["errors"]) == 1
+
+
+@pytest.mark.django_db
+def test_transform_household_data_with_missing_member_mappings(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    household = push_processor.queryset.first()
+    if not household:
+        pytest.skip("No household in queryset")
+
+    push_processor.individual_id_mapping = {}
+
+    result = push_processor._transform_household_data(household)
+    assert result["members"] == []
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_rdi_push_individuals_with_validation_errors(push_processor: PushProcessor) -> None:
+    push_processor.hope_rdi_id = "test-rdi-id"
+
+    if push_processor.master_detail:
+        household = push_processor.queryset.first()
+        if household and household.members.exists():
+            individual = household.members.first()
+            individual.flex_fields.pop("birth_date", None)
+            individual.save()
+    else:
+        individual = push_processor.queryset.first()
+        if individual:
+            individual.flex_fields.pop("birth_date", None)
+            individual.save()
+
+    push_processor.rdi_push_individuals()
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_rdi_push_households_not_master_detail(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+    push_processor.rdi_push_households()
+
+    assert "Cannot push households in individual mode" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_rdi_push_households_no_data(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    push_processor.hope_rdi_id = "test-rdi-id"
+    push_processor.queryset = push_processor.model.objects.none()
+
+    push_processor.rdi_push_households()
+    assert "No household data to push" in push_processor.total["errors"]
+
+
+@pytest.mark.django_db
+def test_process_individuals_response_with_errors(push_processor: PushProcessor) -> None:
+    response = {"processed": 2, "accepted": 1, "errors": 1, "results": [{"error": "Validation failed"}]}
+    batch_ids = [1, 2]
+
+    push_processor._process_individuals_response(response, batch_ids)
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_process_households_response_with_errors(push_processor: PushProcessor) -> None:
+    response = {"processed": 2, "accepted": 1, "errors": 1, "results": [{"error": "Validation failed"}]}
+    batch_ids = [1, 2]
+
+    push_processor._process_households_response(response, batch_ids)
+    assert len(push_processor.total["errors"]) > 0
+
+
+@pytest.mark.django_db
+def test_process_validation_errors(push_processor: PushProcessor) -> None:
+    results = [{"field": "error"}, {"field2": "error2"}]
+    batch_ids = [1, 2]
+
+    push_processor._process_validation_errors(results, batch_ids)
+    assert len(push_processor.total["errors"]) == 2
+
+
+@pytest.mark.django_db
+def test_prepare_household_batch_with_transformation_errors(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    household = push_processor.queryset.first()
+    if not household:
+        pytest.skip("No household in queryset")
+
+    original_transform = push_processor._transform_household_data
+    push_processor._transform_household_data = lambda h: {}
+
+    ids, data = push_processor.prepare_household_batch()
+
+    push_processor._transform_household_data = original_transform
+
+    assert len(ids) == 0
+    assert len(data) == 0
+
+
+@pytest.mark.django_db
+def test_prepare_batch_individual_mode_with_transformation_errors(push_processor: PushProcessor) -> None:
+    if push_processor.master_detail:
+        pytest.skip("Test only for individual mode")
+
+    individual = push_processor.queryset.first()
+    if not individual:
+        pytest.skip("No individual in queryset")
+
+    original_transform = push_processor._transform_individual_data
+    push_processor._transform_individual_data = lambda i: {}
+
+    ids, data = push_processor.prepare_batch()
+
+    push_processor._transform_individual_data = original_transform
+
+    assert len(ids) == 0
+    assert len(data) == 0
+
+
+@pytest.mark.django_db
+def test_set_types_with_existing_type_fields(push_processor: PushProcessor) -> None:
+    mock_item = type("MockValidable", (), {"flex_fields": {}})()
+    mock_item.flex_fields = {"national_id_type": "old_value", "mobile_account_type": "old_value"}
+
+    push_processor._set_types(mock_item)
+
+    assert mock_item.flex_fields["national_id_type"] == "national_id"
+    assert mock_item.flex_fields["mobile_account_type"] == "mobile"
+
+
+@pytest.mark.django_db
+def test_set_types_without_type_fields(push_processor: PushProcessor) -> None:
+    mock_item = type("MockValidable", (), {"flex_fields": {}})()
+    mock_item.flex_fields = {"national_id_number": "12345", "mobile_number": "987654321"}
+
+    original_flex_fields = mock_item.flex_fields.copy()
+    push_processor._set_types(mock_item)
+
+    assert mock_item.flex_fields == original_flex_fields
+
+
+@pytest.mark.django_db
+def test_apply_field_mappings(push_processor: PushProcessor) -> None:
+    transformed = {}
+    flex_fields = {"household_size": 5, "village": "Test Village"}
+
+    push_processor._apply_field_mappings(transformed, flex_fields)
+
+    assert transformed["size"] == 5
+    assert transformed["village"] == "Test Village"
+
+
+@pytest.mark.django_db
+def test_apply_admin_area_mappings(push_processor: PushProcessor) -> None:
+    transformed = {}
+    flex_fields = {"admin1": "Region1", "admin2": "District1"}
+
+    push_processor._apply_admin_area_mappings(transformed, flex_fields)
+
+    assert transformed["admin1"] == "Region1"
+    assert transformed["admin2"] == "District1"
+
+
+@pytest.mark.django_db
+def test_map_individual_references(push_processor: PushProcessor) -> None:
+    transformed = {}
+    flex_fields = {"head_of_household_id": 1, "primary_collector_id": 2, "alternate_collector_id": 3}
+    household = push_processor.queryset.first()
+
+    push_processor.individual_id_mapping = {"1": "unicef_1", "2": "unicef_2", "3": "unicef_3"}
+
+    push_processor._map_individual_references(transformed, flex_fields, household)
+
+    assert transformed["head_of_household"] == "unicef_1"
+    assert transformed["primary_collector"] == "unicef_2"
+    assert transformed["alternate_collector"] == "unicef_3"
+
+
+@pytest.mark.django_db
+def test_map_household_members(push_processor: PushProcessor) -> None:
+    if not push_processor.master_detail:
+        pytest.skip("Test only for master_detail mode")
+
+    transformed = {}
+    household = push_processor.queryset.first()
+    if not household:
+        pytest.skip("No household in queryset")
+
+    member_ids = [str(member.pk) for member in household.members.all()]
+    push_processor.individual_id_mapping = {member_id: f"unicef_{member_id}" for member_id in member_ids}
+
+    push_processor._map_household_members(transformed, household)
+
+    assert "members" in transformed
+    assert len(transformed["members"]) == len(member_ids)
+    assert all(member.startswith("unicef_") for member in transformed["members"])
