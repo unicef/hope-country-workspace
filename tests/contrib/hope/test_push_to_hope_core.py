@@ -1593,6 +1593,14 @@ def test_map_individual_references(push_processor: PushProcessor) -> None:
 
 
 @pytest.mark.django_db
+def test_map_individual_references_with_errors(push_processor: PushProcessor, beneficiary_instance) -> None:
+    flex_fields = {"head_of_household_id": 1, "primary_collector_id": 2, "alternate_collector_id": 3}
+    push_processor._map_individual_references({}, flex_fields, beneficiary_instance)
+
+    assert len(push_processor.total.get("errors")) == 2
+
+
+@pytest.mark.django_db
 def test_map_household_members(push_processor: PushProcessor) -> None:
     if not push_processor.master_detail:
         pytest.skip("Test only for master_detail mode")
