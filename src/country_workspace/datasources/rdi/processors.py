@@ -12,6 +12,7 @@ from PIL import Image
 
 from django.db.transaction import atomic
 
+from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
@@ -180,10 +181,11 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
         )
-        validate = partial(validate_beneficiaries, config=config, office=job.program.country_office)
-        if config["master_detail"]:
-            return _import_master_detail(job, batch, config, validate)
-        return _import_people_only(job, batch, config, validate)
+        with batch_ctx(batch.pk):
+            validate = partial(validate_beneficiaries, config=config, office=job.program.country_office)
+            if config["master_detail"]:
+                return _import_master_detail(job, batch, config, validate)
+            return _import_people_only(job, batch, config, validate)
 
 
 def _import_master_detail(
