@@ -1,0 +1,2 @@
+class HopePushError(Exception):
+    pass

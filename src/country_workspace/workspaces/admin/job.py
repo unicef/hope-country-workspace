@@ -8,9 +8,11 @@ from ..models import CountryAsyncJob
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .filters import ChoiceFilter, UserAutoCompleteFilter, WFailedFilter
+from ...state import state
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
+    from django.db.models import QuerySet
 
 
 @register(CountryAsyncJob, site=workspace)
@@ -19,8 +21,8 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
 
     list_display = (
         "description",
+        "info",
         "datetime_queued",
-        "started",
         "completed_time",
         # "type",
         "queue_position",
@@ -45,6 +47,9 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
             return obj.task_info["completed_at"]
         except (KeyError, AttributeError):
             return "Pending"
+
+    def get_queryset(self, request: "HttpRequest") -> "QuerySet[CountryAsyncJob]":
+        return super().get_queryset(request).filter(program=state.program)
 
     @button(
         label="Check",
