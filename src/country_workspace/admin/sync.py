@@ -68,10 +68,13 @@ class SyncAdminMixin(ExtraButtonsMixin):
             targets=[TargetConfig(**config, args=TargetArgs(delta_sync=True)) for config in self.sync_config["targets"]]
         )
         totals = run_sync(config=config)
-        if errors := reduce(add, (t["errors"] for t in totals.values())):
+
+        if errors := reduce(add, (t["errors"] for t in totals.values() if t)):
             self.message_user(request, " | ".join(errors), level=messages.ERROR)
         else:
-            summary = " | ".join(f"{t}: {s['add']} created - {s['upd']} updated" for t, s in totals.items())
+            summary = " | ".join(
+                f"{t}: {s['add']} created - {s['upd']} updated" if s else "" for t, s in totals.items()
+            )
             self.message_user(request, summary, level=messages.SUCCESS)
 
 
