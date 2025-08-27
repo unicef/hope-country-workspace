@@ -10,7 +10,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.models.beneficiary_group import BeneficiaryGroup
 from country_workspace.models.office import Office
-from .serializer import DataSerializer
+from .data_serializer import DataSerializer
 
 from ..validators.registry import NoopValidator, beneficiary_validator_registry
 from .base import BaseModel, Validable

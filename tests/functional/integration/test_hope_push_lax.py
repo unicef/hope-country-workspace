@@ -57,7 +57,6 @@ def household(program):
             "full_name": member.flex_fields["full_name"],
             "gender": member.flex_fields["gender"],
             "relationship": "HEAD" if first_member else choice(["SON_DAUGHTER", "BROTHER_SISTER", "FOSTER_CHILD"]),
-            "primary_collector_id": household.flex_fields["household_id"],
         }
         if first_member:
             member.flex_fields["role"] = ROLE_PRIMARY

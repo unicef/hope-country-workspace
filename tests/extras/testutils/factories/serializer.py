@@ -1,5 +1,5 @@
 import factory
-from country_workspace.models.serializer import DataSerializer
+from country_workspace.models import DataSerializer
 from .base import AutoRegisterModelFactory
 
 

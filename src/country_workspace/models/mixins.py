@@ -17,19 +17,21 @@ class FlexFieldGroupingMixin:
 
         return grouping_info
 
-    def apply_grouping(self) -> dict:
-        grouping_info = self.get_grouping_info()
-        grouped_data = {}
-        flex_fields = dict(self.flex_fields)
-        for grouping_key, prefixes in grouping_info.items():
-            grouped_data[grouping_key] = []
-            for prefix in prefixes:
-                _data = {}
-                for field_name in self.flex_fields:
-                    if field_name.startswith(prefix):
-                        _data[field_name.removeprefix(prefix)] = flex_fields.pop(field_name)
-                if _data:
-                    grouped_data[grouping_key].append(_data)
-        grouped_data.update(flex_fields)
+    def apply_grouping(self) -> dict[str, object | list[object]]:
+        def present(x: object | None) -> bool:
+            return x is not None and (not isinstance(x, str) or x.strip())
 
-        return grouped_data
+        def build_item(prefix: str) -> dict | None:
+            keys = [k for k in ff if k.startswith(prefix)]
+            item = {k.removeprefix(prefix): v for k in keys if present(v := ff.pop(k))}
+            return item | {"type": prefix.strip("_")} if item else None
+
+        gi = self.get_grouping_info()
+        ff = dict(self.flex_fields)
+        grouped = {}
+
+        for group, prefixes in gi.items():
+            grouped[group] = [it for pref in prefixes if (it := build_item(pref))]
+
+        grouped.update(ff)
+        return grouped

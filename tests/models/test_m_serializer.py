@@ -1,7 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 
-from country_workspace.models.serializer import DataSerializer
+from country_workspace.models import DataSerializer
 from testutils.factories.serializer import DataSerializerFactory
 
 

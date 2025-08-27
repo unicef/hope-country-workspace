@@ -82,7 +82,10 @@ def test_apply_grouping_single_group(mixin_instance):
         result = mixin_instance.apply_grouping()
 
     expected = {
-        "group1": [{"field1": "value1", "field2": "value2"}, {"field1": "value3"}],
+        "group1": [
+            {"field1": "value1", "field2": "value2", "type": "prefix1"},
+            {"field1": "value3", "type": "prefix2"},
+        ],
         "unprefixed_field": "value4",
     }
     assert result == expected
