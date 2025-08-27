@@ -4,6 +4,7 @@ from typing import Any, Final
 from django.db.models import Model
 from mptt.exceptions import InvalidMove
 
+from country_workspace.admin.sync import Stats
 from country_workspace.contrib.hope.sync.base import (
     SyncConfig,
     SkipRecordError,
@@ -18,9 +19,9 @@ MODELS: Final[tuple[type[Model], ...]] = (Country,)
 """List of models to synchronize."""
 
 
-def sync_countries(delta_sync: bool = False) -> None:
+def sync_countries(delta_sync: bool = False) -> Stats:
     """Fetch and process Country records from the remote API."""
-    sync_entity(
+    return sync_entity(
         SyncConfig(
             model=Country,
             reference_id="hope_id",
@@ -31,7 +32,7 @@ def sync_countries(delta_sync: bool = False) -> None:
     )
 
 
-def sync_area_types(delta_sync: bool = False) -> None:
+def sync_area_types(delta_sync: bool = False) -> Stats:
     """Fetch and process AreaType records from the remote API.
 
     Notes:
@@ -56,7 +57,7 @@ def sync_area_types(delta_sync: bool = False) -> None:
         }
 
     parent_mapping = {}
-    sync_entity(
+    result = sync_entity(
         SyncConfig(
             model=AreaType,
             reference_id="hope_id",
@@ -68,8 +69,10 @@ def sync_area_types(delta_sync: bool = False) -> None:
     _assign_parents(AreaType, parent_mapping)
     AreaType.objects.rebuild()
 
+    return result
 
-def sync_areas(delta_sync: bool = False) -> None:
+
+def sync_areas(delta_sync: bool = False) -> Stats:
     """Fetch and process Area records from the remote API.
 
     Notes:
@@ -94,7 +97,7 @@ def sync_areas(delta_sync: bool = False) -> None:
         }
 
     parent_mapping = {}
-    sync_entity(
+    result = sync_entity(
         SyncConfig(
             model=Area,
             reference_id="hope_id",
@@ -105,6 +108,8 @@ def sync_areas(delta_sync: bool = False) -> None:
     )
     _assign_parents(Area, parent_mapping)
     Area.objects.rebuild()
+
+    return result
 
 
 def _assign_parents(model: type[Model], parent_mapping: dict[str, str]) -> None:

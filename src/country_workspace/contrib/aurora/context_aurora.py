@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from django.db.models import Model
 
+from country_workspace.admin.sync import Stats
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.models import Project, Registration
 from country_workspace.contrib.hope.sync.base import (
@@ -41,9 +42,9 @@ def get_aurora_client() -> AuroraClient:
     return AuroraClient()
 
 
-def sync_projects(delta_sync: bool = False) -> None:
+def sync_projects(delta_sync: bool = False) -> Stats:
     """Fetch and process Project records from the Aurora system."""
-    sync_entity(
+    return sync_entity(
         SyncConfig(
             model=Project,
             reference_id="reference_pk",
@@ -55,7 +56,7 @@ def sync_projects(delta_sync: bool = False) -> None:
     )
 
 
-def sync_registrations(delta_sync: bool = False) -> None:
+def sync_registrations(delta_sync: bool = False) -> Stats:
     """Fetch and process Registration records from the Aurora system."""
 
     def _prepare_defaults(rec: dict[str, Any]) -> dict[str, Any] | None:
@@ -71,7 +72,7 @@ def sync_registrations(delta_sync: bool = False) -> None:
             "reference_pk": rec["id"],
         }
 
-    sync_entity(
+    return sync_entity(
         SyncConfig(
             model=Registration,
             reference_id="reference_pk",

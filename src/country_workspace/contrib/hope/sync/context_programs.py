@@ -4,6 +4,7 @@ from typing import Any, Final, Mapping
 from django.db.models import Model
 from hope_flex_fields.models import DataChecker
 
+from country_workspace.admin.sync import Stats
 from country_workspace.contrib.hope.constants import (
     HOUSEHOLD_CHECKER_NAME,
     INDIVIDUAL_CHECKER_NAME,
@@ -61,9 +62,9 @@ def should_process_office(record: dict[str, Any]) -> bool:
     return bool(record.get("active"))
 
 
-def sync_offices(delta_sync: bool = False) -> None:
+def sync_offices(delta_sync: bool = False) -> Stats:
     """Fetch and process Office records from the remote API, deactivating those not present in the source."""
-    sync_entity(
+    return sync_entity(
         SyncConfig[Office](
             model=Office,
             reference_id=HOPE_ID,
@@ -75,9 +76,9 @@ def sync_offices(delta_sync: bool = False) -> None:
     )
 
 
-def sync_beneficiary_groups(delta_sync: bool = False) -> None:
+def sync_beneficiary_groups(delta_sync: bool = False) -> Stats:
     """Fetch and process BeneficiaryGroup records from the remote API."""
-    sync_entity(
+    return sync_entity(
         SyncConfig[BeneficiaryGroup](
             model=BeneficiaryGroup,
             reference_id=HOPE_ID,
@@ -129,14 +130,14 @@ def post_process_program(program: Program, created: bool) -> None:
             program.save(update_fields=("household_checker", "individual_checker"))
 
 
-def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | None = None) -> None:
+def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | None = None) -> Stats:
     """Synchronize and process Program records from the remote API, applying filters and post-processing.
 
     Notes:
         Calls sync_beneficiary_groups to ensure dependencies are synchronized.
 
     """
-    sync_entity(
+    return sync_entity(
         SyncConfig[Program](
             model=Program,
             reference_id=HOPE_ID,
