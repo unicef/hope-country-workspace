@@ -168,12 +168,8 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         program = state.program
-        description = _("Validate Entire Program '%s' - all '%s'") % (
-            program.name,
-            self.title_group_plural if program.beneficiary_group.master_detail else self.title_member_plural,
-        )
         job = AsyncJob.objects.create(
-            description=description,
+            description="Validate Entire Programme",
             type=AsyncJob.JobType.TASK,
             owner=request.user,
             action=fqn(validate_program),
