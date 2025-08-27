@@ -2,8 +2,9 @@ from typing import TYPE_CHECKING, Sequence
 
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
-from django.http import HttpRequest
+from django.db.models import Subquery, OuterRef, QuerySet
 from django_celery_boost.admin import CeleryTaskModelAdmin
+from django_celery_results.models import TaskResult
 
 from ..models import AsyncJob
 from .base import BaseModelAdmin
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 @admin.register(AsyncJob)
 class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
-    list_display = ("program", "type", "verbose_status", "owner")
+    list_display = ("program", "type", "status", "owner")
     autocomplete_fields = ("program", "owner", "batch", "content_type")
     list_filter = (
         ("program__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
@@ -24,6 +25,18 @@ class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
         "type",
         FailedFilter,
     )
+
+    def get_queryset(self, request: "HttpRequest") -> QuerySet:
+        task_result_qs = TaskResult.objects.filter(task_id=OuterRef("curr_async_result_id")).values("status")[:1]
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("program__country_office", "owner")
+            .annotate(status=Subquery(task_result_qs))
+        )
+
+    def status(self, obj: AsyncJob) -> str:
+        return obj.status
 
     def get_readonly_fields(self, request: "HttpRequest", obj: "AsyncJob | None" = None) -> Sequence[str]:
         if obj:
