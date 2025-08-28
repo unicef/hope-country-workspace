@@ -294,6 +294,10 @@ def test_validate_individual_reference_ids():
     validate_individual_reference_ids(valid_row, line_number, errors)
     assert not errors
 
+    empty_alternate = {**valid_row, "alternate_collector_id": None}
+    validate_individual_reference_ids(empty_alternate, line_number, errors)
+    assert not errors
+
     invalid_row = {
         "head_of_household_id": "not_a_number",
         "primary_collector_id": "",
