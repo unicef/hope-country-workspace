@@ -301,13 +301,18 @@ def validate_individual_reference_ids(row_data: dict, line_number: int, errors: 
     required_fields = ("head_of_household_id", "primary_collector_id")
     optional_fields = ("alternate_collector_id",)
 
+    sheet_fields = row_data.keys()
     for field in required_fields:
+        if field not in sheet_fields:
+            continue
         if not (value := row_data.get(field)):
             errors.setdefault(f"Invalid data. {field} field is required", []).append(line_number)
         else:
             _validate_integer(value, field, line_number, errors)
 
     for field in optional_fields:
+        if field not in sheet_fields:
+            continue
         if value := row_data.get(field):  # only validate if present
             _validate_integer(value, field, line_number, errors)
 
