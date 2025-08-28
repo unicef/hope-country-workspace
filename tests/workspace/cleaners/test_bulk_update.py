@@ -256,3 +256,51 @@ def test_validate_date_datetime_fields_with_empty_values():
         validate_date_datetime_fields(row, mock_dc, line_number, errors)
 
     assert not errors
+
+
+def test_import_bulk_update_file_with_individual_reference_validation_errors(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    test_data: dict,
+) -> None:
+    invalid_rows = [
+        {
+            "id": str(test_data["valid_entity"].id),
+            "version": str(test_data["valid_entity"].version),
+            "head_of_household_id": "not_a_number",
+        },
+    ]
+
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=invalid_rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = test_data["import_function"](job=job)
+
+    assert "Invalid data for head_of_household_id field. Must be of integer type" in result["errors"]
+    assert result["processed"] == 1
+
+
+def test_validate_individual_reference_ids():
+    from country_workspace.workspaces.admin.cleaners.bulk_update import validate_individual_reference_ids
+
+    errors = {}
+    line_number = 1
+
+    valid_row = {
+        "head_of_household_id": "123",
+        "primary_collector_id": "456",
+        "alternate_collector_id": "789",
+    }
+    validate_individual_reference_ids(valid_row, line_number, errors)
+    assert not errors
+
+    invalid_row = {
+        "head_of_household_id": "not_a_number",
+        "primary_collector_id": "",
+        "alternate_collector_id": "456.78",
+    }
+    validate_individual_reference_ids(invalid_row, line_number, errors)
+
+    assert "Invalid data for head_of_household_id field. Must be of integer type" in errors
+    assert "Invalid data. primary_collector_id field is required" in errors
+    assert "Invalid data for alternate_collector_id field. Must be of integer type" in errors
