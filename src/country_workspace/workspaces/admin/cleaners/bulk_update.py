@@ -271,6 +271,7 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                     if row_data:
                         dc: DataChecker = job.program.get_checker_for(entity.__class__)
                         validate_date_datetime_fields(row_data, dc, line_number, total["errors"])
+                        validate_individual_reference_ids(row_data, line_number, total["errors"])
 
                         entity.flex_fields.update(**row_data)
                         entity.save(update_fields=["flex_fields"])
@@ -287,6 +288,33 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
         total["errors"]["file_processing"] = str(e)
 
     return total
+
+
+def _validate_integer(value: str, field: str, line_number: int, errors: dict) -> None:
+    try:
+        int(value)
+    except (ValueError, TypeError):
+        errors.setdefault(f"Invalid data for {field} field. Must be of integer type", []).append(line_number)
+
+
+def validate_individual_reference_ids(row_data: dict, line_number: int, errors: dict) -> None:
+    required_fields = ("head_of_household_id", "primary_collector_id")
+    optional_fields = ("alternate_collector_id",)
+
+    sheet_fields = row_data.keys()
+    for field in required_fields:
+        if field not in sheet_fields:
+            continue
+        if not (value := row_data.get(field)):
+            errors.setdefault(f"Invalid data. {field} field is required", []).append(line_number)
+        else:
+            _validate_integer(value, field, line_number, errors)
+
+    for field in optional_fields:
+        if field not in sheet_fields:
+            continue
+        if value := row_data.get(field):  # only validate if present
+            _validate_integer(value, field, line_number, errors)
 
 
 def import_individual_updates(job: AsyncJob) -> dict[str, Any]:
