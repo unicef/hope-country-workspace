@@ -35,7 +35,7 @@ BENEFICIARY_GROUP_FIELDS = (
 Program_FIELDS = "name", "code", "status", "sector", "country_office", "beneficiary_group"
 
 HOPE_ID = "hope_id"
-BUSINESS_AREAS = "business_areas"
+BUSINESS_AREAS = "business-areas"
 BENEFICIARY_GROUPS = "beneficiary-groups"
 PROGRAMS = "programs"
 
