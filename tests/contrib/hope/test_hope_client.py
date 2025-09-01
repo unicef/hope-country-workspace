@@ -248,3 +248,20 @@ def test_post_people_failure(
 
     assert start_mock.call_count == 1
     assert end_mock.call_count == 0
+
+
+def test_break_with_empty_results(
+    mocked_responses: responses.RequestsMock, signals: tuple[Mock, Mock], client: HopeClient
+) -> None:
+    start_mock, end_mock = signals
+    url = client.get_url(DUMMY_PATH)
+
+    mocked_responses.add(
+        responses.GET, url, json={"next": "https://hope-dummy.org/api/rest/another/", "results": []}, status=200
+    )
+
+    results = list(client.get(DUMMY_PATH, params={"p": "v"}))
+
+    assert results == []
+    assert start_mock.call_count == end_mock.call_count == 1
+    assert end_mock.call_args[1]["pages"] == 1

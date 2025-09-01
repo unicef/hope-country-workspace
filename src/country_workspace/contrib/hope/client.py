@@ -61,6 +61,8 @@ class HopeClient:
             try:
                 yield from data["results"]
                 url = data.get("next", None)
+                if url and not data.get("results"):
+                    break  # fallback in case the results are missing but next url is fulfilled
             except TypeError:
                 raise RemoteError(f"Malformed JSON fetching {url}")
         hope_request_end.send(self.__class__, url=url, params=params, pages=pages, signature=signature)
