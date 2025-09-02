@@ -43,6 +43,7 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     autocomplete_fields = ("country_office",)
     sync_config = SyncAdminConfig(
         targets=[
+            TargetConfig(target=Target.BENEFICIARY_GROUPS),
             TargetConfig(target=Target.PROGRAMS),
         ],
     )
