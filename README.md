@@ -26,8 +26,3 @@ management process.
 - Beneficiary contacting process
 
 Do you have an idea?  [Open a ticket](https://github.com/unicef/hope-country-workspace/issues/new?assignees=&labels=&projects=&template=feature.yml).
-
-### Run integration tests
-
-- only integration tests `pytest tests/ --only-integration`
-- with integration tests `pytest tests/ --with-integration`

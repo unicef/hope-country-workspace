@@ -1,2 +1,3 @@
 nav:
   - Development: dev.md
+  - Tests: tests.md
