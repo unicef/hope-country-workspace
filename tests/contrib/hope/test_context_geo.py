@@ -64,7 +64,7 @@ AREAS = {
 def _assert_params(delta_sync: bool, config: dict, modified_after: str) -> None:
     params = {"format": "json"}
     if delta_sync:
-        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: modified_after, **params}
+        assert config["endpoint"].get("params") == {ParamDateName.UPDATED.value: modified_after, **params}
     else:
         assert config["endpoint"].get("params") == params
 
