@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.13.*"
 resolution-markers = [
     "platform_python_implementation != 'PyPy' and sys_platform != 'win32'",
@@ -1433,7 +1433,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.15.1" },
     { name = "dukpy", specifier = ">=0.5" },
     { name = "flower", specifier = ">=2.0.1" },
-    { name = "hope-flex-fields", specifier = ">=0.7.2" },
+    { name = "hope-flex-fields", specifier = ">=0.7.5" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },
     { name = "notebook", specifier = ">=7.4.3" },
@@ -1493,7 +1493,7 @@ docs = [
 
 [[package]]
 name = "hope-flex-fields"
-version = "0.7.2"
+version = "0.7.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepdiff" },
@@ -1512,9 +1512,9 @@ dependencies = [
     { name = "requests" },
     { name = "xlsxwriter" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/ac/a608b05064bdf49410d6f982e0570038ba5677c6f781b2e9276e9cd50f57/hope_flex_fields-0.7.2.tar.gz", hash = "sha256:c1e79428ec14e71136bcbd8e945b02b84db8e81b9f2ded0a1d6a8d9cd7794b98", size = 640480, upload-time = "2025-07-25T14:00:24.33Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/d6/b516165ddf067debaebbdc15ea0a3a0d2e1fb86a6cc4a54b1b8f328994c4/hope_flex_fields-0.7.5.tar.gz", hash = "sha256:00ddc332c5230b34479249d419bdf0b0a9d319f6fdf60b2d0d6241fd7bffed5e", size = 640752, upload-time = "2025-09-03T07:43:01.823Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/c4/37e30cac76ef79fa4b6803b8bf6ac5ef9c321ef4ba29019a9c2c67788b18/hope_flex_fields-0.7.2-py3-none-any.whl", hash = "sha256:36072cfde92e7194c4aa79fbd36c22589e3b57e23494100ad1f45480d0ea4940", size = 436677, upload-time = "2025-07-25T14:00:22.876Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/3e/a1b6ba85457ccc60f8b9a28f3fbc4cdc3fa4472bda9afe2da68838ac985b/hope_flex_fields-0.7.5-py3-none-any.whl", hash = "sha256:42cad3154c66c145447d70a20edc42042c2b0f1fc5f7baaa90f6bdc0759d74db", size = 437233, upload-time = "2025-09-03T07:43:00.099Z" },
 ]
 
 [[package]]
