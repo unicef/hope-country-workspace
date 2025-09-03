@@ -3,11 +3,13 @@ import django_select2.urls
 from django.conf import settings
 from django.conf.urls import include
 from django.contrib import admin
+from django.contrib.auth.views import LogoutView
 from django.urls import path
 
 from country_workspace.workspaces.sites import workspace
 
 urlpatterns = [
+    path(r"logout/", LogoutView.as_view(), name="logout"),
     path(r"admin/", admin.site.urls),
     path(r"security/", include("unicef_security.urls", namespace="security")),
     path(r"social/", include("social_django.urls", namespace="social")),

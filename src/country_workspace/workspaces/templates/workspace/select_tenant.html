@@ -14,8 +14,8 @@
                     </div>
                 </form>
             {% else %}
-                <div>You do not have any Office enabled.</div>
-                <form method="post" action="{% url "admin:logout" %}">
+                <div>You do not have any Office enabled!!</div>
+                <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
                     <span class="w-full px-4">
                         <button class="button m-auto" type="submit">Logout</button>
