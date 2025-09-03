@@ -61,6 +61,14 @@ AREAS = {
 }
 
 
+def _assert_params(delta_sync: bool, config: dict, modified_after: str) -> None:
+    params = {"format": "json"}
+    if delta_sync:
+        assert config["endpoint"].get("params") == {ParamDateName.UPDATED.value: modified_after, **params}
+    else:
+        assert config["endpoint"].get("params") == params
+
+
 def test_sync_countries(mocker: MockerFixture, delta_sync: bool) -> None:
     sync_entity_mock = mocker.patch("country_workspace.contrib.hope.sync.context_geo.sync_entity")
     mocker.patch(
@@ -73,10 +81,7 @@ def test_sync_countries(mocker: MockerFixture, delta_sync: bool) -> None:
     config = sync_entity_mock.call_args.args[0]
     assert config["model"] is Country
     assert config["endpoint"]["path"] == COUNTRY["path"]
-    if delta_sync:
-        assert config["endpoint"].get("params") == {ParamDateName.UPDATED.value: COUNTRY["updated_at_after"]}
-    else:
-        assert config["endpoint"].get("params") is None
+    _assert_params(delta_sync, config, COUNTRY["updated_at_after"])
 
     expected_defaults = {k: COUNTRY["results"][0][k] for k in ("name", "iso_code2", "iso_code3")}
     defaults = config["prepare_defaults"](COUNTRY["results"][0])

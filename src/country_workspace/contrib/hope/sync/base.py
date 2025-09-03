@@ -196,6 +196,7 @@ def _get_last_updated_date(model: type[Model]) -> str | None:
 
 def build_endpoint(path: str, model: type[Model], param_date_name: ParamDateName, delta_sync: bool) -> EndpointConfig:
     """Build the endpoint configuration for the API request."""
+    params = {"format": "json"}
     if delta_sync and (last_date := _get_last_updated_date(model)):
-        return EndpointConfig(path=path, params={param_date_name.value: last_date})
-    return EndpointConfig(path=path)
+        return EndpointConfig(path=path, params={param_date_name.value: last_date, **params})
+    return EndpointConfig(path=path, params=params)

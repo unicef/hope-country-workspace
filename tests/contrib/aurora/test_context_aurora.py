@@ -57,10 +57,7 @@ def test_sync_projects(mocker: MockerFixture, delta_sync: bool) -> None:
     config = sync_entity_mock.call_args.args[0]
     assert config["model"] is Project
     assert config["endpoint"]["path"] == PROJECT["path"]
-    if delta_sync:
-        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: PROJECT["modified_after"]}
-    else:
-        assert config["endpoint"].get("params") is None
+    _assert_params(delta_sync, config, PROJECT["modified_after"])
 
     expected_defaults = {k: PROJECT["results"][0][k] for k in ("name",)}
     defaults = config["prepare_defaults"](PROJECT["results"][0])
@@ -85,10 +82,7 @@ def test_sync_registrations(mocker: MockerFixture, delta_sync: bool, expect_erro
     config = sync_entity_mock.call_args.args[0]
     assert config["model"] is Registration
     assert config["endpoint"]["path"] == REGISTRATION["path"]
-    if delta_sync:
-        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: REGISTRATION["modified_after"]}
-    else:
-        assert config["endpoint"].get("params") is None
+    _assert_params(delta_sync, config, REGISTRATION["modified_after"])
 
     if expect_error:
         with pytest.raises(SkipRecordError, match="Project not found."):
@@ -120,3 +114,11 @@ def test_prepare_defaults_registration_invalid_url(mocker: MockerFixture) -> Non
 
     with pytest.raises(SkipRecordError, match="Invalid project URL format."):
         config["prepare_defaults"](bad_rec)
+
+
+def _assert_params(delta_sync: bool, config: dict, modified_after: str) -> None:
+    params = {"format": "json"}
+    if delta_sync:
+        assert config["endpoint"].get("params") == {ParamDateName.MODIFIED.value: modified_after, **params}
+    else:
+        assert config["endpoint"].get("params") == params
