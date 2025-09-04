@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 from typing import Final
 from django.urls import reverse
@@ -12,6 +10,11 @@ from country_workspace.workspaces.models import CountryHousehold, CountryIndivid
 from tests.workspace.actions import stub
 from testutils.factories import OfficeFactory, CountryProgramFactory, CountryHouseholdFactory, SuperUserFactory
 from testutils.utils import select_office
+
+from strategy_field.utils import fqn
+
+from country_workspace.contrib.hope.push import push_to_hope_core
+
 
 STUB: Final[dict[str, str]] = {
     "batch_name": "TestBatch",
@@ -61,41 +64,50 @@ def app(django_app_factory: MixinWithInstanceVariables) -> DjangoTestApp:
 
 
 @pytest.mark.django_db
-@patch("country_workspace.contrib.hope.push.PushProcessor.safe_post")
-@patch("country_workspace.contrib.hope.push.PushProcessor.check_beneficiaries_validity")
 def test_push_to_hope_action(
-    mocked_check_beneficiaries,
-    mocked_safe_post,
-    app: DjangoTestApp,
-    program: CountryProgram,
-    beneficiary_instance: tuple[CountryHousehold | CountryIndividual, str],
-) -> None:
-    def mock_safe_post_side_effect(path, data, error_msg):
-        if "create" in path:
-            return {"id": "test-rdi-123"}
-        if "push" in path:
-            if program.beneficiary_group.master_detail:
-                return {"processed": 1, "accepted": 1}
-            return {"id": "test-rdi-123", "people": [{"data": "test"}]}
-        if "completed" in path:
-            return {"status": "completed"}
-        return None
+    mocker,
+    app,
+    program,
+    beneficiary_instance,
+):
+    spy = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
 
-    mocked_safe_post.side_effect = mock_safe_post_side_effect
-    mocked_check_beneficiaries.return_value = None
+    if isinstance(beneficiary_instance, tuple):
+        beneficiary, url_name = beneficiary_instance
+    else:
+        beneficiary = beneficiary_instance
+        url_name = (
+            "workspace:workspaces_countryhousehold_changelist"
+            if isinstance(beneficiary, CountryHousehold)
+            else "workspace:workspaces_countryindividual_changelist"
+        )
 
-    beneficiary, url_name = beneficiary_instance
+    batch_name = getattr(stub, "batch_name", "Test Batch")
+
     with select_office(app, program.country_office, program):
         res = app.get(reverse(url_name))
         form = res.forms["changelist-form"]
         form.set("_selected_action", [str(beneficiary.pk)])
         form["action"].select("push_to_hope")
         res2 = form.submit()
+
         push_form = res2.forms["push-to-hope-form"]
-        push_form["batch_name"] = stub.batch_name
+        push_form["batch_name"] = batch_name
         res3 = push_form.submit("_push")
         assert res3.status_code == 302
-    job = AsyncJob.objects.get(program=program)
-    assert job.config["master_detail"] == program.beneficiary_group.master_detail
-    assert job.config["pks"] == [beneficiary.pk]
-    assert job.config["batch_name"] == stub.batch_name
+
+    called_job = spy.call_args.args[0]
+    assert called_job.pk == AsyncJob.objects.latest("id").pk
+    assert called_job.type == AsyncJob.JobType.TASK
+    assert called_job.action == fqn(push_to_hope_core)
+
+    cfg = called_job.config
+    assert cfg["batch_name"] == batch_name
+    assert cfg["master_detail"] == program.beneficiary_group.master_detail
+    assert cfg["pks"] == [beneficiary.pk]
+    assert cfg["co_slug"] == program.country_office.slug
+    assert cfg["country_office_id"] == program.country_office.id
+    assert cfg["program_id"] == program.id
+    assert cfg["program_hope_id"] == program.hope_id
+    assert "pushed_by_id" in cfg
+    assert "imported_by_email" in cfg

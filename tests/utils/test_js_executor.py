@@ -118,7 +118,7 @@ def test_eval_js_runtime_error(mock_evaljs):
 
 @patch("country_workspace.utils.js_executor.dukpy.evaljs")
 def test_is_valid_js_valid_code(mock_evaljs):
-    mock_evaljs.return_value = None
+    mock_evaljs.return_value = True
     code = "function test(data) { return data; }"
     result = JavaScriptExecutor.is_valid_js(code)
     assert result is True

@@ -3,7 +3,7 @@ import pytest
 from country_workspace.models import Program
 from testutils.factories import ProgramFactory, IndividualFactory, HouseholdFactory
 
-from country_workspace.models.serializer import DataSerializer
+from country_workspace.models import DataSerializer
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
 
 

@@ -386,9 +386,9 @@ def test_import_from_rdi(
         for i, (key, _mock) in enumerate(household_mapping.items()):
             household_mock = Mock()
             household_mock.flex_fields = {
-                "head_of_household_id": f"ind_{i + 1}",
-                "primary_collector_id": f"ind_{i + 2}",
-                "alternate_collector_id": f"ind_{i + 3}",
+                "head_of_household": f"ind_{i + 1}",
+                "primary_collector": f"ind_{i + 2}",
+                "alternate_collector": f"ind_{i + 3}",
             }
             household_mock.pk = key
             household_mock.save = Mock()

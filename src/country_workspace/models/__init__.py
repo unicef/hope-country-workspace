@@ -2,6 +2,7 @@ from country_workspace.contrib.kobo.models import KoboSubmission
 
 from .batch import Batch
 from .beneficiary_group import BeneficiaryGroup
+from .data_serializer import DataSerializer
 from .household import Household
 from .individual import Individual
 from .jobs import AsyncJob
@@ -22,6 +23,7 @@ __all__ = [
     "Batch",
     "BeneficiaryGroup",
     "Country",
+    "DataSerializer",
     "Household",
     "Individual",
     "KoboSubmission",

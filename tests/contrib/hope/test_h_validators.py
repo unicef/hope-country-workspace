@@ -39,7 +39,7 @@ def test_hh_validation_with_all_errors(program, full_hhv):
 def test_hh_validation_with_existing_head(program, full_hhv):
     individual = IndividualFactory.create()
     hh = HouseholdFactory.create(batch__program=program)
-    hh.flex_fields["head_of_household_id"] = individual.id
+    hh.flex_fields["head_of_household"] = individual.id
     hh.save()
     hh.members.add(individual)
 
@@ -53,7 +53,7 @@ def test_hh_validation_with_existing_head(program, full_hhv):
 def test_hh_validation_with_existing_primary_collector(program, full_hhv):
     individual = IndividualFactory.create()
     hh = HouseholdFactory.create(batch__program=program)
-    hh.flex_fields["primary_collector_id"] = individual.id
+    hh.flex_fields["primary_collector"] = individual.id
     hh.save()
     hh.members.add(individual)
 
@@ -67,8 +67,8 @@ def test_hh_validation_with_existing_primary_collector(program, full_hhv):
 def test_hh_with_matching_collector_ids(program, full_hhv):
     individual = IndividualFactory.create()
     hh = HouseholdFactory.create(batch__program=program)
-    hh.flex_fields["head_of_household_id"] = hh.flex_fields["primary_collector_id"] = hh.flex_fields[
-        "alternate_collector_id"
+    hh.flex_fields["head_of_household"] = hh.flex_fields["primary_collector"] = hh.flex_fields[
+        "alternate_collector"
     ] = individual.id
     hh.save()
     hh.members.add(individual)
@@ -81,7 +81,7 @@ def test_hh_with_matching_collector_ids(program, full_hhv):
 def test_hh_with_head_from_different_hh(program, full_hhv):
     individual = IndividualFactory.create()
     hh = HouseholdFactory.create(batch__program=program)
-    hh.flex_fields["head_of_household_id"] = hh.flex_fields["primary_collector_id"] = individual.id
+    hh.flex_fields["head_of_household"] = hh.flex_fields["primary_collector"] = individual.id
     hh.save()
 
     errors = full_hhv.validate(hh)

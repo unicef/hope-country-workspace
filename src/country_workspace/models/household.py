@@ -66,10 +66,10 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
     # Business methods
 
     def head(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("head_of_household_id")
+        return self.flex_fields.get("head_of_household")
 
     def primary_collector(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("primary_collector_id")
+        return self.flex_fields.get("primary_collector")
 
     def alternate_collector(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("alternate_collector_id")
+        return self.flex_fields.get("alternate_collector")
