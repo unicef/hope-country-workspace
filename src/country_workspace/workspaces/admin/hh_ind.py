@@ -15,6 +15,7 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from ..handlers import OfficeBasedPermissionHandler
 from ...cache.manager import cache_manager
 from ...models import AsyncJob
 from ...state import state
@@ -96,20 +97,25 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             )
         return _actions
 
+    def _has_proper_permission(self, request: HttpRequest, permission: str) -> bool:
+        context = self.get_common_context(request)
+        handler = OfficeBasedPermissionHandler(permission)
+        return handler(request, context.get("active_program"))
+
     def has_validate_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.validate_beneficiary")
+        return self._has_proper_permission(request, "country_workspace.adminactions_validate_beneficiarygroup")
 
     def has_export_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.export_beneficiary")
+        return self._has_proper_permission(request, "country_workspace.adminactions_export_beneficiarygroup")
 
     def has_mass_update_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.mass_update_beneficiary")
+        return self._has_proper_permission(request, "country_workspace.adminactions_bulkupdate_beneficiarygroup")
 
     def has_regex_update_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.regex_update_beneficiary")
+        return self._has_proper_permission(request, "country_workspace.adminactions_regex_update_beneficiarygroup")
 
     def has_push_to_hope_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.push_beneficiary_to_hope")
+        return self._has_proper_permission(request, "country_workspace.adminactions_push_to_hope_beneficiarygroup")
 
     def _check_empty_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> bool:
         if not queryset.exists():
