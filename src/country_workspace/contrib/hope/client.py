@@ -43,16 +43,20 @@ class HopeClient:
         signature = hashlib.sha256(f"{url}{params}{time.perf_counter_ns()}".encode()).hexdigest()
         pages = 0
         hope_request_start.send(self.__class__, url=url, params=params, signature=signature)
-        while True:
-            if not url:
-                break
+        while url:
             try:
-                ret = requests.get(url, params=params, headers={"Authorization": f"Token {self.token}"}, timeout=10)  # nosec
+                ret = requests.get(
+                    url,
+                    params=(params if pages == 0 else None),
+                    headers={"Authorization": f"Token {self.token}"},
+                    timeout=10,
+                )  # nosec
                 if ret.status_code != 200:
                     raise RemoteError(f"Error {ret.status_code} fetching {url}")
-                pages += 1
             except RequestException:
                 raise RemoteError(f"Remote Error fetching {url}")
+
+            pages += 1
 
             try:
                 data = ret.json()

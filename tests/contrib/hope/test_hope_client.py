@@ -108,6 +108,11 @@ def test_get_success(
     assert start_mock.call_count == end_mock.call_count == 1
     assert end_mock.call_args[1]["pages"] == pages
 
+    urls = [c.request.url for c in mocked_responses.calls]
+    assert len(urls) == pages
+    assert "p=v" in urls[0]
+    assert all("p=" not in u for u in urls[1:])
+
 
 @pytest.mark.parametrize(
     ("case", "status", "body", "error_pattern"),
@@ -265,3 +270,7 @@ def test_break_with_empty_results(
     assert results == []
     assert start_mock.call_count == end_mock.call_count == 1
     assert end_mock.call_args[1]["pages"] == 1
+
+    urls = [c.request.url for c in mocked_responses.calls]
+    assert len(urls) == 1
+    assert "p=v" in urls[0]
