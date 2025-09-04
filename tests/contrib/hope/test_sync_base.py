@@ -1,12 +1,12 @@
-from typing import Callable
+from collections.abc import Callable
 from unittest.mock import Mock
 import pytest
 from django.db import DatabaseError
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.client import HopeClient
+from country_workspace.contrib.hope.exceptions import HopeSyncError, SkipRecordError
 from country_workspace.contrib.hope.sync.base import (
-    SkipRecordError,
     SyncConfig,
     EndpointConfig,
     Stats,
@@ -39,8 +39,9 @@ def test_safe_get_errors(hope_client: HopeClient, exception: Exception, expected
     hope_client.get.side_effect = exception
     stats = Stats(add=0, upd=0, errors=[])
     with log_to(out := Mock()):
-        results = list(safe_get(hope_client, EndpointConfig(path="dummy_path"), stats))
-    assert results == []
+        with pytest.raises(HopeSyncError) as exc:
+            list(safe_get(hope_client, EndpointConfig(path="dummy_path"), stats))
+    assert expected_error in str(exc.value)
     assert_stdout_contains(out, expected_error)
     assert any(expected_error in e for e in stats["errors"])
 
@@ -54,10 +55,12 @@ def test_safe_get_errors(hope_client: HopeClient, exception: Exception, expected
     ids=["valid_id", "missing_id"],
 )
 def test_validated_reference_id(record: dict, expected_id: str | None, stdout_contains: str | None) -> None:
-    with log_to(out := Mock()):
-        assert validated_reference_id(record, out) == expected_id
     if stdout_contains:
+        with log_to(out := Mock()):
+            assert validated_reference_id(record) == expected_id
         assert_stdout_contains(out, stdout_contains)
+    else:
+        assert validated_reference_id(record) == expected_id
 
 
 def test_sync_entity_success(
@@ -121,8 +124,14 @@ def test_sync_entity_errors(
     expected_errors: list[str] | None,
 ) -> None:
     mock_model.objects.update_or_create.side_effect = exception
-    stats = sync_entity_context([records[0]], success_config)
-    assert stats == {"add": 0, "upd": 0, "errors": expected_errors}
+    if expected_errors:
+        with pytest.raises(HopeSyncError) as exc:
+            sync_entity_context([records[0]], success_config)
+        for e in expected_errors:
+            assert e in str(exc.value)
+    else:
+        stats = sync_entity_context([records[0]], success_config)
+        assert stats == {"add": 0, "upd": 0, "errors": expected_errors}
     assert_stdout_contains(out, expected_log)
 
 

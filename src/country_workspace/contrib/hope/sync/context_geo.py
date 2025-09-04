@@ -20,7 +20,6 @@ MODELS: Final[tuple[type[Model], ...]] = (Country,)
 
 
 def sync_countries(delta_sync: bool = False) -> Stats:
-    """Fetch and process Country records from the remote API."""
     return sync_entity(
         SyncConfig(
             model=Country,
@@ -33,13 +32,6 @@ def sync_countries(delta_sync: bool = False) -> Stats:
 
 
 def sync_area_types(delta_sync: bool = False) -> Stats:
-    """Fetch and process AreaType records from the remote API.
-
-    Notes:
-        Calls sync_countries first to ensure dependencies are synchronized.
-
-    """
-
     def _prepare_defaults(rec: dict[str, Any]) -> dict[str, Any] | None:
         try:
             country = Country.objects.get(hope_id=rec["country"])
@@ -73,13 +65,6 @@ def sync_area_types(delta_sync: bool = False) -> Stats:
 
 
 def sync_areas(delta_sync: bool = False) -> Stats:
-    """Fetch and process Area records from the remote API.
-
-    Notes:
-        Calls sync_area_types first to ensure dependencies are synchronized.
-
-    """
-
     def _prepare_defaults(rec: dict[str, Any]) -> dict[str, Any] | None:
         try:
             area_type = AreaType.objects.get(hope_id=rec["area_type"])
@@ -113,7 +98,7 @@ def sync_areas(delta_sync: bool = False) -> Stats:
 
 
 def _assign_parents(model: type[Model], parent_mapping: dict[str, str]) -> None:
-    """Assign parent relationships for the given model based on the parent mapping."""
+    """Bulk-assign parents from mapping."""
     updates = []
     for child_id, parent_id in parent_mapping.items():
         try:

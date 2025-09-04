@@ -63,7 +63,6 @@ def should_process_office(record: dict[str, Any]) -> bool:
 
 
 def sync_offices(delta_sync: bool = False) -> Stats:
-    """Fetch and process Office records from the remote API, deactivating those not present in the source."""
     return sync_entity(
         SyncConfig[Office](
             model=Office,
@@ -77,7 +76,6 @@ def sync_offices(delta_sync: bool = False) -> Stats:
 
 
 def sync_beneficiary_groups(delta_sync: bool = False) -> Stats:
-    """Fetch and process BeneficiaryGroup records from the remote API."""
     return sync_entity(
         SyncConfig[BeneficiaryGroup](
             model=BeneficiaryGroup,
@@ -131,12 +129,6 @@ def post_process_program(program: Program, created: bool) -> None:
 
 
 def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | None = None) -> Stats:
-    """Synchronize and process Program records from the remote API, applying filters and post-processing.
-
-    Notes:
-        Calls sync_beneficiary_groups to ensure dependencies are synchronized.
-
-    """
     return sync_entity(
         SyncConfig[Program](
             model=Program,

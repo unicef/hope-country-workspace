@@ -3,7 +3,7 @@ from collections.abc import Generator, Callable, Iterator
 from contextlib import contextmanager
 from enum import Enum
 from io import TextIOBase
-from typing import Any, Final, TypedDict, NotRequired, TextIO, Literal
+from typing import Any, Final, TypedDict, NotRequired, Literal
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
@@ -11,8 +11,9 @@ from django.db import DatabaseError
 from django.db.models import Model
 
 from country_workspace.exceptions import RemoteError
+from country_workspace.models import SyncLog
 from ..client import HopeClient
-from ....models import SyncLog
+from ..exceptions import HopeSyncError, SkipRecordError
 
 logging.basicConfig()
 
@@ -22,13 +23,9 @@ MESSAGES: Final[dict[str, str]] = {
     "RECORD_SKIPPED": "Skipped record '{reference_id_val}': {error}",
     "RECORD_SYNC_FAILURE": "Failed to sync DB record '{reference_id_val}': {error}",
     "REMOTE_API_FAILURE": "API Error fetching '{path}': {error}",
-    "SYNC_COMPLETE": "Sync complete for '{entity}' with result {result} with '{errors_count}' erors.",
+    "SYNC_COMPLETE": "Sync complete for '{entity}' with result {result} with '{errors_count}' errors.",
     "SYNC_START": "Start fetching '{entity}' data from HOPE core...",
 }
-
-
-class SkipRecordError(Exception):
-    """Exception raised when a record should be skipped during synchronization."""
 
 
 class ParamDateName(Enum):
@@ -48,12 +45,12 @@ class SyncConfig[T: Model](TypedDict):
 
     Attributes:
         model: The Django model class to synchronize.
-        delta_sync: If True, only new records will be processed; otherwise, existing records will be updated.
+        delta_sync: If True, the API request is constrained by a date param (see build_endpoint); otherwise full fetch.
         endpoint: The API endpoint configuration with path and optional query parameters.
         reference_id: The field name used as the system reference ID for the model.
-        prepare_defaults: Function to prepare default values for the model.
-        should_process: Optional function to filter records before processing.
-        post_process: Optional function to process the model instance after creation/update.
+        prepare_defaults: Function to map an API record into model defaults (required).
+        should_process: Optional record-level filter predicate (truthy -> process).
+        post_process: Optional hook after create/update; may raise to fail the sync.
 
     """
 
@@ -79,6 +76,7 @@ def log_to(
     level: Literal[0, 10, 20, 30, 40, 50, 60] = logging.INFO,
     log_format: str = "%(levelname)s %(message)s",
 ) -> Iterator[None]:
+    """Temporarily redirect logs of `logger_name` to a stream."""
     logger = logging.getLogger(logger_name)
 
     handlers_backup = tuple(logger.handlers)
@@ -108,13 +106,14 @@ def add_error(stats: Stats, error: str) -> None:
 
 
 def safe_get(client: HopeClient, endpoint: EndpointConfig, stats: Stats) -> Generator[dict[str, Any], None, None]:
-    """Fetch data from the remote API safely, handling errors."""
+    """Yield records from the remote API, converting RemoteError -> HopeSyncError."""
     try:
         yield from client.get(**endpoint)
     except RemoteError as e:
         error = format_msg("REMOTE_API_FAILURE", path=endpoint.get("path"), error=str(e))
         add_error(stats, error)
         logging.error(error)
+        raise HopeSyncError(error) from e
 
 
 def format_msg(key: str, **kwargs: Any) -> str:
@@ -127,8 +126,8 @@ def format_msg(key: str, **kwargs: Any) -> str:
         raise KeyError(f"Log key '{key}' not found in MESSAGES configuration.")
 
 
-def validated_reference_id(record: dict[str, Any], out: TextIO) -> str | None:
-    """Validate and retrieve the system reference ID from the record."""
+def validated_reference_id(record: dict[str, Any]) -> str | None:
+    """Return record['id'] if present; warn and return None otherwise."""
     reference_id_val = record.get("id")
     if not reference_id_val:
         logging.warning(format_msg("RECORD_MISSING_REFERENCE_ID", record=record))
@@ -136,17 +135,18 @@ def validated_reference_id(record: dict[str, Any], out: TextIO) -> str | None:
 
 
 def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = None, stats: Stats | None = None) -> Stats:
-    """Synchronize an entity with the remote API.
+    """Synchronize a single model using the provided `SyncConfig`.
 
     Args:
-        config (SyncConfig): Configuration for the entity synchronization.
-        out (TextIOBase): Output file to write to.
-        client (HopeClient): HopeClient to use for synchronization.
-        stats (dict[str, Any]): Synchronization results.
+        config: Sync configuration (model, endpoint, mappers/hooks).
+        client: Optional `HopeClient`, created by default.
+        stats: Optional running stats; a new one is created if not provided.
 
-    Notes:
-        - Fetches records from the API, processes them, and updates/creates model instances.
-        - Logs synchronization start, errors, and completion.
+    Returns:
+        Stats: counts of added/updated records; empty `errors` on success.
+
+    Raises:
+        HopeSyncError: if remote API fails or any record-level errors were collected.
 
     """
     should_process = config.get("should_process")
@@ -161,7 +161,7 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
     with cache.lock(f"sync-{model_name}"):
         logging.info(format_msg("SYNC_START", entity=model_name))
         for record in safe_get(client, config["endpoint"], stats):
-            if not (reference_id_val := validated_reference_id(record, stats)):
+            if not (reference_id_val := validated_reference_id(record)):
                 continue
             if should_process and not should_process(record):
                 continue
@@ -181,21 +181,20 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
                 error = format_msg("RECORD_SYNC_FAILURE", reference_id_val=reference_id_val, error=str(e))
                 add_error(stats, error)
                 logging.error(error)
+        if stats["errors"]:
+            raise HopeSyncError(stats["errors"])
         SyncLog.objects.register_sync(model)
-        logging.info(format_msg("SYNC_COMPLETE", entity=model_name, result=stats, errors_count=len(stats["errors"])))
-
+        logging.info(format_msg("SYNC_COMPLETE", entity=model_name, result=stats, errors_count=0))
         return stats
 
 
 def _get_last_updated_date(model: type[Model]) -> str | None:
-    """Get the last update date for the given model."""
     ct = ContentType.objects.get_for_model(model)
     last_sync = SyncLog.objects.filter(content_type=ct).order_by("-last_update_date").first()
     return last_sync.last_update_date.date().isoformat() if last_sync else None
 
 
 def build_endpoint(path: str, model: type[Model], param_date_name: ParamDateName, delta_sync: bool) -> EndpointConfig:
-    """Build the endpoint configuration for the API request."""
     params = {"format": "json"}
     if delta_sync and (last_date := _get_last_updated_date(model)):
         return EndpointConfig(path=path, params={param_date_name.value: last_date, **params})

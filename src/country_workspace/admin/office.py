@@ -18,6 +18,7 @@ class OfficeAdmin(SyncAdminMixin, BaseModelAdmin):
     sync_config = SyncAdminConfig(
         targets=[
             TargetConfig(target=Target.OFFICES),
+            TargetConfig(target=Target.BENEFICIARY_GROUPS),
             TargetConfig(target=Target.PROGRAMS),
         ],
     )
