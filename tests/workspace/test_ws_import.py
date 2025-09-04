@@ -80,25 +80,38 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
 
 
 @pytest.fixture
+def reference_field_names() -> tuple:
+    return (
+        "head_of_household_id",
+        "primary_collector_id",
+        "alternate_collector_id",
+    )
+
+
+@pytest.fixture
 def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Form:
-    # NOTE: This fixture is linked to the content of `data/rdi_one.xlsx`
+    # NOTE: This fixture is linked to the content of `data/rdi_with_references.xlsx`
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()
 
     url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
-    data = (Path(__file__).parent.parent / "data/rdi_one.xlsx").read_bytes()
+    data = (Path(__file__).parent.parent / "data/rdi_with_references.xlsx").read_bytes()
     res = app.get(url)
 
     res.forms["import-file"]["rdi-validate_mode"] = ValidateMode.NONE.value
     res.forms["import-file"]["_selected_tab"] = "rdi"
-    res.forms["import-file"]["rdi-file"] = Upload("rdi_one.xlsx", data)
+    res.forms["import-file"]["rdi-file"] = Upload("rdi_with_references.xlsx", data)
 
     return res.forms["import-file"]
 
 
 def test_import_rdi_hh_and_individuals(
-    force_migrated_records: None, app: "DjangoTestApp", program: "CountryProgram", form_import_rdi: forms.Form
+    force_migrated_records: None,
+    app: "DjangoTestApp",
+    program: "CountryProgram",
+    form_import_rdi: forms.Form,
+    reference_field_names: tuple,
 ) -> None:
     if not program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=True")
@@ -107,15 +120,19 @@ def test_import_rdi_hh_and_individuals(
     res = form_import_rdi.submit()
 
     assert res.status_code == 302
-    assert program.households.count() == 1
-    assert program.individuals.count() == 5
+    assert program.households.count() == 2
+    assert program.individuals.count() == 9
 
     hh: "CountryHousehold" = program.households.first()
     assert hh.members.count() == 5
-    assert (head := program.individuals.get(pk=hh.head))
-    assert head.name == "Melissa Scott Rogers"
+    assert (head := program.individuals.get(pk=hh.head()))
+    assert head.name == "Edward Jeffrey Rogers"
     assert "members_count" not in hh.flex_fields
     assert "count" not in hh.flex_fields
+
+    for household in program.households.all():
+        for field in reference_field_names:
+            assert field in household.flex_fields
 
     individual = program.individuals.first()
     assert "age" not in individual.flex_fields
