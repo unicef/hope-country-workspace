@@ -4,13 +4,13 @@ from unittest.mock import Mock
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 
-from country_workspace.workspaces.handlers import OfficeBasedPermissionHandler
+from country_workspace.workspaces.permissions import OfficeBasedPermission
 from testutils.factories import UserFactory, OfficeFactory, CountryProgramFactory, UserRoleFactory, GroupFactory
 
 
 @pytest.fixture
 def permission_handler():
-    return OfficeBasedPermissionHandler("test_permission")
+    return OfficeBasedPermission("test_permission")
 
 
 @pytest.fixture

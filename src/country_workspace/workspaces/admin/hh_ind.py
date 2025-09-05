@@ -15,7 +15,7 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from ..handlers import OfficeBasedPermissionHandler
+from ..permissions import OfficeBasedPermission
 from ...cache.manager import cache_manager
 from ...models import AsyncJob
 from ...state import state
@@ -99,7 +99,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
 
     def _has_proper_permission(self, request: HttpRequest, permission: str) -> bool:
         context = self.get_common_context(request)
-        handler = OfficeBasedPermissionHandler(permission)
+        handler = OfficeBasedPermission(permission)
         return handler(request, context.get("active_program"))
 
     def has_validate_permission(self, request: HttpRequest) -> bool:

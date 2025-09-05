@@ -5,7 +5,7 @@ from django.http import HttpRequest
 from country_workspace.workspaces.models import CountryProgram
 
 
-class OfficeBasedPermissionHandler:
+class OfficeBasedPermission:
     def __init__(self, permission: str) -> None:
         self.permission = permission
 

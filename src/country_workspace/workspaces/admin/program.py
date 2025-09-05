@@ -21,7 +21,7 @@ from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm
-from ..handlers import OfficeBasedPermissionHandler
+from ..permissions import OfficeBasedPermission
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -256,7 +256,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/configure_columns.html", context)
 
     @button(
-        permission=OfficeBasedPermissionHandler(permission="workspaces.change_countryprogram"),
+        permission=OfficeBasedPermission(permission="workspaces.change_countryprogram"),
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
         visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
         enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
@@ -269,7 +269,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return self._configure_columns(request, SelectColumnsForm, context)
 
     @button(
-        permission=OfficeBasedPermissionHandler(permission="workspaces.change_countryprogram"),
+        permission=OfficeBasedPermission(permission="workspaces.change_countryprogram"),
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
     )
     def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
@@ -281,7 +281,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(
         label=_("Update Records"),
-        permission=OfficeBasedPermissionHandler(permission="country_workspace.import_program_data"),
+        permission=OfficeBasedPermission(permission="country_workspace.import_program_data"),
         html_attrs={"title": "Allow to updated records previously exported."},
     )
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
@@ -313,7 +313,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(
         label=_("Import Data"),
-        permission=OfficeBasedPermissionHandler(permission="country_workspace.import_program_data"),
+        permission=OfficeBasedPermission(permission="country_workspace.import_program_data"),
         html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora."},
     )
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
