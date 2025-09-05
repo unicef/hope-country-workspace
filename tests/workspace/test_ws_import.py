@@ -82,9 +82,9 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
 @pytest.fixture
 def reference_field_names() -> tuple:
     return (
-        "head_of_household_id",
-        "primary_collector_id",
-        "alternate_collector_id",
+        "head_of_household",
+        "primary_collector",
+        "alternate_collector",
     )
 
 
