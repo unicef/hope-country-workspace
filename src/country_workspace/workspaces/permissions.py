@@ -10,4 +10,4 @@ def has_perm_in_office(request: HttpRequest, obj: Any, permission: str, handler:
 
 can_change_country_program = partial(has_perm_in_office, permission="workspaces.change_countryprogram")
 can_import_program_data = partial(has_perm_in_office, permission="country_workspace.import_program_data")
-cam_debug_async_job = partial(has_perm_in_office, permission="country_workspace.debug_job")
+can_debug_async_job = partial(has_perm_in_office, permission="country_workspace.debug_job")

@@ -5,7 +5,7 @@ from django.contrib.admin import register
 from django_celery_boost.admin import CeleryTaskModelAdmin
 from django_celery_boost.models import CeleryTaskModel
 
-from ..permissions import cam_debug_async_job
+from ..permissions import can_debug_async_job
 from ..models import CountryAsyncJob
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -42,7 +42,7 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
         return False
 
     def has_queue_permission(self, perm: str, request: "HttpRequest", obj: CeleryTaskModel | None) -> bool:
-        return cam_debug_async_job(request, obj)
+        return can_debug_async_job(request, obj)
 
     def status(self, obj: "CountryAsyncJob|None") -> str:
         return obj.task_status
