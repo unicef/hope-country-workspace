@@ -15,7 +15,6 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from ..permissions import OfficeBasedPermission
 from ...cache.manager import cache_manager
 from ...models import AsyncJob
 from ...state import state
@@ -63,6 +62,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
+        actions.push_to_hope,
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"
@@ -88,34 +88,25 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         if (
             (program := self.get_selected_program(request))
             and program.beneficiary_group
-            and self.model == (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
+            and self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
-            _actions["push_to_hope"] = (
-                actions.push_to_hope,
-                actions.push_to_hope.__name__,
-                actions.push_to_hope.short_description,
-            )
+            _actions.pop("push_to_hope", None)
         return _actions
 
-    def _has_proper_permission(self, request: HttpRequest, permission: str) -> bool:
-        context = self.get_common_context(request)
-        handler = OfficeBasedPermission(permission)
-        return handler(request, context.get("active_program"))
-
     def has_validate_permission(self, request: HttpRequest) -> bool:
-        return self._has_proper_permission(request, "country_workspace.adminactions_validate_beneficiarygroup")
+        return request.user.has_perm("country_workspace.validate_beneficiary")
 
     def has_export_permission(self, request: HttpRequest) -> bool:
-        return self._has_proper_permission(request, "country_workspace.adminactions_export_beneficiarygroup")
+        return request.user.has_perm("country_workspace.export_beneficiary")
 
     def has_mass_update_permission(self, request: HttpRequest) -> bool:
-        return self._has_proper_permission(request, "country_workspace.adminactions_bulkupdate_beneficiarygroup")
+        return request.user.has_perm("country_workspace.mass_update_beneficiary")
 
     def has_regex_update_permission(self, request: HttpRequest) -> bool:
-        return self._has_proper_permission(request, "country_workspace.adminactions_regex_update_beneficiarygroup")
+        return request.user.has_perm("country_workspace.regex_update_beneficiary")
 
     def has_push_to_hope_permission(self, request: HttpRequest) -> bool:
-        return self._has_proper_permission(request, "country_workspace.adminactions_push_to_hope_beneficiarygroup")
+        return request.user.has_perm("country_workspace.push_beneficiary_to_hope")
 
     def _check_empty_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> bool:
         if not queryset.exists():

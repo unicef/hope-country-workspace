@@ -5,7 +5,7 @@ from django.contrib.admin import register
 from django_celery_boost.admin import CeleryTaskModelAdmin
 from django_celery_boost.models import CeleryTaskModel
 
-from ..permissions import OfficeBasedPermission
+from ..permissions import cam_debug_async_job
 from ..models import CountryAsyncJob
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -41,10 +41,8 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
     def has_delete_permission(self, request: "HttpRequest", obj: "CountryAsyncJob|None" = None) -> bool:
         return False
 
-    def has_queue_permission(self, perm: str, request: "HttpRequest", o: CeleryTaskModel | None) -> bool:
-        context = self.get_common_context(request)
-        handler = OfficeBasedPermission("workspaces.debug_job")
-        return handler(request, context.get("active_program"))
+    def has_queue_permission(self, perm: str, request: "HttpRequest", obj: CeleryTaskModel | None) -> bool:
+        return cam_debug_async_job(request, obj)
 
     def status(self, obj: "CountryAsyncJob|None") -> str:
         return obj.task_status
