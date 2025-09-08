@@ -41,11 +41,11 @@ case "$1" in
       ;;
     worker)
       set -- tini -- "$@"
-      set -- gosu hope:unicef celery -A country_workspace.config.celery worker --statedb worker -E --loglevel=ERROR
+      set -- gosu hope:unicef celery -A country_workspace.config.celery worker --statedb worker -E --loglevel=DEBUG
       ;;
     beat)
       set -- tini -- "$@"
-      set -- gosu hope:unicef celery -A country_workspace.config.celery beat --loglevel=ERROR --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      set -- gosu hope:unicef celery -A country_workspace.config.celery beat --loglevel=DEBUG --scheduler django_celery_beat.schedulers:DatabaseScheduler
       ;;
     flower)
       export DATABASE_URL="sqlite://:memory:"
