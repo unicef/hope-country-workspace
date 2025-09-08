@@ -6,6 +6,7 @@ from typing import Any, Final, TypedDict, cast
 from constance import config as constance_config
 from django.core.cache import cache
 from requests import Session
+from requests.adapters import HTTPAdapter
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
@@ -38,6 +39,7 @@ def is_submission_data_url(url: str) -> bool:
 
 def make_client(country_code: str) -> Client:
     session = Session()
+    session.mount("https://", HTTPAdapter(max_retries=3))
     token = constance_config.KOBO_MASTER_API_TOKEN or constance_config.KOBO_API_TOKEN
     session.auth = Auth(token)
     data_getter = DataGetter(
