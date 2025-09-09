@@ -110,9 +110,6 @@ def create_household(batch: Batch, submission: Submission, config: Config) -> Ho
     )
 
 
-ASSET_CACHE_KEY = "sync_kobo_asset_{asset_id}"
-
-
 class ImportResult(TypedDict):
     households: int
     individuals: int

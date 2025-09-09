@@ -7,7 +7,6 @@ from pytest_mock import MockerFixture
 from typing import TYPE_CHECKING
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
-    ASSET_CACHE_KEY,
     Config,
     ImportResult,
     create_household,
@@ -158,7 +157,6 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
 
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
-    cache = mocker.patch("country_workspace.contrib.kobo.sync.cache")
     kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
     kobo_submission_class.objects.filter.return_value.values_list.return_value = [(old_submission_id := 42)]
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
@@ -178,7 +176,6 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     )
 
     assert result == ImportResult(households=1, individuals=individuals_counter)
-    cache.lock.assert_called_once_with(ASSET_CACHE_KEY.format(asset_id=asset_mock.uid))
     kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
     kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
     create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config)
