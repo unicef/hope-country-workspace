@@ -1,7 +1,5 @@
 import pytest
 from django.contrib.admin import AdminSite
-from django.core.exceptions import PermissionDenied
-from django.test import RequestFactory
 from django.urls import reverse
 
 from country_workspace.workspaces.admin import CountryProgramAdmin
@@ -37,87 +35,57 @@ def country_program_md_true(country_program):
     return country_program
 
 
-@pytest.mark.django_db
-def test_import_data_no_permissions(user, country_program_admin_instance, country_program):
-    factory = RequestFactory()
-    request = factory.get("/")
-    request.user = user
-
-    with pytest.raises(PermissionDenied):
-        country_program_admin_instance.import_data(country_program_admin_instance, request, country_program.pk)
-
-
 @pytest.mark.django_db  # ERA001
-def test_import_data_with_permissions(user, country_program_admin_instance, country_program, client):
+def test_import_data_permissions(user, country_program_admin_instance, country_program, client):
+    url = reverse("workspace:workspaces_countryprogram_import_data", args=[country_program.pk])
+    client.force_login(user)
+    client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+    response = client.get(url)
+    assert response.status_code == 403
+
     with user_grant_permissions(user, "country_workspace.import_program_data", country_program):
-        client.force_login(user)
         client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
-        url = reverse("workspace:workspaces_countryprogram_import_data", args=[country_program.pk])
         response = client.get(url)
-
-    assert response.status_code == 200
-
-
-@pytest.mark.django_db
-def test_household_columns_no_permissions(user, country_program_admin_instance, country_program_md_true):
-    factory = RequestFactory()
-    request = factory.get("/")
-    request.user = user
-
-    with pytest.raises(PermissionDenied):
-        country_program_admin_instance.household_columns(
-            country_program_admin_instance, request, country_program_md_true.pk
-        )
+        assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_household_columns_with_permissions(user, country_program_admin_instance, country_program_md_true, client):
+def test_household_columns_permissions(user, country_program_admin_instance, country_program_md_true, client):
+    url = reverse("workspace:workspaces_countryprogram_household_columns", args=[country_program_md_true.pk])
+    client.post(reverse("workspace:select_tenant"), data={"tenant": country_program_md_true.country_office.pk})
+    client.force_login(user)
+    response = client.get(url)
+    assert response.status_code == 403
+
     with user_grant_permissions(user, "workspaces.change_countryprogram", country_program_md_true):
-        client.force_login(user)
         client.post(reverse("workspace:select_tenant"), data={"tenant": country_program_md_true.country_office.pk})
-        url = reverse("workspace:workspaces_countryprogram_household_columns", args=[country_program_md_true.pk])
         response = client.get(url)
-
-    assert response.status_code == 200
-
-
-@pytest.mark.django_db
-def test_individual_columns_no_permissions(user, country_program_admin_instance, country_program):
-    factory = RequestFactory()
-    request = factory.get("/")
-    request.user = user
-
-    with pytest.raises(PermissionDenied):
-        country_program_admin_instance.individual_columns(country_program_admin_instance, request, country_program.pk)
+        assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_individual_columns_with_permissions(user, country_program_admin_instance, country_program, client):
+def test_individual_columns_permissions(user, country_program_admin_instance, country_program, client):
+    url = reverse("workspace:workspaces_countryprogram_individual_columns", args=[country_program.pk])
+    client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+    client.force_login(user)
+    response = client.get(url)
+    assert response.status_code == 403
+
     with user_grant_permissions(user, "workspaces.change_countryprogram", country_program):
-        client.force_login(user)
         client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
-        url = reverse("workspace:workspaces_countryprogram_individual_columns", args=[country_program.pk])
         response = client.get(url)
-
-    assert response.status_code == 200
-
-
-@pytest.mark.django_db
-def test_import_file_updates_no_permissions(user, country_program_admin_instance, country_program):
-    factory = RequestFactory()
-    request = factory.get("/")
-    request.user = user
-
-    with pytest.raises(PermissionDenied):
-        country_program_admin_instance.import_file_updates(country_program_admin_instance, request, country_program.pk)
+        assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_import_file_updates_with_permissions(user, country_program_admin_instance, country_program, client):
+def test_import_file_updates_permissions(user, country_program_admin_instance, country_program, client):
+    url = reverse("workspace:workspaces_countryprogram_import_file_updates", args=[country_program.pk])
+    client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+    client.force_login(user)
+    response = client.get(url)
+    assert response.status_code == 403
+
     with user_grant_permissions(user, "country_workspace.import_program_data", country_program):
-        client.force_login(user)
         client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
-        url = reverse("workspace:workspaces_countryprogram_import_file_updates", args=[country_program.pk])
         response = client.get(url)
-
-    assert response.status_code == 200
+        assert response.status_code == 200
