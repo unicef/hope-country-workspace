@@ -107,3 +107,16 @@ def test_get_allowed_tenants_anon(backend, data, admin_user, rf):
     request.user = AnonymousUser()
     with state.set(tenant=data.afg, request=request):
         assert backend.get_allowed_tenants().count() == 0
+
+
+def test_get_all_permissions_with_country_async_job(backend, user):
+    from testutils.factories.program import ProgramFactory
+    from testutils.factories.job import AsyncJobFactory
+    from country_workspace.workspaces.models import CountryAsyncJob
+
+    program = ProgramFactory()
+    job = AsyncJobFactory(program=program, owner=user)
+    job = CountryAsyncJob.objects.get(pk=job.pk)
+
+    with user_grant_permissions(user, "workspaces.view_countryhousehold", country_office_or_program=program):
+        assert backend.get_all_permissions(user, job) == {"workspaces.view_countryhousehold"}
