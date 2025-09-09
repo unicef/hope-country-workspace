@@ -50,7 +50,7 @@ def test_superuser(backend, data, admin_user):
     with state.set(tenant=data.afg):
         assert backend.has_perm(admin_user, "workspaces.view_countryhousehold")
         assert backend.has_module_perms(admin_user, "workspaces.view_countryhousehold")
-        assert backend.get_available_modules(admin_user) == {"workspaces"}
+        assert backend.get_available_modules(admin_user) == {"workspaces", "country_workspace"}
 
 
 def test_has_get_all_permissions_no_active_tenant(backend, data, user, admin_user):
