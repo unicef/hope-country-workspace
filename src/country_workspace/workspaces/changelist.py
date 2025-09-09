@@ -1,12 +1,9 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from django.contrib.admin.utils import quote
 from django.contrib.admin.views.main import ChangeList as DjangoChangeList
-from django.db.models import Model, QuerySet
-from django.http import HttpRequest
 from django.urls import reverse
 
-from ..cache.manager import cache_manager
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -38,24 +35,6 @@ class WorkspaceChangeList(DjangoChangeList):
             args=(quote(pk),),
             current_app=self.model_admin.admin_site.name,
         )
-
-    def get_queryset(self, request: HttpRequest, exclude_parameters: dict[str, Any] | None = None) -> QuerySet[Model]:
-        (
-            self.filter_specs,
-            self.has_filters,
-            remaining_lookup_params,
-            filters_may_have_duplicates,
-            self.has_active_filters,
-        ) = self.get_filters(request)
-        key = cache_manager.build_key_from_request(request, "qs")
-        if not (qs := cache_manager.retrieve(key)):
-            qs = super().get_queryset(request, exclude_parameters)
-            cache_manager.store(key, qs)
-        self.clear_all_filters_qs = self.get_query_string(
-            new_params=remaining_lookup_params,
-            remove=self.get_filters_params(),
-        )
-        return qs
 
 
 class FlexFieldsChangeList(WorkspaceChangeList):
