@@ -50,7 +50,7 @@ def test_superuser(backend, data, admin_user):
     with state.set(tenant=data.afg):
         assert backend.has_perm(admin_user, "workspaces.view_countryhousehold")
         assert backend.has_module_perms(admin_user, "workspaces.view_countryhousehold")
-        assert backend.get_available_modules(admin_user) == {"workspaces"}
+        assert backend.get_available_modules(admin_user) == {"workspaces", "country_workspace"}
 
 
 def test_has_get_all_permissions_no_active_tenant(backend, data, user, admin_user):
@@ -107,3 +107,16 @@ def test_get_allowed_tenants_anon(backend, data, admin_user, rf):
     request.user = AnonymousUser()
     with state.set(tenant=data.afg, request=request):
         assert backend.get_allowed_tenants().count() == 0
+
+
+def test_get_all_permissions_with_country_async_job(backend, user):
+    from testutils.factories.program import ProgramFactory
+    from testutils.factories.job import AsyncJobFactory
+    from country_workspace.workspaces.models import CountryAsyncJob
+
+    program = ProgramFactory()
+    job = AsyncJobFactory(program=program, owner=user)
+    job = CountryAsyncJob.objects.get(pk=job.pk)
+
+    with user_grant_permissions(user, "workspaces.view_countryhousehold", country_office_or_program=program):
+        assert backend.get_all_permissions(user, job) == {"workspaces.view_countryhousehold"}

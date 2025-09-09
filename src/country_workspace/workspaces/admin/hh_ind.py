@@ -62,6 +62,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
+        actions.push_to_hope,
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"
@@ -87,13 +88,9 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         if (
             (program := self.get_selected_program(request))
             and program.beneficiary_group
-            and self.model == (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
+            and self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
-            _actions["push_to_hope"] = (
-                actions.push_to_hope,
-                actions.push_to_hope.__name__,
-                actions.push_to_hope.short_description,
-            )
+            _actions.pop("push_to_hope", None)
         return _actions
 
     def has_validate_permission(self, request: HttpRequest) -> bool:

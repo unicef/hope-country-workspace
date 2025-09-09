@@ -5,7 +5,8 @@ from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth.models import AnonymousUser, Permission
 from django.db.models import Model, Q, QuerySet
 
-from ..models import Office, User
+from .models import CountryAsyncJob
+from ..models import Office, User, AsyncJob
 from ..state import state
 from .utils import get_selected_tenant
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class TenantBackend(BaseBackend):
-    def get_group_permissions(self, user: "User|AnonymousUser", obj: "Model|None" = None) -> set[str]:
+    def get_group_permissions(self, user: "User|AnonymousUser", obj: "Model|None" = None) -> set[str]:  # noqa: C901
         from country_workspace.workspaces.models import (
             Batch,
             CountryBatch,
@@ -45,19 +46,21 @@ class TenantBackend(BaseBackend):
         elif isinstance(obj, (CountryProgram | Program)):
             program = obj
             country_office = obj.country_office
-            filters = {
-                "group__userrole__country_office": country_office,
-            }
+            filters = {"group__userrole__country_office": country_office, "group__userrole__program": program}
         elif isinstance(obj, (CountryHousehold | Household | CountryIndividual | Individual)):
             program = obj.program
             country_office = obj.country_office
+        elif isinstance(obj, CountryAsyncJob | AsyncJob):
+            program = obj.program
+            country_office = program.country_office
+            filters = {"group__userrole__country_office": country_office, "group__userrole__program": program}
         else:
             return set()
         if not hasattr(user, "_tenant_cache"):
             user._tenant_cache = {}
         perm_cache_name = "%s_%s" % (str(country_office), str(program))
         if not user._tenant_cache.get(perm_cache_name):
-            qs = Permission.objects.filter(content_type__app_label="workspaces")
+            qs = Permission.objects.filter(content_type__app_label__in=("workspaces", "country_workspace"))
             if not user.is_superuser:
                 qs = qs.filter(group__userrole__user=user).filter(
                     Q(group__userrole__country_office=country_office, group__userrole__program=None) | Q(**filters),

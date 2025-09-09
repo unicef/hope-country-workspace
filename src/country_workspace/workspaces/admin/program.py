@@ -21,6 +21,7 @@ from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm
+from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -255,7 +256,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/configure_columns.html", context)
 
     @button(
-        permission="workspaces.change_countryprogram",
+        permission=can_change_country_program,
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
         visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
         enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
@@ -268,7 +269,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return self._configure_columns(request, SelectColumnsForm, context)
 
     @button(
-        permission="workspaces.change_countryprogram",
+        permission=can_change_country_program,
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
     )
     def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
@@ -280,7 +281,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(
         label=_("Update Records"),
-        permission="country_workspace.import_program_data",
+        permission=can_import_program_data,
         html_attrs={"title": "Allow to updated records previously exported."},
     )
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
@@ -312,7 +313,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @button(
         label=_("Import Data"),
-        permission="country_workspace.import_program_data",
+        permission=can_import_program_data,
         html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora."},
     )
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
