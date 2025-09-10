@@ -1,11 +1,15 @@
 from json import JSONDecodeError
-from typing import Any, Generator
+from typing import Any, Generator, Final
 from urllib.parse import urljoin
 
 import requests
+from requests.adapters import HTTPAdapter
 from constance import config
 
 from country_workspace.exceptions import RemoteError
+
+
+TIMEOUTS: Final[tuple[int, int]] = (10, 20)  # (connect timeout, read timeout)
 
 
 class AuroraClient:
@@ -26,6 +30,10 @@ class AuroraClient:
 
         """
         self.token = token or config.AURORA_API_TOKEN
+        self.session = requests.Session()
+        self.session.headers.update({"Authorization": f"Token {self.token}"})
+        for scheme in ("http://", "https://"):
+            self.session.mount(scheme, HTTPAdapter(max_retries=3))
 
     def _get_url(self, path: str) -> str:
         """
@@ -40,15 +48,14 @@ class AuroraClient:
         """
         url = urljoin(config.AURORA_API_URL, path)
         if not url.endswith("/"):
-            url = url + "/"
+            url += "/"
         return url
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> Generator[dict[str, Any], None, None]:
-        """Fetch records from the Aurora API with automatic pagination."""
         url = self._get_url(path)
         while url:
             try:
-                ret = requests.get(url, params=params, headers={"Authorization": f"Token {self.token}"}, timeout=10)
+                ret = self.session.get(url, params=params, timeout=TIMEOUTS)  # nosec
                 ret.raise_for_status()
             except requests.RequestException as e:
                 raise RemoteError(f"Remote Error fetching {url}: {e}") from e
