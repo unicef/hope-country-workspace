@@ -4,7 +4,6 @@ from functools import partial
 from typing import Any, Final, TypedDict, cast
 
 from constance import config as constance_config
-from django.core.cache import cache
 from requests import Session
 from requests.adapters import HTTPAdapter
 
@@ -111,9 +110,6 @@ def create_household(batch: Batch, submission: Submission, config: Config) -> Ho
     )
 
 
-ASSET_CACHE_KEY = "sync_kobo_asset_{asset_id}"
-
-
 class ImportResult(TypedDict):
     households: int
     individuals: int
@@ -123,15 +119,13 @@ def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
     household_counter = 0
     individual_counter = 0
 
-    # TODO(Sergey Misuk): remove lock usage as task can't have multiple running instances
-    with cache.lock(ASSET_CACHE_KEY.format(asset_id=asset.uid)):
-        submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
-        for submission in asset.submissions:
-            if submission.id in submission_ids:
-                continue
-            household = create_household(batch, submission, config)
-            household_counter += 1
-            individual_counter += create_individuals(batch, household, submission, config)
+    submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
+    for submission in asset.submissions:
+        if submission.id in submission_ids:
+            continue
+        household = create_household(batch, submission, config)
+        household_counter += 1
+        individual_counter += create_individuals(batch, household, submission, config)
 
     return ImportResult(households=household_counter, individuals=individual_counter)
 
