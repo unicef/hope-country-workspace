@@ -63,13 +63,14 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
         self.save(update_fields=["errors", "last_checked"])
         return not bool(self.errors)
 
-    # Business methods
-
+    @property
     def head(self) -> "QuerySet[Individual]":
         return self.flex_fields.get("head_of_household")
 
+    @property
     def primary_collector(self) -> "QuerySet[Individual]":
         return self.flex_fields.get("primary_collector")
 
+    @property
     def alternate_collector(self) -> "QuerySet[Individual]":
         return self.flex_fields.get("alternate_collector")
