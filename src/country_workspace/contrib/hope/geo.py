@@ -1,10 +1,11 @@
 from typing import Any
-
+from collections.abc import Mapping
 from django import forms
 from django.apps import apps
 from django.core.exceptions import ValidationError
-from django.utils.text import slugify
 from hope_flex_fields.mixin import ChildFieldMixin
+from urllib.parse import urlencode
+
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.state import state
@@ -14,29 +15,30 @@ from ...exceptions import RemoteError
 
 class APIChoicesMixin:
     path: str
+    params: Mapping[str, Any] | None = None
     cache_timeout: int = 300
 
     def fetch_api(self, *args: Any) -> list[dict[str, Any]]:
-        endpoint = self.path.format(*args) if args else self.path
-        key = slugify(endpoint)
+        path = self.path.format(*args) if args else self.path
+        params = self.params or {}
+        key = f"api:{path}?{urlencode(sorted(params.items()), doseq=True)}"
 
         if (cached := cache_manager.retrieve(key)) is not None:
             return cached
 
         try:
-            data = list(HopeClient().get(endpoint))
+            data = list(HopeClient().get(path, params))
         except RemoteError:
-            data = []
+            return []
 
         cache_manager.store(key, data, timeout=self.cache_timeout)
         return data
 
 
 class CountryChoice(APIChoicesMixin, forms.ChoiceField):
-    path: str = "lookups/country"
-
     def __init__(self, choices: list[tuple[str, str]] | None = None, **kwargs: Any) -> None:
         super().__init__(choices=choices or [], **kwargs)
+        self.path = "lookups/country"
         self.iso3_to_iso2: dict[str, str] = {}
         self.choices = self.get_choices()
 
@@ -61,11 +63,12 @@ class CountryChoice(APIChoicesMixin, forms.ChoiceField):
 
 
 class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
-    path: str = "{}/geo/areas/"
     level: int = -1
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        self.path = "business-areas/{}/geo/areas/"
+        self.params = {"format": "json"}
         self.choices = self.get_choices_for_parent_value(parent_value=state.tenant.slug)
 
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:

@@ -83,7 +83,7 @@ def test_admin_level_choice_validate(
     mocker.patch("country_workspace.contrib.hope.geo.state.tenant", office)
     mocked_responses.add(
         mocked_responses.GET,
-        f"https://fake-hope.org/api/rest/{office.slug}/geo/areas/",
+        f"https://fake-hope.org/api/rest/business-areas/{office.slug}/geo/areas/?format=json",
         json=ADMIN1_UA,
     )
 
