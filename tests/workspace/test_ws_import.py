@@ -112,7 +112,7 @@ def test_import_rdi_hh_and_individuals(
 
     hh: "CountryHousehold" = program.households.first()
     assert hh.members.count() == 5
-    assert (head := program.individuals.get(pk=hh.head()))
+    assert (head := program.individuals.get(pk=hh.head))
     assert head.name == "Melissa Scott Rogers"
     assert "members_count" not in hh.flex_fields
     assert "count" not in hh.flex_fields
