@@ -106,6 +106,7 @@ def test_extract_household_data() -> None:
 
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
+    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
     data = {
@@ -126,7 +127,14 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     )
 
     assert individuals == len(data[INDIVIDUAL_RECORDS_FIELD])
-    preprocess_mock.assert_called_once_with(individual_data, INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS)
+
+    partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, individual_class_mock)
+    preprocess_mock.assert_called_once_with(
+        individual_data,
+        INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        partial_mock.return_value,
+    )
+
     get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
@@ -139,8 +147,9 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
     preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
+    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
 
     household = create_household(
         batch_mock := Mock(name="batch"),
@@ -150,9 +159,16 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
-    preprocess_mock.assert_called_once_with(extract_household_data_mock.return_value, HOUSEHOLD_FIELDS_TO_UPPERCASE)
+
+    partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, household_class_mock)
+    preprocess_mock.assert_called_once_with(
+        extract_household_data_mock.return_value,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        partial_mock.return_value,
+    )
+
     batch_mock.program.households.create.assert_called_once_with(
-        batch=batch_mock, flex_fields=clean_field_names_mock.return_value
+        batch=batch_mock, flex_fields=preprocess_mock.return_value
     )
 
 
@@ -223,10 +239,11 @@ def test_preprocess(mocker: MockerFixture) -> None:
     clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     compose_mock = mocker.patch("country_workspace.contrib.kobo.sync.compose")
+    mapping_importer = Mock(name="mapping_importer")
     individual = Mock()
     fields_to_uppercase = ("first", "second")
 
-    assert preprocess(individual, fields_to_uppercase) == compose_mock.return_value.return_value
+    assert preprocess(individual, fields_to_uppercase, mapping_importer) == compose_mock.return_value.return_value
     partial_mock.assert_called_once_with(clean_field_names_mock, fields_to_uppercase=fields_to_uppercase)
-    compose_mock.assert_called_once_with(normalize_json_mock, partial_mock.return_value)
+    compose_mock.assert_called_once_with(normalize_json_mock, partial_mock.return_value, mapping_importer)
     compose_mock.return_value.assert_called_once_with(individual)

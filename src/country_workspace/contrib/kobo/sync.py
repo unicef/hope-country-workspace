@@ -2,7 +2,6 @@ import re
 from collections.abc import Callable, Iterable
 from functools import partial
 from typing import Any, Final, TypedDict, cast
-
 from constance import config as constance_config
 from requests import Session
 from requests.adapters import HTTPAdapter
@@ -68,12 +67,9 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
 type Raw = dict[str, Any]
 
 
-def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...]) -> Raw:
+def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...], mapping_importer: Callable[[Raw], Raw]) -> Raw:
     clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
-    processor: Callable[[Raw], Raw] = compose(
-        normalize_json,
-        clean,
-    )
+    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer)
     return processor(raw)
 
 
@@ -84,14 +80,18 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual = preprocess(raw_individual, INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS)
-        fullname = get_fullname_key(individual)
+        individual_fields = preprocess(
+            raw_individual,
+            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            partial(batch.program.apply_mapping_importer, Individual),
+        )
+        fullname = get_fullname_key(individual_fields)
         individuals.append(
             Individual(
                 batch=batch,
                 household=household,
-                name=individual.get(fullname, "") if fullname else "",
-                flex_fields=individual,
+                name=individual_fields.get(fullname, "") if fullname else "",
+                flex_fields=individual_fields,
             ),
         )
     household.program.individuals.bulk_create(individuals)
@@ -100,12 +100,16 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 
 def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(raw_household_fields, HOUSEHOLD_FIELDS_TO_UPPERCASE)
+    household_fields = preprocess(
+        raw_household_fields,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        partial(batch.program.apply_mapping_importer, Household),
+    )
     return cast(
         "Household",
         batch.program.households.create(
             batch=batch,
-            flex_fields=clean_field_names(household_fields),
+            flex_fields=household_fields,
         ),
     )
 
