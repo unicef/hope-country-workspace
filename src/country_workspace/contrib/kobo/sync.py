@@ -1,5 +1,6 @@
 import re
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from functools import partial
 from typing import Any, Final, TypedDict, cast
 from constance import config as constance_config
@@ -70,7 +71,7 @@ type Raw = dict[str, Any]
 def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...], mapping_importer: Callable[[Raw], Raw]) -> Raw:
     clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
     processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer)
-    return processor(raw)
+    return processor(deepcopy(raw))
 
 
 def get_fullname_key(individual: Iterable[str]) -> str | None:
@@ -109,7 +110,7 @@ def create_household(batch: Batch, submission: Submission, config: Config) -> Ho
         "Household",
         batch.program.households.create(
             batch=batch,
-            flex_fields=clean_field_names(household_fields),
+            flex_fields=household_fields,
         ),
     )
 
