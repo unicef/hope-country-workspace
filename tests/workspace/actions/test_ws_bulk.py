@@ -1,5 +1,4 @@
 import io
-import os
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
@@ -18,7 +17,6 @@ from tests.workspace.actions import stub
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
-    from pytest_django.fixtures import SettingsWrapper
     from webtest import Checkbox
 
     from country_workspace.models import AsyncJob
@@ -48,23 +46,6 @@ def mock_media_storage():
             "open.return_value": io.BytesIO(b"mocked file content"),
         }
     )
-
-
-@pytest.fixture(scope="session")
-def celery_config():
-    return {"broker_url": os.environ["CELERY_BROKER_URL"], "result_backend": os.environ["CELERY_BROKER_URL"]}
-
-
-@pytest.fixture(scope="session")
-def celery_worker_parameters():
-    return {
-        "shutdown_timeout": 60,
-    }
-
-
-@pytest.fixture
-def celery_app(celery_app):
-    return celery_app
 
 
 @pytest.fixture
@@ -112,22 +93,25 @@ def data(request: pytest.FixtureRequest, household: "CountryHousehold") -> tuple
         buffer.seek(0)
         return buffer
 
-    def set_fields(fields: list[str], start_index: int = 2) -> list[str]:
-        return [f"{field}_{col}" for col, field in enumerate(fields, start=start_index)]
+    def set_hh_fields(fields: list[str]) -> list[str]:
+        return [household.id, household.version] + [household.flex_fields.get(field, None) for field in fields]
+
+    def set_ind_fields(fields: list[str]) -> list[list[Any]]:
+        return [
+            [member.id, member.version] + [member.flex_fields.get(field, None) for field in fields]
+            for member in household.members.all()
+        ]
 
     target = request.param
     if target == "hh":
         buff = create_xlsx_buffer(
             stub.header_base + stub.header_add["hh"],
-            [[household.id, household.version] + set_fields(stub.header_add["hh"], start_index=2)],
+            [set_hh_fields(stub.header_add["hh"])],
         )
     elif target == "ind":
         buff = create_xlsx_buffer(
             stub.header_base + stub.header_add["ind"],
-            [
-                [member.id, member.version] + set_fields(stub.header_add["ind"], start_index=2)
-                for member in household.members.all()
-            ],
+            set_ind_fields(stub.header_add["ind"]),
         )
     else:
         raise ValueError(f"Invalid target: {request.param}")
@@ -157,12 +141,10 @@ def test_create_bulk_update_template(household: "CountryHousehold", force_migrat
 def test_bulk_update_export(
     app: "DjangoTestApp",
     force_migrated_records,
-    settings: "SettingsWrapper",
     household: "CountryHousehold",
     mock_storage,
 ) -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
-    settings.CELERY_TASK_ALWAYS_EAGER = True
     selected_fields = stub.header_add["ind"]
     with mock.patch("country_workspace.workspaces.admin.cleaners.bulk_update.MEDIA_STORAGE", mock_storage):
         with select_office(app, household.country_office, household.program):
@@ -187,13 +169,11 @@ def test_bulk_update_export(
 def test_bulk_update_import(
     app: "DjangoTestApp",
     force_migrated_records,
-    settings: "SettingsWrapper",
     household: "CountryHousehold",
     data: tuple[io.BytesIO, "CountryHousehold", str],
 ) -> None:
     buff, household, target = data
     url = reverse("workspace:workspaces_countryprogram_change", args=[household.program.pk])
-    settings.CELERY_TASK_ALWAYS_EAGER = True
 
     with select_office(app, household.country_office, household.program):
         res = app.get(url)
@@ -209,8 +189,8 @@ def test_bulk_update_import(
         assert job
 
         if target == "hh":
-            admin1_v = f"admin1_{stub.header_add['hh'].index('admin1') + 2}"
+            admin1_v = household.flex_fields.get("admin_1")
             assert household.flex_fields.get("admin1") == admin1_v
         elif target == "ind":
-            given_name = f"given_name_{stub.header_add['ind'].index('given_name') + 2}"
+            given_name = household.flex_fields.get("given_name")
             assert household.members.filter(flex_fields__given_name=given_name).exists()
