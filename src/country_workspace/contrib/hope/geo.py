@@ -46,14 +46,14 @@ class CountryChoice(APIChoicesMixin, forms.ChoiceField):
         from country_workspace.models import Country
 
         data = Country.objects.values("iso_code2", "iso_code3", "name").all()
-
-        return [
+        country_choices = [
             (
                 self.iso3_to_iso2.setdefault(rec["iso_code3"], rec["iso_code2"]),
                 rec["name"],
             )
             for rec in data
         ]
+        return [("", "None"), *country_choices]
 
     def prepare_value(self, value: Any) -> str | None:
         return super().prepare_value(self.iso3_to_iso2.get(value, value))
@@ -93,7 +93,7 @@ class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
         return (
             [r["p_code"] for r in filtered]
             if only_codes
-            else [("", ""), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]]
+            else [("", "None"), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]]
         )
 
     def _get_valid_area_types(self) -> set[Any]:

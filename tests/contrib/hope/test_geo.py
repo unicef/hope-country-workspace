@@ -139,7 +139,7 @@ def test_country_choice(
     [
         (Admin1Choice, "get_choices_for_parent_value", (COUNTRY["results"][0]["iso_code2"], False), [("", "")]),
         (Admin1Choice, "get_choices_for_parent_value", (COUNTRY["results"][0]["iso_code2"], True), []),
-        (CountryChoice, None, None, []),
+        (CountryChoice, None, None, [("", "None")]),
     ],
     ids=["admin1", "admin1_only_codes", "country"],
 )
