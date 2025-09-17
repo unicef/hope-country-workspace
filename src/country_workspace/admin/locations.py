@@ -77,7 +77,7 @@ class AreaAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
         ("area_type", AreaTypeFilter),
     )
     search_fields = ("name", "p_code")
-    raw_id_fields = ("area_type", "parent")
+    autocomplete_fields = ("area_type", "parent")
     sync_config = SyncAdminConfig(
         targets=[
             TargetConfig(target=Target.AREAS),

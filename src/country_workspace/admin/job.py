@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 @admin.register(AsyncJob)
 class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin):
     list_display = ("program", "type", "status", "owner")
-    autocomplete_fields = ("program", "owner", "batch", "content_type")
+    autocomplete_fields = ("program", "owner", "batch", "content_type", "rdp")
     list_filter = (
         ("program__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("program", LinkedAutoCompleteFilter.factory(parent="program__country_office")),

@@ -14,3 +14,4 @@ class UserRoleAdmin(BaseModelAdmin):
         ("program", AutoCompleteFilter),
         ("group", AutoCompleteFilter),
     )
+    autocomplete_fields = ("user", "country_office", "program", "group")
