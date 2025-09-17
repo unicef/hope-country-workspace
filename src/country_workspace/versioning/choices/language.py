@@ -1,0 +1,18 @@
+PREFERRED_LANGUAGE_CHOICES = (
+    ("en-us", "English | English"),
+    ("ar-ae", " | عربيArabic"),
+    ("cs-cz", "čeština | Czech"),
+    ("de-de", "Deutsch"),
+    ("es-es", "Español | Spanish"),
+    ("fr-fr", "Français | French"),
+    ("hu-hu", "Magyar | Hungarian"),
+    ("it-it", "Italiano"),
+    ("pl-pl", "Polskie | Polish"),
+    ("pt-pt", "Português"),
+    ("ro-ro", "Română"),
+    ("ru-ru", "Русский | Russian"),
+    ("si-si", "සිංහල | Sinhala"),
+    ("ta-ta", "தமிழ் | Tamil"),
+    ("uk-ua", "український | Ukrainian"),
+    ("hi-hi", "हिंदी"),
+)
