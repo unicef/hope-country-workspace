@@ -9,7 +9,7 @@ from concurrency.utils import fqn
 
 from country_workspace.contrib.hope.constants import HOUSEHOLD_FIELDSET_NAME
 from country_workspace.utils.flex_fields import Base64ImageField
-from country_workspace.versioning.currency import CURRENCY_CHOICES
+from country_workspace.versioning.choices.currency import CURRENCY_CHOICES
 
 _script_for_version = Version("0.1.0")
 
