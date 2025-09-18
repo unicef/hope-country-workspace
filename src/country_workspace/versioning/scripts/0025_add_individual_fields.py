@@ -2,12 +2,18 @@
 from django import forms
 from django.db import transaction
 from django.utils.text import slugify
-from hope_flex_fields.models import Fieldset, FieldDefinition
+from hope_flex_fields.models import Fieldset, DataChecker, DataCheckerFieldset, FieldDefinition
 from hope_flex_fields.registry import field_registry
 from packaging.version import Version
 from concurrency.utils import fqn
 
-from country_workspace.contrib.hope.constants import INDIVIDUAL_FIELDSET_NAME
+from country_workspace.contrib.hope.constants import (
+    INDIVIDUAL_FIELDSET_NAME,
+    PEOPLE_FIELDSET_NAME,
+    INDIVIDUAL_BASE_FIELDSET_NAME,
+    INDIVIDUAL_CHECKER_NAME,
+    PEOPLE_CHECKER_NAME,
+)
 from country_workspace.utils.flex_fields import Base64ImageField
 from country_workspace.contrib.hope.phone_numbers import PhoneNumberField
 
@@ -21,24 +27,32 @@ from country_workspace.versioning.choices.disability import (
 
 _script_for_version = Version("0.1.0")
 
+
 DEFS = {
     "CharField": {"field_type": forms.CharField},
     "BooleanField": {"field_type": forms.BooleanField, "attrs": {"required": False}},
 }
 
-
 FIELDS = {
+    "observed_disability": {
+        "name": "Observed Disability",
+        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+    },
     "marital_status": {
         "name": "Marital Status",
         "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": MARITAL_STATUS_CHOICE}},
     },
+    "sex": {
+        "name": "Sex",
+        "defaults": DEFS["CharField"],
+    },
+    "disability": {
+        "name": "Disability",
+        "defaults": DEFS["CharField"],
+    },
     "work_status": {
         "name": "Work Status",
         "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": WORK_STATUS_CHOICE}},
-    },
-    "observed_disability": {
-        "name": "Observed Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
     },
     "seeing_disability": {
         "name": "Seeing Disability",
@@ -72,48 +86,141 @@ FIELDS = {
     "relationship_confirmed": {"name": "Relationship Confirmed", "defaults": DEFS["BooleanField"]},
     "fchild_hoh": {"name": "Fchild HOH", "defaults": DEFS["BooleanField"]},
     "child_hoh": {"name": "Child HOH", "defaults": DEFS["BooleanField"]},
+    "estimated_birth_date": {"name": "Estimated Birth Date", "defaults": DEFS["BooleanField"]},
+    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
     "email": {"name": "Email", "defaults": DEFS["CharField"]},
     "payment_delivery_phone_no": {
         "name": "Payment Delivery Phone No",
         "defaults": {"field_type": fqn(PhoneNumberField)},
     },
+    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
+    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
+    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
     "who_answers_phone": {"name": "Who Answers Phone", "defaults": DEFS["CharField"]},
     "who_answers_alt_phone": {"name": "Who Answers Alt Phone", "defaults": DEFS["CharField"]},
     "wallet_name": {"name": "Wallet Name", "defaults": DEFS["CharField"]},
     "blockchain_name": {"name": "Blockchain Name", "defaults": DEFS["CharField"]},
     "wallet_address": {"name": "Wallet Address", "defaults": DEFS["CharField"]},
+    "relationship": {"name": "Relationship", "defaults": DEFS["CharField"]},
+    "middle_name": {"name": "Middle Name", "defaults": DEFS["CharField"]},
+    "given_name": {"name": "Given Name", "defaults": DEFS["CharField"]},
+    "family_name": {"name": "Family Name", "defaults": DEFS["CharField"]},
+    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
     "disability_certificate_picture": {
         "name": "Disability Certificate Picture",
         "defaults": {"field_type": fqn(Base64ImageField)},
     },
 }
 
+PEOPLE_FIELDS: dict[str, dict] = {
+    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
+    "sex": {"name": "Sex", "defaults": DEFS["CharField"]},
+    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
+    "disability": {"name": "Disability", "defaults": DEFS["CharField"]},
+    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
+    "observed_disability": {
+        "name": "Observed Disability",
+        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+    },
+    "marital_status": {
+        "name": "Marital Status",
+        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+    },
+    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
+    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
+}
+
+INDIVIDUAL_FIELDS: dict[str, dict] = {
+    "address": {"name": "Address", "defaults": DEFS["CharField"]},
+    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
+    "disability": {"name": "Disability", "defaults": DEFS["CharField"]},
+    "estimated_birth_date": {"name": "Estimated Birth Date", "defaults": DEFS["BooleanField"]},
+    "family_name": {"name": "Family Name", "defaults": DEFS["CharField"]},
+    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
+    "sex": {"name": "Sex", "defaults": DEFS["CharField"]},
+    "given_name": {"name": "Given Name", "defaults": DEFS["CharField"]},
+    "middle_name": {"name": "Middle Name", "defaults": DEFS["CharField"]},
+    "relationship": {"name": "Relationship", "defaults": DEFS["CharField"]},
+    "role": {"name": "Role", "defaults": DEFS["CharField"]},
+    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
+    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
+    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
+}
+
+
+def _get_or_create_field_definition(field_name: str, cfg: dict) -> FieldDefinition:
+    defaults = cfg["defaults"].copy()
+    defaults["slug"] = slugify(cfg["name"])
+    return FieldDefinition.objects.get_or_create(name=cfg["name"], defaults=defaults)[0]
+
+
+def _delete_field_definition_if_unused(cfg: dict) -> None:
+    name = cfg["name"]
+    qs = FieldDefinition.objects.filter(name=name)
+    if not qs.exists():
+        defaults = cfg.get("defaults", {})
+        filters = {"slug": defaults.get("slug", slugify(name))}
+        if "field_type" in defaults:
+            filters["field_type"] = defaults["field_type"]
+        qs = FieldDefinition.objects.filter(**filters)
+    for fd in qs:
+        if not fd.instances.exists():
+            fd.delete()
+
+
+def _delete_fd_if_unused(fd: FieldDefinition) -> None:
+    if not fd.instances.exists():
+        fd.delete()
+
 
 def forward() -> None:
     field_registry.register(Base64ImageField)
     field_registry.register(PhoneNumberField)
     with transaction.atomic():
-        fs, __ = Fieldset.objects.get_or_create(name=INDIVIDUAL_FIELDSET_NAME)
-        for field_name, field_def in FIELDS.items():
-            field_def["defaults"]["slug"] = slugify(field_def["name"])
-            fd, __ = FieldDefinition.objects.get_or_create(**field_def)
-            fs.fields.update_or_create(
-                name=field_name,
-                defaults={
-                    "definition": fd,
-                },
-            )
+        base_fs, __ = Fieldset.objects.get_or_create(name=INDIVIDUAL_BASE_FIELDSET_NAME)
+        for field_name, cfg in FIELDS.items():
+            fd = _get_or_create_field_definition(field_name, cfg)
+            base_fs.fields.update_or_create(name=field_name, defaults={"definition": fd})
+
+        people_checker = DataChecker.objects.get(name=PEOPLE_CHECKER_NAME)
+        individual_checker = DataChecker.objects.get(name=INDIVIDUAL_CHECKER_NAME)
+        DataCheckerFieldset.objects.get_or_create(checker=people_checker, fieldset=base_fs, prefix="")
+        DataCheckerFieldset.objects.get_or_create(checker=individual_checker, fieldset=base_fs, prefix="")
+
+        people_fs = Fieldset.objects.get(name=PEOPLE_FIELDSET_NAME)
+        individual_fs = Fieldset.objects.get(name=INDIVIDUAL_FIELDSET_NAME)
+        for name in PEOPLE_FIELDS:
+            people_fs.fields.filter(name=name).delete()
+        for name in INDIVIDUAL_FIELDS:
+            individual_fs.fields.filter(name=name).delete()
 
 
 def backward() -> None:
+    field_registry.register(Base64ImageField)
+    field_registry.register(PhoneNumberField)
     with transaction.atomic():
-        fs = Fieldset.objects.filter(name=INDIVIDUAL_FIELDSET_NAME).first()
-        if not fs:
-            return
+        people_fs = Fieldset.objects.filter(name=PEOPLE_FIELDSET_NAME).first()
+        individual_fs = Fieldset.objects.filter(name=INDIVIDUAL_FIELDSET_NAME).first()
 
-        for field_name, field_def in FIELDS.items():
-            fs.fields.filter(name=field_name).delete()
-            FieldDefinition.objects.filter(name=field_def["name"]).delete()
+        base_fs = Fieldset.objects.filter(name=INDIVIDUAL_BASE_FIELDSET_NAME).first()
+        if base_fs:
+            DataCheckerFieldset.objects.filter(fieldset=base_fs).delete()
+            flex_qs = base_fs.fields.filter(name__in=list(FIELDS.keys())).select_related("definition")
+            defs = {ff.definition for ff in flex_qs if ff.definition_id}
+            base_fs.fields.filter(name__in=list(FIELDS.keys())).delete()
+            for fd in defs:
+                _delete_fd_if_unused(fd)
+            base_fs.delete()
+
+        if people_fs:
+            for name, cfg in PEOPLE_FIELDS.items():
+                fd = _get_or_create_field_definition(name, cfg)
+                people_fs.fields.update_or_create(name=name, defaults={"definition": fd})
+
+        if individual_fs:
+            for name, cfg in INDIVIDUAL_FIELDS.items():
+                fd = _get_or_create_field_definition(name, cfg)
+                individual_fs.fields.update_or_create(name=name, defaults={"definition": fd})
 
 
 class Scripts:

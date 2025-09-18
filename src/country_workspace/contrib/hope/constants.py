@@ -8,6 +8,7 @@ INDIVIDUAL_CHECKER_NAME: Final[str] = "HOPE Individual core"
 PEOPLE_CHECKER_NAME: Final[str] = "HOPE People core"
 
 HOUSEHOLD_FIELDSET_NAME: Final[str] = "HOPE Household core"
+INDIVIDUAL_BASE_FIELDSET_NAME = "HOPE Individual core base"
 INDIVIDUAL_FIELDSET_NAME: Final[str] = "HOPE Individual core"
 PEOPLE_FIELDSET_NAME: Final[str] = "HOPE People core"
 ADMINAREAS_FIELDSET_NAME: Final[str] = "HOPE Admin Areas"
