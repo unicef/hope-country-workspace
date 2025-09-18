@@ -1,7 +1,7 @@
 from collections.abc import Callable, Generator
 from functools import partial
-from typing import Final, Iterable, cast
-from urllib.parse import urlparse, urlunparse
+from typing import Final, Iterable, cast, Any
+from urllib.parse import urlencode, urlparse, urlunparse
 
 from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
@@ -19,16 +19,33 @@ ASSETS_PATH: Final[str] = f"{API_ROOT}/assets.json"
 PROJECT_VIEW_ASSETS_PATH: Final[str] = f"{API_ROOT}/project-views/{{project_view_id}}/assets/"  # last / is important
 COUNTRY_CODE_SELECTOR: Final[str] = "settings__country_codes__contains"
 QUERY_PARAMETER_NAME: Final[str] = "q"
+START_PARAMETER_NAME: Final[str] = "start"
+START_PARAMETER_VALUE: Final[int] = 0
+LIMIT_PARAMETER_NAME: Final[str] = "limit"
+LIMIT_PARAMETER_VALUE: Final[int] = 10_000
 EMPTY: Final[str] = ""
+SAFE_URL_CHARS: Final[str] = ":"
+
+
+def change_url(url: str, path: str | None = None, query: dict[str, Any] | None = None, safe: str = "") -> str:
+    parsed_url = urlparse(url)
+
+    if path:
+        parsed_url = parsed_url._replace(path=path)
+
+    if query:
+        parsed_url = parsed_url._replace(query=urlencode(query, safe=safe))
+
+    return str(urlunparse(parsed_url))
 
 
 def get_asset_list_url(base_url: str, project_view_id: str | None = None, country_code: str | None = None) -> str:
-    parsed_url = urlparse(base_url)
-
     path = PROJECT_VIEW_ASSETS_PATH.format(project_view_id=project_view_id) if project_view_id else ASSETS_PATH
-    query = f"{QUERY_PARAMETER_NAME}={COUNTRY_CODE_SELECTOR}:{country_code}" if country_code else EMPTY
+    query = {}
+    if country_code:
+        query[QUERY_PARAMETER_NAME] = f"{COUNTRY_CODE_SELECTOR}:{country_code}"
 
-    return str(urlunparse(parsed_url._replace(path=path)._replace(query=query)))
+    return change_url(base_url, path=path, query=query, safe=SAFE_URL_CHARS)
 
 
 def handle_paginated_response[T, U](
@@ -58,9 +75,12 @@ def get_asset_list(data_getter: DataGetter, url: str) -> Generator[Asset, None, 
 
 
 def get_submission_list(data_getter: DataGetter, url: str) -> Iterable[Submission]:
+    url_with_start_and_limit = change_url(
+        url, query={START_PARAMETER_NAME: START_PARAMETER_VALUE, LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE}
+    )
     return map(
         partial(download_attachments, data_getter),
-        handle_paginated_response(data_getter, url, get_raw_submission_list, Submission),
+        handle_paginated_response(data_getter, url_with_start_and_limit, get_raw_submission_list, Submission),
     )
 
 

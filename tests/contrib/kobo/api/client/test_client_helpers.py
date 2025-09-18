@@ -12,9 +12,20 @@ from country_workspace.contrib.kobo.api.client.helpers import (
     get_raw_submission_list,
     get_submission_list,
     handle_paginated_response,
+    change_url,
+    PROJECT_VIEW_ASSETS_PATH,
+    ASSETS_PATH,
+    SAFE_URL_CHARS,
+    COUNTRY_CODE_SELECTOR,
+    START_PARAMETER_NAME,
+    START_PARAMETER_VALUE,
+    LIMIT_PARAMETER_NAME,
+    LIMIT_PARAMETER_VALUE,
 )
 from country_workspace.contrib.kobo.api.data.helpers import download_attachments
 from typing import TYPE_CHECKING
+
+from country_workspace.contrib.kobo.api.data.submission import Submission
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.raw.asset_list import Asset
@@ -26,6 +37,29 @@ COUNTRY_CODE = "CNT"
 
 
 @pytest.mark.parametrize(
+    ("url", "params", "expected_url"),
+    [
+        pytest.param("https://example.com", {}, "https://example.com", id="no params - no change"),
+        pytest.param("https://example.com", {"path": "foo"}, "https://example.com/foo", id="path updated"),
+        pytest.param(
+            "https://example.com", {"query": {"foo": "bar"}}, "https://example.com?foo=bar", id="query updated"
+        ),
+        pytest.param(
+            "https://example.com", {"query": {"q": "foo:bar"}}, "https://example.com?q=foo%3Abar", id="colon encoded"
+        ),
+        pytest.param(
+            "https://example.com",
+            {"query": {"q": "foo:bar"}, "safe": ":"},
+            "https://example.com?q=foo:bar",
+            id="colon left as is",
+        ),
+    ],
+)
+def test_change_url(url: str, params: dict[str, str], expected_url: str) -> None:
+    assert change_url(url, **params) == expected_url
+
+
+@pytest.mark.parametrize(
     ("project_view_id", "country_code"),
     [
         (PROJECT_VIEW_ID, COUNTRY_CODE),
@@ -34,11 +68,14 @@ COUNTRY_CODE = "CNT"
         (None, None),
     ],
 )
-def test_get_asset_list_url(project_view_id: str | None, country_code: str | None) -> None:
-    url = get_asset_list_url(BASE_URL, project_view_id, country_code)
-    assert BASE_URL in url
-    assert not project_view_id or project_view_id in url
-    assert not country_code or country_code in url
+def test_get_asset_list_url(mocker: MockerFixture, project_view_id: str | None, country_code: str | None) -> None:
+    change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
+    expected_path = PROJECT_VIEW_ASSETS_PATH.format(project_view_id=project_view_id) if project_view_id else ASSETS_PATH
+    expected_query = {"q": f"{COUNTRY_CODE_SELECTOR}:{country_code}"} if country_code else {}
+
+    get_asset_list_url(BASE_URL, project_view_id, country_code)
+
+    change_url_mock.assert_called_once_with(BASE_URL, path=expected_path, query=expected_query, safe=SAFE_URL_CHARS)
 
 
 def test_handle_paginated_response() -> None:
@@ -93,31 +130,38 @@ def test_get_raw_submission_list() -> None:
 def test_get_asset_list(mocker: MockerFixture) -> None:
     data_getter = Mock()
     partial = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.partial")
-    handle_paginated_response = mocker.patch(
+    handle_paginated_response_mock = mocker.patch(
         "country_workspace.contrib.kobo.api.client.helpers.handle_paginated_response"
     )
 
     result = get_asset_list(data_getter, BASE_URL)
 
-    assert result == handle_paginated_response.return_value
-    handle_paginated_response.assert_called_once_with(data_getter, BASE_URL, get_raw_asset_list, partial.return_value)
+    assert result == handle_paginated_response_mock.return_value
+    handle_paginated_response_mock.assert_called_once_with(
+        data_getter, BASE_URL, get_raw_asset_list, partial.return_value
+    )
     partial.assert_called_once_with(get_asset, data_getter)
 
 
 def test_get_submission_list(mocker: MockerFixture) -> None:
-    data_getter = Mock()
+    change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
+    data_getter_mock = Mock()
     partial = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.partial")
-    partial.return_value.return_value = (mapped := Mock())
-    handle_paginated_response = mocker.patch(
+    map_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.map")
+    handle_paginated_response_mock = mocker.patch(
         "country_workspace.contrib.kobo.api.client.helpers.handle_paginated_response"
     )
-    handle_paginated_response.return_value = (item := Mock(),)
+    handle_paginated_response_mock.return_value = (_item := Mock(),)
 
-    result = tuple(get_submission_list(data_getter, BASE_URL))
+    assert get_submission_list(data_getter_mock, BASE_URL) == map_mock.return_value
 
-    partial.assert_called_once_with(download_attachments, data_getter)
-    partial.return_value.assert_called_once_with(item)
-    assert result == (mapped,)
+    change_url_mock.assert_called_once_with(
+        BASE_URL, query={START_PARAMETER_NAME: START_PARAMETER_VALUE, LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE}
+    )
+    partial.assert_called_once_with(download_attachments, data_getter_mock)
+    handle_paginated_response_mock.assert_called_once_with(
+        data_getter_mock, change_url_mock.return_value, get_raw_submission_list, Submission
+    )
 
 
 def test_get_asset(mocker: MockerFixture) -> None:
