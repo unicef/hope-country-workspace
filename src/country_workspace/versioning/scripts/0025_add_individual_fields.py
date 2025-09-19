@@ -30,13 +30,13 @@ _script_for_version = Version("0.1.0")
 
 DEFS = {
     "CharField": {"field_type": forms.CharField},
-    "BooleanField": {"field_type": forms.BooleanField, "attrs": {"required": False}},
+    "BooleanField": {"field_type": fqn(forms.BooleanField), "attrs": {"required": False}},
 }
 
 FIELDS = {
     "observed_disability": {
         "name": "Observed Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "defaults": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
     },
     "marital_status": {
         "name": "Marital Status",
@@ -151,7 +151,9 @@ INDIVIDUAL_FIELDS: dict[str, dict] = {
 def _get_or_create_field_definition(field_name: str, cfg: dict) -> FieldDefinition:
     defaults = cfg["defaults"].copy()
     defaults["slug"] = slugify(cfg["name"])
-    return FieldDefinition.objects.get_or_create(name=cfg["name"], defaults=defaults)[0]
+    return FieldDefinition.objects.get_or_create(
+        name=cfg["name"], field_type=defaults["field_type"], defaults=defaults
+    )[0]
 
 
 def _delete_field_definition_if_unused(cfg: dict) -> None:

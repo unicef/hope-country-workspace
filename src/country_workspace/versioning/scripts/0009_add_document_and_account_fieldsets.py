@@ -54,7 +54,7 @@ def add_document_and_account_fields_to_individual_fieldset() -> None:
     for field_name, field_def, field_attrs in fields_to_remove:
         individual_fieldset.fields.get_or_create(
             name=field_name,
-            definition=FieldDefinition.objects.get(**field_def),
+            definition=FieldDefinition.objects.get_or_create(name=field_name, **field_def)[0],
             defaults={"attrs": field_attrs or {}},
         )
 

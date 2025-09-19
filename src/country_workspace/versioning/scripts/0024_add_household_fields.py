@@ -14,9 +14,9 @@ from country_workspace.versioning.choices.currency import CURRENCY_CHOICES
 _script_for_version = Version("0.1.0")
 
 DEFS = {
-    "CharField": {"field_type": forms.CharField},
-    "PositiveIntegerField": {"field_type": forms.IntegerField, "attrs": {"min_value": 0}},
-    "BooleanField": {"field_type": forms.BooleanField, "attrs": {"required": False}},
+    "CharField": {"field_type": fqn(forms.CharField)},
+    "PositiveIntegerField": {"field_type": fqn(forms.IntegerField), "attrs": {"min_value": 0}},
+    "BooleanField": {"field_type": fqn(forms.BooleanField), "attrs": {"required": False}},
 }
 
 FIELDS = {
@@ -79,7 +79,7 @@ FIELDS = {
     "currency": {
         "name": "Currency",
         "defaults": {
-            "field_type": forms.ChoiceField,
+            "field_type": fqn(forms.ChoiceField),
             "attrs": {"choices": CURRENCY_CHOICES},
         },
     },
@@ -106,7 +106,9 @@ def forward() -> None:
         fs, __ = Fieldset.objects.get_or_create(name=HOUSEHOLD_FIELDSET_NAME)
         for field_name, field_def in FIELDS.items():
             field_def["defaults"]["slug"] = slugify(field_def["name"])
-            fd, __ = FieldDefinition.objects.get_or_create(**field_def)
+            fd, __ = FieldDefinition.objects.get_or_create(
+                name=field_def["name"], field_type=field_def["defaults"]["field_type"], defaults=field_def["defaults"]
+            )
             fs.fields.update_or_create(
                 name=field_name,
                 defaults={
