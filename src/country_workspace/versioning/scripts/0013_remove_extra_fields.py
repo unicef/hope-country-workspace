@@ -19,7 +19,7 @@ def forward() -> None:
 def backward() -> None:
     household_fieldset.fields.get_or_create(
         name=field_to_remove,
-        definition=FieldDefinition.objects.get(field_type=forms.BooleanField),
+        definition=FieldDefinition.objects.get_or_create(name=field_to_remove, field_type=forms.BooleanField)[0],
         defaults={"attrs": {}},
     )
 

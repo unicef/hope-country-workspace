@@ -42,7 +42,7 @@ def backward() -> None:
             fs.fields.update_or_create(
                 name=f_name,
                 defaults={
-                    "definition": FieldDefinition.objects.get(field_type=forms.CharField),
+                    "definition": FieldDefinition.objects.get_or_create(name=f_name, field_type=forms.CharField)[0],
                     "attrs": {},
                 },
             )
