@@ -73,7 +73,7 @@ def individuals_for_regex(program):
         indv = CountryIndividualFactory(
             household__batch__program=program, household__batch__country_office=program.country_office
         )
-        indv.flex_fields["address"] = add
+        indv.flex_fields["family_name"] = add
         indv.save()
 
 
@@ -282,7 +282,7 @@ def test_individuals_update_with_regex(
         browser=browser,
         household=household,
         link="Individuals",
-        field="address",
+        field="family_name",
         regex=regex,
         subst=subst,
         expected_error=expected_error,
