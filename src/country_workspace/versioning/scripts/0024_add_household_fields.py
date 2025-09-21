@@ -22,80 +22,93 @@ DEFS = {
 FIELDS = {
     "consent_sign": {
         "name": "Consent Sign",
-        "defaults": {"field_type": fqn(Base64ImageField)},
+        "definition": {"field_type": fqn(Base64ImageField)},
+        "attrs": {"label": "Consent Sign"},
     },
     "zip_code": {
         "name": "Zip Code",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Zip Code"},
     },
     "children_count": {
         "name": "Children count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Children count"},
     },
     "male_children_count": {
         "name": "Male Children Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Male Children Count"},
     },
     "female_children_count": {
         "name": "Female Children Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Female Children Count"},
     },
     "children_disabled_count": {
         "name": "Children Disabled Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Children Disabled Count"},
     },
     "male_children_disabled_count": {
         "name": "Male Children Disabled Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Male Children Disabled Count"},
     },
     "female_children_disabled_count": {
         "name": "Female Children disabled Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Female Children disabled Count"},
     },
     "other_sex_group_count": {
         "name": "Other Sex Group Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Other Sex Group Count"},
     },
     "unknown_sex_group_count": {
         "name": "Unknown Sex Group Count",
-        "defaults": DEFS["PositiveIntegerField"],
+        "definition": DEFS["PositiveIntegerField"],
+        "attrs": {"label": "Unknown Sex Group Count"},
     },
     "returnee": {
         "name": "Returnee",
-        "defaults": DEFS["BooleanField"],
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Returnee"},
     },
     "fchild_hoh": {
         "name": "Fchild HOH",
-        "defaults": DEFS["BooleanField"],
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Fchild HOH"},
     },
     "child_hoh": {
         "name": "Child HOH",
-        "defaults": DEFS["BooleanField"],
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Child HOH"},
     },
     "village": {
         "name": "Village",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Village"},
     },
     "currency": {
         "name": "Currency",
-        "defaults": {
-            "field_type": fqn(forms.ChoiceField),
-            "attrs": {"choices": CURRENCY_CHOICES},
-        },
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": CURRENCY_CHOICES}},
+        "attrs": {"label": "Currency"},
     },
     "unhcr_id": {
         "name": "Unhcr ID",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Unhcr ID"},
     },
     "detail_id": {
         "name": "Detail ID",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Detail ID"},
     },
     "start": {
         "name": "Start",
-        "defaults": {
-            "field_type": forms.DateTimeField,
-        },
+        "definition": {"field_type": fqn(forms.DateTimeField)},
+        "attrs": {"label": "Start"},
     },
 }
 
@@ -104,15 +117,16 @@ def forward() -> None:
     field_registry.register(Base64ImageField)
     with transaction.atomic():
         fs, __ = Fieldset.objects.get_or_create(name=HOUSEHOLD_FIELDSET_NAME)
-        for field_name, field_def in FIELDS.items():
-            field_def["defaults"]["slug"] = slugify(field_def["name"])
+        for field_name, conf in FIELDS.items():
+            conf["definition"]["slug"] = slugify(conf["name"])
             fd, __ = FieldDefinition.objects.get_or_create(
-                name=field_def["name"], field_type=field_def["defaults"]["field_type"], defaults=field_def["defaults"]
+                name=conf["name"], field_type=conf["definition"]["field_type"], defaults=conf["definition"]
             )
             fs.fields.update_or_create(
                 name=field_name,
                 defaults={
                     "definition": fd,
+                    "attrs": conf.get("attrs", {}),
                 },
             )
 
