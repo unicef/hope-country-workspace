@@ -24,7 +24,6 @@ from country_workspace.versioning.choices.work_status import WORK_STATUS_CHOICES
 from country_workspace.versioning.choices.disability import (
     SEVERITY_OF_DISABILITY_CHOICES,
     DISABILITY_CHOICES,
-    NOT_DISABLED,
 )
 
 _script_for_version = Version("0.1.0")
@@ -44,7 +43,7 @@ DEFS = {
     },
     "DisabilityChoices": {
         "field_type": fqn(forms.ChoiceField),
-        "attrs": {"choices": DISABILITY_CHOICES, "default": NOT_DISABLED},
+        "attrs": {"choices": DISABILITY_CHOICES},
     },
 }
 
