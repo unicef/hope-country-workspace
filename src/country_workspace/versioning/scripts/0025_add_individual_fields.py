@@ -18,11 +18,11 @@ from country_workspace.utils.flex_fields import Base64ImageField
 from country_workspace.contrib.hope.phone_numbers import PhoneNumberField
 
 from country_workspace.versioning.choices.language import PREFERRED_LANGUAGE_CHOICES
-from country_workspace.versioning.choices.marital_status import MARITAL_STATUS_CHOICE
-from country_workspace.versioning.choices.work_status import WORK_STATUS_CHOICE
+from country_workspace.versioning.choices.work_status import WORK_STATUS_CHOICES
 from country_workspace.versioning.choices.disability import (
-    OBSERVED_DISABILITY_CHOICE,
     SEVERITY_OF_DISABILITY_CHOICES,
+    DISABILITY_CHOICES,
+    NOT_DISABLED,
 )
 
 _script_for_version = Version("0.1.0")
@@ -31,67 +31,80 @@ _script_for_version = Version("0.1.0")
 DEFS = {
     "CharField": {"field_type": forms.CharField},
     "BooleanField": {"field_type": fqn(forms.BooleanField), "attrs": {"required": False}},
+    "SeverityOfDisabilityChoices": {
+        "field_type": fqn(forms.ChoiceField),
+        "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES},
+    },
+    "WorkStatusChoices": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": WORK_STATUS_CHOICES}},
+    "PreferredLanguageChoices": {
+        "field_type": fqn(forms.ChoiceField),
+        "attrs": {"choices": PREFERRED_LANGUAGE_CHOICES, "required": False},
+    },
+    "DisabilityChoices": {
+        "field_type": fqn(forms.ChoiceField),
+        "attrs": {"choices": DISABILITY_CHOICES, "initial": NOT_DISABLED},
+    },
 }
 
 FIELDS = {
     "observed_disability": {
-        "name": "Observed Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "name": "HOPE IND ObservedDisability",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
         "attrs": {"label": "Observed Disability"},
     },
     "marital_status": {
-        "name": "Marital Status",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "name": "HOPE IND MaritalStatus",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
         "attrs": {"label": "Marital Status"},
     },
     "sex": {
-        "name": "Sex",
-        "definition": DEFS["CharField"],
+        "name": "HOPE IND Sex",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
         "attrs": {"label": "Sex"},
     },
     "disability": {
         "name": "Disability",
-        "definition": DEFS["CharField"],
+        "definition": DEFS["DisabilityChoices"],
         "attrs": {"label": "Disability"},
     },
     "work_status": {
         "name": "Work Status",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": WORK_STATUS_CHOICE}},
+        "definition": DEFS["WorkStatusChoices"],
         "attrs": {"label": "Work Status"},
     },
     "seeing_disability": {
         "name": "Seeing Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Seeing Disability"},
     },
     "hearing_disability": {
         "name": "Hearing Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Hearing Disability"},
     },
     "physical_disability": {
         "name": "Physical Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Physical Disability"},
     },
     "memory_disability": {
         "name": "Memory Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Memory Disability"},
     },
     "selfcare_disability": {
         "name": "Selfcare Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Selfcare Disability"},
     },
     "comms_disability": {
         "name": "Comms Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": DEFS["SeverityOfDisabilityChoices"],
         "attrs": {"label": "Comms Disability"},
     },
     "preferred_language": {
         "name": "Preferred Language",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": PREFERRED_LANGUAGE_CHOICES}},
+        "definition": DEFS["PreferredLanguageChoices"],
         "attrs": {"label": "Preferred Language"},
     },
     "pregnant": {"name": "Pregnant", "definition": DEFS["BooleanField"], "attrs": {"label": "Pregnant"}},
@@ -150,11 +163,6 @@ FIELDS = {
         "definition": DEFS["CharField"],
         "attrs": {"label": "Wallet Address"},
     },
-    "relationship": {
-        "name": "Relationship",
-        "definition": DEFS["CharField"],
-        "attrs": {"label": "Relationship", "required": True},
-    },
     "middle_name": {"name": "Middle Name", "definition": DEFS["CharField"], "attrs": {"label": "Middle Name"}},
     "given_name": {"name": "Given Name", "definition": DEFS["CharField"], "attrs": {"label": "Given Name"}},
     "family_name": {"name": "Family Name", "definition": DEFS["CharField"], "attrs": {"label": "Family Name"}},
@@ -172,22 +180,30 @@ PEOPLE_FIELDS: dict[str, dict] = {
         "definition": DEFS["CharField"],
         "attrs": {"label": "Full Name", "required": True},
     },
-    "sex": {"name": "Sex", "definition": DEFS["CharField"], "attrs": {"label": "Sex"}},
+    "sex": {
+        "name": "HOPE IND Sex",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
+        "attrs": {"label": "Sex"},
+    },
     "birth_date": {
         "name": "Birth Date",
         "definition": {"field_type": fqn(forms.DateField)},
         "attrs": {"label": "Birth Date", "required": True},
     },
-    "disability": {"name": "Disability", "definition": DEFS["CharField"], "attrs": {"label": "Disability"}},
+    "disability": {
+        "name": "Disability",
+        "definition": DEFS["DisabilityChoices"],
+        "attrs": {"label": "Disability"},
+    },
     "photo": {"name": "Photo", "definition": {"field_type": fqn(Base64ImageField)}, "attrs": {"label": "Photo"}},
     "observed_disability": {
-        "name": "Observed Disability",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "name": "HOPE IND ObservedDisability",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
         "attrs": {"label": "Observed Disability"},
     },
     "marital_status": {
-        "name": "Marital Status",
-        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "name": "HOPE IND MaritalStatus",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
         "attrs": {"label": "Marital Status"},
     },
     "phone_no": {"name": "Phone No", "definition": DEFS["CharField"], "attrs": {"label": "Phone No"}},
@@ -205,7 +221,11 @@ INDIVIDUAL_FIELDS: dict[str, dict] = {
         "definition": {"field_type": fqn(forms.DateField)},
         "attrs": {"label": "Birth Date", "required": True},
     },
-    "disability": {"name": "Disability", "definition": DEFS["CharField"], "attrs": {"label": "Disability"}},
+    "disability": {
+        "name": "Disability",
+        "definition": DEFS["DisabilityChoices"],
+        "attrs": {"label": "Disability"},
+    },
     "estimated_birth_date": {
         "name": "Estimated Birth Date",
         "definition": DEFS["BooleanField"],
@@ -217,15 +237,18 @@ INDIVIDUAL_FIELDS: dict[str, dict] = {
         "definition": DEFS["CharField"],
         "attrs": {"label": "Full Name", "required": True},
     },
-    "sex": {"name": "Sex", "definition": DEFS["CharField"], "attrs": {"label": "Sex"}},
+    "sex": {
+        "name": "HOPE IND Sex",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
+        "attrs": {"label": "Sex"},
+    },
     "given_name": {"name": "Given Name", "definition": DEFS["CharField"], "attrs": {"label": "Given Name"}},
     "middle_name": {"name": "Middle Name", "definition": DEFS["CharField"], "attrs": {"label": "Middle Name"}},
-    "relationship": {
-        "name": "Relationship",
-        "definition": DEFS["CharField"],
-        "attrs": {"label": "Relationship", "required": True},
+    "role": {
+        "name": "HOPE IND Role",
+        "definition": {"field_type": fqn(forms.ChoiceField)},
+        "attrs": {"label": "Role"},
     },
-    "role": {"name": "Role", "definition": DEFS["CharField"], "attrs": {"label": "Role"}},
     "photo": {"name": "Photo", "definition": {"field_type": fqn(Base64ImageField)}, "attrs": {"label": "Photo"}},
     "phone_no": {"name": "Phone No", "definition": DEFS["CharField"], "attrs": {"label": "Phone No"}},
     "phone_no_alternative": {
