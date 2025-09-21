@@ -36,123 +36,211 @@ DEFS = {
 FIELDS = {
     "observed_disability": {
         "name": "Observed Disability",
-        "defaults": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "attrs": {"label": "Observed Disability"},
     },
     "marital_status": {
         "name": "Marital Status",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "attrs": {"label": "Marital Status"},
     },
     "sex": {
         "name": "Sex",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Sex"},
     },
     "disability": {
         "name": "Disability",
-        "defaults": DEFS["CharField"],
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Disability"},
     },
     "work_status": {
         "name": "Work Status",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": WORK_STATUS_CHOICE}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": WORK_STATUS_CHOICE}},
+        "attrs": {"label": "Work Status"},
     },
     "seeing_disability": {
         "name": "Seeing Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Seeing Disability"},
     },
     "hearing_disability": {
         "name": "Hearing Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Hearing Disability"},
     },
     "physical_disability": {
         "name": "Physical Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Physical Disability"},
     },
     "memory_disability": {
         "name": "Memory Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Memory Disability"},
     },
     "selfcare_disability": {
         "name": "Selfcare Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Selfcare Disability"},
     },
     "comms_disability": {
         "name": "Comms Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": SEVERITY_OF_DISABILITY_CHOICES}},
+        "attrs": {"label": "Comms Disability"},
     },
     "preferred_language": {
         "name": "Preferred Language",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": PREFERRED_LANGUAGE_CHOICES}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": PREFERRED_LANGUAGE_CHOICES}},
+        "attrs": {"label": "Preferred Language"},
     },
-    "pregnant": {"name": "Pregnant", "defaults": DEFS["BooleanField"]},
-    "relationship_confirmed": {"name": "Relationship Confirmed", "defaults": DEFS["BooleanField"]},
-    "fchild_hoh": {"name": "Fchild HOH", "defaults": DEFS["BooleanField"]},
-    "child_hoh": {"name": "Child HOH", "defaults": DEFS["BooleanField"]},
-    "estimated_birth_date": {"name": "Estimated Birth Date", "defaults": DEFS["BooleanField"]},
-    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
-    "email": {"name": "Email", "defaults": DEFS["CharField"]},
+    "pregnant": {"name": "Pregnant", "definition": DEFS["BooleanField"], "attrs": {"label": "Pregnant"}},
+    "relationship_confirmed": {
+        "name": "Relationship Confirmed",
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Relationship Confirmed"},
+    },
+    "fchild_hoh": {"name": "Fchild HOH", "definition": DEFS["BooleanField"], "attrs": {"label": "Fchild HOH"}},
+    "child_hoh": {"name": "Child HOH", "definition": DEFS["BooleanField"], "attrs": {"label": "Child HOH"}},
+    "estimated_birth_date": {
+        "name": "Estimated Birth Date",
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Estimated Birth Date"},
+    },
+    "birth_date": {
+        "name": "Birth Date",
+        "definition": {"field_type": fqn(forms.DateField)},
+        "attrs": {"label": "Birth Date", "required": True},
+    },
+    "email": {"name": "Email", "definition": DEFS["CharField"], "attrs": {"label": "Email"}},
     "payment_delivery_phone_no": {
         "name": "Payment Delivery Phone No",
-        "defaults": {"field_type": fqn(PhoneNumberField)},
+        "definition": {"field_type": fqn(PhoneNumberField)},
+        "attrs": {"label": "Payment Delivery Phone No"},
     },
-    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
-    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
-    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
-    "who_answers_phone": {"name": "Who Answers Phone", "defaults": DEFS["CharField"]},
-    "who_answers_alt_phone": {"name": "Who Answers Alt Phone", "defaults": DEFS["CharField"]},
-    "wallet_name": {"name": "Wallet Name", "defaults": DEFS["CharField"]},
-    "blockchain_name": {"name": "Blockchain Name", "defaults": DEFS["CharField"]},
-    "wallet_address": {"name": "Wallet Address", "defaults": DEFS["CharField"]},
-    "relationship": {"name": "Relationship", "defaults": DEFS["CharField"]},
-    "middle_name": {"name": "Middle Name", "defaults": DEFS["CharField"]},
-    "given_name": {"name": "Given Name", "defaults": DEFS["CharField"]},
-    "family_name": {"name": "Family Name", "defaults": DEFS["CharField"]},
-    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
+    "phone_no": {"name": "Phone No", "definition": DEFS["CharField"], "attrs": {"label": "Phone No"}},
+    "phone_no_alternative": {
+        "name": "Phone No Alternative",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Phone No Alternative"},
+    },
+    "full_name": {
+        "name": "Full Name",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Full Name", "required": True},
+    },
+    "who_answers_phone": {
+        "name": "Who Answers Phone",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Who Answers Phone"},
+    },
+    "who_answers_alt_phone": {
+        "name": "Who Answers Alt Phone",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Who Answers Alt Phone"},
+    },
+    "wallet_name": {"name": "Wallet Name", "definition": DEFS["CharField"], "attrs": {"label": "Wallet Name"}},
+    "blockchain_name": {
+        "name": "Blockchain Name",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Blockchain Name"},
+    },
+    "wallet_address": {
+        "name": "Wallet Address",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Wallet Address"},
+    },
+    "relationship": {
+        "name": "Relationship",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Relationship", "required": True},
+    },
+    "middle_name": {"name": "Middle Name", "definition": DEFS["CharField"], "attrs": {"label": "Middle Name"}},
+    "given_name": {"name": "Given Name", "definition": DEFS["CharField"], "attrs": {"label": "Given Name"}},
+    "family_name": {"name": "Family Name", "definition": DEFS["CharField"], "attrs": {"label": "Family Name"}},
+    "photo": {"name": "Photo", "definition": {"field_type": fqn(Base64ImageField)}, "attrs": {"label": "Photo"}},
     "disability_certificate_picture": {
         "name": "Disability Certificate Picture",
-        "defaults": {"field_type": fqn(Base64ImageField)},
+        "definition": {"field_type": fqn(Base64ImageField)},
+        "attrs": {"label": "Disability Certificate Picture"},
     },
 }
 
 PEOPLE_FIELDS: dict[str, dict] = {
-    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
-    "sex": {"name": "Sex", "defaults": DEFS["CharField"]},
-    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
-    "disability": {"name": "Disability", "defaults": DEFS["CharField"]},
-    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
+    "full_name": {
+        "name": "Full Name",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Full Name", "required": True},
+    },
+    "sex": {"name": "Sex", "definition": DEFS["CharField"], "attrs": {"label": "Sex"}},
+    "birth_date": {
+        "name": "Birth Date",
+        "definition": {"field_type": fqn(forms.DateField)},
+        "attrs": {"label": "Birth Date", "required": True},
+    },
+    "disability": {"name": "Disability", "definition": DEFS["CharField"], "attrs": {"label": "Disability"}},
+    "photo": {"name": "Photo", "definition": {"field_type": fqn(Base64ImageField)}, "attrs": {"label": "Photo"}},
     "observed_disability": {
         "name": "Observed Disability",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": OBSERVED_DISABILITY_CHOICE}},
+        "attrs": {"label": "Observed Disability"},
     },
     "marital_status": {
         "name": "Marital Status",
-        "defaults": {"field_type": forms.ChoiceField, "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "definition": {"field_type": fqn(forms.ChoiceField), "attrs": {"choices": MARITAL_STATUS_CHOICE}},
+        "attrs": {"label": "Marital Status"},
     },
-    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
-    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
+    "phone_no": {"name": "Phone No", "definition": DEFS["CharField"], "attrs": {"label": "Phone No"}},
+    "phone_no_alternative": {
+        "name": "Phone No Alternative",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Phone No Alternative"},
+    },
 }
 
 INDIVIDUAL_FIELDS: dict[str, dict] = {
-    "address": {"name": "Address", "defaults": DEFS["CharField"]},
-    "birth_date": {"name": "Birth Date", "defaults": {"field_type": forms.DateField}},
-    "disability": {"name": "Disability", "defaults": DEFS["CharField"]},
-    "estimated_birth_date": {"name": "Estimated Birth Date", "defaults": DEFS["BooleanField"]},
-    "family_name": {"name": "Family Name", "defaults": DEFS["CharField"]},
-    "full_name": {"name": "Full Name", "defaults": DEFS["CharField"]},
-    "sex": {"name": "Sex", "defaults": DEFS["CharField"]},
-    "given_name": {"name": "Given Name", "defaults": DEFS["CharField"]},
-    "middle_name": {"name": "Middle Name", "defaults": DEFS["CharField"]},
-    "relationship": {"name": "Relationship", "defaults": DEFS["CharField"]},
-    "role": {"name": "Role", "defaults": DEFS["CharField"]},
-    "photo": {"name": "Photo", "defaults": {"field_type": fqn(Base64ImageField)}},
-    "phone_no": {"name": "Phone No", "defaults": DEFS["CharField"]},
-    "phone_no_alternative": {"name": "Phone No Alternative", "defaults": DEFS["CharField"]},
+    "address": {"name": "Address", "definition": DEFS["CharField"], "attrs": {"label": "Address"}},
+    "birth_date": {
+        "name": "Birth Date",
+        "definition": {"field_type": fqn(forms.DateField)},
+        "attrs": {"label": "Birth Date", "required": True},
+    },
+    "disability": {"name": "Disability", "definition": DEFS["CharField"], "attrs": {"label": "Disability"}},
+    "estimated_birth_date": {
+        "name": "Estimated Birth Date",
+        "definition": DEFS["BooleanField"],
+        "attrs": {"label": "Estimated Birth Date"},
+    },
+    "family_name": {"name": "Family Name", "definition": DEFS["CharField"], "attrs": {"label": "Family Name"}},
+    "full_name": {
+        "name": "Full Name",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Full Name", "required": True},
+    },
+    "sex": {"name": "Sex", "definition": DEFS["CharField"], "attrs": {"label": "Sex"}},
+    "given_name": {"name": "Given Name", "definition": DEFS["CharField"], "attrs": {"label": "Given Name"}},
+    "middle_name": {"name": "Middle Name", "definition": DEFS["CharField"], "attrs": {"label": "Middle Name"}},
+    "relationship": {
+        "name": "Relationship",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Relationship", "required": True},
+    },
+    "role": {"name": "Role", "definition": DEFS["CharField"], "attrs": {"label": "Role"}},
+    "photo": {"name": "Photo", "definition": {"field_type": fqn(Base64ImageField)}, "attrs": {"label": "Photo"}},
+    "phone_no": {"name": "Phone No", "definition": DEFS["CharField"], "attrs": {"label": "Phone No"}},
+    "phone_no_alternative": {
+        "name": "Phone No Alternative",
+        "definition": DEFS["CharField"],
+        "attrs": {"label": "Phone No Alternative"},
+    },
 }
 
 
 def _get_or_create_field_definition(field_name: str, cfg: dict) -> FieldDefinition:
-    defaults = cfg["defaults"].copy()
-    defaults["slug"] = slugify(cfg["name"])
+    definition = cfg["definition"].copy()
+    definition["slug"] = slugify(cfg["name"])
     return FieldDefinition.objects.get_or_create(
-        name=cfg["name"], field_type=defaults["field_type"], defaults=defaults
+        name=cfg["name"], field_type=definition["field_type"], defaults=definition
     )[0]
 
 
@@ -182,7 +270,7 @@ def forward() -> None:
         base_fs, __ = Fieldset.objects.get_or_create(name=INDIVIDUAL_BASE_FIELDSET_NAME)
         for field_name, cfg in FIELDS.items():
             fd = _get_or_create_field_definition(field_name, cfg)
-            base_fs.fields.update_or_create(name=field_name, defaults={"definition": fd})
+            base_fs.fields.update_or_create(name=field_name, defaults={"definition": fd, "attrs": cfg.get("attrs", {})})
 
         people_checker = DataChecker.objects.get(name=PEOPLE_CHECKER_NAME)
         individual_checker = DataChecker.objects.get(name=INDIVIDUAL_CHECKER_NAME)
@@ -217,12 +305,14 @@ def backward() -> None:
         if people_fs:
             for name, cfg in PEOPLE_FIELDS.items():
                 fd = _get_or_create_field_definition(name, cfg)
-                people_fs.fields.update_or_create(name=name, defaults={"definition": fd})
+                people_fs.fields.update_or_create(name=name, defaults={"definition": fd, "attrs": cfg.get("attrs", {})})
 
         if individual_fs:
             for name, cfg in INDIVIDUAL_FIELDS.items():
                 fd = _get_or_create_field_definition(name, cfg)
-                individual_fs.fields.update_or_create(name=name, defaults={"definition": fd})
+                individual_fs.fields.update_or_create(
+                    name=name, defaults={"definition": fd, "attrs": cfg.get("attrs", {})}
+                )
 
 
 class Scripts:
