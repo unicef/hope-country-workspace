@@ -1,4 +1,5 @@
 PREFERRED_LANGUAGE_CHOICES = (
+    ("", "None"),
     ("en-us", "English | English"),
     ("ar-ae", " | عربيArabic"),
     ("cs-cz", "čeština | Czech"),
