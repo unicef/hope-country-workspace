@@ -2,7 +2,11 @@ from ..settings import env  # type: ignore[attr-defined]
 
 CELERY_ACCEPT_CONTENT = ["pickle", "json", "application/text", "application/json"]
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
+# This option controls how much time a task is considered active. If the task
+# takes more time than this option specifies, Celery restarts the task on
+# another worker.
 CELERY_BROKER_VISIBILITY_VAR = env("CELERY_VISIBILITY_TIMEOUT")
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": CELERY_BROKER_VISIBILITY_VAR}
 
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_CREATE_MISSING_QUEUES = True
