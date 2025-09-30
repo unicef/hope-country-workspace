@@ -20,6 +20,7 @@ from country_workspace.contrib.kobo.sync import (
     preprocess,
     get_fullname_key,
     HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    set_roles_and_relationships,
 )
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 
@@ -126,7 +127,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         config,
     )
 
-    assert individuals == len(data[INDIVIDUAL_RECORDS_FIELD])
+    assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
 
     partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, individual_class_mock)
     preprocess_mock.assert_called_once_with(
@@ -138,6 +139,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
+        raw_data=preprocess_mock.return_value,
         flex_fields=preprocess_mock.return_value,
         household=household_mock,
         name=preprocess_mock.return_value.get.return_value,
@@ -178,7 +180,9 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     household_mock = create_household_mock.return_value
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    create_individuals_mock.return_value = (individuals_counter := 2)
+    individual_mocks = [mocker.Mock(), mocker.Mock()]
+    create_individuals_mock.return_value = individual_mocks
+    set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
     asset_mock = Mock()
     new_submission_mock = Mock()
     old_submission_mock = Mock()
@@ -191,11 +195,12 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         config,
     )
 
-    assert result == ImportResult(households=1, individuals=individuals_counter)
+    assert result == ImportResult(households=1, individuals=len(individual_mocks))
     kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
     kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
     create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config)
     create_individuals_mock.assert_called_once_with(batch_mock, household_mock, new_submission_mock, config)
+    set_roles_and_relationships_mock.assert_called_once_with(household_mock, individual_mocks)
 
 
 def test_import_data(mocker: MockerFixture, config: Config) -> None:
@@ -247,3 +252,23 @@ def test_preprocess(mocker: MockerFixture) -> None:
     partial_mock.assert_called_once_with(clean_field_names_mock, fields_to_uppercase=fields_to_uppercase)
     compose_mock.assert_called_once_with(normalize_json_mock, partial_mock.return_value, mapping_importer)
     compose_mock.return_value.assert_called_once_with(individual)
+
+
+@pytest.mark.parametrize(
+    ("individual_flex_fields", "individual_key"),
+    [
+        pytest.param({"role": "PRIMARY"}, "primary_collector", id="primary collector"),
+        pytest.param({"role": "ALTERNATE"}, "alternate_collector", id="alternate collector"),
+        pytest.param({"relationship": "HEAD"}, "head_of_household", id="head of household"),
+    ],
+)
+def test_set_roles_and_relationships(
+    mocker: MockerFixture, individual_flex_fields: dict[str, str], individual_key: str
+) -> None:
+    household_mock = mocker.Mock()
+    household_mock.flex_fields = {}
+    individual_mock = mocker.Mock()
+    individual_mock.flex_fields = individual_flex_fields
+    set_roles_and_relationships(household_mock, [individual_mock])
+    assert individual_key in household_mock.flex_fields
+    assert household_mock.flex_fields[individual_key] == individual_mock.id
