@@ -77,7 +77,7 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
     return next((key for key in individual if key.startswith("full_name")), None)
 
 
-def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> int:
+def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> list[Individual]:
     individuals = []
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual_fields = preprocess(
@@ -92,10 +92,11 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
                 household=household,
                 name=individual_fields.get(fullname, "") if fullname else "",
                 flex_fields=individual_fields,
+                raw_data=individual_fields,
             ),
         )
     household.program.individuals.bulk_create(individuals)
-    return len(individuals)
+    return individuals
 
 
 def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
@@ -119,6 +120,31 @@ class ImportResult(TypedDict):
     individuals: int
 
 
+def _is_primary_collector(individual: Individual) -> bool:
+    return individual.flex_fields.get("role") == "PRIMARY"
+
+
+def _is_alternate_collector(individual: Individual) -> bool:
+    return individual.flex_fields.get("role") == "ALTERNATE"
+
+
+def _is_head_of_household(individual: Individual) -> bool:
+    return individual.flex_fields.get("relationship") == "HEAD"
+
+
+def _set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+    if primary_collector := next(filter(_is_primary_collector, individuals), None):
+        household.flex_fields["primary_collector"] = primary_collector.id
+
+    if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
+        household.flex_fields["alternate_collector"] = alternate_collector.id
+
+    if head_of_household := next(filter(_is_head_of_household, individuals), None):
+        household.flex_fields["head_of_household"] = head_of_household.id
+
+    household.save(update_fields=["flex_fields"])
+
+
 def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
     household_counter = 0
     individual_counter = 0
@@ -129,7 +155,9 @@ def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
             continue
         household = create_household(batch, submission, config)
         household_counter += 1
-        individual_counter += create_individuals(batch, household, submission, config)
+        individuals = create_individuals(batch, household, submission, config)
+        individual_counter += len(individuals)
+        _set_roles_and_relationships(household, individuals)
 
     return ImportResult(households=household_counter, individuals=individual_counter)
 
