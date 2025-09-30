@@ -132,7 +132,7 @@ def _is_head_of_household(individual: Individual) -> bool:
     return individual.flex_fields.get("relationship") == "HEAD"
 
 
-def _set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
         household.flex_fields["primary_collector"] = primary_collector.id
 
@@ -157,7 +157,7 @@ def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
         household_counter += 1
         individuals = create_individuals(batch, household, submission, config)
         individual_counter += len(individuals)
-        _set_roles_and_relationships(household, individuals)
+        set_roles_and_relationships(household, individuals)
 
     return ImportResult(households=household_counter, individuals=individual_counter)
 
