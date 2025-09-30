@@ -126,7 +126,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         config,
     )
 
-    assert individuals == len(data[INDIVIDUAL_RECORDS_FIELD])
+    assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
 
     partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, individual_class_mock)
     preprocess_mock.assert_called_once_with(
@@ -138,6 +138,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
+        raw_data=preprocess_mock.return_value,
         flex_fields=preprocess_mock.return_value,
         household=household_mock,
         name=preprocess_mock.return_value.get.return_value,
@@ -178,7 +179,8 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     household_mock = create_household_mock.return_value
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    create_individuals_mock.return_value = (individuals_counter := 2)
+    individual_mocks = [mocker.Mock(), mocker.Mock()]
+    create_individuals_mock.return_value = individual_mocks
     asset_mock = Mock()
     new_submission_mock = Mock()
     old_submission_mock = Mock()
@@ -191,7 +193,7 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         config,
     )
 
-    assert result == ImportResult(households=1, individuals=individuals_counter)
+    assert result == ImportResult(households=1, individuals=len(individual_mocks))
     kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
     kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
     create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config)
