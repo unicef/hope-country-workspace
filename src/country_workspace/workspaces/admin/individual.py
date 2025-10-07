@@ -18,7 +18,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         "name",
         "household",
     ]
-    search_fields = ("name",)
+    search_fields = ("name", "id")
 
     list_filter = (
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),

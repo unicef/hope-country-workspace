@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 @register(CountryHousehold, site=workspace)
 class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     list_display = ["name", "batch"]
-    search_fields = ("name",)
+    search_fields = ("name", "id")
     ordering = ("name",)
     list_per_page = 20
     list_filter = (
