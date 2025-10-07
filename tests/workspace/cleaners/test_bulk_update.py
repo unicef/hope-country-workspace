@@ -104,32 +104,29 @@ def test_import_bulk_update_file(
     test_data: dict[str, Any],
     guard: bool,
 ) -> None:
+    from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportFileProcessingError
+
     mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=test_data["rows"])
 
     with override_config(CONCURRENCY_GUARD=guard):
-        result = test_data["import_function"](job=job)
+        with pytest.raises(BulkImportFileProcessingError) as exc:
+            test_data["import_function"](job=job)
 
-    expected_processed = 3 if not guard else 1
-    expected_errors = {"Invalid data on line": [1, 2] + ([4] if guard else [])}
-
-    assert result["processed"] == expected_processed
-    assert result["not_found"] == [9999]
-    assert result["errors"] == expected_errors
-
+    msg = str(exc.value)
+    assert "Invalid data on line" in msg
+    assert "1" in msg
+    assert "2" in msg
     if guard:
-        assert result["version_mismatch"] == [test_data["version_mismatch_entity"].id]
+        assert "4" in msg
     else:
-        assert "version_mismatch" not in result
-
-    test_data["valid_entity"].refresh_from_db()
-    assert test_data["valid_entity"].flex_fields.get("some_field") == "value"
+        assert "4" not in msg
 
 
 @pytest.mark.parametrize(
-    ("error_type", "expected_key", "expected_message"),
+    ("error_type", "expected_message"),
     [
-        ("processing", "Processing errors", "Line 6: Validation failed"),
-        ("file", "file_processing", "Cannot read file"),
+        ("processing", "Validation failed"),
+        ("file", "Cannot read file"),
     ],
     ids=["processing_error", "file_error"],
 )
@@ -138,32 +135,26 @@ def test_import_bulk_update_file_errors(
     job: AsyncJob,
     test_data: dict,
     error_type: str,
-    expected_key: str,
     expected_message: str,
 ) -> None:
+    from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportFileProcessingError
+
     if error_type == "processing":
-        # Mock successful file reading but failed validation
         mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=test_data["rows"])
         mocker.patch(
             "country_workspace.workspaces.admin.cleaners.bulk_update.validate_date_datetime_fields",
             side_effect=RuntimeError("Validation failed"),
         )
     else:
-        # Mock failed file reading
         mocker.patch(
             "country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", side_effect=IOError("Cannot read file")
         )
 
     with override_config(CONCURRENCY_GUARD=True):
-        result = test_data["import_function"](job=job)
+        with pytest.raises(BulkImportFileProcessingError) as exc:
+            test_data["import_function"](job=job)
 
-    assert result["processed"] == 0
-
-    if error_type == "processing":
-        assert expected_key in result["errors"]
-        assert expected_message in result["errors"][expected_key][0]
-    else:
-        assert result["errors"][expected_key] == expected_message
+    assert expected_message in str(exc.value)
 
 
 def test_validate_datetime_format():
@@ -263,6 +254,8 @@ def test_import_bulk_update_file_with_individual_reference_validation_errors(
     job: AsyncJob,
     test_data: dict,
 ) -> None:
+    from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportFileProcessingError
+
     invalid_rows = [
         {
             "id": str(test_data["valid_entity"].id),
@@ -274,10 +267,10 @@ def test_import_bulk_update_file_with_individual_reference_validation_errors(
     mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=invalid_rows)
 
     with override_config(CONCURRENCY_GUARD=True):
-        result = test_data["import_function"](job=job)
+        with pytest.raises(BulkImportFileProcessingError) as exc:
+            test_data["import_function"](job=job)
 
-    assert "Invalid data for head_of_household field. Must be of integer type" in result["errors"]
-    assert result["processed"] == 1
+    assert "Invalid data for head_of_household field. Must be of integer type" in str(exc.value)
 
 
 def test_validate_individual_reference_ids():
