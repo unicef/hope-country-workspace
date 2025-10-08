@@ -20,6 +20,7 @@ from xlsxwriter import Workbook
 from xlsxwriter.format import Format
 from country_workspace.models import AsyncJob, Program
 from country_workspace.storages import MEDIA_STORAGE
+from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportError, BulkImportFileProcessingError
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -246,7 +247,7 @@ def export_bulk_update_template(job: AsyncJob) -> str:
     return filepath
 
 
-def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:
+def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:  # noqa: C901
     total = {"processed": 0, "not_found": [], "errors": {}}
     version_check_enabled = constance_config.CONCURRENCY_GUARD
     if version_check_enabled:
@@ -284,8 +285,11 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                 except Exception as e:  # noqa: BLE001
                     total["errors"].setdefault("Processing errors", []).append(f"Line {line_number}: {e}")
 
+            if total["errors"]:
+                raise BulkImportError(total["errors"])  # noqa: TRY301
+
     except Exception as e:  # noqa: BLE001
-        total["errors"]["file_processing"] = str(e)
+        raise BulkImportFileProcessingError(str(e))
 
     return total
 
