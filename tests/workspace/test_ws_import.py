@@ -10,7 +10,7 @@ from constance.test import override_config
 from django.urls import reverse
 from webtest import Upload, forms
 
-from country_workspace.models import Office, Individual, Household
+from country_workspace.models import Office, Individual, Household, Batch
 from country_workspace.state import state
 from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
@@ -191,9 +191,8 @@ def _test_import_rdi_hh_and_individuals(
     assert "sex" in individual.flex_fields
 
 
-@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 1))
+@pytest.mark.django_db
 def test_import_rdi_hh_and_individuals_no_validation(
-    mock_resolve,
     force_migrated_records,
     app,
     program,
@@ -203,14 +202,15 @@ def test_import_rdi_hh_and_individuals_no_validation(
     form_import_rdi,
     reference_field_names,
 ):
-    _test_import_rdi_hh_and_individuals(
-        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.NONE.value
-    )
+    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
+        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
+        _test_import_rdi_hh_and_individuals(
+            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.NONE.value
+        )
 
 
-@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 2))
+@pytest.mark.django_db
 def test_import_rdi_hh_and_individuals_check_before(
-    mock_resolve,
     force_migrated_records,
     app,
     program,
@@ -220,14 +220,15 @@ def test_import_rdi_hh_and_individuals_check_before(
     form_import_rdi,
     reference_field_names,
 ):
-    _test_import_rdi_hh_and_individuals(
-        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_BEFORE.value
-    )
+    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
+        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
+        _test_import_rdi_hh_and_individuals(
+            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_BEFORE.value
+        )
 
 
-@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 3))
+@pytest.mark.django_db
 def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
-    mock_resolve,
     force_migrated_records,
     app,
     program,
@@ -237,9 +238,11 @@ def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
     form_import_rdi,
     reference_field_names,
 ):
-    _test_import_rdi_hh_and_individuals(
-        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_AND_FAIL_IF_ALIEN.value
-    )
+    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
+        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
+        _test_import_rdi_hh_and_individuals(
+            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_AND_FAIL_IF_ALIEN.value
+        )
 
 
 def test_import_rdi_people_only(
