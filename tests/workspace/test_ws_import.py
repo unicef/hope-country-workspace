@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import pytest
 import responses
@@ -32,6 +33,55 @@ def office() -> "Office":
     co = OfficeFactory()
     state.tenant = co
     return co
+
+
+@pytest.fixture
+def country_mdg() -> "Office":
+    from testutils.factories import CountryFactory
+
+    return CountryFactory.create(
+        iso_code2="MG",
+        iso_code3="MDG",
+        name="Madagascar",
+    )
+
+
+@pytest.fixture
+def ff_relationship() -> None:
+    from hope_flex_fields.models import FlexField
+
+    ff_relationship = FlexField.objects.filter(
+        name="relationship",
+    ).first()
+    ff_relationship.attrs = {
+        "label": "Relationship",
+        "choices": [
+            ["BROTHER_SISTER", "Brother / Sister"],
+            ["GRANDDAUGHER_GRANDSON", "Granddaughter / Grandson"],
+            ["MOTHER_FATHER", "Mother / Father"],
+            ["MOTHERINLAW_FATHERINLAW", "Mother-in-law / Father-in-law"],
+            ["SISTERINLAW_BROTHERINLAW", "Sister-in-law / Brother-in-law"],
+            ["SON_DAUGHTER", "Son / Daughter"],
+        ],
+        "required": True,
+    }
+    ff_relationship.save()
+
+
+@pytest.fixture
+def ff_sex() -> None:
+    from hope_flex_fields.models import FlexField
+
+    ff_sex = FlexField.objects.filter(name="sex").first()
+    ff_sex.attrs = {
+        "choices": [
+            ["MALE", "Male"],
+            ["FEMALE", "Female"],
+        ],
+        "required": False,
+        "help_text": "",
+    }
+    ff_sex.save()
 
 
 @pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
@@ -106,16 +156,16 @@ def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Fo
     return res.forms["import-file"]
 
 
-def test_import_rdi_hh_and_individuals(
-    force_migrated_records: None,
-    app: "DjangoTestApp",
-    program: "CountryProgram",
+def _test_import_rdi_hh_and_individuals(
     form_import_rdi: forms.Form,
+    program: "CountryProgram",
     reference_field_names: tuple,
-) -> None:
+    validation_mode: str,
+):
     if not program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=True")
 
+    form_import_rdi["rdi-validate_mode"] = validation_mode
     form_import_rdi["rdi-household_id_column"] = "household_id"
     res = form_import_rdi.submit()
 
@@ -125,7 +175,7 @@ def test_import_rdi_hh_and_individuals(
 
     hh: "CountryHousehold" = program.households.first()
     assert hh.members.count() == 5
-    assert (head := program.individuals.get(pk=hh.head()))
+    assert (head := program.individuals.get(pk=hh.head))
     assert head.name == "Edward Jeffrey Rogers"
     assert "members_count" not in hh.flex_fields
     assert "count" not in hh.flex_fields
@@ -139,6 +189,57 @@ def test_import_rdi_hh_and_individuals(
     assert "birth_year" not in individual.flex_fields
     assert "gender" not in individual.flex_fields
     assert "sex" in individual.flex_fields
+
+
+@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 1))
+def test_import_rdi_hh_and_individuals_no_validation(
+    mock_resolve,
+    force_migrated_records,
+    app,
+    program,
+    country_mdg,
+    ff_relationship,
+    ff_sex,
+    form_import_rdi,
+    reference_field_names,
+):
+    _test_import_rdi_hh_and_individuals(
+        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.NONE.value
+    )
+
+
+@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 2))
+def test_import_rdi_hh_and_individuals_check_before(
+    mock_resolve,
+    force_migrated_records,
+    app,
+    program,
+    country_mdg,
+    ff_relationship,
+    ff_sex,
+    form_import_rdi,
+    reference_field_names,
+):
+    _test_import_rdi_hh_and_individuals(
+        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_BEFORE.value
+    )
+
+
+@patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks", return_value=(None, 3))
+def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
+    mock_resolve,
+    force_migrated_records,
+    app,
+    program,
+    country_mdg,
+    ff_relationship,
+    ff_sex,
+    form_import_rdi,
+    reference_field_names,
+):
+    _test_import_rdi_hh_and_individuals(
+        form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_AND_FAIL_IF_ALIEN.value
+    )
 
 
 def test_import_rdi_people_only(
