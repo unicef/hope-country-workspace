@@ -161,7 +161,7 @@ class PushProcessor:
                 if p != a or a != len(batch_ids):
                     self._err(f"Individuals - accepted mismatch processed for IDs {batch_ids}: {response}")
                 self.total["individuals"] = self.total.get("individuals", 0) + a
-                self.ind_id_map = load_mapping_from_api(mapping, self._err)
+                self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
                 self._resp_unexpected("Individuals", response, batch_ids)
 
