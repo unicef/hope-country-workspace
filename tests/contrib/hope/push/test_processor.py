@@ -231,6 +231,26 @@ def test_process_individuals_response_paths(mocker: MockerFixture, processor: Pu
     assert any("unexpected response" in e for e in processor.total["errors"])
 
 
+@pytest.mark.django_db
+def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, processor: PushProcessor):
+    mod = "country_workspace.contrib.hope.push.processor"
+    mocker.patch(f"{mod}.load_mapping_from_api", side_effect=[{1: "IND-1"}, {2: "IND-2"}])
+    processor.total = {"errors": []}
+
+    processor._process_individuals_response(
+        {"processed": 1, "accepted": 1, "individual_id_mapping": {"1": "IND-1"}},
+        [1],
+    )
+    processor._process_individuals_response(
+        {"processed": 1, "accepted": 1, "individual_id_mapping": {"2": "IND-2"}},
+        [2],
+    )
+
+    assert processor.ind_id_map == {1: "IND-1", 2: "IND-2"}
+    assert processor.total.get("individuals") == 2
+    assert not any("unexpected" in e or "batch failed" in e for e in processor.total["errors"])
+
+
 @pytest.mark.parametrize(
     ("resp", "ids", "ok"),
     [
