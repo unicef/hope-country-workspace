@@ -4,7 +4,7 @@ from .config import IND_TAG_RE
 
 
 def load_mapping_from_api(raw: dict, err: Callable[[str], None]) -> dict[int, str]:
-    """Return {int: str} mapping from API payload; log keys that cannot be coerced to int."""
+    """Return {int: str} mapping from API payload; log keys that can't be coerced to int."""
     out = {}
     for k, v in raw.items():
         try:

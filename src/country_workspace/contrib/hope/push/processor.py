@@ -9,7 +9,7 @@ from django.db.models import QuerySet
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import Beneficiary, ROLE_FIELDS, Serializer, WorkflowConfig
+from .config import Beneficiary, ROLE_FIELDS, Serializer, WorkflowConfig, ERROR_CONFIG
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
     households_for_preflight,
@@ -65,7 +65,7 @@ class PushProcessor:
     def rdi_complete(self) -> None:
         """Finalize the remote RDI."""
         if not self.hope_rdi_id:
-            self._err("RDI - cannot complete: hope_rdi_id is not set")
+            self._err("RDI: can't complete: hope_rdi_id is not set")
             return
         self.api.complete_rdi(self.hope_rdi_id)
 
@@ -78,7 +78,7 @@ class PushProcessor:
         }
         resp = self.api.create_rdi(payload)
         if not resp or "id" not in resp or not resp.get("id"):
-            self._err("RDI - cannot create: no id in response")
+            self._err("RDI: can't create: no id in response")
             return
         self.hope_rdi_id = resp["id"]
 
@@ -107,8 +107,16 @@ class PushProcessor:
             step()
 
     def _err(self, msg: str) -> None:
-        """Append an error message to self.total['errors']."""
-        self.total["errors"].append(msg)
+        """Append an error into total['errors']; truncate long text; cap the list with a marker."""
+        errors: list[str] = self.total["errors"]
+        if errors and errors[-1] == ERROR_CONFIG.MARKER:
+            return
+        if len(errors) >= ERROR_CONFIG.MAX_ERRORS - 1:
+            errors.append(ERROR_CONFIG.MARKER)
+            return
+        if len(msg) > ERROR_CONFIG.MAX_ERROR_LEN:
+            msg = f"{msg[: ERROR_CONFIG.MAX_ERROR_LEN - 1]}…"
+        errors.append(msg)
 
     def _prepare_households_batch(self, batch: Iterable[CountryHousehold]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a households batch: roles mapped, members resolved."""
@@ -159,7 +167,7 @@ class PushProcessor:
                 isinstance(p, int) and isinstance(a, int) and isinstance(mapping, dict)
             ):
                 if p != a or a != len(batch_ids):
-                    self._err(f"Individuals - accepted mismatch processed for IDs {batch_ids}: {response}")
+                    self._err(f"Individuals - accepted mismatch processed for {batch_ids}: {response}")
                 self.total["individuals"] = self.total.get("individuals", 0) + a
                 self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
@@ -187,10 +195,10 @@ class PushProcessor:
     ) -> None:
         """Iterate over QuerySet batches -> prepare batch -> POST -> process response."""
         if not self.hope_rdi_id:
-            self._err(f"{name} - cannot push: hope_rdi_id is not set")
+            self._err(f"{name} - can't push: hope_rdi_id is not set")
             return
         if self.queryset is None:
-            self._err(f"{name} - cannot push: queryset is not set")
+            self._err(f"{name} - can't push: queryset is not set")
             return
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE * 5), PUSH_BATCH_SIZE):
             ids, payload = prepare(batch)
@@ -200,7 +208,7 @@ class PushProcessor:
 
     def _resp_err(self, name: str, response: dict | None, batch_ids: list[int]) -> bool:
         if response is None:
-            self._err(f"{name} - batch failed for IDs: {batch_ids}")
+            self._err(f"{name} - batch failed for {batch_ids}")
             return True
         if isinstance(response, dict) and response.get("errors"):
             self._err(f"{name} - push error for {batch_ids}: {response}")

@@ -1,14 +1,17 @@
 import pytest
+from collections.abc import Callable
+from typing import Any
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.push.processor import PushProcessor
+from country_workspace.contrib.hope.push.config import Beneficiary, ErrorConfig
 
 
 # ----------------------------- serializer ------------------------------
 
 
 @pytest.mark.django_db
-def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor):
+def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     stub_ser = lambda rows: rows
     spy = mocker.patch(f"{mod}.serializer_for_program", return_value=stub_ser)
@@ -22,7 +25,13 @@ def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor)
 
 
 @pytest.mark.django_db
-def test_preflight_master_detail_logs(mocker: MockerFixture, processor: PushProcessor, qs, beneficiary_stub):
+def test_preflight_master_detail_logs(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    qs: Callable[[list], Any],
+    beneficiary_stub: Callable[..., Beneficiary],
+    err_contains: Callable[[list[str], str], bool],
+) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     processor.master_detail, processor.pks, processor.rdp_id = True, [1, 2], 10
     mocker.patch(f"{mod}.rdp_pending_or_success", return_value="rdp_qs")
@@ -35,14 +44,19 @@ def test_preflight_master_detail_logs(mocker: MockerFixture, processor: PushProc
     mocker.patch(f"{mod}.individuals_for_preflight_by_households", return_value=qs([ind]))
 
     processor.preflight()
-    msg = "".join(processor.total.get("errors", []))
-    assert f"HH #{hh1.pk} invalid" in msg
-    assert f"HH #{hh2.pk} already in another RDP" in msg
-    assert f"Ind #{ind.pk} invalid" in msg
+    assert err_contains(processor.total["errors"], f"HH #{hh1.pk} invalid")
+    assert err_contains(processor.total["errors"], f"HH #{hh2.pk} already in another RDP")
+    assert err_contains(processor.total["errors"], f"Ind #{ind.pk} invalid")
 
 
 @pytest.mark.django_db
-def test_preflight_non_master_detail_logs(mocker: MockerFixture, processor: PushProcessor, qs, beneficiary_stub):
+def test_preflight_non_master_detail_logs(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    qs: Callable[[list], Any],
+    beneficiary_stub: Callable[..., Beneficiary],
+    err_contains: Callable[[list[str], str], bool],
+) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     processor.master_detail, processor.pks, processor.rdp_id = False, [5], 11
     mocker.patch(f"{mod}.rdp_pending_or_success", return_value="rdp_qs")
@@ -52,13 +66,12 @@ def test_preflight_non_master_detail_logs(mocker: MockerFixture, processor: Push
     mocker.patch(f"{mod}.individuals_for_preflight_by_pks", return_value=qs([ind1, ind2]))
 
     processor.preflight()
-    msg = "".join(processor.total.get("errors", []))
-    assert f"Ind #{ind1.pk} already in another RDP" in msg
-    assert f"Ind #{ind2.pk} invalid" in msg
+    assert err_contains(processor.total["errors"], f"Ind #{ind1.pk} already in another RDP")
+    assert err_contains(processor.total["errors"], f"Ind #{ind2.pk} invalid")
 
 
 @pytest.mark.django_db
-def test_preflight_returns_early_when_no_pks(mocker: MockerFixture, processor: PushProcessor):
+def test_preflight_returns_early_when_no_pks(mocker: MockerFixture, processor: PushProcessor) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     processor.pks = []
     spy_rdp = mocker.patch(f"{mod}.rdp_pending_or_success")
@@ -77,7 +90,9 @@ def test_preflight_returns_early_when_no_pks(mocker: MockerFixture, processor: P
 
 
 @pytest.mark.django_db
-def test_rdi_create_success_and_failure(mocker: MockerFixture, processor: PushProcessor):
+def test_rdi_create_success_and_failure(
+    mocker: MockerFixture, processor: PushProcessor, err_contains: Callable[[list[str], str], bool]
+) -> None:
     mocker.patch.object(processor.api, "create_rdi", return_value={"id": "rdi-1"})
     processor.rdi_create()
     assert processor.hope_rdi_id == "rdi-1"
@@ -85,17 +100,23 @@ def test_rdi_create_success_and_failure(mocker: MockerFixture, processor: PushPr
     processor.hope_rdi_id = None
     mocker.patch.object(processor.api, "create_rdi", return_value={"foo": "bar"})
     processor.rdi_create()
-    assert any("cannot create" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "can't create")
 
 
 @pytest.mark.parametrize(("rid", "called"), [(None, False), ("RID-1", True)], ids=["no_rdi", "has_rdi"])
-def test_rdi_complete_paths(mocker: MockerFixture, processor: PushProcessor, rid, called):
+def test_rdi_complete_paths(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    rid: str | None,
+    called: bool,
+    err_contains: Callable[[list[str], str], bool],
+) -> None:
     processor.hope_rdi_id = rid
     spy = mocker.patch.object(processor.api, "complete_rdi")
     processor.rdi_complete()
     assert spy.called is called
     if not called:
-        assert any("cannot complete" in e for e in processor.total["errors"])
+        assert err_contains(processor.total["errors"], "can't complete")
 
 
 # ------------------------- rdi_push_* delegate -------------------------
@@ -106,7 +127,7 @@ def test_rdi_complete_paths(mocker: MockerFixture, processor: PushProcessor, rid
     [("rdi_push_households", "Households"), ("rdi_push_individuals", "Individuals"), ("rdi_push_people", "People")],
     ids=["households", "individuals", "people"],
 )
-def test_rdi_push_methods_delegate(mocker: MockerFixture, processor: PushProcessor, method, label):
+def test_rdi_push_methods_delegate(mocker: MockerFixture, processor: PushProcessor, method: str, label: str) -> None:
     spy = mocker.patch.object(processor, "_push_batched")
     getattr(processor, method)()
     spy.assert_called_once()
@@ -116,7 +137,7 @@ def test_rdi_push_methods_delegate(mocker: MockerFixture, processor: PushProcess
 # ----------------------------- batching --------------------------------
 
 
-def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor, qs):
+def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor, qs: Callable[[list], Any]) -> None:
     processor.hope_rdi_id = "rdi"
     processor.queryset = qs([1])
 
@@ -129,17 +150,19 @@ def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor
     assert [c.args[1] for c in proc.call_args_list] == [[1]]
 
 
-def test_push_batched_requires_context(processor: PushProcessor):
+def test_push_batched_requires_context(
+    processor: PushProcessor, err_contains: Callable[[list[str], str], bool]
+) -> None:
     processor.total = {"errors": []}
     processor.queryset = None
     processor.hope_rdi_id = None
 
     processor._push_batched("X", lambda _: ([], []), lambda *_: {}, lambda *_: None)
-    assert any("hope_rdi_id is not set" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "hope_rdi_id is not set")
 
     processor.hope_rdi_id = "rdi"
     processor._push_batched("X", lambda _: ([], []), lambda *_: {}, lambda *_: None)
-    assert any("queryset is not set" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "queryset is not set")
 
 
 # ---------------------------- prepare_* --------------------------------
@@ -147,8 +170,11 @@ def test_push_batched_requires_context(processor: PushProcessor):
 
 @pytest.mark.django_db
 def test_prepare_households_batch_uses_mapping_and_serializer(
-    mocker: MockerFixture, processor: PushProcessor, serializer_identity, beneficiary_stub
-):
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    serializer_identity: Callable,
+    beneficiary_stub: Callable[..., Beneficiary],
+) -> None:
     members = [beneficiary_stub(id=1), beneficiary_stub(id=2)]
     hh = beneficiary_stub(pk=777, prefetched_members=members)
     hh._group = {"head_of_household": members[0].id, "keep": "x", "drop": None}
@@ -167,7 +193,9 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     ]
 
 
-def test_prepare_individuals_batch_injects_id(processor: PushProcessor, serializer_identity, beneficiary_stub):
+def test_prepare_individuals_batch_injects_id(
+    processor: PushProcessor, serializer_identity: Callable, beneficiary_stub: Callable[..., Beneficiary]
+) -> None:
     i1, i2 = beneficiary_stub(id=10, _group={"a": 1}), beneficiary_stub(id=11, _group={"b": 2})
 
     ids, rows = processor._prepare_individuals_batch([i1, i2])
@@ -176,7 +204,9 @@ def test_prepare_individuals_batch_injects_id(processor: PushProcessor, serializ
     assert {"b": 2, "individual_id": 11} in rows
 
 
-def test_prepare_people_batch_plain(processor: PushProcessor, serializer_identity, beneficiary_stub):
+def test_prepare_people_batch_plain(
+    processor: PushProcessor, serializer_identity: Callable, beneficiary_stub: Callable[..., Beneficiary]
+) -> None:
     i1, i2 = beneficiary_stub(id=10, _group={"a": 1}), beneficiary_stub(id=11, _group={"b": 2})
     ids, rows = processor._prepare_people_batch([i1, i2])
     assert ids == [10, 11]
@@ -195,17 +225,25 @@ def test_prepare_people_batch_plain(processor: PushProcessor, serializer_identit
     ],
     ids=["all_accepted", "accepted_zero", "resp_none"],
 )
-def test_process_households_response_paths(processor: PushProcessor, resp, ids, ok):
+def test_process_households_response_paths(
+    processor: PushProcessor,
+    resp: dict | None,
+    ids: list[int],
+    ok: bool,
+    err_contains: Callable[[list[str], str], bool],
+) -> None:
     processor.total = {"errors": []}
     processor._process_households_response(resp, ids)
     if ok:
         assert processor.total.get("households") == 2
     else:
-        assert any("batch failed" in e or "mismatch" in e or "unexpected" in e for e in processor.total["errors"])
+        assert any(err_contains(processor.total["errors"], s) for s in ("batch failed", "mismatch", "unexpected"))
 
 
 @pytest.mark.django_db
-def test_process_individuals_response_paths(mocker: MockerFixture, processor: PushProcessor):
+def test_process_individuals_response_paths(
+    mocker: MockerFixture, processor: PushProcessor, err_contains: Callable[[list[str], str], bool]
+) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     processor.total = {"errors": []}
     mocker.patch(f"{mod}.load_mapping_from_api", return_value={1: "IND-1", 2: "IND-2"})
@@ -219,20 +257,22 @@ def test_process_individuals_response_paths(mocker: MockerFixture, processor: Pu
     processor._process_individuals_response(
         {"processed": 1, "accepted": 1, "individual_id_mapping": {"1": "IND-1"}}, [1, 2]
     )
-    assert any("accepted mismatch" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "accepted mismatch")
     assert processor.total.get("individuals") == 3
 
     processor.total["errors"].clear()
     processor._process_individuals_response(None, [1])
-    assert any("batch failed" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "batch failed")
 
     processor.total["errors"].clear()
     processor._process_individuals_response({}, [1])
-    assert any("unexpected response" in e for e in processor.total["errors"])
+    assert err_contains(processor.total["errors"], "unexpected response")
 
 
 @pytest.mark.django_db
-def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, processor: PushProcessor):
+def test_individuals_mapping_accumulates_across_batches(
+    mocker: MockerFixture, processor: PushProcessor, err_contains: Callable[[list[str], str], bool]
+) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     mocker.patch(f"{mod}.load_mapping_from_api", side_effect=[{1: "IND-1"}, {2: "IND-2"}])
     processor.total = {"errors": []}
@@ -248,7 +288,8 @@ def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, p
 
     assert processor.ind_id_map == {1: "IND-1", 2: "IND-2"}
     assert processor.total.get("individuals") == 2
-    assert not any("unexpected" in e or "batch failed" in e for e in processor.total["errors"])
+    assert not err_contains(processor.total["errors"], "unexpected")
+    assert not err_contains(processor.total["errors"], "batch failed")
 
 
 @pytest.mark.parametrize(
@@ -260,13 +301,19 @@ def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, p
     ],
     ids=["ok_two_people", "unexpected_rdi", "resp_none"],
 )
-def test_process_people_response_paths(processor: PushProcessor, resp, ids, ok):
+def test_process_people_response_paths(
+    processor: PushProcessor,
+    resp: dict | None,
+    ids: list[int],
+    ok: bool,
+    err_contains: Callable[[list[str], str], bool],
+) -> None:
     processor.total, processor.hope_rdi_id = {"errors": []}, "rdi-x"
     processor._process_people_response(resp, ids)
     if ok:
         assert processor.total.get("people") == 2
     else:
-        assert any("batch failed" in e or "unexpected" in e for e in processor.total["errors"])
+        assert any(err_contains(processor.total["errors"], s) for s in ("batch failed", "unexpected"))
 
 
 @pytest.mark.parametrize(
@@ -274,7 +321,7 @@ def test_process_people_response_paths(processor: PushProcessor, resp, ids, ok):
     [(None, True), ({"errors": ["x"]}, True), ({"ok": True}, False)],
     ids=["none", "has_errors", "ok"],
 )
-def test_resp_err(processor: PushProcessor, resp, expected):
+def test_resp_err(processor: PushProcessor, resp: dict | None, expected: bool) -> None:
     processor.total = {"errors": []}
     assert processor._resp_err("T", resp, [1]) is expected
 
@@ -282,7 +329,7 @@ def test_resp_err(processor: PushProcessor, resp, expected):
 # ------------------------------- queryset ------------------------------
 
 
-def test_using_qs_sets_and_restores(processor: PushProcessor, qs):
+def test_using_qs_sets_and_restores(processor: PushProcessor, qs: Callable[[list], Any]):
     q = qs([1])
     assert processor.queryset is None
     with processor._using_qs(q):
@@ -290,7 +337,7 @@ def test_using_qs_sets_and_restores(processor: PushProcessor, qs):
     assert processor.queryset is None
 
 
-def test_run_with_sets_qs_and_invokes_step(processor: PushProcessor, qs):
+def test_run_with_sets_qs_and_invokes_step(processor: PushProcessor, qs: Callable[[list], Any]):
     q = qs([1])
     called = []
 
@@ -301,3 +348,31 @@ def test_run_with_sets_qs_and_invokes_step(processor: PushProcessor, qs):
     processor.run_with(q, step)
     assert called == [True]
     assert processor.queryset is None
+
+
+# ------------------------------- errors ------------------------------
+
+
+@pytest.mark.django_db
+def test__err_truncation_and_capping(mocker: MockerFixture, processor):
+    cfg = ErrorConfig(MAX_ERRORS=3, MAX_ERROR_LEN=10, MARKER="⟪TRUNC⟫")
+    mocker.patch("country_workspace.contrib.hope.push.processor.ERROR_CONFIG", cfg)
+
+    errs = processor.total["errors"]
+    assert errs == []
+
+    # append short message (no truncation)
+    processor._err("short")
+    assert errs == ["short"]
+    # append long message → should be truncated to MAX_ERROR_LEN with ellipsis
+    processor._err("x" * 20)
+    assert errs[-1].endswith("…")
+    assert len(errs[-1]) == 10
+    # next call hits cap → marker is appended instead of the message
+    processor._err("anything")
+    assert errs[-1] == "⟪TRUNC⟫"
+    assert len(errs) == 3
+    # once marker is last, further errors are ignored
+    processor._err("ignored")
+    assert errs[-1] == "⟪TRUNC⟫"
+    assert len(errs) == 3

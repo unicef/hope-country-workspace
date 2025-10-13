@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable
-from typing import Any, TypedDict, ReadOnly, Final
+from typing import Any, TypedDict, ReadOnly, Final, NamedTuple
 from enum import StrEnum, auto
 
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -47,3 +47,12 @@ ROUTES: Final[dict[Route, str]] = {
     Route.PEOPLE: "{co_slug}/rdi/{rdi_id}/push/people/",
     Route.COMPLETE: "{co_slug}/rdi/{rdi_id}/completed/",
 }
+
+
+class ErrorConfig(NamedTuple):
+    MAX_ERRORS: int = 300
+    MAX_ERROR_LEN: int = 200
+    MARKER: str = "… further errors truncated …"
+
+
+ERROR_CONFIG: Final[ErrorConfig] = ErrorConfig()

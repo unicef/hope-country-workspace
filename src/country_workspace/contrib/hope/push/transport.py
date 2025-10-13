@@ -36,7 +36,7 @@ class HopeApi:
     def _post(self, route: Route, payload: Any, *, rdi_id: str | None = None) -> dict[str, Any] | None:
         """POST JSON for the given route; build URL here and log uniform errors."""
         url = ROUTES[route].format(co_slug=self.co_slug, **({"rdi_id": rdi_id} if rdi_id else {}))
-        error_msg = f"Hope API - error {route.value}"
+        error_msg = f"Hope API: {route.value}"
         try:
             return self.client.post(url, payload)
         except (RequestException, JSONDecodeError, RemoteError) as e:
