@@ -14,10 +14,11 @@ class FinancialInstitutionChoice(APIChoicesMixin, forms.ChoiceField):
 
     def get_choices(self) -> list[tuple[str, str]]:
         data = self.fetch_api()
-        return [
+        choices = [
             (
                 rec["id"],
                 rec["name"],
             )
             for rec in data
         ]
+        return [("", "None"), *choices]
