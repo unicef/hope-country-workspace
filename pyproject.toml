@@ -84,7 +84,7 @@ dev = [
   "pip",
   "pre-commit",
   "pyquery",
-  "pytest<8.4",            # temp fix for pytest_factoryboy AttributeError: 'FixtureFunctionDefinition' object has no attribute '__pytest_wrapped__'
+  "pytest",
   "pytest-celery",
   "pytest-coverage",
   "pytest-django",
@@ -96,7 +96,7 @@ dev = [
   "responses",
   "ruff",
   "seleniumbase",
-  "tox>=4.31",
+  "tox",
   "types-python-dateutil",
   "types-requests",
   "vcrpy",
