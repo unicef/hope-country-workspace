@@ -28,10 +28,10 @@ jobs:
       docs: ${{ steps.changed_files.outputs.docs }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v5
       - id: changed_files
         name: Check for file changes
-        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+        uses: dorny/paths-filter@v3
         with:
           base: ${{ github.ref }}
           token: ${{ github.token }}
@@ -44,7 +44,7 @@ jobs:
     env:
       PYTHONPATH: src/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: yezz123/setup-uv@v4
 
       - uses: actions/cache/restore@v4
@@ -54,7 +54,7 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
 
       - name: Install dependencies
-        run: uv sync --group docs --no-dev
+        run: uv sync --group docs
 
       - name: Build Doc
         run: .venv/bin/mkdocs build -d ./docs-output
@@ -66,7 +66,7 @@ jobs:
           path: .venv
           key: ${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./docs-output
 
