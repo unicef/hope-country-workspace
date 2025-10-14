@@ -96,6 +96,7 @@ dev = [
   "responses",
   "ruff",
   "seleniumbase",
+  "tox>=4.31",
   "types-python-dateutil",
   "types-requests",
   "vcrpy",
