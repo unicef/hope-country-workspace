@@ -1,18 +1,11 @@
 name: Test
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - develop
-      - master
-      - staging
-      - release/*
-      - feature/*
-      - bugfix/*
-      - hotfix/*
-#  pull_request:
-#    branches: [ develop, master ]
-#    types: [ synchronize, opened, reopened, ready_for_review ]
+    branches: [ "develop" ]
+    tags-ignore: [ "**" ]
+  pull_request:
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
@@ -41,10 +34,10 @@ jobs:
       run_tests: ${{ steps.changes.outputs.run_tests }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v5
       - id: changes
         name: Check for file changes
-        uses: dorny/paths-filter@0bc4621a3135347011ad047f9ecf449bf72ce2bd # v3.0.0
+        uses: dorny/paths-filter@v3
         with:
           base: ${{ github.ref }}
           token: ${{ github.token }}
@@ -61,9 +54,9 @@ jobs:
       branch: ${{env.BRANCH}}
     services:
       redis:
-        image: redis:7.4.0
+        image: redis:7
         ports:
-          - 16379:6379
+          - 6379:6379
       db:
         image: postgres:14
         env:
@@ -86,76 +79,45 @@ jobs:
       DOCKER_BUILDKIT: 1
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Hack container for local development
-        if: ${{ env.ACT }}
-        run: |
-          echo /home/runner/externals/node20/bin >> $GITHUB_PATH
-      - name: Hack container for local development
-        run: |
-          echo BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5.5.1
-        with:
-          images: "unicef/hope-country-workspace"
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{raw}}
-      - name: DockerHub login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - id: last_commit
-        uses: ./.github/actions/last_commit
-      - id: calc
-        shell: bash
-        run: |
-          set -x
-          LOCK_SHA=$(sha1sum uv.lock docker/bin/* docker/conf/* docker/Dockerfile | sha1sum | awk '{print $1}' | cut -c 1-8)
-          IMAGE=$(echo '${{env.DOCKER_METADATA_OUTPUT_JSON}}' | jq '.tags[0]')
-          echo "checksum=$LOCK_SHA" >> "$GITHUB_ENV"
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "BUILD_DATE=$(date +"%Y-%m-%d %H:%M" )" >> $GITHUB_ENV
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+        uses: actions/checkout@v5
 
-      - name: Build Test Image
-        run: |
-             docker build \
-                --target tests \
-                -t ${{env.IMAGE}} \
-                --cache-from "type=gha" \
-                --cache-to "type=gha,mode=max" \
-                -f docker/Dockerfile .
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: ${{ matrix.cfg }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          python-version: ${{ matrix.python }}
 
-      - name: Run Test suite
-        run: |
-            mkdir output
-            docker run --rm \
-              --network host \
-              -e PYTHONPATH=/app/src \
-              -e DATABASE_URL=${DATABASE_URL} \
-              -e CELERY_BROKER_URL=${CELERY_BROKER_URL} \
-              -e CACHE_URL=${CACHE_URL} \
-              -e SECRET_KEY=super-secret-key-just-for-testing \
-              -v "./output/:/app/output" \
-              -v "./src/:/app/src" \
-              -v "./tests:/app/tests" \
-              -v "./pytest.ini:/app/pytest.ini" \
-              -t ${{env.IMAGE}} \
-              pytest tests/ --create-db -v --maxfail=5 --migrations --cov-report xml:./output/coverage.xml --record-mode none
+      - name: Install tox
+        run: uv tool install --python-preference only-managed --python 3.13 tox --with tox-uv --with tox-gh-actions
+
+      - name: Setup test suite
+        run: tox run -vv --notest --skip-missing-interpreters false -e ${{ matrix.cfg }}
+
+      - name: Run test suite ${{ matrix.cfg }}
+        run: tox -e ${{ matrix.cfg }}
+
+      - name: Upload pytest test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results-${{ matrix.cfg }}
+          path: junit.xml
+        if: ${{ always() }}
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         continue-on-error: true
         with:
           env_vars: OS,PYTHON
           fail_ci_if_error: true
-          files: /app/output/coverage.xml
+          flags: unittests
+          files: ./coverage.xml
+          verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: false
           name: codecov-${{env.GITHUB_REF_NAME}}
+          slug: ${{ github.repository }}

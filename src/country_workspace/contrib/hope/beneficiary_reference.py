@@ -36,6 +36,7 @@ class BeneficiarySelect2Widget(ModelSelect2Widget):
         self.household_id = household_id
         self.limit_to_hh = limit_to_household
         kwargs.setdefault("attrs", {"data-minimum-input-length": 0, "class": "form-control"})
+
         super().__init__(*args, **kwargs)
 
     def get_queryset(self) -> QuerySet["Individual"]:
