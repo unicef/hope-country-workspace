@@ -47,20 +47,26 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
     @override
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         super().validate_with_checker(fail_if_alien=fail_if_alien)
+
         members_failed = False
         for ind in self.members.all():
             members_failed |= not ind.validate_with_checker(fail_if_alien=fail_if_alien)
+
         ext_msgs = self.program.beneficiary_validator.validate(self)
 
+        changed = False
         if members_failed or ext_msgs:
             dct = self.errors.setdefault("dct", [])
             if members_failed:
                 dct.append("Some member did not validate")
             if ext_msgs:
                 dct.extend(ext_msgs)
+            changed = True
 
-        self.last_checked = timezone.now()
-        self.save(update_fields=["errors", "last_checked"])
+        if changed:
+            self.last_checked = timezone.now()
+            self.save(update_fields=["errors", "last_checked"])
+
         return not bool(self.errors)
 
     @property
