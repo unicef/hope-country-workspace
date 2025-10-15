@@ -56,5 +56,5 @@ def test_errors_are_captured_and_none_returned(mocker, routes, errs, err, exc, m
 
     assert out is None
     assert errs
-    assert errs[-1].startswith("Hope API - error")
+    assert errs[-1].startswith("Hope API:")
     assert route.value in errs[-1]

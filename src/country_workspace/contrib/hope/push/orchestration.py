@@ -68,9 +68,9 @@ def steps(processor: PushProcessor, config: WorkflowConfig) -> Iterator[Callable
 def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for a job; raise HopePushError on step failure."""
     if job.program.beneficiary_group is None:
-        return {"errors": ["RDI - beneficiary_group is not set"]}
+        return {"errors": ["RDI: beneficiary_group is not set"]}
     if not job.config.get("pks"):
-        return {"errors": ["RDI - no beneficiaries to push"]}
+        return {"errors": ["RDI: no beneficiaries to push"]}
 
     rdp_id = create_rdp_records(job.config, job.id)
     config: WorkflowConfig = {**job.config, "rdp_id": rdp_id}

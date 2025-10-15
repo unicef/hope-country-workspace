@@ -1,12 +1,13 @@
 import pytest
 from hope_flex_fields.models import DataChecker
-
+from collections.abc import Callable
+from typing import Any
 from country_workspace.models import Office, User, AsyncJob
 from country_workspace.workspaces.models import (
     CountryProgram,
     CountryRdp,
 )
-from country_workspace.contrib.hope.push.config import Beneficiary
+from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG
 from country_workspace.contrib.hope.push.processor import PushProcessor
 
 from country_workspace.state import state
@@ -104,7 +105,7 @@ def processor(job: AsyncJob) -> PushProcessor:
 
 
 @pytest.fixture
-def qs():
+def qs() -> Callable[[list], Any]:
     """Fixture that returns a minimal queryset-like object with .iterator()."""
 
     class _QS:
@@ -118,7 +119,7 @@ def qs():
 
 
 @pytest.fixture
-def beneficiary_stub():
+def beneficiary_stub() -> Callable[..., Beneficiary]:
     """Factory fixture for a tiny attribute bag with a few helper methods.
     Mirrors pk -> id if only pk is provided.
     """
@@ -153,3 +154,13 @@ def errs():
 @pytest.fixture
 def err(errs):
     return lambda msg: errs.append(msg)
+
+
+@pytest.fixture
+def err_contains() -> Callable[[list[str], str], bool]:
+    def _contains(errors: list[str], expected: str) -> bool:
+        ln = ERROR_CONFIG.MAX_ERROR_LEN
+        tr = expected if len(expected) <= ln else f"{expected[: ln - 1]}…"
+        return any((expected in e) or (tr in e) for e in errors)
+
+    return _contains

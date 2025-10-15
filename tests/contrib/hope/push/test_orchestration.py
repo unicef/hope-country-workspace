@@ -1,6 +1,6 @@
 import pytest
 from pytest_mock import MockerFixture
-
+from collections.abc import Callable
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.models import Rdp, AsyncJob
 from country_workspace.workspaces.models import (
@@ -139,17 +139,17 @@ def test_push_to_hope_core_failure(mocker: MockerFixture, job):
 
 
 @pytest.mark.django_db
-def test_push_to_hope_core_no_beneficiary_group(job):
+def test_push_to_hope_core_no_beneficiary_group(job: AsyncJob, err_contains: Callable[[list[str], str], bool]) -> None:
     job.program.beneficiary_group = None
     out = push_to_hope_core(job)
-    assert any("beneficiary_group is not set" in e for e in out.get("errors", []))
+    assert err_contains(out.get("errors", []), "beneficiary_group is not set")
 
 
 @pytest.mark.django_db
-def test_push_to_hope_core_no_pks(job):
+def test_push_to_hope_core_no_pks(job: AsyncJob, err_contains: Callable[[list[str], str], bool]) -> None:
     job.config["pks"] = []
     out = push_to_hope_core(job)
-    assert any("no beneficiaries" in e for e in out.get("errors", []))
+    assert err_contains(out.get("errors", []), "no beneficiaries")
 
 
 @pytest.mark.parametrize("master_detail", [True, False], ids=["md", "people_only"])
