@@ -28,7 +28,7 @@ ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
 
 INDIVIDUAL_FIELDS_TO_UPPERCASE = ("role",)
-HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method",)
+HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method", "residence_status", "consent_sharing")
 
 
 def is_submission_data_url(url: str) -> bool:
