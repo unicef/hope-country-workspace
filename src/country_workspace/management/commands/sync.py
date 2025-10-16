@@ -63,6 +63,5 @@ class Command(BaseCommand):
                     sync_functions.append(run_geo_sync)
             else:
                 sync_functions.extend((run_program_sync, run_geo_sync))
-
             for sync_function in sync_functions:
                 sync_function()

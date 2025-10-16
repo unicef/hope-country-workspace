@@ -35,13 +35,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-      - id: changes
-        name: Check for file changes
-        uses: dorny/paths-filter@v3
-        with:
-          base: ${{ github.ref }}
-          token: ${{ github.token }}
-          filters: .github/file-filters.yml
+#      - id: changes
+#        name: Check for file changes
+#        uses: dorny/paths-filter@v3
+#        with:
+#          base: ${{ github.ref }}
+#          token: ${{ github.token }}
+#          filters: .github/file-filters.yml
 
   test:
     needs: [ changes ]
