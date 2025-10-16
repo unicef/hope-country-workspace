@@ -9,6 +9,7 @@ RUN set -x \
   && runtimeDeps=" \
     libmagic1 \
     libxml2 \
+    libexpat \
   " \
   && buildDeps=" \
 wget \
