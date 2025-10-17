@@ -194,6 +194,7 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
         header_format = _get_header_format(workbook)
         worksheet = workbook.add_worksheet()
 
+        field_to_choices = {}
         for i, fld_name in enumerate(columns):
             fld = dc_get_field(dc, fld_name)
             if fld:
@@ -202,6 +203,9 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
                 worksheet.set_column(i, i, 40, cell_format)
                 if v := get_validation_for_field(fld):
                     worksheet.data_validation(0, i, 999999, i, v)
+                if choices := fld.attrs.get("choices"):
+                    field_to_choices[fld.name] = [c[0] for c in choices]
+
             else:
                 worksheet.write(0, i, fld_name, header_format)
 
@@ -213,8 +217,45 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
                 value = getattr(record, fld, record.flex_fields.get(fld))
                 worksheet.write(row, col, fmt(value))
 
+        if field_to_choices:
+            _add_choices_worksheet(workbook, field_to_choices)
+
     out.seek(0)
     return out
+
+
+def _add_choices_worksheet(workbook: Workbook, field_to_choices: dict[str, list[Any]]) -> None:
+    choices_worksheet = workbook.add_worksheet("Choices")
+    bold_header = workbook.add_format(
+        {
+            "bold": True,
+            "bg_color": "#DCE6F1",  # light blue background
+            "align": "center",
+            "valign": "vcenter",
+            "border": 1,
+        }
+    )
+
+    headers = ["Field Name", "Choices", "Comment"]
+    for col, header in enumerate(headers):
+        choices_worksheet.write(0, col, header, bold_header)
+
+    row = 1
+    for field, choices in field_to_choices.items():
+        for i, choice in enumerate(choices):
+            if i == 0:
+                choices_worksheet.write(row, 0, field)
+
+            choices_worksheet.write(row, 1, choice)
+            if choice == "":
+                choices_worksheet.write(row, 2, "an empty string")
+            row += 1
+
+        row += 1  # to add an empty line between different fields
+
+    choices_worksheet.set_column(0, 0, 20)
+    choices_worksheet.set_column(1, 1, 25)
+    choices_worksheet.set_column(2, 2, 20)
 
 
 def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
