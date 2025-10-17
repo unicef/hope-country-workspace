@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-FLEX_FIELDS_STR_TRUNC = 8192  # chars
 FLEX_FILES_PREFIX = 8192  # bytes
 
 
@@ -29,10 +28,7 @@ def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Ge
 
 def get_obj_checksum(obj: "Validable") -> str:
     h = hashlib.md5()  # noqa: S324
-    truncated_fields = {
-        k: (v[:FLEX_FIELDS_STR_TRUNC] if isinstance(v, str) else v) for k, v in (obj.flex_fields or {}).items()
-    }
-    h.update(json.dumps(truncated_fields, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    h.update(json.dumps(obj.flex_fields, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     if obj.flex_files:
         h.update(memoryview(obj.flex_files)[:FLEX_FILES_PREFIX])
     h.update(bytes([1 if getattr(obj, "removed", False) else 0]))
