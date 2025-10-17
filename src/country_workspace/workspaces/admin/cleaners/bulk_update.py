@@ -193,8 +193,6 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
     with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
         header_format = _get_header_format(workbook)
         worksheet = workbook.add_worksheet()
-        worksheet.protect()
-        worksheet.unprotect_range("C1:ZZ999", None)
 
         for i, fld_name in enumerate(columns):
             fld = dc_get_field(dc, fld_name)
