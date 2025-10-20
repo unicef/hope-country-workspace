@@ -109,7 +109,7 @@ class BeneficiaryReferenceModelChoiceField(ModelChoiceField):
 
     def _get_by_individual_id(self, value: Any) -> "Individual | None":
         self._sync_qs()
-        if not self.queryset or value in self.empty_values:
+        if value in self.empty_values:
             return None
         try:
             return self.queryset.get(flex_fields__individual_id=str(value))
