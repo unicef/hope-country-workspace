@@ -16,6 +16,8 @@ from country_workspace.workspaces.admin.cleaners.bulk_update import (
     _validate_date_format,
     _write_country_choices,
     _write_field_choices,
+    _add_choices_worksheet,
+    _extract_choices_from_field,
 )
 
 
@@ -345,3 +347,70 @@ def test_write_field_choices(worksheet_mock, countries):
         worksheet_mock.write.assert_any_call(start_row + i, 2, d[1])
 
     assert result_row == start_row + 2 + 1
+
+
+@pytest.mark.parametrize(
+    ("has_field_choices", "has_country_col"),
+    [
+        (False, False),
+        (True, False),
+        (False, True),
+        (True, True),
+    ],
+    ids=["no_choices_no_country", "choices_no_country", "no_choices_country", "choices_and_country"],
+)
+def test_add_choices_worksheet_calls(mocker, has_field_choices, has_country_col):
+    workbook = MagicMock()
+    worksheet = MagicMock()
+    workbook.add_worksheet.return_value = worksheet
+    workbook.add_format.return_value = "header_fmt"
+
+    write_headers = mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update._write_headers")
+    write_field_choices = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.bulk_update._write_field_choices", return_value=1
+    )
+    write_country_choices = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.bulk_update._write_country_choices", return_value=1
+    )
+
+    field_to_choices = {"field": [("k", "v")]} if has_field_choices else {}
+    columns = ["some_col", "Country"] if has_country_col else ["some_col"]
+
+    _add_choices_worksheet(workbook, field_to_choices, columns)
+
+    workbook.add_worksheet.assert_called_once_with("Choices")
+    write_headers.assert_called_once_with(worksheet, "header_fmt")
+
+    if has_field_choices:
+        write_field_choices.assert_called_once_with(worksheet, field_to_choices, start_row=1)
+    else:
+        write_field_choices.assert_not_called()
+
+    if has_country_col:
+        write_country_choices.assert_called_once()
+        args, kwargs = write_country_choices.call_args
+        assert args[0] is worksheet
+        assert "start_row" in kwargs
+        assert isinstance(kwargs["start_row"], int)
+    else:
+        write_country_choices.assert_not_called()
+
+    worksheet.set_column.assert_any_call(0, 0, 20)
+    worksheet.set_column.assert_any_call(1, 1, 25)
+    worksheet.set_column.assert_any_call(2, 2, 20)
+
+
+def test_extract_choices_for_admin_fields():
+    class DummyFieldType:
+        def __init__(self):
+            self.choices = [("a", "A"), ("b", "B")]
+
+    fake_field = MagicMock()
+    fake_field.name = "admin1"
+    fake_field.attrs = {}
+    fake_field.definition = MagicMock()
+    fake_field.definition.attrs = {}
+    fake_field.definition.field_type = DummyFieldType
+
+    result = _extract_choices_from_field(fake_field)
+    assert result == DummyFieldType().choices
