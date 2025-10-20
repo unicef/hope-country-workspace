@@ -242,7 +242,7 @@ def _get_country_choices() -> list:
 
 
 def _write_country_choices(worksheet: Worksheet, start_row: int) -> int:
-    countries = _get_country_choices()  # assumes existing function
+    countries = _get_country_choices()
     row = start_row
     for i, country in enumerate(countries):
         if i == 0:
