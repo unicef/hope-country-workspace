@@ -1,5 +1,6 @@
 import io
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from constance.test import override_config
@@ -13,6 +14,8 @@ from country_workspace.workspaces.admin.cleaners.bulk_update import (
     validate_date_datetime_fields,
     _validate_datetime_format,
     _validate_date_format,
+    _write_country_choices,
+    _write_field_choices,
 )
 
 
@@ -67,6 +70,20 @@ def individuals(program):
 
 
 @pytest.fixture
+def countries():
+    from testutils.factories import CountryFactory
+
+    return CountryFactory.create_batch(3)
+
+
+@pytest.fixture
+def worksheet_mock():
+    ws = MagicMock()
+    ws.write = MagicMock()
+    return ws
+
+
+@pytest.fixture
 def test_data(households, individuals, program) -> dict[str, Any]:
     is_master_detail = program.beneficiary_group.master_detail
     entities = households if is_master_detail else individuals
@@ -87,6 +104,7 @@ def test_data(households, individuals, program) -> dict[str, Any]:
             "some_field": "value",
         },  # Row 5: version mismatch (when guard enabled)
         {"id": str(valid_entity.id), "version": str(valid_entity.version), "some_field": "value"},  # Row 6: valid row
+        {"id": "", "version": "", "some_field": ""},  # empty row
     ]
 
     return {
@@ -301,3 +319,29 @@ def test_validate_individual_reference_ids():
     assert "Invalid data for head_of_household field. Must be of integer type" in errors
     assert "Invalid data. primary_collector field is required" in errors
     assert "Invalid data for alternate_collector field. Must be of integer type" in errors
+
+
+def test_write_country_choices_writes_correct_data(worksheet_mock, countries):
+    start_row = 10
+    result_row = _write_country_choices(worksheet_mock, start_row=start_row)
+
+    worksheet_mock.write.assert_any_call(start_row, 0, "country")
+    assert result_row == start_row + len(countries)
+
+    for country in countries:
+        worksheet_mock.write.assert_any_call(start_row, 1, country.iso_code2)
+        worksheet_mock.write.assert_any_call(start_row, 2, country.name)
+        start_row += 1
+
+
+def test_write_field_choices(worksheet_mock, countries):
+    start_row = 5
+    field_to_choices = {"field": [("test1", "Test 1"), ("test2", "Test 2")]}
+    result_row = _write_field_choices(worksheet_mock, field_to_choices, start_row=start_row)
+    worksheet_mock.write.assert_any_call(start_row, 0, "field")
+
+    for i, d in enumerate(field_to_choices.get("field")):
+        worksheet_mock.write.assert_any_call(start_row + i, 1, d[0])
+        worksheet_mock.write.assert_any_call(start_row + i, 2, d[1])
+
+    assert result_row == start_row + 2 + 1
