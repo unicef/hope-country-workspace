@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 from unittest.mock import Mock
 
 from country_workspace.workspaces.admin.cleaners.validate import validate_program
-from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 
 type Beneficiary = CountryHousehold | CountryIndividual
 
@@ -14,10 +14,16 @@ def master_detail(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.fixture
-def beneficiary(master_detail: bool) -> Beneficiary:
-    from testutils.factories import CountryProgramFactory, CountryHouseholdFactory, CountryIndividualFactory
+def program(master_detail: bool) -> CountryProgram:
+    from testutils.factories import CountryProgramFactory
 
-    program = CountryProgramFactory(beneficiary_group__master_detail=master_detail)
+    return CountryProgramFactory(beneficiary_group__master_detail=master_detail)
+
+
+@pytest.fixture
+def beneficiary(program: CountryProgram, master_detail: bool) -> Beneficiary:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
     if master_detail:
         return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
     return CountryIndividualFactory(
@@ -45,3 +51,7 @@ def test_validate_program_exception(mocker: MockerFixture, beneficiary: Benefici
     mocker.patch(f"{model_path}.validate_with_checker", side_effect=Exception("Test error"))
     with pytest.raises(Exception, match="Test error"):
         validate_program(Mock(program=beneficiary.program))
+
+
+def test_validate_program_empty_queryset(program: CountryProgram) -> None:
+    assert validate_program(Mock(program=program)) == {"valid": 0, "invalid": 0}

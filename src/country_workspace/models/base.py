@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING, Any
-
+from collections.abc import Iterable
 from concurrency.fields import IntegerVersionField
 from django.db import models
 from django.urls import reverse
@@ -54,7 +54,7 @@ class Cachable:
         return ":".join(parts)
 
 
-CHECKSUM_FIELDS: tuple[str, ...] = ("flex_fields", "flex_files", "removed")
+CHECKSUM_FIELDS: set[str] = {"flex_fields", "flex_files", "removed"}
 
 
 class Validable(Cachable, models.Model):
@@ -94,14 +94,16 @@ class Validable(Cachable, models.Model):
         force_insert: bool = False,
         force_update: bool = False,
         using: str | None = None,
-        update_fields: list[str] | None = None,
+        update_fields: Iterable[str] | None = None,
     ) -> None:
-        if update_fields is None:  # full save
+        if update_fields is None:
             self.checksum = get_obj_checksum(self)
-        elif any(f in update_fields for f in CHECKSUM_FIELDS):
-            self.checksum = get_obj_checksum(self)
-            if "checksum" not in update_fields:
-                update_fields = [*update_fields, "checksum"]
+        else:
+            uf = set(update_fields)
+            if uf & CHECKSUM_FIELDS:
+                self.checksum = get_obj_checksum(self)
+                uf.add("checksum")
+            update_fields = uf
         super().save(
             *args,
             force_insert=force_insert,
