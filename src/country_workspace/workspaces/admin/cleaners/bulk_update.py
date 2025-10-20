@@ -347,6 +347,9 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
         with transaction.atomic():
             for line_number, row_data in enumerate(rows, start=1):
                 try:
+                    if not row_data or all(v in (None, "", []) for v in row_data.values()):
+                        continue
+
                     entity_id = int(row_data.pop("id"))
                     entity = entity_getter(entity_id)
 
