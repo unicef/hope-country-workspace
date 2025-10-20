@@ -18,7 +18,9 @@ from hope_flex_fields.xlsx import get_format_for_field
 from hope_smart_import.readers import open_xls
 from xlsxwriter import Workbook
 from xlsxwriter.format import Format
-from country_workspace.models import AsyncJob, Program
+from xlsxwriter.worksheet import Worksheet
+from country_workspace.models import AsyncJob, Program, Country
+from country_workspace.state import state
 from country_workspace.storages import MEDIA_STORAGE
 from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportError, BulkImportFileProcessingError
 
@@ -203,8 +205,8 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
                 worksheet.set_column(i, i, 40, cell_format)
                 if v := get_validation_for_field(fld):
                     worksheet.data_validation(0, i, 999999, i, v)
-                if choices := fld.attrs.get("choices"):
-                    field_to_choices[fld.name] = [c[0] for c in choices]
+                if choices := _extract_choices_from_field(field=fld):
+                    field_to_choices[fld.name] = choices
 
             else:
                 worksheet.write(0, i, fld_name, header_format)
@@ -217,45 +219,90 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
                 value = getattr(record, fld, record.flex_fields.get(fld))
                 worksheet.write(row, col, fmt(value))
 
-        if field_to_choices:
-            _add_choices_worksheet(workbook, field_to_choices)
+        _add_choices_worksheet(workbook, field_to_choices, columns)
 
     out.seek(0)
     return out
 
 
-def _add_choices_worksheet(workbook: Workbook, field_to_choices: dict[str, list[Any]]) -> None:
-    choices_worksheet = workbook.add_worksheet("Choices")
-    bold_header = workbook.add_format(
-        {
-            "bold": True,
-            "bg_color": "#DCE6F1",  # light blue background
-            "align": "center",
-            "valign": "vcenter",
-            "border": 1,
-        }
-    )
+def _extract_choices_from_field(field: FlexField) -> list[Any]:
+    flatten = lambda elements: [el[0] for el in elements]
 
+    if (choices := field.attrs.get("choices")) or (choices := field.definition.attrs.get("choices")):
+        return flatten(choices)
+
+    if field.name in ("admin1", "admin2", "admin3", "admin4"):
+        return field.definition.field_type().choices
+
+    return []
+
+
+def _get_country_choices() -> list:
+    return list(Country.objects.only("iso_code2", "name").all())
+
+
+def _write_country_choices(worksheet: Worksheet, start_row: int) -> int:
+    countries = _get_country_choices()  # assumes existing function
+    row = start_row
+    for i, country in enumerate(countries):
+        if i == 0:
+            worksheet.write(row, 0, "country")
+        worksheet.write(row, 1, country.iso_code2)
+        worksheet.write(row, 2, country.name)
+        row += 1
+    return row
+
+
+def _write_headers(worksheet: Worksheet, header_format: Format) -> None:
     headers = ["Field Name", "Choices", "Comment"]
     for col, header in enumerate(headers):
-        choices_worksheet.write(0, col, header, bold_header)
+        worksheet.write(0, col, header, header_format)
 
-    row = 1
+
+def _parse_choice(choice: Any) -> tuple[str, str]:
+    if isinstance(choice, tuple | list):
+        value = choice[0]
+        comment = choice[1] if len(choice) > 1 else ""
+    else:
+        value = choice
+        comment = "an empty string" if choice == "" else ""
+    return value, comment
+
+
+def _write_field_choices(worksheet: Worksheet, field_to_choices: dict[str, list[Any]], start_row: int) -> int:
+    row = start_row
     for field, choices in field_to_choices.items():
         for i, choice in enumerate(choices):
             if i == 0:
-                choices_worksheet.write(row, 0, field)
+                worksheet.write(row, 0, field)
 
-            choices_worksheet.write(row, 1, choice)
-            if choice == "":
-                choices_worksheet.write(row, 2, "an empty string")
+            value, comment = _parse_choice(choice)
+            worksheet.write(row, 1, value)
+            if comment:
+                worksheet.write(row, 2, comment)
             row += 1
 
-        row += 1  # to add an empty line between different fields
+        row += 1  # Blank line between different fields
+    return row
 
-    choices_worksheet.set_column(0, 0, 20)
-    choices_worksheet.set_column(1, 1, 25)
-    choices_worksheet.set_column(2, 2, 20)
+
+def _add_choices_worksheet(workbook: Workbook, field_to_choices: dict[str, list[Any]], columns: list) -> None:
+    choices_ws = workbook.add_worksheet("Choices")
+    bold_header = _get_header_format(workbook)
+
+    _write_headers(choices_ws, bold_header)
+    row = 1
+
+    if field_to_choices:
+        row = _write_field_choices(choices_ws, field_to_choices, start_row=row)
+
+    if any("country" in col.lower() for col in columns):
+        row = _write_country_choices(choices_ws, start_row=row)
+
+    # Set column widths
+    choices_ws.set_column(0, 0, 20)
+    choices_ws.set_column(1, 1, 25)
+    choices_ws.set_column(2, 2, 20)
 
 
 def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
@@ -271,19 +318,20 @@ def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
 
 
 def export_bulk_update_template(job: AsyncJob) -> str:
-    model = apps.get_model(job.config["model_name"])
-    queryset = model.objects.filter(pk__in=job.config["pks"])
+    with state.set(tenant=job.program.country_office, program=job.program):
+        model = apps.get_model(job.config["model_name"])
+        queryset = model.objects.filter(pk__in=job.config["pks"])
 
-    out = create_bulk_update_template(queryset, job.program, job.config["columns"])
-    filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
-    filepath = MEDIA_STORAGE.save(filename, out)
+        out = create_bulk_update_template(queryset, job.program, job.config["columns"])
+        filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
+        filepath = MEDIA_STORAGE.save(filename, out)
 
-    _send_template_email(job, out, filename)
+        _send_template_email(job, out, filename)
 
-    job.file = filepath
-    job.save(update_fields=["file"])
+        job.file = filepath
+        job.save(update_fields=["file"])
 
-    return filepath
+        return filepath
 
 
 def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:  # noqa: C901
