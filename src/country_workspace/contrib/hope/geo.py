@@ -1,7 +1,7 @@
 from typing import Any
 from collections.abc import Mapping
 from django import forms
-from django.apps import apps
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from hope_flex_fields.mixin import ChildFieldMixin
 from urllib.parse import urlencode
@@ -62,50 +62,55 @@ class CountryChoice(APIChoicesMixin, forms.ChoiceField):
         return super().to_python(self.iso3_to_iso2.get(value, value))
 
 
-class AdminLevelChoice(APIChoicesMixin, ChildFieldMixin, forms.ChoiceField):
+class AdminLevelChoice(ChildFieldMixin, forms.ChoiceField):
     level: int = -1
+    cache_timeout: int | None = None
+    empty_choice: tuple[str, str] = ("", "None")
+    cache_key_fmt: str = "cache:entry:area_choices:office:{office_id}:lvl:{level}"
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.path = "business-areas/{}/geo/areas/"
-        self.params = {"format": "json"}
-        self.choices = self.get_choices_for_parent_value(parent_value=state.tenant.slug)
+        parent_value = getattr(state.tenant, "pk", None)
+        self.choices = self.get_choices_for_parent_value(parent_value=parent_value)
 
     def validate_with_parent(self, parent_value: Any, value: Any) -> None:
+        if value in self.empty_values or not parent_value:
+            return
         choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
-        if parent_value and self.prepare_value(value) not in choices:
+        if self.prepare_value(value) not in choices:
             raise ValidationError("Not valid child for selected parent")
 
     def validate(self, value: Any) -> None:
         super().validate(value)
 
     def get_choices_for_parent_value(
-        self, parent_value: Any, only_codes: bool | None = False
-    ) -> list[tuple[str, str]] | list[str]:
-        if (
-            not parent_value
-            or not (data := self.fetch_api(parent_value))
-            or not (valid_types := self._get_valid_area_types())
-            or not (filtered := self._filter_by_area_types(data, valid_types))
-        ):
-            return [] if only_codes else [("", "")]
+        self, parent_value: int | None, only_codes: bool = False
+    ) -> list[str] | list[tuple[str, str]]:
+        if not parent_value:
+            return [] if only_codes else [self.empty_choice]
 
-        return (
-            [r["p_code"] for r in filtered]
-            if only_codes
-            else [("", "None"), *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in filtered]]
-        )
+        cache_key = self.cache_key_fmt.format(office_id=parent_value, level=self.level)
+        data = cache_manager.retrieve(cache_key)
 
-    def _get_valid_area_types(self) -> set[Any]:
-        key = f"area_types_level_{self.level}"
-        if (types := cache_manager.retrieve(key)) is None:
-            AreaType = apps.get_model("country_workspace", "AreaType")
-            types = set(AreaType.objects.filter(area_level=self.level).values_list("hope_id", flat=True))
-            cache_manager.store(key, types, timeout=self.cache_timeout)
-        return types
+        if data is None:
+            from country_workspace.models import Area
 
-    def _filter_by_area_types(self, data: list[dict[str, Any]], valid_types: set[Any]) -> list[dict[str, Any]]:
-        return [r for r in data if r.get("area_type") in valid_types]
+            rows = (
+                Area.objects.filter(
+                    area_type__country__offices__pk=parent_value,
+                    area_type__area_level=self.level,
+                )
+                .exclude(Q(p_code__isnull=True) | Q(p_code__exact=""))
+                .values("p_code", "name")
+                .order_by("p_code")
+            )
+            data = list(rows)
+            cache_manager.store(cache_key, data, timeout=self.cache_timeout)
+
+        if only_codes:
+            return [r["p_code"] for r in data]
+
+        return [self.empty_choice, *[(r["p_code"], f"{r['p_code']} - {r['name']}") for r in data]]
 
 
 class Admin1Choice(AdminLevelChoice):

@@ -1,6 +1,7 @@
 from django.db import models
 
 from .base import BaseModel
+from .locations import Country
 
 
 class Office(BaseModel):
@@ -15,6 +16,7 @@ class Office(BaseModel):
     kobo_country_code = models.CharField(max_length=3, blank=True, null=True)
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this office enabled in the workspace?")
+    countries = models.ManyToManyField(Country, blank=True, related_name="%(class)ss")
 
     def __str__(self) -> str:
         return str(self.name)
