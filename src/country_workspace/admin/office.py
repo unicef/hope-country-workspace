@@ -11,6 +11,7 @@ from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, Target
 @admin.register(Office)
 class OfficeAdmin(SyncAdminMixin, BaseModelAdmin):
     list_display = ("name", "long_name", "slug", "code", "active", "enabled", "kobo_country_code")
+    filter_horizontal = ("countries",)
     search_fields = ("name", "slug", "code")
     list_filter = ("active", "enabled")
     readonly_fields = ("hope_id", "slug")

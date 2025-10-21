@@ -40,7 +40,15 @@ class AreaType(MPTTModel):
 
     class Meta:
         verbose_name_plural = "Area Types"
-        unique_together = ("country", "area_level", "name")
+        constraints = [
+            UniqueConstraint(
+                fields=["country", "area_level", "name"],
+                name="unique_area_type_per_country_level_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["country", "area_level"]),
+        ]
 
     def __str__(self) -> str:
         return self.name
