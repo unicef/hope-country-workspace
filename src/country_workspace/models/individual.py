@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Final
-
 import pghistory
+from typing import TYPE_CHECKING, Final
+from functools import cached_property
 from django.db import models
-from django.utils.functional import cached_property
 from django.utils.translation import gettext as _
 
 from .base import BaseModel, Validable
@@ -11,6 +10,8 @@ from .mixins import FlexFieldGroupingMixin
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
+    from .office import Office
+    from .program import Program
 
 
 INDEX_NAME_PREFIX: Final[str] = "%(app_label)s_%(class)s"
@@ -34,9 +35,9 @@ class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
         return self.program.individual_checker
 
     @cached_property
-    def program(self) -> "DataChecker":
+    def program(self) -> "Program":
         return self.batch.program
 
     @cached_property
-    def country_office(self) -> "DataChecker":
+    def country_office(self) -> "Office":
         return self.batch.program.country_office

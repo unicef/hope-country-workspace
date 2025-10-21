@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING, Any
-
+from collections.abc import Iterable
 from concurrency.fields import IntegerVersionField
 from django.db import models
 from django.urls import reverse
@@ -54,6 +54,9 @@ class Cachable:
         return ":".join(parts)
 
 
+CHECKSUM_FIELDS: set[str] = {"flex_fields", "flex_files", "removed"}
+
+
 class Validable(Cachable, models.Model):
     name = models.CharField(_("Name"), max_length=255)
     batch = models.ForeignKey("Batch", on_delete=models.CASCADE)
@@ -91,12 +94,16 @@ class Validable(Cachable, models.Model):
         force_insert: bool = False,
         force_update: bool = False,
         using: str | None = None,
-        update_fields: list[str] | None = None,
+        update_fields: Iterable[str] | None = None,
     ) -> None:
-        checksum = get_obj_checksum(self)
-        self.checksum = checksum
-        if update_fields is not None and "checksum" not in update_fields:
-            update_fields = [*update_fields, "checksum"]
+        if update_fields is None:
+            self.checksum = get_obj_checksum(self)
+        else:
+            uf = set(update_fields)
+            if uf & CHECKSUM_FIELDS:
+                self.checksum = get_obj_checksum(self)
+                uf.add("checksum")
+            update_fields = uf
         super().save(
             *args,
             force_insert=force_insert,
@@ -109,14 +116,21 @@ class Validable(Cachable, models.Model):
         raise NotImplementedError
 
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        update_fields = []
         errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
-        if errors:
-            self.errors = errors[1]
-        else:
-            self.errors = {}
-        self.flex_fields = self.checker.form.cleaned_data
+        cleaned = self.checker.form.cleaned_data
+        new_errors = next(iter((errors or {}).values()), {})
+
+        if new_errors != (self.errors or {}):
+            self.errors = new_errors
+            update_fields.append("errors")
+        if cleaned != (self.flex_fields or {}):
+            self.flex_fields = cleaned
+            update_fields.append("flex_fields")
+
         self.last_checked = timezone.now()
-        self.save(update_fields=["last_checked", "errors", "flex_fields"])
+        update_fields.append("last_checked")
+        self.save(update_fields=update_fields)
         return not bool(errors)
 
     def is_valid(self) -> bool | None:
