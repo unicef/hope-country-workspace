@@ -8,7 +8,7 @@ from django.http import HttpRequest
 from ...state import state
 from ..models import CountryHousehold, CountryIndividual, CountryProgram
 from ..sites import workspace
-from .filters import CWLinkedAutoCompleteFilter, HouseholdFilter, WIsValidFilter, MultiValueFilter
+from .filters import CWLinkedAutoCompleteFilter, HouseholdFilter, WIsValidFilter, MultiValueFilter, WJsonFieldFilter
 from .hh_ind import BeneficiaryBaseAdmin
 
 
@@ -25,6 +25,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         ("household", HouseholdFilter),
         WIsValidFilter,
         ("id", MultiValueFilter),
+        ("flex_fields", WJsonFieldFilter),
     )
     exclude = [
         "household",

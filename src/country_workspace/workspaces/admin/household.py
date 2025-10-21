@@ -9,7 +9,7 @@ from django.urls import reverse
 from ...state import state
 from ..models import CountryHousehold
 from ..sites import workspace
-from .filters import CWLinkedAutoCompleteFilter, WIsValidFilter, MultiValueFilter
+from .filters import CWLinkedAutoCompleteFilter, WIsValidFilter, MultiValueFilter, WJsonFieldFilter
 from .hh_ind import BeneficiaryBaseAdmin
 
 if TYPE_CHECKING:
@@ -28,6 +28,7 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         WIsValidFilter,
         ("id", MultiValueFilter),
+        ("flex_fields", WJsonFieldFilter),
     )
     object_history_template = "workspace/household/object_history.html"
 
