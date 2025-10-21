@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any
 
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from adminfilters.combo import ChoicesFieldComboFilter
+from adminfilters.json_filter import JsonFieldFilter
 from adminfilters.value import MultiValueTextFieldFilter
 from django.http import HttpRequest
 from django.urls import reverse
@@ -84,6 +85,10 @@ class HouseholdFilter(CWLinkedAutoCompleteFilter):
 
 class WIsValidFilter(IsValidFilter):
     template = "workspace/adminfilters/combobox.html"
+
+
+class WJsonFieldFilter(JsonFieldFilter):
+    template = "workspace/adminfilters/json_filter.html"
 
 
 class ChoiceFilter(ChoicesFieldComboFilter):
