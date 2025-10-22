@@ -23,3 +23,11 @@ class OfficeFactory(AutoRegisterModelFactory):
     class Meta:
         model = Office
         django_get_or_create = ("name",)
+
+    @factory.post_generation
+    def countries(self, create, extracted, **kwargs):
+        if not create:
+            return
+        if extracted is None:
+            return
+        self.countries.set(extracted)
