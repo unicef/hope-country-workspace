@@ -73,8 +73,8 @@ class AdminLevelChoice(ChildFieldMixin, forms.ChoiceField):
         parent_value = getattr(state.tenant, "pk", None)
         self.choices = self.get_choices_for_parent_value(parent_value=parent_value)
 
-    def validate_with_parent(self, parent_value: Any, value: Any) -> None:
-        if value in self.empty_values or not parent_value:
+    def validate_with_parent(self, parent_value: int | None, value: Any) -> None:
+        if value in self.empty_values or parent_value is None:
             return
         choices = self.get_choices_for_parent_value(parent_value, only_codes=True)
         if self.prepare_value(value) not in choices:
@@ -86,7 +86,7 @@ class AdminLevelChoice(ChildFieldMixin, forms.ChoiceField):
     def get_choices_for_parent_value(
         self, parent_value: int | None, only_codes: bool = False
     ) -> list[str] | list[tuple[str, str]]:
-        if not parent_value:
+        if parent_value is None:
             return [] if only_codes else [self.empty_choice]
 
         cache_key = self.cache_key_fmt.format(office_id=parent_value, level=self.level)

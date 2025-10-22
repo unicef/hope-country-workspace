@@ -11,13 +11,12 @@ faker = Faker()
 class CountryFactory(AutoRegisterModelFactory):
     class Meta:
         model = Country
-        django_get_or_create = (
-            "name",
-            "iso_code2",
-        )
+        django_get_or_create = ("name", "iso_code2")
 
-    name = "Afghanistan"
-    iso_code2 = "AF"
+    hope_id = factory.Sequence(lambda n: f"country-{n}")
+    name = factory.LazyFunction(lambda: faker.unique.country())
+    iso_code2 = factory.LazyFunction(lambda: faker.unique.country_code(representation="alpha-2"))
+    iso_code3 = factory.LazyFunction(lambda: faker.unique.country_code(representation="alpha-3"))
 
 
 class AreaTypeFactory(AutoRegisterModelFactory):
@@ -25,6 +24,7 @@ class AreaTypeFactory(AutoRegisterModelFactory):
         model = AreaType
         django_get_or_create = ("name", "country", "area_level")
 
+    hope_id = factory.Sequence(lambda n: f"area-type-{n}")
     name = factory.LazyFunction(faker.domain_word)
     country = factory.SubFactory(CountryFactory)
     area_level = fuzzy.FuzzyChoice([1, 2, 3, 4])
@@ -36,6 +36,7 @@ class AreaFactory(AutoRegisterModelFactory):
         model = Area
         django_get_or_create = ("p_code",)
 
+    hope_id = factory.Sequence(lambda n: f"area-{n}")
     name = factory.LazyFunction(faker.city)
     parent = None
     p_code = factory.LazyFunction(lambda: faker.bothify(text="AF@@@@@@"))
