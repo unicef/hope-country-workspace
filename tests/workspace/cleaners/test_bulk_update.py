@@ -7,7 +7,7 @@ from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.state import state
-from country_workspace.models import AsyncJob
+from country_workspace.models import AsyncJob, Country
 from country_workspace.workspaces.admin.cleaners.bulk_update import (
     import_household_updates,
     import_individual_updates,
@@ -75,7 +75,8 @@ def individuals(program):
 def countries():
     from testutils.factories import CountryFactory
 
-    return CountryFactory.create_batch(3)
+    CountryFactory.create_batch(3)
+    return Country.objects.only("iso_code2", "name").order_by("name")
 
 
 @pytest.fixture
@@ -323,17 +324,16 @@ def test_validate_individual_reference_ids():
     assert "Invalid data for alternate_collector field. Must be of integer type" in errors
 
 
-def test_write_country_choices_writes_correct_data(worksheet_mock, countries):
+def test_write_country_choices_with_correct_data(worksheet_mock: MagicMock, countries):
     start_row = 10
     result_row = _write_country_choices(worksheet_mock, start_row=start_row)
 
     worksheet_mock.write.assert_any_call(start_row, 0, "country")
     assert result_row == start_row + len(countries)
 
-    for country in countries:
-        worksheet_mock.write.assert_any_call(start_row, 1, country.iso_code2)
-        worksheet_mock.write.assert_any_call(start_row, 2, country.name)
-        start_row += 1
+    for index, country in enumerate(countries):
+        worksheet_mock.write.assert_any_call(start_row + index, 1, country.iso_code2)
+        worksheet_mock.write.assert_any_call(start_row + index, 2, country.name)
 
 
 def test_write_field_choices(worksheet_mock, countries):
