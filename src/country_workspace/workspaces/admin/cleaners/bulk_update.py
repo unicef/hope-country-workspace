@@ -238,7 +238,7 @@ def _extract_choices_from_field(field: FlexField) -> list[Any]:
 
 
 def _get_country_choices() -> list:
-    return list(Country.objects.only("iso_code2", "name").all())
+    return list(Country.objects.only("iso_code2", "name").order_by("name"))
 
 
 def _write_country_choices(worksheet: Worksheet, start_row: int) -> int:
