@@ -3,7 +3,7 @@ import phonenumbers
 from typing import Any
 
 
-def is_right_phone_number_format(phone_number: str | Any) -> bool:
+def is_right_phone_number_format(phone_number: str | Any) -> tuple[bool, str | None]:
     # from phonenumbers.parse method description:
     # This method will throw a NumberParseException if the number is not
     # considered to be a possible number.
@@ -19,6 +19,18 @@ def is_right_phone_number_format(phone_number: str | Any) -> bool:
     try:
         phonenumbers.parse(phone_number)
     except phonenumbers.NumberParseException:
-        return False
+        return False, None
 
-    return True
+    return True, phone_number
+
+
+def is_valid_phone_number(phone_number: Any) -> bool:  # pragma: no cover
+    if not isinstance(phone_number, str):
+        phone_number = str(phone_number)
+
+    try:
+        parsed_number = phonenumbers.parse(phone_number)
+    except phonenumbers.NumberParseException:
+        return False
+    else:
+        return phonenumbers.is_valid_number(parsed_number)
