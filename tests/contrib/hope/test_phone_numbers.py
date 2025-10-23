@@ -12,7 +12,6 @@ def test_valid_international_format_with_plus():
         "+442071234567",  # UK number
         "+33123456789",  # French number
         "+61412345678",  # Australian number
-        "+123456789012345",  # Long international number
     ]
 
     for number in valid_numbers:
@@ -31,7 +30,7 @@ def test_valid_international_format_with_00_prefix():
 
     for number in valid_numbers:
         result = field.clean(number)
-        assert result == number
+        assert result == f"+{number[2:]}"
 
 
 def test_empty_value():
@@ -54,30 +53,47 @@ def test_whitespace_handling():
     assert result == "+1 234 567 8901"
 
 
-def test_invalid_phone_numbers():
+def test_invalid_phone_number_format():
     field = PhoneNumberField()
 
-    invalid_numbers = [
-        "123",
-        "+",
-        "+99",
+    # Numbers that should fail format validation
+    invalid_format_numbers = [
+        "123",  # Too short, no country code
+        "+",  # Just plus sign
+        "+99",  # Too short after plus
+        "abc123",  # Contains letters
+        "123-abc-456",  # Contains letters
     ]
 
-    for number in invalid_numbers:
-        with pytest.raises(ValidationError, match="Invalid phone number"):
+    for number in invalid_format_numbers:
+        with pytest.raises(ValidationError, match="Invalid phone number format."):
+            field.clean(number)
+
+
+def test_invalid_phone_number_validity():
+    field = PhoneNumberField()
+
+    # Numbers that pass format but fail validity
+    invalid_validity_numbers = [
+        "+123456789012345",  # Too long international number
+    ]
+
+    for number in invalid_validity_numbers:
+        with pytest.raises(ValidationError, match="Invalid phone number."):
             field.clean(number)
 
 
 def test_edge_cases():
     field = PhoneNumberField()
 
-    with pytest.raises(ValidationError, match="Invalid phone number"):
+    # These should fail format validation
+    with pytest.raises(ValidationError, match="Invalid phone number format."):
         field.clean("1")
 
-    with pytest.raises(ValidationError, match="Invalid phone number"):
+    with pytest.raises(ValidationError, match="Invalid phone number format."):
         field.clean("0000000000")
 
-    with pytest.raises(ValidationError, match="Invalid phone number"):
+    with pytest.raises(ValidationError, match="Invalid phone number format."):
         field.clean("123abc456")
 
 
@@ -107,7 +123,4 @@ def test_00_prefix_conversion_logic():
     field = PhoneNumberField()
 
     result = field.clean("0012345678901")
-    assert result == "0012345678901"
-
-    result = field.clean("00 123 456 7890")
-    assert result == "00 123 456 7890"
+    assert result == "+12345678901"
