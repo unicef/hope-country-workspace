@@ -34,7 +34,7 @@ def program(office):
     return CountryProgramFactory(
         country_office=office,
         household_checker=DataCheckerFactory(fields=["consent"]),
-        individual_checker=DataCheckerFactory(fields=["gender"]),
+        individual_checker=DataCheckerFactory(fields=["gender", "national_passport_document_number"]),
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
     )
@@ -99,10 +99,10 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
         button_text = f"{program.beneficiary_group.member_label} Columns"
         res = res.click(button_text)
         form = res.forms["configure-columns"]
-        form["columns"] = ["name", "flex_fields__gender"]
+        form["columns"] = ["name", "flex_fields__gender", "flex_fields__national_passport_document_number"]
         form.submit().follow()
         program.refresh_from_db()
-        assert program.individual_columns == "name\nflex_fields__gender"
+        assert program.individual_columns == "name\nflex_fields__gender\nflex_fields__national_passport_document_number"
         hh_list = reverse("workspace:workspaces_countryindividual_changelist")
         res = app.get(hh_list)
         assert "gender" in res.text

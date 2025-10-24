@@ -51,9 +51,10 @@ class SelectColumnsForm(forms.Form):
         columns: list[tuple[str, str]] = []
 
         for fs in self.checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
+            prefix = fs.prefix or ""
             for field in fs.fieldset.get_fields():
-                field_name = field.name
-                field_label = f"{fs.prefix}{(field.attrs.get('label', field.name) or field.name)}"
+                field_name = f"{prefix}{field.name}"
+                field_label = f"{prefix}{(field.attrs.get('label', field.name) or field.name)}"
                 columns.append((f"flex_fields__{field_name}", field_label))
 
         self.fields["columns"].choices = self.model_core_fields + columns
@@ -229,25 +230,25 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     def _configure_columns(
         self,
-        request: HttpResponse,
+        request: HttpRequest,
         form_class: "type[SelectColumnsForm|SelectIndividualColumnsForm]",
         context: dict[str, Any],
     ) -> "HttpResponse":
         program: "CountryProgram" = context["original"]
         checker: DataChecker = context["checker"]
+        storage_field: str = context["storage_field"]
 
-        initials = getattr(program, context["storage_field"]).split("\n")
+        initials = getattr(program, storage_field).split("\n")
 
         if request.method == "POST":
             form = form_class(
                 request.POST,
                 checker=checker,
-                initial={"columns": initials},
             )
             if form.is_valid():
                 columns = form.cleaned_data["columns"]
-                setattr(program, context["storage_field"], "\n".join(columns))
-                program.save()
+                setattr(program, storage_field, "\n".join(columns))
+                program.save(update_fields=[storage_field])
                 return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
         else:
             form = form_class(checker=checker, initial={"columns": initials})
@@ -272,7 +273,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         permission=can_change_country_program,
         html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
     )
-    def individual_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
+    def individual_columns(self, request: HttpRequest, pk: str) -> "HttpResponse | HttpResponseRedirect":
         context = self.get_common_context(request, pk, title="Configure default Individual columns")
         program: "CountryProgram" = context["original"]
         context["checker"]: "DataChecker" = program.individual_checker
