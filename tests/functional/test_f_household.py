@@ -188,6 +188,7 @@ def _test_update_with_regex(
     browser.login_as_user()
     browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
     browser.select2_select("id_program", household.program.name)
+    browser.assert_url(f"{browser.live_server_url}/workspaces/countryprogram/{household.program.pk}/change/")
     browser.click_link(link)
 
     browser.click("#action-toggle")
@@ -208,6 +209,7 @@ def _test_update_with_regex(
     browser.fill("#id_subst", subst)
 
     browser.click('input[name="_preview"]')
+    browser.wait_for_element("//table//tr[1]/th", by=By.XPATH, timeout=10)
 
     if expected_error:
         error_message = browser.find_element(By.CLASS_NAME, "errorlist").text
