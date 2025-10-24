@@ -102,7 +102,10 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
         form["columns"] = ["name", "flex_fields__gender", "flex_fields__national_passport_document_number"]
         form.submit().follow()
         program.refresh_from_db()
-        assert program.individual_columns == "name\nflex_fields__gender\nflex_fields__national_passport_document_number"
-        hh_list = reverse("workspace:workspaces_countryindividual_changelist")
-        res = app.get(hh_list)
+        lines = program.individual_columns.splitlines()
+        assert len(lines) == 3
+        assert set(lines) == {"name", "flex_fields__gender", "flex_fields__national_passport_document_number"}
+        ind_list = reverse("workspace:workspaces_countryindividual_changelist")
+        res = app.get(ind_list)
         assert "gender" in res.text
+        assert "national_passport_document_number" in res.text

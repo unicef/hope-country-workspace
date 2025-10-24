@@ -29,8 +29,8 @@ def test_init_with_checker_creates_choices_with_prefix():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__field1", "prefix1_Field One"),
-        ("flex_fields__field2", "prefix2_Field Two"),
+        ("flex_fields__prefix1_field1", "prefix1_Field One"),
+        ("flex_fields__prefix2_field2", "prefix2_Field Two"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -58,7 +58,7 @@ def test_init_with_checker_field_without_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__field_without_label", "test_field_without_label"),
+        ("flex_fields__test_field_without_label", "test_field_without_label"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -79,7 +79,7 @@ def test_init_with_checker_field_with_empty_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__field_with_empty_label", "test_field_with_empty_label"),
+        ("flex_fields__test_field_with_empty_label", "test_field_with_empty_label"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -100,7 +100,7 @@ def test_init_with_checker_field_with_none_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__field_with_none_label", "test_field_with_none_label"),
+        ("flex_fields__test_field_with_none_label", "test_field_with_none_label"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -171,7 +171,7 @@ def test_init_with_checker_creates_choices_with_prefix_and_household_field():
         ("name", "name"),
         ("id", "id"),
         ("household", "household"),
-        ("flex_fields__individual_field", "ind_Individual Field"),
+        ("flex_fields__ind_individual_field", "ind_Individual Field"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -195,7 +195,7 @@ def test_init_with_checker_ordering_by_fieldset_id_and_prefix():
 
     flex_choices = [choice for choice in form.fields["columns"].choices if choice[0].startswith("flex_fields__")]
 
-    expected_field_names = ["field1", "field2"]
+    expected_field_names = ["aaafield1", "bbbfield2"]
     actual_field_names = [choice[0].replace("flex_fields__", "") for choice in flex_choices]
 
     assert actual_field_names == expected_field_names
