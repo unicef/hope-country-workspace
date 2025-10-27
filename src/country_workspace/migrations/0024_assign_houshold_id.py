@@ -13,6 +13,7 @@ def set_household_id_in_flex_fields(apps: Apps, _: BaseDatabaseSchemaEditor) -> 
             flex_fields=Func(
                 F("flex_fields"),
                 Value("{household_id}"),
+                # we need two casts here as integer cannot be cast to JSON directly
                 Cast(Cast(F("id"), CharField()), JSONField()),
                 function="jsonb_set",
             )
