@@ -92,33 +92,18 @@ class BeneficiaryReferenceModelChoiceField(ModelChoiceField):
                 return None
             case obj if hasattr(obj, "pk"):
                 return obj
-            case v if inst := self._get_by_individual_id(v):
-                return inst
             case int() as pk:
                 with suppress(self.queryset.model.DoesNotExist):
-                    return self.queryset.get(pk=pk)
+                    return self.queryset.only("id", "name").get(pk=pk)
             case str() as s if s.isdigit():
                 with suppress(self.queryset.model.DoesNotExist):
-                    return self.queryset.get(pk=int(s))
+                    return self.queryset.only("id", "name").get(pk=int(s))
         raise ValidationError(self.error_messages["invalid_choice"], code="invalid_choice")
 
     def clean(self, value: Any) -> int | None:
         self._sync_qs()
         inst = super().clean(value)
         return None if inst is None else inst.pk
-
-    def _get_by_individual_id(self, value: Any) -> "Individual | None":
-        self._sync_qs()
-        if value in self.empty_values:
-            return None
-        try:
-            return self.queryset.get(flex_fields__individual_id=str(value))
-        except self.queryset.model.DoesNotExist:
-            return None
-        except self.queryset.model.MultipleObjectsReturned:
-            raise ValidationError(
-                "Ambiguous individual_id within batch. Provide a unique identifier or PK.", code="invalid_choice"
-            )
 
     def _sync_qs(self) -> None:
         if isinstance(w := self.widget, BeneficiarySelect2Widget):

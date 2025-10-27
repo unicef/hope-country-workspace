@@ -314,18 +314,3 @@ def test_clean_failure(mocker: MockerFixture, batch: Batch, val: Any) -> None:
     field = BeneficiaryReferenceModelChoiceField()
     with pytest.raises(ValidationError):
         field.clean(val)
-
-
-@pytest.mark.django_db
-def test__get_by_individual_id_ambiguous_raises_validation_error(
-    mocker: MockerFixture, batch: Batch, ambiguous_individuals: tuple[Household, str]
-) -> None:
-    hh, dup_id = ambiguous_individuals
-    mocker.patch(f"{MOD}._resolve_hh_batch_pks", return_value=(hh.id, batch.id))
-
-    field = BeneficiaryReferenceModelChoiceField()
-    with pytest.raises(ValidationError) as exc:
-        field._get_by_individual_id(dup_id)
-
-    assert exc.value.code == "invalid_choice"
-    assert "Ambiguous" in str(exc.value)
