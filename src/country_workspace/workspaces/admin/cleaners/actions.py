@@ -168,7 +168,7 @@ def bulk_update_export(
     return render(request, "workspace/actions/bulk_update_export.html", ctx)
 
 
-@admin.action(description="Calculate record checksum")
+@admin.action(description="Calculate record checksum", permissions=["calculate_checksum"])
 def calculate_checksum(
     model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
