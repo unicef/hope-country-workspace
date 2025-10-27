@@ -187,6 +187,7 @@ def import_data(job: AsyncJob) -> ImportResult:
         imported_by=job.owner,
         source=Batch.BatchSource.KOBO,
     )
+    id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
     household_counter = 0
@@ -195,7 +196,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     for asset in client.assets:
         # TODO @Misuk: fetch specific asset
         if config["project_id"] == asset.uid:
-            import_result = import_asset(batch, asset, config, get_id_generator())
+            import_result = import_asset(batch, asset, config, id_generator)
             household_counter += import_result["households"]
             individual_counter += import_result["individuals"]
 
