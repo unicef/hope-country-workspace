@@ -21,6 +21,7 @@ from country_workspace.contrib.kobo.sync import (
     get_fullname_key,
     HOUSEHOLD_FIELDS_TO_UPPERCASE,
     set_roles_and_relationships,
+    get_id_generator,
 )
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 
@@ -280,3 +281,8 @@ def test_set_roles_and_relationships(
     set_roles_and_relationships(household_mock, [individual_mock])
     assert individual_key in household_mock.flex_fields
     assert household_mock.flex_fields[individual_key] == individual_mock.id
+
+
+def test_get_id_generator() -> None:
+    id_generator = get_id_generator()
+    assert [id_generator() for _ in range(5)] == [1, 2, 3, 4, 5]
