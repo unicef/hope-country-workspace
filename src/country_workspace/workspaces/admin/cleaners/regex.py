@@ -54,7 +54,7 @@ def regex_update_impl(
     with transaction.atomic():
         for record in records:
             old_value = record.flex_fields.get(field_name, "")
-            new_value = config["regex"].sub(config["subst"], old_value, 1)
+            new_value = config["regex"].sub(config["subst"], str(old_value), 1)
             record.flex_fields[field_name] = new_value
             if save:
                 record.save()
