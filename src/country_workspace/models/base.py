@@ -76,9 +76,10 @@ class Validable(Cachable, models.Model):
         permissions = (
             ("validate_beneficiary", "Can validate Beneficiary Records"),
             ("mass_update_beneficiary", "Can Mass update Beneficiary Records"),
-            ("regex_update_beneficiary", "Can Mass update Beneficiary Records"),
+            ("regex_update_beneficiary", "Can RegEx update Beneficiary Records"),
             ("export_beneficiary", "Can Export Beneficiary Records"),
             ("push_beneficiary_to_hope", "Can Push Beneficiary Records To HOPE core"),
+            ("calculate_checksum", "Can RegEx update Beneficiary Records"),
         )
 
     def __str__(self) -> str:
