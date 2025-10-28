@@ -1,4 +1,3 @@
-from functools import cache
 from typing import Any, Final
 from urllib.parse import urlparse
 
@@ -37,11 +36,6 @@ def _extract_related_id(url: str) -> int | None:
         return None
 
 
-@cache
-def get_aurora_client() -> AuroraClient:
-    return AuroraClient()
-
-
 def sync_projects(delta_sync: bool = False) -> Stats:
     """Fetch and process Project records from the Aurora system."""
     return sync_entity(
@@ -52,7 +46,7 @@ def sync_projects(delta_sync: bool = False) -> Stats:
             prepare_defaults=lambda r: {"name": r["name"]},
             delta_sync=delta_sync,
         ),
-        get_aurora_client(),
+        AuroraClient(),
     )
 
 
@@ -80,5 +74,5 @@ def sync_registrations(delta_sync: bool = False) -> Stats:
             prepare_defaults=_prepare_defaults,
             delta_sync=delta_sync,
         ),
-        get_aurora_client(),
+        AuroraClient(),
     )

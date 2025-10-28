@@ -20,16 +20,19 @@ class AuroraClient:
     Handles pagination automatically for large datasets.
     """
 
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(self, token: str | None = None, api_url: str | None = None) -> None:
         """
         Initialize the AuroraClient.
 
         Args:
             token (str | None): An optional API token for authentication. If not provided,
                 the token is retrieved from the Constance configuration (config.AURORA_API_TOKEN).
+            api_url (str | None): An optional API url. If not provided, the url will be retrieved
+                from the Constance configuration (config.AURORA_API_URL).
 
         """
         self.token = token or config.AURORA_API_TOKEN
+        self.api_url = api_url or config.AURORA_API_URL
         self.session = requests.Session()
         self.session.headers.update({"Authorization": f"Token {self.token}"})
         for scheme in ("http://", "https://"):
@@ -46,7 +49,7 @@ class AuroraClient:
             str: The full URL, ensuring it ends with a trailing slash.
 
         """
-        url = urljoin(config.AURORA_API_URL, path)
+        url = urljoin(self.api_url, path)
         if not url.endswith("/"):
             url += "/"
         return url
