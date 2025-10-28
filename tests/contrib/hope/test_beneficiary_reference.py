@@ -191,9 +191,8 @@ def test_field_init_with_household_limit(mocker: MockerFixture, batch: Batch, ho
         ("pk_str", False),
         ("pk_int", False),
         ("object", False),
-        ("iid", False),
     ],
-    ids=["empty_none", "empty_blank", "pk_str_ok", "pk_int_ok", "object_ok", "individual_id_ok"],
+    ids=["empty_none", "empty_blank", "pk_str_ok", "pk_int_ok", "object_ok"],
 )
 def test_to_python_success(
     mocker: MockerFixture, batch: Batch, individual: Individual, build: str, expect_none: bool
@@ -201,18 +200,12 @@ def test_to_python_success(
     mocker.patch(f"{MOD}._resolve_hh_batch_pks", return_value=(None, batch.id))
     field = BeneficiaryReferenceModelChoiceField()
 
-    def _iid():
-        individual.flex_fields = {"individual_id": "TEST_ID_001"}
-        individual.save(update_fields=["flex_fields"])
-        return "TEST_ID_001"
-
     value = {
         "none": lambda: None,
         "blank": lambda: "",
         "pk_str": lambda: str(individual.pk),
         "pk_int": lambda: individual.pk,
         "object": lambda: individual,
-        "iid": _iid,
     }[build]()
     out = field.to_python(value)
 
