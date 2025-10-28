@@ -14,7 +14,6 @@ from country_workspace.signals import (
     _get_filtering_params,
     _get_qs_by_dc,
     _process_datachecker_change,
-    connect_data_checker_related_signals,
 )
 from tests.extras.testutils.factories import ProgramFactory, BatchFactory, HouseholdFactory, IndividualFactory
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
@@ -166,7 +165,6 @@ def test_process_datachecker_change_ignores_unknown_checker_name():
 
 
 def test_fieldset_update_triggers_processing(hh_datachecker, monkeypatch):
-    connect_data_checker_related_signals()
     fs = Fieldset.objects.create(name="FS")
     DataCheckerFieldset.objects.create(checker=hh_datachecker, fieldset=fs)
 
@@ -177,7 +175,6 @@ def test_fieldset_update_triggers_processing(hh_datachecker, monkeypatch):
 
 
 def test_dcfieldset_update_triggers_processing(ind_datachecker):
-    connect_data_checker_related_signals()
     fs = Fieldset.objects.create(name="FS2")
     rel = DataCheckerFieldset.objects.create(checker=ind_datachecker, fieldset=fs)
 
@@ -188,7 +185,6 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker):
 
 
 def test_dcfieldset_delete_triggers_processing(people_datachecker):
-    connect_data_checker_related_signals()
     fs = Fieldset.objects.create(name="FS3")
     rel = DataCheckerFieldset.objects.create(checker=people_datachecker, fieldset=fs)
 

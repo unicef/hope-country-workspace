@@ -40,25 +40,26 @@ def _process_datachecker_change(dc: DataChecker) -> None:
     return
 
 
-def connect_data_checker_related_signals() -> None:
-    @receiver([post_save], sender=Fieldset)
-    def on_fieldset_change(sender: Fieldset, instance: Fieldset, **kwargs: Any) -> None:
-        if kwargs.get("created", False):
-            return
+@receiver([post_save], sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
+def on_fieldset_change(sender: Fieldset, instance: Fieldset, **kwargs: Any) -> None:
+    if kwargs.get("created", False):
+        return
 
-        dcs = instance.datachecker_set.all().distinct()
-        for dc in dcs:
-            _process_datachecker_change(dc=dc)
-
-    @receiver([post_save], sender=DataCheckerFieldset)
-    def on_through_model_change(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
-        if kwargs.get("created", False):
-            return
-
-        dc = instance.checker
+    dcs = instance.datachecker_set.all().distinct()
+    for dc in dcs:
         _process_datachecker_change(dc=dc)
 
-    @receiver([post_delete], sender=DataCheckerFieldset)
-    def on_through_model_deletion(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
-        # Fieldset deletion has cascading effect on DataCheckerFieldset
-        _process_datachecker_change(instance.checker)
+
+@receiver([post_save], sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
+def on_through_model_change(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
+    if kwargs.get("created", False):
+        return
+
+    dc = instance.checker
+    _process_datachecker_change(dc=dc)
+
+
+@receiver([post_delete], sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_delete")
+def on_through_model_deletion(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
+    # Fieldset deletion has cascading effect on DataCheckerFieldset
+    _process_datachecker_change(instance.checker)

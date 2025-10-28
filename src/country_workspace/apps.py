@@ -21,6 +21,4 @@ class HCWConfig(AppConfig):
         admin_extra_buttons.api.confirm_action = c.confirm_action
         django_celery_boost.admin.confirm_action = c.confirm_action
 
-        from .signals import connect_data_checker_related_signals
-
-        connect_data_checker_related_signals()
+        import country_workspace.signals
