@@ -99,13 +99,16 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
     return individuals
 
 
-def create_household(batch: Batch, submission: Submission, config: Config) -> Household:
+def create_household(
+    batch: Batch, submission: Submission, config: Config, id_generator: Callable[[], int]
+) -> Household:
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
         partial(batch.program.apply_mapping_importer, Household),
     )
+    household_fields["household_id"] = id_generator()
     return cast(
         "Household",
         batch.program.households.create(
@@ -145,7 +148,7 @@ def set_roles_and_relationships(household: Household, individuals: list[Individu
     household.save(update_fields=["flex_fields"])
 
 
-def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
+def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
     household_counter = 0
     individual_counter = 0
 
@@ -153,13 +156,25 @@ def import_asset(batch: Batch, asset: Asset, config: Config) -> ImportResult:
     for submission in asset.submissions:
         if submission.id in submission_ids:
             continue
-        household = create_household(batch, submission, config)
+        household = create_household(batch, submission, config, id_generator)
         household_counter += 1
         individuals = create_individuals(batch, household, submission, config)
         individual_counter += len(individuals)
         set_roles_and_relationships(household, individuals)
 
     return ImportResult(households=household_counter, individuals=individual_counter)
+
+
+def get_id_generator() -> Callable[[], int]:
+    last_id = 0
+
+    def id_generator() -> int:
+        nonlocal last_id
+
+        last_id += 1
+        return last_id
+
+    return id_generator
 
 
 def import_data(job: AsyncJob) -> ImportResult:
@@ -172,6 +187,7 @@ def import_data(job: AsyncJob) -> ImportResult:
         imported_by=job.owner,
         source=Batch.BatchSource.KOBO,
     )
+    id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
     household_counter = 0
@@ -180,7 +196,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     for asset in client.assets:
         # TODO @Misuk: fetch specific asset
         if config["project_id"] == asset.uid:
-            import_result = import_asset(batch, asset, config)
+            import_result = import_asset(batch, asset, config, id_generator)
             household_counter += import_result["households"]
             individual_counter += import_result["individuals"]
 

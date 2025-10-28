@@ -21,6 +21,7 @@ from country_workspace.contrib.kobo.sync import (
     get_fullname_key,
     HOUSEHOLD_FIELDS_TO_UPPERCASE,
     set_roles_and_relationships,
+    get_id_generator,
 )
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 
@@ -152,11 +153,13 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
+    id_generator_mock = mocker.Mock(name="id_generator")
 
     household = create_household(
         batch_mock := Mock(name="batch"),
         submission_mock := Mock(name="submission"),
         config,
+        id_generator_mock,
     )
 
     assert household == batch_mock.program.households.create.return_value
@@ -168,6 +171,8 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
         partial_mock.return_value,
     )
+    id_generator_mock.assert_called_once()
+    preprocess_mock.return_value.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
 
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock, flex_fields=preprocess_mock.return_value
@@ -177,6 +182,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
     kobo_submission_class.objects.filter.return_value.values_list.return_value = [(old_submission_id := 42)]
+    id_generator_mock = mocker.Mock(name="id_generator")
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     household_mock = create_household_mock.return_value
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
@@ -193,12 +199,13 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         batch_mock := Mock(name="batch"),
         asset_mock,
         config,
+        id_generator_mock,
     )
 
     assert result == ImportResult(households=1, individuals=len(individual_mocks))
     kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
     kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
-    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config)
+    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config, id_generator_mock)
     create_individuals_mock.assert_called_once_with(batch_mock, household_mock, new_submission_mock, config)
     set_roles_and_relationships_mock.assert_called_once_with(household_mock, individual_mocks)
 
@@ -216,6 +223,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     import_asset_mock.return_value = ImportResult(
         households=(household_counter := 1), individuals=(individual_counter := 2)
     )
+    get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
 
     result = import_data(job_mock)
 
@@ -228,7 +236,8 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         source=batch_class_mock.BatchSource.KOBO,
     )
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
-    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config)
+    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config, get_id_generator_mock.return_value)
+    get_id_generator_mock.assert_called_once()
 
 
 def test_get_fullname_key_key_exists() -> None:
@@ -272,3 +281,8 @@ def test_set_roles_and_relationships(
     set_roles_and_relationships(household_mock, [individual_mock])
     assert individual_key in household_mock.flex_fields
     assert household_mock.flex_fields[individual_key] == individual_mock.id
+
+
+def test_get_id_generator() -> None:
+    id_generator = get_id_generator()
+    assert [id_generator() for _ in range(5)] == [1, 2, 3, 4, 5]
