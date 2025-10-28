@@ -6,7 +6,7 @@ from django.db.models import Model, QuerySet
 from django.http import HttpRequest
 
 from ...state import state
-from ..models import CountryHousehold, CountryIndividual, CountryProgram
+from ..models import CountryHousehold, CountryIndividual
 from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, HouseholdFilter, WIsValidFilter, MultiValueFilter, WJsonFieldFilter
 from .hh_ind import BeneficiaryBaseAdmin
@@ -14,10 +14,6 @@ from .hh_ind import BeneficiaryBaseAdmin
 
 @register(CountryIndividual, site=workspace)
 class CountryIndividualAdmin(BeneficiaryBaseAdmin):
-    list_display = [
-        "name",
-        "household",
-    ]
     search_fields = ("name", "id")
 
     list_filter = (
@@ -50,16 +46,6 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
-
-    def get_list_display(self, request: HttpRequest) -> list[str]:
-        program: CountryProgram | None
-        if program := self.get_selected_program(request):
-            fields = [c.strip() for c in program.individual_columns.split("\n")]
-        else:
-            fields = self.list_display
-        return fields + [
-            "is_valid",
-        ]
 
     def get_selected_household(
         self,
