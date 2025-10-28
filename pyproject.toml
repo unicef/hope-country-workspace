@@ -97,17 +97,19 @@ dev = [
   "ruff",
   "seleniumbase",
   "tox",
-  "types-python-dateutil",
-  "types-requests",
   "vcrpy",
 ]
-
 docs = [
   "mkdocs",
   "mkdocs-awesome-pages-plugin",
   "mkdocs-gen-files",
   "mkdocs-material",
   "mkdocstrings-python",
+]
+
+type-check = [
+  "types-python-dateutil",
+  "types-requests",
 ]
 
 [tool.hatch.build.targets.sdist]
