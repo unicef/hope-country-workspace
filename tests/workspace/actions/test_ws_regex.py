@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -5,7 +6,7 @@ from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl
+from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl, update_json
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -14,6 +15,11 @@ if TYPE_CHECKING:
     from country_workspace.workspaces.models import CountryHousehold
 
 pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
+
+
+FIELD = "address"
+NEW_VALUE = "__NEW VALUE__"
+ANYTHING = ".*"
 
 
 @pytest.fixture
@@ -57,13 +63,25 @@ def app(
     return django_app
 
 
+def test_update_json_does_not_change_non_string_values() -> None:
+    json = {FIELD: 42}
+    original_value = 42
+
+    result = update_json(json, FIELD, re.compile(ANYTHING), NEW_VALUE)
+
+    assert result.original == original_value
+    assert result.updated == original_value
+
+
 def test_regex_update_impl(household):
     from country_workspace.models import Household
 
-    regex_update_impl(Household.objects.all(), {"field": "full_name", "regex": ".*", "subst": "__NEW VALUE__"})
+    assert household.flex_fields.get(FIELD) != NEW_VALUE
+
+    regex_update_impl(Household.objects.all(), {"field": FIELD, "regex": ANYTHING, "subst": NEW_VALUE})
 
     household.refresh_from_db()
-    assert household.flex_fields["full_name"] == "__NEW VALUE__"
+    assert household.flex_fields[FIELD] == NEW_VALUE
 
 
 def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
@@ -75,13 +93,13 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
         form.set("_selected_action", True)
         res = form.submit()
         form = res.forms["regex-update-form"]
-        form["field"].select(text="Full Name")
-        form["regex"] = ".*"
-        form["subst"] = "__NEW VALUE__"
+        form["field"].select(text=FIELD)
+        form["regex"] = ANYTHING
+        form["subst"] = NEW_VALUE
         res = form.submit("_preview")
 
         form = res.forms["regex-update-form"]
         form.submit("_apply")
 
         household.refresh_from_db()
-        assert household.flex_fields["full_name"] == "__NEW VALUE__"
+        assert household.flex_fields[FIELD] == NEW_VALUE
