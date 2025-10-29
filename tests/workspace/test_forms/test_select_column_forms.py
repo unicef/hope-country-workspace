@@ -29,8 +29,8 @@ def test_init_with_checker_creates_choices_with_prefix():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__prefix1_field1", "prefix1_Field One"),
-        ("flex_fields__prefix2_field2", "prefix2_Field Two"),
+        ("flex_fields__prefix1_field1", "prefix1_Field One (prefix1_field1)"),
+        ("flex_fields__prefix2_field2", "prefix2_Field Two (prefix2_field2)"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -58,7 +58,7 @@ def test_init_with_checker_field_without_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__test_field_without_label", "test_field_without_label"),
+        ("flex_fields__test_field_without_label", "test_field_without_label (test_field_without_label)"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -79,7 +79,7 @@ def test_init_with_checker_field_with_empty_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__test_field_with_empty_label", "test_field_with_empty_label"),
+        ("flex_fields__test_field_with_empty_label", "test_field_with_empty_label (test_field_with_empty_label)"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -100,7 +100,7 @@ def test_init_with_checker_field_with_none_label_uses_field_name():
     expected_choices = [
         ("name", "name"),
         ("id", "id"),
-        ("flex_fields__test_field_with_none_label", "test_field_with_none_label"),
+        ("flex_fields__test_field_with_none_label", "test_field_with_none_label (test_field_with_none_label)"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
@@ -171,7 +171,7 @@ def test_init_with_checker_creates_choices_with_prefix_and_household_field():
         ("name", "name"),
         ("id", "id"),
         ("household", "household"),
-        ("flex_fields__ind_individual_field", "ind_Individual Field"),
+        ("flex_fields__ind_individual_field", "ind_Individual Field (ind_individual_field)"),
     ]
 
     assert form.fields["columns"].choices == expected_choices
