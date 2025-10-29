@@ -9,7 +9,6 @@ from country_workspace.contrib.hope.constants import (
     INDIVIDUAL_CHECKER_NAME,
     PEOPLE_CHECKER_NAME,
 )
-from country_workspace.models import Household
 from country_workspace.signals import (
     _get_filtering_params,
     _get_qs_by_dc,
@@ -81,29 +80,28 @@ def test_filtering_params(datacheckers_list):
         assert params == {
             f"batch__program__{'household' if dc.name == HOUSEHOLD_CHECKER_NAME else 'individual'}_checker": dc,
             "removed": False,
-            "errors": {},
         }
 
 
 def test_hh_queryset_evaluation_by_dc(hh_datachecker, households):
     qs = _get_qs_by_dc(hh_datachecker)
     assert qs.model == HouseholdFactory._meta.model
-    assert qs.count() == 10
-    assert Household.objects.count() == 30
+    assert qs.count() == 20
+    assert HouseholdFactory._meta.model.objects.count() == 30
 
 
 def test_individual_queryset_evaluation_by_dc(ind_datachecker, individuals):
     qs = _get_qs_by_dc(ind_datachecker)
     assert qs.model == IndividualFactory._meta.model
     assert IndividualFactory._meta.model.objects.count() == 30
-    assert qs.count() == 10
+    assert qs.count() == 20
 
 
 def test_people_queryset_evaluation_by_dc(people_datachecker, people_individuals):
     qs = _get_qs_by_dc(people_datachecker)
     assert qs.model == IndividualFactory._meta.model
     assert IndividualFactory._meta.model.objects.count() == 30
-    assert qs.count() == 10
+    assert qs.count() == 20
 
 
 def test_invalid_dc_returns_none():

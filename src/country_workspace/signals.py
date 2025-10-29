@@ -16,7 +16,6 @@ def _get_filtering_params(dc: DataChecker, checker: str) -> dict[str, Any]:
     return {
         f"batch__program__{checker}_checker": dc,
         "removed": False,  # ignore records already pushed to hope
-        "errors": {},  # ignore already invalid records
     }
 
 
@@ -34,8 +33,14 @@ def _process_datachecker_change(dc: DataChecker) -> None:
         return
 
     batch_size = 500
-    for _start in range(0, qs.count(), batch_size):
-        qs.update(errors={"data_checker": "Invalidated due to DataChecker change."}, last_checked=None)
+    pks = list(qs.values_list("pk", flat=True))
+
+    for start in range(0, len(pks), batch_size):
+        batch_pks = pks[start : start + batch_size]
+        qs.filter(pk__in=batch_pks).update(
+            errors={"data_checker": "Invalidated due to DataChecker change."},
+            last_checked=None,
+        )
 
     return
 
