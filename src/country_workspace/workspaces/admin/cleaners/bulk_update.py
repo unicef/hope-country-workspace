@@ -275,7 +275,9 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                         validate_individual_reference_ids(row_data, line_number, total["errors"])
 
                         entity.flex_fields.update(**row_data)
-                        entity.save(update_fields=["flex_fields"])
+                        entity.errors = {}
+                        entity.last_checked = None
+                        entity.save(update_fields=["flex_fields", "errors", "last_checked", "last_modified"])
                         total["processed"] += 1
 
                 except (KeyError, ValueError):
