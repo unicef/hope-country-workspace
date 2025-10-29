@@ -15,12 +15,9 @@ from .hh_ind import BeneficiaryBaseAdmin
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
-    from ..models import CountryProgram
-
 
 @register(CountryHousehold, site=workspace)
 class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
-    list_display = ["name", "batch"]
     search_fields = ("name", "id")
     ordering = ("name",)
     list_per_page = 20
@@ -35,16 +32,6 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     @property
     def title_plural(self) -> str:
         return super().title_group_plural or ""
-
-    def get_list_display(self, request: HttpRequest) -> list[str]:
-        program: "CountryProgram | None"
-        if program := self.get_selected_program(request):
-            fields = [c.strip() for c in program.household_columns.split("\n")]
-        else:
-            fields = self.list_display
-        return fields + [
-            "is_valid",
-        ]
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryHousehold]":
         return (

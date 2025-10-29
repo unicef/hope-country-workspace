@@ -3,7 +3,7 @@
     {% for field in form %}
         {% field_error field as err %}
         <tr class="{% if err %}error{% endif %}">
-            <th><a id="{{ field.label }}" ></a>{{ field.label }}</th>
+            <th><a id="{{ field.label }}" ></a>{{ field.label }} ({{ field.name }})</th>
             <th  class="min-w-full">{{ field }}
                 <br>
                 <span class="helptext">{{ field.field.flex_field.attrs.help_text }}</span>

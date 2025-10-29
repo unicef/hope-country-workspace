@@ -49,14 +49,10 @@ class SelectColumnsForm(forms.Form):
         self.checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
         columns: list[tuple[str, str]] = []
-
-        for fs in self.checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
-            prefix = fs.prefix or ""
-            for field in fs.fieldset.get_fields():
-                field_name = f"{prefix}{field.name}"
-                field_label = f"{prefix}{(field.attrs.get('label', field.name) or field.name)}"
-                columns.append((f"flex_fields__{field_name}", field_label))
-
+        checker_form_class = self.checker.get_form_class()
+        for name, field in checker_form_class.base_fields.items():
+            label = getattr(field, "label", "") or name
+            columns.append((f"flex_fields__{name}", f"{label} ({name})"))
         self.fields["columns"].choices = self.model_core_fields + columns
 
 

@@ -189,6 +189,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
 
     is_valid.boolean = True
 
+    def get_list_display(self, request: HttpRequest) -> list[str]:
+        if program := self.get_selected_program(request):
+            cols = program.get_columns_for(self.model)
+        else:
+            cols = list(self.list_display)
+        return cols + ["is_valid"]
+
     def get_changelist(self, request: HttpRequest, **kwargs: Any) -> type:
         from ..changelist import FlexFieldsChangeList
 

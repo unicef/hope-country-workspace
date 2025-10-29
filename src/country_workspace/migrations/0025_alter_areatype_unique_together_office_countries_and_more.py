@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0023_alter_individual_options_and_more"),
+        ("country_workspace", "0024_assign_houshold_id"),
     ]
 
     operations = [

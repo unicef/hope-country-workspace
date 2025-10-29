@@ -3,7 +3,7 @@ import pytest
 from country_workspace.models import Program
 from testutils.factories import ProgramFactory, IndividualFactory, HouseholdFactory
 
-from country_workspace.models import DataSerializer
+from country_workspace.models import DataSerializer, Individual, Household
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
 
 
@@ -136,3 +136,30 @@ def test_program_serializer_for_households_with_empty_serializer(program_without
 
     result = program_without_serializer.serialize(households_data)
     assert result == households_data
+
+
+@pytest.mark.parametrize(
+    ("attr_name", "model_cls", "value", "expected"),
+    [
+        (
+            "household_columns",
+            Household,
+            "name\nid\nflex_fields__consent\n\n",
+            ["name", "id", "flex_fields__consent"],
+        ),
+        (
+            "individual_columns",
+            Individual,
+            "name\nhousehold\nflex_fields__gender",
+            ["name", "household", "flex_fields__gender"],
+        ),
+    ],
+)
+def test_program_get_columns_for(program: Program, attr_name: str, model_cls: type, value: str, expected: list) -> None:
+    setattr(program, attr_name, value)
+    assert program.get_columns_for(model_cls) == expected
+
+
+def test_program_get_columns_for_unsupported_model_raises(program: Program) -> None:
+    with pytest.raises(TypeError):
+        program.get_columns_for(Program)

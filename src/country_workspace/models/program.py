@@ -126,6 +126,18 @@ class Program(BaseModel):
             return self.individual_checker
         raise ValueError(m)
 
+    def get_columns_for(self, model_cls: type[Validable]) -> list[str]:
+        from country_workspace.models import Household, Individual
+
+        if issubclass(model_cls, Household):
+            raw = self.household_columns
+        elif issubclass(model_cls, Individual):
+            raw = self.individual_columns
+        else:
+            raise TypeError(f"Unsupported model {model_cls!r}")
+
+        return [c.strip() for c in raw.splitlines() if c.strip()]
+
     def serialize(self, data: list[dict]) -> Iterable:
         if self.serializer:
             return self.serializer.serialize(data)
