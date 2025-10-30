@@ -2,6 +2,7 @@ nav:
   - Home: index.md
   - contributing.md
   - run
+  - config
   - settings.md
   - dev_helpers.md
   - flows
