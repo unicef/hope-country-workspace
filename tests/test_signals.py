@@ -3,15 +3,18 @@ from unittest.mock import patch
 import pytest
 from hope_flex_fields.models import DataChecker
 from hope_flex_fields.models import Fieldset, DataCheckerFieldset
+from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.constants import (
     HOUSEHOLD_CHECKER_NAME,
     INDIVIDUAL_CHECKER_NAME,
     PEOPLE_CHECKER_NAME,
 )
+from country_workspace.contrib.hope.validators import FullHouseholdValidator
 from country_workspace.signals import (
     _process_datachecker_change,
 )
+from country_workspace.validators.registry import NoopValidator
 from tests.extras.testutils.factories import (
     ProgramFactory,
     BatchFactory,
@@ -20,6 +23,7 @@ from tests.extras.testutils.factories import (
     FieldsetFactory,
 )
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
+from tests.extras.testutils.factories.smart_fields import DataCheckerFactory
 
 
 @pytest.fixture
@@ -35,11 +39,6 @@ def ind_datachecker():
 @pytest.fixture
 def people_datachecker():
     return DataChecker.objects.create(name=PEOPLE_CHECKER_NAME)
-
-
-@pytest.fixture
-def datacheckers_list(hh_datachecker, ind_datachecker, people_datachecker):
-    return [hh_datachecker, ind_datachecker, people_datachecker]
 
 
 @pytest.fixture
@@ -62,20 +61,6 @@ def individuals(program):
     IndividualFactory.create_batch(10, household=hh, errors={}, removed=False)
     IndividualFactory.create_batch(10, household=hh, removed=True)
     IndividualFactory.create_batch(10, household=hh, errors={"some_error": "details"})
-
-
-@pytest.fixture
-def people_program(people_datachecker):
-    bg = BeneficiaryGroupFactory(master_detail=False)
-    return ProgramFactory.create(individual_checker=people_datachecker, beneficiary_group=bg)
-
-
-@pytest.fixture
-def people_individuals(people_program):
-    batch = BatchFactory.create(program=people_program)
-    IndividualFactory.create_batch(10, household=None, batch=batch, errors={}, removed=False)
-    IndividualFactory.create_batch(10, household=None, batch=batch, removed=True)
-    IndividualFactory.create_batch(10, household=None, batch=batch, errors={"some_error": "details"})
 
 
 def test_process_datachecker_change_updates_households(hh_datachecker):
@@ -158,3 +143,76 @@ def test_dcfieldset_delete_triggers_processing(people_datachecker):
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         rel.delete()
         mocked.assert_called_once_with(dc=people_datachecker)
+
+
+def _test_invalidation_on_checker_change(program, factory, checker_field):
+    new_checker = DataCheckerFactory()
+    setattr(program, checker_field, new_checker)
+    program.save()
+
+    entities_invalidated = 0
+    for entity in factory._meta.model.objects.all():
+        entity.refresh_from_db()
+        if entity.errors:
+            assert entity.errors == {"data_checker": "Invalidated due to DataChecker change."}
+            assert entity.last_checked is None
+            entities_invalidated += 1
+
+    assert entities_invalidated == 20
+
+
+def test_invalidation_on_hh_checker_change(program, households):
+    _test_invalidation_on_checker_change(program, HouseholdFactory, checker_field="household_checker")
+
+
+def test_invalidation_on_individual_checker_change(program, individuals):
+    _test_invalidation_on_checker_change(program, IndividualFactory, checker_field="individual_checker")
+
+
+def test_invalidation_on_beneficiary_validator_change(hh_datachecker, ind_datachecker):
+    program = ProgramFactory.create(
+        household_checker=hh_datachecker, individual_checker=ind_datachecker, beneficiary_validator=fqn(NoopValidator)
+    )
+    batch = BatchFactory.create(program=program)
+    valid_hhs = HouseholdFactory.create_batch(3, batch=batch, individuals=[])
+    HouseholdFactory.create_batch(4, batch=batch, individuals=[], errors={"x": 1}, removed=False)
+    HouseholdFactory.create_batch(5, batch=batch, individuals=[], removed=True)
+
+    for hh in valid_hhs:
+        IndividualFactory.create_batch(3, batch=batch, household=hh, errors={}, removed=False)
+        IndividualFactory.create_batch(4, batch=batch, household=hh, errors={"x": 1}, removed=False)
+        IndividualFactory.create_batch(5, batch=batch, household=hh, errors={}, removed=True)
+
+    program.beneficiary_validator = fqn(FullHouseholdValidator)
+    program.save()
+
+    hh_invalidated_count = 0
+    ind_invalidated_count = 0
+    for hh in HouseholdFactory._meta.model.objects.all():
+        hh.refresh_from_db()
+        if hh.errors:
+            assert hh.errors == {"data_checker": "Invalidated due to DataChecker change."}
+            assert hh.last_checked is None
+            hh_invalidated_count += 1
+
+    for ind in IndividualFactory._meta.model.objects.all():
+        ind.refresh_from_db()
+        if ind.errors:
+            assert ind.errors == {"data_checker": "Invalidated due to DataChecker change."}
+            assert ind.last_checked is None
+            ind_invalidated_count += 1
+
+    assert hh_invalidated_count == 7
+    assert ind_invalidated_count == 7 * 3  # 7 invalid across 3 valid households
+
+
+def test_no_invalidation_on_other_field_change(program):
+    batch = BatchFactory.create(program=program)
+    HouseholdFactory.create_batch(10, batch=batch, individuals=[], errors={"x": "1"}, removed=False)
+
+    program.name = "New Program Name"
+    program.save()
+
+    for hh in HouseholdFactory._meta.model.objects.all():
+        hh.refresh_from_db()
+        assert hh.errors == {"x": "1"}
