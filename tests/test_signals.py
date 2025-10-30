@@ -10,11 +10,15 @@ from country_workspace.contrib.hope.constants import (
     PEOPLE_CHECKER_NAME,
 )
 from country_workspace.signals import (
-    _get_filtering_params,
-    _get_qs_by_dc,
     _process_datachecker_change,
 )
-from tests.extras.testutils.factories import ProgramFactory, BatchFactory, HouseholdFactory, IndividualFactory
+from tests.extras.testutils.factories import (
+    ProgramFactory,
+    BatchFactory,
+    HouseholdFactory,
+    IndividualFactory,
+    FieldsetFactory,
+)
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
 
 
@@ -74,42 +78,6 @@ def people_individuals(people_program):
     IndividualFactory.create_batch(10, household=None, batch=batch, errors={"some_error": "details"})
 
 
-def test_filtering_params(datacheckers_list):
-    for dc in datacheckers_list:
-        params = _get_filtering_params(dc, "household" if dc.name == HOUSEHOLD_CHECKER_NAME else "individual")
-        assert params == {
-            f"batch__program__{'household' if dc.name == HOUSEHOLD_CHECKER_NAME else 'individual'}_checker": dc,
-            "removed": False,
-        }
-
-
-def test_hh_queryset_evaluation_by_dc(hh_datachecker, households):
-    qs = _get_qs_by_dc(hh_datachecker)
-    assert qs.model == HouseholdFactory._meta.model
-    assert qs.count() == 20
-    assert HouseholdFactory._meta.model.objects.count() == 30
-
-
-def test_individual_queryset_evaluation_by_dc(ind_datachecker, individuals):
-    qs = _get_qs_by_dc(ind_datachecker)
-    assert qs.model == IndividualFactory._meta.model
-    assert IndividualFactory._meta.model.objects.count() == 30
-    assert qs.count() == 20
-
-
-def test_people_queryset_evaluation_by_dc(people_datachecker, people_individuals):
-    qs = _get_qs_by_dc(people_datachecker)
-    assert qs.model == IndividualFactory._meta.model
-    assert IndividualFactory._meta.model.objects.count() == 30
-    assert qs.count() == 20
-
-
-def test_invalid_dc_returns_none():
-    invalid_dc = DataChecker.objects.create(name="Invalid Checker")
-    qs = _get_qs_by_dc(invalid_dc)
-    assert qs is None
-
-
 def test_process_datachecker_change_updates_households(hh_datachecker):
     program = ProgramFactory.create(household_checker=hh_datachecker)
     batch = BatchFactory.create(program=program)
@@ -130,12 +98,12 @@ def test_process_datachecker_change_updates_individuals(ind_datachecker):
     batch = BatchFactory.create(program=program)
     hh = HouseholdFactory.create(batch=batch, individuals=[])
     valid = IndividualFactory.create_batch(3, household=hh, errors={}, removed=False)
-    IndividualFactory.create(household=hh, errors={"x": 1}, removed=False)
+    ind_1 = IndividualFactory.create(household=hh, errors={"x": 1}, removed=False)
     IndividualFactory.create(household=hh, errors={}, removed=True)
 
     _process_datachecker_change(ind_datachecker)
 
-    for ind in valid:
+    for ind in [*valid, ind_1]:
         ind.refresh_from_db()
         assert ind.errors == {"data_checker": "Invalidated due to DataChecker change."}
         assert ind.last_checked is None
@@ -146,12 +114,12 @@ def test_process_datachecker_change_updates_people(people_datachecker):
     program = ProgramFactory.create(individual_checker=people_datachecker, beneficiary_group=bg)
     batch = BatchFactory.create(program=program)
     valid = IndividualFactory.create_batch(3, batch=batch, household=None, errors={}, removed=False)
-    IndividualFactory.create(batch=batch, household=None, errors={"x": 1}, removed=False)
+    ind_1 = IndividualFactory.create(batch=batch, household=None, errors={"x": 1}, removed=False)
     IndividualFactory.create(batch=batch, household=None, errors={}, removed=True)
 
     _process_datachecker_change(people_datachecker)
 
-    for ind in valid:
+    for ind in [*valid, ind_1]:
         ind.refresh_from_db()
         assert ind.errors == {"data_checker": "Invalidated due to DataChecker change."}
         assert ind.last_checked is None
@@ -162,9 +130,10 @@ def test_process_datachecker_change_ignores_unknown_checker_name():
     _process_datachecker_change(dc)
 
 
-def test_fieldset_update_triggers_processing(hh_datachecker, monkeypatch):
-    fs = Fieldset.objects.create(name="FS")
-    DataCheckerFieldset.objects.create(checker=hh_datachecker, fieldset=fs)
+def test_fieldset_update_triggers_processing(hh_datachecker):
+    fs = FieldsetFactory.create()
+    fs_2 = FieldsetFactory.create()
+    hh_datachecker.fieldsets.add(*[fs, fs_2])
 
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         fs.description = "Updated"
@@ -173,7 +142,7 @@ def test_fieldset_update_triggers_processing(hh_datachecker, monkeypatch):
 
 
 def test_dcfieldset_update_triggers_processing(ind_datachecker):
-    fs = Fieldset.objects.create(name="FS2")
+    fs = FieldsetFactory.create()
     rel = DataCheckerFieldset.objects.create(checker=ind_datachecker, fieldset=fs)
 
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
@@ -188,4 +157,4 @@ def test_dcfieldset_delete_triggers_processing(people_datachecker):
 
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         rel.delete()
-        mocked.assert_called_once_with(people_datachecker)
+        mocked.assert_called_once_with(dc=people_datachecker)

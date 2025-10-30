@@ -1,37 +1,18 @@
 from typing import Any
 
+from django.db.models import Q
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker
 
-from country_workspace.contrib.hope.constants import (
-    HOUSEHOLD_CHECKER_NAME,
-    INDIVIDUAL_CHECKER_NAME,
-    PEOPLE_CHECKER_NAME,
-)
-from country_workspace.models import Household, Individual
+from country_workspace.models import Program
 
 
-def _get_filtering_params(dc: DataChecker, checker: str) -> dict[str, Any]:
-    return {
-        f"batch__program__{checker}_checker": dc,
-        "removed": False,  # ignore records already pushed to hope
-    }
+def _get_dc_associated_programs(dc: DataChecker) -> Any:
+    return Program.objects.filter(Q(household_checker=dc) | Q(individual_checker=dc))
 
 
-def _get_qs_by_dc(dc: DataChecker) -> Any:
-    if dc.name == HOUSEHOLD_CHECKER_NAME:
-        return Household.objects.filter(**_get_filtering_params(dc, "household"))
-    if dc.name in (INDIVIDUAL_CHECKER_NAME, PEOPLE_CHECKER_NAME):
-        return Individual.objects.filter(**_get_filtering_params(dc, "individual"))
-
-    return None
-
-
-def _process_datachecker_change(dc: DataChecker) -> None:
-    if not (qs := _get_qs_by_dc(dc=dc)):
-        return
-
+def _invalidate_qs(qs: Any) -> None:
     batch_size = 500
     pks = list(qs.values_list("pk", flat=True))
 
@@ -42,29 +23,34 @@ def _process_datachecker_change(dc: DataChecker) -> None:
             last_checked=None,
         )
 
+
+def _process_datachecker_change(dc: DataChecker) -> None:
+    if not (programs := _get_dc_associated_programs(dc=dc)):
+        return
+
+    for program in programs:
+        _invalidate_qs(qs=program.households.filter(removed=False))
+        _invalidate_qs(qs=program.individuals.filter(removed=False))
+
     return
 
 
-@receiver([post_save], sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
-def on_fieldset_change(sender: Fieldset, instance: Fieldset, **kwargs: Any) -> None:
-    if kwargs.get("created", False):
+@receiver(post_save, sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
+@receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
+@receiver(post_delete, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_delete")
+def invalidate_entities(
+    sender: type[Fieldset | DataCheckerFieldset],
+    instance: Fieldset | DataCheckerFieldset,
+    created: bool | None = None,
+    **kwargs: Any,
+) -> None:
+    if created is True:
         return
 
-    dcs = instance.datachecker_set.all().distinct()
-    for dc in dcs:
+    if isinstance(instance, Fieldset):
+        dcs = instance.datachecker_set.all().distinct()
+        for dc in dcs:
+            _process_datachecker_change(dc=dc)
+    elif isinstance(instance, DataCheckerFieldset):
+        dc = instance.checker
         _process_datachecker_change(dc=dc)
-
-
-@receiver([post_save], sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
-def on_through_model_change(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
-    if kwargs.get("created", False):
-        return
-
-    dc = instance.checker
-    _process_datachecker_change(dc=dc)
-
-
-@receiver([post_delete], sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_delete")
-def on_through_model_deletion(sender: DataCheckerFieldset, instance: DataCheckerFieldset, **kwargs: Any) -> None:
-    # Fieldset deletion has cascading effect on DataCheckerFieldset
-    _process_datachecker_change(instance.checker)
