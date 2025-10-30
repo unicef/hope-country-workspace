@@ -44,7 +44,7 @@ def _process_datachecker_change(dc: DataChecker) -> None:
 @receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
 @receiver(post_delete, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_delete")
 @receiver(pre_save, sender=Program, dispatch_uid="cw_on_program_change")
-@receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_program_change")
+@receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_country_program_change")
 def invalidate_entities_on_datachecker_change(
     sender: type[Fieldset | DataCheckerFieldset | Program],
     instance: Fieldset | DataCheckerFieldset | Program,
