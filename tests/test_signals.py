@@ -136,15 +136,6 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker):
         mocked.assert_called_once_with(dc=ind_datachecker)
 
 
-def test_dcfieldset_delete_triggers_processing(people_datachecker):
-    fs = Fieldset.objects.create(name="FS3")
-    rel = DataCheckerFieldset.objects.create(checker=people_datachecker, fieldset=fs)
-
-    with patch("country_workspace.signals._process_datachecker_change") as mocked:
-        rel.delete()
-        mocked.assert_called_once_with(dc=people_datachecker)
-
-
 def _test_invalidation_on_checker_change(program, factory, checker_field):
     new_checker = DataCheckerFactory()
     setattr(program, checker_field, new_checker)

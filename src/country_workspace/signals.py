@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.db.models import Q
-from django.db.models.signals import post_save, post_delete, pre_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker
 
@@ -42,7 +42,6 @@ def _process_datachecker_change(dc: DataChecker) -> None:
 
 @receiver(post_save, sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
 @receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
-@receiver(post_delete, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_delete")
 @receiver(pre_save, sender=Program, dispatch_uid="cw_on_program_change")
 @receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_country_program_change")
 def invalidate_entities_on_datachecker_change(
@@ -51,7 +50,7 @@ def invalidate_entities_on_datachecker_change(
     created: bool | None = None,
     **kwargs: Any,
 ) -> None:
-    if created is True:
+    if created:
         return
 
     if isinstance(instance, Fieldset):
@@ -67,8 +66,6 @@ def invalidate_entities_on_datachecker_change(
             return
 
         old_instance = Program.objects.filter(pk=instance.pk).first()
-        if not old_instance:
-            return
 
         if (
             old_instance.household_checker.pk != instance.household_checker.pk
