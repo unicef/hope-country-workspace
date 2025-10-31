@@ -17,7 +17,11 @@ from hope_flex_fields.forms import FlexForm
 
 from faker import Faker
 from xlsxwriter import Workbook
-from country_workspace.contrib.hope.constants import HOUSEHOLD_CHECKER_NAME, INDIVIDUAL_CHECKER_NAME
+from country_workspace.contrib.hope.constants import (
+    HOUSEHOLD_CHECKER_NAME,
+    INDIVIDUAL_CHECKER_NAME,
+    PEOPLE_CHECKER_NAME,
+)
 from country_workspace.state import state
 from country_workspace.models import Office
 from xlsxwriter.worksheet import Worksheet
@@ -26,28 +30,61 @@ from xlsxwriter.worksheet import Worksheet
 type FieldGen = Callable[[Faker, Random], Any]
 
 
+class GenerationMode(StrEnum):
+    HH_IND = "households and individuals"
+    PEOPLE = "people"
+
+    def get_sheets(
+        self, config: "GeneratorConfig", gen_data: Callable, rng: Random
+    ) -> list[tuple["SheetSpec", list[dict]]]:
+        """Return list of (spec, data) tuples for this mode."""
+        if self == GenerationMode.HH_IND:
+            hh_form = get_form(HOUSEHOLD_CHECKER_NAME, config.office_slug)
+            ind_form = get_form(INDIVIDUAL_CHECKER_NAME, config.office_slug)
+            households = gen_data(generate_households_data)(hh_form)
+            individuals = gen_data(generate_individuals_data)(households, ind_form)
+            update_collectors(households, len(individuals), rng)
+            return [(HOUSEHOLDS_SPEC, households), (INDIVIDUALS_SPEC, individuals)]
+        if self == GenerationMode.PEOPLE:
+            people_form = get_form(PEOPLE_CHECKER_NAME, config.office_slug)
+            people = gen_data(generate_people_data)(people_form)
+            return [(PEOPLE_SPEC, people)]
+        raise ValueError(f"Unknown generation mode: {self}")
+
+
 class GeneratorConfig(NamedTuple):
+    mode: GenerationMode = GenerationMode.HH_IND
     office_slug: str = "afghanistan"
     locale: str = "en"
     hh_amount: int = 5
     inds_per_hh: tuple[int, int] = (3, 7)
+    people: int = 20
     filename: str = "rdi_generated.xlsx"
     seed: int | None = None
+    # these fields will be excluded by base name from sheet
     exclude_fields: tuple[str, ...] = ()
 
 
 class SheetName(StrEnum):
     HOUSEHOLDS = "Households"
     INDIVIDUALS = "Individuals"
+    PEOPLE = "People"
 
 
 class SheetSpec(NamedTuple):
     name: "SheetName"
-    postfix: str
-    plain_fields: tuple[str, ...]
+    prefix: str = ""
+    postfix: str = ""
+    plain_fields: tuple[str, ...] = ()
     id_key: str | None = None
     parent_id_key: str | None = None
     exclude_from_export: tuple[str, ...] = ()
+
+    def get_fields(self, row: dict) -> list[str]:
+        """Extract field names from row, respecting exclude_from_export."""
+        if self.exclude_from_export:
+            return [f for f in row if f not in self.exclude_from_export]
+        return list(row.keys())
 
 
 HOUSEHOLDS_SPEC = SheetSpec(
@@ -67,15 +104,29 @@ INDIVIDUALS_SPEC = SheetSpec(
     parent_id_key="household_id",
 )
 
+PEOPLE_SPEC = SheetSpec(
+    name=SheetName.PEOPLE,
+    prefix="pp_",
+    postfix="_i_c",
+    id_key="index_id",
+)
+
 SHEETS_BY_NAME: dict[SheetName, SheetSpec] = {
     HOUSEHOLDS_SPEC.name: HOUSEHOLDS_SPEC,
     INDIVIDUALS_SPEC.name: INDIVIDUALS_SPEC,
+    PEOPLE_SPEC.name: PEOPLE_SPEC,
 }
+
 
 PROTECTED_FIELDS: Final[dict[SheetName, tuple[str, ...]]] = {
     SheetName.HOUSEHOLDS: (HOUSEHOLDS_SPEC.id_key,),
     SheetName.INDIVIDUALS: (INDIVIDUALS_SPEC.id_key, INDIVIDUALS_SPEC.parent_id_key),
+    SheetName.PEOPLE: (PEOPLE_SPEC.id_key,),
 }
+
+KNOWN_PREFIXES: Final[tuple[str, ...]] = tuple(
+    sorted((spec.prefix.lower() for spec in SHEETS_BY_NAME.values()), key=len, reverse=True)
+)
 
 KNOWN_POSTFIXES: Final[tuple[str, ...]] = tuple(
     sorted((spec.postfix.lower() for spec in SHEETS_BY_NAME.values()), key=len, reverse=True)
@@ -92,19 +143,19 @@ FIELD_PATTERNS: dict[str, FieldGen] = {
     "photo": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
 }
 
-PREFIXED_FIELDS = {
+FIELDSET_PREFIXES = {
     "document": ("national_id_", "national_passport_", "birth_certificate_"),
     "account": ("mobile_", "bank_", "cash_"),
 }
 
-PREFIXED_PATTERNS: dict[tuple[str, ...], dict[str, FieldGen]] = {
-    PREFIXED_FIELDS["document"]: {
+FIELDSET_PREFIXES_PATTERNS: dict[tuple[str, ...], dict[str, FieldGen]] = {
+    FIELDSET_PREFIXES["document"]: {
         "document_number": lambda fake, _rng, /: fake.bothify("???-########"),
         "issuance_date": lambda fake, _rng, /: fake.date_between(start_date="-15y", end_date="-1y"),
         "expiry_date": lambda fake, _rng, /: fake.date_between(start_date="today", end_date="+10y"),
         "image": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
     },
-    PREFIXED_FIELDS["account"]: {
+    FIELDSET_PREFIXES["account"]: {
         "number": lambda fake, _rng, /: fake.bothify("???-########"),
         "data": lambda fake, rng, /: _generate_json_data(fake, rng),
     },
@@ -114,8 +165,8 @@ PREFIXED_PATTERNS: dict[tuple[str, ...], dict[str, FieldGen]] = {
 def _colname(spec: SheetSpec, field_name: str) -> str:
     """Return the column name using the sheet postfix unless it is an id/parent id key."""
     if field_name in {spec.id_key, spec.parent_id_key}:
-        return field_name
-    return f"{field_name}{spec.postfix}"
+        return f"{spec.prefix}{field_name}" if spec.prefix else field_name
+    return f"{spec.prefix}{field_name}{spec.postfix}"
 
 
 def _generate_json_data(fake: Faker, rng: Random) -> Any:
@@ -125,7 +176,7 @@ def _generate_json_data(fake: Faker, rng: Random) -> Any:
 
 
 def _generate_png_solid_square(side: int = 50, *, rng: Random) -> bytes | None:
-    if bool(rng.getrandbits(1)):
+    if rng.getrandbits(1):
         return None
     # solid RGB color rectangle (square) of the requested side
     color = (rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255))
@@ -200,7 +251,7 @@ def _fake_value(field_name: str, fake: Faker, field_patterns: dict[str, FieldGen
     if base in field_patterns:
         return field_patterns[base](fake, rng)
 
-    for prefixes, mapping in PREFIXED_PATTERNS.items():
+    for prefixes, mapping in FIELDSET_PREFIXES_PATTERNS.items():
         for prefix in prefixes:
             if base.startswith(prefix):
                 tail = base[len(prefix) :]
@@ -217,6 +268,25 @@ def resolve_field_value(field_name: str, django_field: Any, fake: Faker, rng: Ra
     return _fake_value(field_name, fake, FIELD_PATTERNS, rng)
 
 
+def _get_sheet_specific_handler(name: str, sheet_type: SheetName, rng: Random) -> Callable | None:
+    """Return sheet-specific handler or None."""
+    spec = SHEETS_BY_NAME[sheet_type]
+    if sheet_type is SheetName.INDIVIDUALS:
+        if name == spec.id_key:
+            return lambda ind_id, _hh_id, **_: ind_id
+        if name == spec.parent_id_key:
+            return lambda _ind_id, hh_id, **_: hh_id
+    elif sheet_type is SheetName.HOUSEHOLDS:
+        if name in spec.plain_fields:
+            return lambda **_: None
+        if _is_demographic_counter(name):
+            return lambda **_: rng.choice((None, 1, 2, 3))
+    elif sheet_type is SheetName.PEOPLE:
+        if name == spec.id_key:
+            return lambda index, **_: index
+    return None
+
+
 def make_field_writers(
     fields: list[str],
     sheet_type: SheetName,
@@ -225,25 +295,13 @@ def make_field_writers(
     rng: Random,
 ) -> list[Callable[..., Any]]:
     """Build per-column writer callables for the given sheet based on the form schema."""
-    base_fields = form.base_fields
-    spec = SHEETS_BY_NAME[sheet_type]
 
     def writer_for(name: str) -> Callable:
-        if sheet_type is SheetName.INDIVIDUALS:
-            if name == spec.id_key:
-                return lambda ind_id, _hh_id, **_: ind_id
-            if name == spec.parent_id_key:
-                return lambda _ind_id, hh_id, **_: hh_id
-        elif sheet_type is SheetName.HOUSEHOLDS:
-            if name in spec.plain_fields:
-                return lambda **_: None
-            if _is_demographic_counter(name):
-                return lambda **_: rng.choice((None, 1, 2, 3))
-
+        if handler := _get_sheet_specific_handler(name, sheet_type, rng):
+            return handler
         if name in NAME_FIELD_KEYS:
             return lambda *_, name_parts=None, **__: name_parts.get(name, "") if name_parts else ""
-
-        field = base_fields[name]
+        field = form.base_fields[name]
         return lambda *_, f=field, n=name, **__: resolve_field_value(n, f, fake, rng)
 
     return [writer_for(n) for n in fields]
@@ -252,28 +310,41 @@ def make_field_writers(
 def generate_individuals_data(
     households: list[dict], ind_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random
 ) -> list[dict]:
+    individuals: list[dict] = []
     ind_fields = _effective_exclude(ind_form.base_fields.keys(), config.exclude_fields, SheetName.INDIVIDUALS)
     ind_writers = make_field_writers(ind_fields, SheetName.INDIVIDUALS, ind_form, fake, rng)
-
-    individuals = []
 
     for hh_data in households:
         hh_id = hh_data["household_id"]
         start_ind = hh_data["individuals_start"]
-        count = hh_data["individuals_count"]
+        ind_count = hh_data["individuals_count"]
 
-        for i in range(count):
+        for i in range(ind_count):
             ind_id = start_ind + i
-
             name_parts = _generate_name_parts(fake)
-
-            ind_data = {}
-            for j, field_name in enumerate(ind_fields):
-                ind_data[field_name] = ind_writers[j](ind_id, hh_id, name_parts=name_parts)
-
+            ind_data = {
+                field_name: ind_writers[j](ind_id, hh_id, name_parts=name_parts)
+                for j, field_name in enumerate(ind_fields)
+            }
             individuals.append(ind_data)
 
     return individuals
+
+
+def generate_people_data(pp_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random) -> list[dict]:
+    people: list[dict] = []
+    pp_fields = _effective_exclude(pp_form.base_fields.keys(), config.exclude_fields, SheetName.PEOPLE)
+    pp_writers = make_field_writers(pp_fields, SheetName.PEOPLE, pp_form, fake, rng)
+
+    for ppl_index in range(1, config.people + 1):
+        name_parts = _generate_name_parts(fake)
+        pp_data = {
+            field_name: pp_writers[i](index=ppl_index, name_parts=name_parts) for i, field_name in enumerate(pp_fields)
+        }
+        pp_data["index_id"] = ppl_index
+        people.append(pp_data)
+
+    return people
 
 
 def generate_households_data(hh_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random) -> list[dict]:
@@ -285,13 +356,8 @@ def generate_households_data(hh_form: FlexForm, config: GeneratorConfig, fake: F
 
     for hh_id in range(1, config.hh_amount + 1):
         individuals_count = rng.randint(*config.inds_per_hh)
-
         name_parts = _generate_name_parts(fake)
-
-        hh_data = {}
-        for i, field_name in enumerate(hh_fields):
-            hh_data[field_name] = hh_writers[i](name_parts=name_parts)
-
+        hh_data = {field_name: hh_writers[i](name_parts=name_parts) for i, field_name in enumerate(hh_fields)}
         hh_data.update(
             {
                 "household_id": hh_id,
@@ -301,7 +367,6 @@ def generate_households_data(hh_form: FlexForm, config: GeneratorConfig, fake: F
                 "individuals_count": individuals_count,
             }
         )
-
         households.append(hh_data)
         ind_counter += individuals_count
 
@@ -352,25 +417,22 @@ def write_row(
             cell_writer(ws, r, c, get(name))
 
 
-def write_excel_file(households: list[dict], individuals: list[dict], filename: str) -> None:
-    if not households or not individuals:
+def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str) -> None:
+    """Write sheets to Excel."""
+    sheets = [(spec, rows) for spec, rows in sheets if rows]
+    if not sheets:
         return
-
-    hh_fields = [f for f in households[0] if f not in HOUSEHOLDS_SPEC.exclude_from_export]
-    ind_fields = list(individuals[0].keys())
 
     buff = BytesIO()
     with Workbook(buff, {"in_memory": True, "use_zip64": True, "remove_timezone": True}) as wb:
-        hh_ws = wb.add_worksheet(SheetName.HOUSEHOLDS.value)
-        ind_ws = wb.add_worksheet(SheetName.INDIVIDUALS.value)
         date_fmt = wb.add_format({"num_format": "yyyy-mm-dd"})
+        cell_writer = partial(write_cell, date_fmt=date_fmt)
 
-        hh_ws.write_row(0, 0, [_colname(HOUSEHOLDS_SPEC, f) for f in hh_fields])
-        ind_ws.write_row(0, 0, [_colname(INDIVIDUALS_SPEC, f) for f in ind_fields])
-
-        cell = partial(write_cell, date_fmt=date_fmt)
-        write_row(hh_ws, hh_fields, households, cell_writer=cell)
-        write_row(ind_ws, ind_fields, individuals, cell_writer=cell)
+        for spec, rows in sheets:
+            fields = spec.get_fields(rows[0])
+            ws = wb.add_worksheet(spec.name.value)
+            ws.write_row(0, 0, [_colname(spec, f) for f in fields])
+            write_row(ws, fields, rows, cell_writer=cell_writer)
 
     buff.seek(0)
     with default_storage.open(filename, "wb") as f:
@@ -386,12 +448,6 @@ def generate(config: GeneratorConfig = None) -> None:
     if config.seed is not None:
         fake.seed_instance(config.seed)
 
-    hh_form = get_form(HOUSEHOLD_CHECKER_NAME, config.office_slug)
-    ind_form = get_form(INDIVIDUAL_CHECKER_NAME, config.office_slug)
-
     gen_data = partial(partial, config=config, fake=fake, rng=rng)
-    households = gen_data(generate_households_data)(hh_form)
-    individuals = gen_data(generate_individuals_data)(households, ind_form)
-
-    update_collectors(households, len(individuals), rng)
-    write_excel_file(households, individuals, config.filename)
+    sheets = config.mode.get_sheets(config, gen_data, rng)
+    write_excel(sheets, config.filename)
