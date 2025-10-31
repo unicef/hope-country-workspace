@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 from hope_flex_fields.models import DataChecker
-from hope_flex_fields.models import Fieldset, DataCheckerFieldset
+from hope_flex_fields.models import DataCheckerFieldset
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.constants import (
