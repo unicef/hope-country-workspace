@@ -12,7 +12,7 @@ from strategy_field.utils import fqn
 from webtest import Upload, forms
 from django import forms as django_forms
 
-from country_workspace.contrib.hope.constants import INDIVIDUAL_CHECKER_NAME
+from country_workspace.contrib.hope.constants import PEOPLE_CHECKER_NAME
 from country_workspace.models import Office, Individual, Household, Batch
 from country_workspace.state import state
 from country_workspace.workspaces.admin.forms import ValidateMode
@@ -39,14 +39,25 @@ def office() -> "Office":
     return co
 
 
-@pytest.fixture
-def country_mdg() -> "Office":
+@pytest.fixture(autouse=True)
+def create_cuntries() -> None:
     from testutils.factories import CountryFactory
 
-    return CountryFactory.create(
-        iso_code2="MG",
-        iso_code3="MDG",
-        name="Madagascar",
+    countries_to_create = (("af", "AFG", "Afghanistan"), ("IM", "IMN", "Isle of Man"))
+    for iso_code2, iso_code3, name in countries_to_create:
+        CountryFactory.create(
+            iso_code2=iso_code2.upper(),
+            iso_code3=iso_code3.upper(),
+            name=name,
+        )
+
+
+def get_people_checker() -> "DataCheckerFactory":
+    return DataCheckerFactory(
+        name=PEOPLE_CHECKER_NAME,
+        fields=[
+            ("index_id", fqn(django_forms.CharField)),
+        ],
     )
 
 
@@ -65,6 +76,7 @@ def _ff_relationship(required: bool = True) -> None:
             ["MOTHERINLAW_FATHERINLAW", "Mother-in-law / Father-in-law"],
             ["SISTERINLAW_BROTHERINLAW", "Sister-in-law / Brother-in-law"],
             ["SON_DAUGHTER", "Son / Daughter"],
+            ["HEAD", "Head of household (self)"],
         ],
         "required": required,
     }
@@ -95,6 +107,28 @@ def ff_sex() -> None:
         "help_text": "",
     }
     ff_sex.save()
+
+
+@pytest.fixture
+def ff_residence_status() -> None:
+    from hope_flex_fields.models import FlexField
+
+    ff_residence_status = FlexField.objects.filter(name="residence_status")
+    ff_residence_status.update(
+        attrs={
+            "choices": [
+                ["", "None"],
+                ["IDP", "Displaced  |  Internally Displaced People"],
+                ["REFUGEE", "Displaced  |  Refugee / Asylum Seeker"],
+                ["OTHERS_OF_CONCERN", "Displaced  |  Others of Concern"],
+                ["HOST", "Non-displaced  |   Host"],
+                ["NON_HOST", "Non-displaced  |   Non-host"],
+                ["RETURNEE", "Displaced  |   Returnee"],
+            ],
+            "required": False,
+            "help_text": "",
+        }
+    )
 
 
 @pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
@@ -153,18 +187,18 @@ def reference_field_names() -> tuple:
 
 @pytest.fixture
 def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Form:
-    # NOTE: This fixture is linked to the content of `data/rdi_with_references.xlsx`
+    # NOTE: This fixture is linked to the content of `data/rdi_correct.xlsx`
     res = app.get("/").follow()
     res.forms["select-tenant"]["tenant"] = program.country_office.pk
     res.forms["select-tenant"].submit()
 
     url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
-    data = (Path(__file__).parent.parent / "data/rdi_with_references.xlsx").read_bytes()
+    data = (Path(__file__).parent.parent / "data/rdi_correct.xlsx").read_bytes()
     res = app.get(url)
 
     res.forms["import-file"]["rdi-validate_mode"] = ValidateMode.NONE.value
     res.forms["import-file"]["_selected_tab"] = "rdi"
-    res.forms["import-file"]["rdi-file"] = Upload("rdi_with_references.xlsx", data)
+    res.forms["import-file"]["rdi-file"] = Upload("rdi_correct.xlsx", data)
 
     return res.forms["import-file"]
 
@@ -189,7 +223,7 @@ def _test_import_rdi_hh_and_individuals(
     hh: "CountryHousehold" = program.households.first()
     assert hh.members.count() == 5
     assert (head := program.individuals.get(pk=hh.head))
-    assert head.name == "Edward Jeffrey Rogers"
+    assert head.name == "Jeff David Rogers"
     assert "members_count" not in hh.flex_fields
     assert "count" not in hh.flex_fields
 
@@ -209,7 +243,6 @@ def test_import_rdi_hh_and_individuals_no_validation(
     force_migrated_records,
     app,
     program,
-    country_mdg,
     ff_relationship,
     ff_sex,
     form_import_rdi,
@@ -227,7 +260,6 @@ def test_import_rdi_hh_and_individuals_check_before(
     force_migrated_records,
     app,
     program,
-    country_mdg,
     ff_relationship,
     ff_sex,
     form_import_rdi,
@@ -245,7 +277,6 @@ def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
     force_migrated_records,
     app,
     program,
-    country_mdg,
     ff_relationship,
     ff_sex,
     form_import_rdi,
@@ -287,8 +318,12 @@ def test_import_rdi_people_only_with_no_validation(
     force_migrated_records: None,
     app: "DjangoTestApp",
     program: "CountryProgram",
+    ff_sex: None,
     form_import_rdi: forms.Form,
 ) -> None:
+    program.individual_checker = get_people_checker()
+    program.save()
+
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
         _test_import_rdi_people_only(
@@ -303,7 +338,11 @@ def test_import_rdi_people_only_with_check_before(
     form_import_rdi: forms.Form,
     ff_sex: None,
     ff_relationship_not_required: None,
+    ff_residence_status: None,
 ) -> None:
+    program.individual_checker = get_people_checker()
+    program.save()
+
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
         _test_import_rdi_people_only(
@@ -319,14 +358,9 @@ def test_import_rdi_people_only_with_fail_if_alien(
     individual_checker: "DataChecker",
     ff_sex: None,
     ff_relationship_not_required: None,
+    ff_residence_status: None,
 ) -> None:
-    dc = DataCheckerFactory(
-        name=INDIVIDUAL_CHECKER_NAME,
-        fields=[
-            ("index_id", fqn(django_forms.CharField)),
-        ],
-    )
-    program.individual_checker = dc
+    program.individual_checker = get_people_checker()
     program.save()
 
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
