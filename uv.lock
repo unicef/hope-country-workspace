@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.13.*"
 resolution-markers = [
     "platform_python_implementation != 'PyPy' and sys_platform != 'win32'",
@@ -1395,8 +1395,6 @@ dev = [
     { name = "ruff" },
     { name = "seleniumbase" },
     { name = "tox" },
-    { name = "types-python-dateutil" },
-    { name = "types-requests" },
     { name = "vcrpy", version = "5.1.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation == 'PyPy'" },
     { name = "vcrpy", version = "7.0.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_python_implementation != 'PyPy'" },
 ]
@@ -1406,6 +1404,10 @@ docs = [
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+]
+type-check = [
+    { name = "types-python-dateutil" },
+    { name = "types-requests" },
 ]
 
 [package.metadata]
@@ -1490,8 +1492,6 @@ dev = [
     { name = "ruff" },
     { name = "seleniumbase" },
     { name = "tox" },
-    { name = "types-python-dateutil" },
-    { name = "types-requests" },
     { name = "vcrpy" },
 ]
 docs = [
@@ -1500,6 +1500,10 @@ docs = [
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+]
+type-check = [
+    { name = "types-python-dateutil" },
+    { name = "types-requests" },
 ]
 
 [[package]]
