@@ -39,6 +39,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -80,9 +91,9 @@ jobs:
             --build-arg VERSION="${{ steps.config.outputs.version }}" \
             --build-arg BUILD_DATE="${{ steps.config.outputs.build_date }}" \
             --build-arg SOURCE_COMMIT=${{ steps.config.outputs.commit_sha }} \
-            --cache-from ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-develop \
-            --cache-from ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG \
-            --cache-to ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG \
+            --cache-from type=registry,ref=${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-develop \
+            --cache-from type=registry,ref=${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG \
+            --cache-to type=registry,ref=${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:cache-$IMAGE_TAG,mode=max \
             -t ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:$IMAGE_TAG \
             -f ./docker/Dockerfile \
             --push \
