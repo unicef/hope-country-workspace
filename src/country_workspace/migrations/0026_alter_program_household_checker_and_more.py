@@ -5,21 +5,34 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('country_workspace', '0025_alter_areatype_unique_together_office_countries_and_more'),
-        ('hope_flex_fields', '0015_alter_datachecker_id_alter_datacheckerfieldset_id_and_more'),
+        ("country_workspace", "0025_alter_areatype_unique_together_office_countries_and_more"),
+        ("hope_flex_fields", "0015_alter_datachecker_id_alter_datacheckerfieldset_id_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='program',
-            name='household_checker',
-            field=models.ForeignKey(blank=True, help_text="Checker to use with Household's records", null=True, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='hope_flex_fields.datachecker'),
+            model_name="program",
+            name="household_checker",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Checker to use with Household's records",
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="+",
+                to="hope_flex_fields.datachecker",
+            ),
         ),
         migrations.AlterField(
-            model_name='program',
-            name='individual_checker',
-            field=models.ForeignKey(blank=True, help_text="Checker to use with Individual's records", null=True, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='hope_flex_fields.datachecker'),
+            model_name="program",
+            name="individual_checker",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Checker to use with Individual's records",
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="+",
+                to="hope_flex_fields.datachecker",
+            ),
         ),
     ]
