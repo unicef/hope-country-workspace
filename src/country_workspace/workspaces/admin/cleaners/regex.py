@@ -1,4 +1,5 @@
 import re
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django import forms
@@ -58,6 +59,15 @@ def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replac
     return UpdateResult(original_value, updated_value)
 
 
+def update_checksum(records: "QuerySet[Beneficiary]", initial_fields: set[str]) -> Iterable[str]:
+    """Update checksum for all records in the queryset."""
+    fields = initial_fields.copy()
+    for record in records:
+        if update_fields := record.update_checksum(initial_fields):
+            fields.update(update_fields)
+    return fields
+
+
 def regex_update_impl(
     records: "QuerySet[Beneficiary]",
     config: dict[str, Any],
@@ -74,6 +84,7 @@ def regex_update_impl(
             ret.append((record.id, result.original, result.updated))
 
         if save:
-            records.bulk_update(records, ["flex_fields"], batch_size=1000)
+            fields = update_checksum(records, {"flex_fields"})
+            records.bulk_update(records, fields, batch_size=1000)
 
     return ret

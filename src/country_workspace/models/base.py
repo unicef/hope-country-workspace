@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 from collections.abc import Iterable
 from concurrency.fields import IntegerVersionField
 from django.db import models
+from django.db.models.base import ModelBase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
-
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.utils.flex_fields import get_obj_checksum
@@ -89,29 +89,34 @@ class Validable(Cachable, models.Model):
         super().__init__(*args, **kwargs)
         self._checksum = self.checksum
 
+    @override
     def save(
         self,
-        *args: Any,
-        force_insert: bool = False,
+        force_insert: bool | tuple[ModelBase, ...] = False,
         force_update: bool = False,
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
-        if update_fields is None:
-            self.checksum = get_obj_checksum(self)
-        else:
-            uf = set(update_fields)
-            if uf & CHECKSUM_FIELDS:
-                self.checksum = get_obj_checksum(self)
-                uf.add("checksum")
-            update_fields = uf
+        update_fields = self.update_checksum(update_fields)
         super().save(
-            *args,
             force_insert=force_insert,
             force_update=force_update,
             using=using,
             update_fields=update_fields,
         )
+
+    def update_checksum(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
+        """Update models checksum if needed, returns fields to update on model save."""
+        if update_fields is None:
+            self.checksum = get_obj_checksum(self)
+        else:
+            update_fields_set = set(update_fields)
+            if update_fields_set & CHECKSUM_FIELDS:
+                self.checksum = get_obj_checksum(self)
+                update_fields_set.add("checksum")
+                return update_fields_set
+
+        return update_fields
 
     def checker(self) -> "DataChecker":
         raise NotImplementedError

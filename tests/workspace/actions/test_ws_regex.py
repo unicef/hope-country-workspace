@@ -73,18 +73,21 @@ def test_update_json_does_not_change_non_string_values() -> None:
     assert result.updated == original_value
 
 
-def test_regex_update_impl(household):
+def test_regex_update_impl(household: "CountryHousehold") -> None:
     from country_workspace.models import Household
 
+    original_checksum = household.checksum
     assert household.flex_fields.get(FIELD) != NEW_VALUE
 
     regex_update_impl(Household.objects.all(), {"field": FIELD, "regex": ANYTHING, "subst": NEW_VALUE})
 
     household.refresh_from_db()
     assert household.flex_fields[FIELD] == NEW_VALUE
+    assert household.checksum != original_checksum
 
 
 def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "CountryHousehold") -> None:
+    original_checksum = household.checksum
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     with select_office(app, household.country_office, household.program):
         res = app.get(url)
@@ -103,3 +106,4 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
 
         household.refresh_from_db()
         assert household.flex_fields[FIELD] == NEW_VALUE
+        assert household.checksum != original_checksum
