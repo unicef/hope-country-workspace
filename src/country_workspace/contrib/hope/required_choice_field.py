@@ -33,5 +33,5 @@ class SelectWithEmptyOption(Select):
         return groups
 
 
-class RequiredChoiceFieldWithEmptyDisplay(forms.ChoiceField):
+class ChoiceFieldWithEmptyDisplay(forms.ChoiceField):
     widget = SelectWithEmptyOption

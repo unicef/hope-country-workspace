@@ -2,7 +2,7 @@ import pytest
 from django import forms
 
 from country_workspace.contrib.hope.required_choice_field import (
-    RequiredChoiceFieldWithEmptyDisplay,
+    ChoiceFieldWithEmptyDisplay,
     SelectWithEmptyOption,
 )
 
@@ -49,21 +49,21 @@ def test_widget_renders_html_with_empty():
 
 
 def test_field_validates_empty_as_invalid():
-    field = RequiredChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
+    field = ChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
 
     with pytest.raises(forms.ValidationError):
         field.clean("")
 
 
 def test_field_accepts_valid_choice():
-    field = RequiredChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
+    field = ChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
 
     result = field.clean("male")
     assert result == "male"
 
 
 def test_field_rejects_invalid_choice():
-    field = RequiredChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
+    field = ChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
 
     with pytest.raises(forms.ValidationError):
         field.clean("invalid")
@@ -71,7 +71,7 @@ def test_field_rejects_invalid_choice():
 
 def test_field_works_in_form():
     class TestForm(forms.Form):
-        sex = RequiredChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
+        sex = ChoiceFieldWithEmptyDisplay(choices=[("male", "Male"), ("female", "Female")], required=True)
 
     form_empty = TestForm(data={"sex": ""})
     assert not form_empty.is_valid()
