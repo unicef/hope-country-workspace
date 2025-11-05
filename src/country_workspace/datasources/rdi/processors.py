@@ -5,7 +5,7 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, cast, Mapping
 
-from hope_smart_import.readers import open_xls_multi
+from hope_smart_import.readers import open_xls_multi, SheetNotError
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as RDIImage
 from PIL import Image
@@ -103,7 +103,7 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
                 yield filter_rows_with_household_pk(config, sheet_with_images)
             else:
                 yield sheet_with_images
-    except IndexError as e:
+    except (IndexError, SheetNotError) as e:
         raise SheetNotFoundError(sheet_names) from e
 
 
