@@ -20,6 +20,15 @@ def test_widget_adds_empty_option():
     assert len(all_options) == 3
 
 
+def test_widget_custom_empty_label():
+    widget = SelectWithEmptyOption(choices=[("male", "Male"), ("female", "Female")], empty_label="Please select")
+
+    groups = widget.optgroups(name="sex", value="", attrs=None)
+
+    empty_option = groups[0][1][0]
+    assert empty_option["label"] == "Please select"
+
+
 def test_widget_does_not_duplicate_empty():
     widget = SelectWithEmptyOption(choices=[("", "Already empty"), ("male", "Male")])
 
