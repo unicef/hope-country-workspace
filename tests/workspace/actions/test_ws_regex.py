@@ -17,7 +17,8 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
 
 
-FIELD = "address"
+FIELD_TEXT = "Address"
+FIELD = FIELD_TEXT.lower()
 NEW_VALUE = "__NEW VALUE__"
 ANYTHING = ".*"
 
@@ -37,7 +38,7 @@ def program(office, force_migrated_records, household_checker, individual_checke
 
     return CountryProgramFactory(
         country_office=office,
-        household_checker=individual_checker,
+        household_checker=household_checker,
         household_columns="__str__\nid\nxx",
         individual_columns="__str__\nid\nxx",
     )
@@ -96,7 +97,7 @@ def test_regex_update(app: "DjangoTestApp", force_migrated_records, household: "
         form.set("_selected_action", True)
         res = form.submit()
         form = res.forms["regex-update-form"]
-        form["field"].select(text=FIELD)
+        form["field"].select(text=FIELD_TEXT)
         form["regex"] = ANYTHING
         form["subst"] = NEW_VALUE
         res = form.submit("_preview")
