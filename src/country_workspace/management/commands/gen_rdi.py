@@ -15,6 +15,7 @@ class Command(BaseCommand):
         p.add_argument("-P", "--people", type=int, help="[People mode] Number of people records.")
         p.add_argument("-L", "--locale", help="Faker locale (e.g., en, es_CL).")
         p.add_argument("-S", "--seed", type=int, help="Random seed for reproducible output.")
+        p.add_argument("-o", "--filename", help="Output .xlsx name; if omitted, auto-generated.")
         p.add_argument(
             "-X",
             "--exclude-field",
@@ -24,20 +25,21 @@ class Command(BaseCommand):
             help="Field name to exclude (base name, repeatable or comma-separated).",
         )
 
-    def handle(self, *_: Any, **opts: dict) -> None:
-        self.stdout.write(self.style.WARNING("Generating RDI..."))
+    def _parse_exclude_fields(self, opts: dict[str, Any]) -> tuple[str, ...]:
+        raw = opts.get("exclude_fields") or []
+        return tuple(dict.fromkeys(s.strip().lower() for ch in raw for s in ch.split(",") if s.strip()))
 
+    def _select_mode_and_validate(self, opts: dict[str, Any]) -> GenerationMode:
         hh_count, people_count = opts.get("households"), opts.get("people")
         inds_min, inds_max = opts.get("inds_min"), opts.get("inds_max")
 
-        # Auto-detect mode
         hh_mode = hh_count is not None or inds_min is not None or inds_max is not None
         people_mode = people_count is not None
-
         if hh_mode and people_mode:
             raise CommandError("Cannot mix HH parameters (-H, --inds-*) with People parameters (-P).")
         mode = GenerationMode.HH_IND if hh_mode else GenerationMode.PEOPLE
-        if mode == GenerationMode.HH_IND:
+
+        if mode is GenerationMode.HH_IND:
             if hh_count is not None and hh_count <= 0:
                 raise CommandError("--households must be > 0")
             if (inds_min is None) != (inds_max is None):
@@ -46,12 +48,15 @@ class Command(BaseCommand):
                 raise CommandError("--inds-min must be > 0 and <= --inds-max")
         elif people_count is not None and people_count <= 0:
             raise CommandError("--people must be > 0")
+        return mode
 
-        exclude = tuple(
-            n for chunk in (opts.get("exclude_fields") or []) for n in (s.strip() for s in chunk.split(",")) if n
-        )
-        cfg = (
+    def _build_cfg(self, opts: dict[str, Any], *, mode: GenerationMode, exclude: tuple[str, ...]) -> dict[str, Any]:
+        hh_count = opts.get("households")
+        inds_min, inds_max = opts.get("inds_min"), opts.get("inds_max")
+        people_count = opts.get("people")
+        return (
             {"mode": mode, "office_slug": opts["office"]}
+            | ({"filename": opts.get("filename")} if opts.get("filename") else {})
             | ({"hh_amount": hh_count} if hh_count is not None else {})
             | ({"inds_per_hh": (inds_min, inds_max)} if inds_min is not None else {})
             | ({"people": people_count} if people_count is not None else {})
@@ -60,6 +65,12 @@ class Command(BaseCommand):
             | ({"exclude_fields": exclude} if exclude else {})
         )
 
-        generate(GeneratorConfig(**cfg))
+    def handle(self, *_: Any, **opts: dict) -> None:
+        self.stdout.write(self.style.WARNING("Generating RDI..."))
 
-        self.stdout.write(self.style.SUCCESS(f"RDI generated: {', '.join(f'{k}={v}' for k, v in cfg.items())}."))
+        mode = self._select_mode_and_validate(opts)
+        exclude = self._parse_exclude_fields(opts)
+        cfg = self._build_cfg(opts, mode=mode, exclude=exclude)
+        used_name = generate(GeneratorConfig(**cfg))
+
+        self.stdout.write(self.style.SUCCESS(f"RDI file '{used_name}' generated successfully."))

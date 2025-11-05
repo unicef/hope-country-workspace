@@ -53,13 +53,13 @@ class GenerationMode(StrEnum):
 
 
 class GeneratorConfig(NamedTuple):
-    mode: GenerationMode = GenerationMode.HH_IND
+    mode: GenerationMode = GenerationMode.PEOPLE
     office_slug: str = "afghanistan"
     locale: str = "en"
     hh_amount: int = 5
     inds_per_hh: tuple[int, int] = (3, 7)
     people: int = 20
-    filename: str = "rdi_generated.xlsx"
+    filename: str | None = None
     seed: int | None = None
     # these fields will be excluded by base name from sheet
     exclude_fields: tuple[str, ...] = ()
@@ -137,10 +137,25 @@ NAME_FIELD_KEYS = ("given_name", "family_name", "middle_name", "full_name")
 FIELD_PATTERNS: dict[str, FieldGen] = {
     "address": lambda fake, _rng, /: fake.street_address(),
     "phone_no": lambda fake, _rng, /: _generate_phone_e164(rng=_rng),
+    "phone_no_alternative": lambda fake, _rng, /: _generate_phone_e164(rng=_rng),
+    "who_answers_phone": lambda fake, _rng, /: _generate_phone_e164(rng=_rng),
+    "who_answers_alt_phone": lambda fake, _rng, /: _generate_phone_e164(rng=_rng),
+    "payment_delivery_phone_no": lambda fake, _rng, /: _generate_phone_e164(rng=_rng),
     "birth_date": lambda fake, _rng, /: fake.date_between(start_date="-50y", end_date="-1y"),
     "estimated_birth_date": lambda _fake, rng, /: bool(rng.getrandbits(1)),
     "consent": lambda _fake, rng, /: bool(rng.getrandbits(1)),
     "photo": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
+    "consent_sign": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
+    "detail_id": lambda fake, _rng, /: fake.bothify("DTL-########"),
+    "unhcr_id": lambda fake, _rng, /: fake.bothify("UNHCR-########"),
+    "village": lambda fake, _rng, /: fake.city(),
+    "zip_code": lambda fake, _rng, /: fake.postcode(),
+    "name_enumerator": lambda fake, _rng, /: fake.name(),
+    "disability_certificate_picture": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
+    "wallet_address": lambda fake, _rng, /: fake.hexify("0x" + "^" * 40),
+    "wallet_name": lambda fake, _rng, /: fake.bothify("Wallet-???##"),
+    "blockchain_name": lambda fake, _rng, /: fake.cryptocurrency_name(),
+    "email": lambda fake, _rng, /: fake.email(),
 }
 
 FIELDSET_PREFIXES = {
@@ -150,16 +165,19 @@ FIELDSET_PREFIXES = {
 
 FIELDSET_PREFIXES_PATTERNS: dict[tuple[str, ...], dict[str, FieldGen]] = {
     FIELDSET_PREFIXES["document"]: {
-        "document_number": lambda fake, _rng, /: fake.bothify("???-########"),
+        "document_number": lambda fake, _rng, /: fake.bothify("DOC-########"),
         "issuance_date": lambda fake, _rng, /: fake.date_between(start_date="-15y", end_date="-1y"),
         "expiry_date": lambda fake, _rng, /: fake.date_between(start_date="today", end_date="+10y"),
         "image": lambda _fake, rng, /: _generate_png_solid_square(rng=rng),
     },
     FIELDSET_PREFIXES["account"]: {
-        "number": lambda fake, _rng, /: fake.bothify("???-########"),
+        "number": lambda fake, _rng, /: fake.bothify("ACC-########"),
         "data": lambda fake, rng, /: _generate_json_data(fake, rng),
     },
 }
+
+
+NULLABLE_RATE: float = 0.25
 
 
 def _colname(spec: SheetSpec, field_name: str) -> str:
@@ -198,12 +216,6 @@ def _generate_name_parts(fake: Faker) -> dict[str, str]:
 
 def _generate_phone_e164(*, rng: Random) -> str:
     return f"+1202555{rng.randint(1000, 9999):04d}"
-
-
-def _is_demographic_counter(name: str) -> bool:
-    return name == "pregnant_count" or (
-        name.startswith(("female_age_group_", "male_age_group_")) and name.endswith(("_count", "_disabled_count"))
-    )
 
 
 def _strip_known_postfix(name: str) -> str:
@@ -249,7 +261,7 @@ def _fake_value(field_name: str, fake: Faker, field_patterns: dict[str, FieldGen
     base = _strip_known_postfix(field_name.lower())
 
     if base in field_patterns:
-        return field_patterns[base](fake, rng)
+        return None if rng.random() < NULLABLE_RATE else field_patterns[base](fake, rng)
 
     for prefixes, mapping in FIELDSET_PREFIXES_PATTERNS.items():
         for prefix in prefixes:
@@ -279,7 +291,7 @@ def _get_sheet_specific_handler(name: str, sheet_type: SheetName, rng: Random) -
     elif sheet_type is SheetName.HOUSEHOLDS:
         if name in spec.plain_fields:
             return lambda **_: None
-        if _is_demographic_counter(name):
+        if name.endswith("_count"):
             return lambda **_: rng.choice((None, 1, 2, 3))
     elif sheet_type is SheetName.PEOPLE:
         if name == spec.id_key:
@@ -302,6 +314,8 @@ def make_field_writers(
         if name in NAME_FIELD_KEYS:
             return lambda *_, name_parts=None, **__: name_parts.get(name, "") if name_parts else ""
         field = form.base_fields[name]
+        if field is None:
+            return lambda **__: None
         return lambda *_, f=field, n=name, **__: resolve_field_value(n, f, fake, rng)
 
     return [writer_for(n) for n in fields]
@@ -410,8 +424,8 @@ def write_row(
     *,
     cell_writer: Callable[[Worksheet, int, int, Any], None],
 ) -> None:
-    """Write records to a worksheet by field order, starting at row index 2."""
-    for r, row in enumerate(rows, start=2):
+    """Write records to a worksheet by field order, starting at row index 1."""
+    for r, row in enumerate(rows, start=1):
         get = row.get
         for c, name in enumerate(fields):
             cell_writer(ws, r, c, get(name))
@@ -439,7 +453,23 @@ def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str) -> No
         f.write(buff.getbuffer())
 
 
-def generate(config: GeneratorConfig = None) -> None:
+def _build_filename(cfg: GeneratorConfig) -> str:
+    parts = ["rdi", cfg.office_slug]
+    if cfg.mode is GenerationMode.PEOPLE:
+        parts.append(f"pp{cfg.people}")
+    else:
+        lo, hi = cfg.inds_per_hh
+        parts.append(f"hh{cfg.hh_amount}ind{lo}-{hi}")
+    parts.append(cfg.locale.replace("_", ""))
+    if cfg.seed is not None:
+        parts.append(f"s{cfg.seed}")
+    if cfg.exclude_fields:
+        parts.append(f"excl{len(cfg.exclude_fields)}flds")
+    parts.append(datetime.now(UTC).strftime("%Y%m%d%H%M%S"))
+    return "_".join(parts) + ".xlsx"
+
+
+def generate(config: GeneratorConfig = None) -> str:
     if config is None:
         config = GeneratorConfig()
 
@@ -450,4 +480,7 @@ def generate(config: GeneratorConfig = None) -> None:
 
     gen_data = partial(partial, config=config, fake=fake, rng=rng)
     sheets = config.mode.get_sheets(config, gen_data, rng)
-    write_excel(sheets, config.filename)
+    filename = config.filename or _build_filename(config)
+    write_excel(sheets, filename)
+
+    return filename
