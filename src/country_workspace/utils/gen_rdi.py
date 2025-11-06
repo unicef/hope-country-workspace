@@ -218,19 +218,21 @@ def _generate_phone_e164(*, rng: Random) -> str:
     return f"+1202555{rng.randint(1000, 9999):04d}"
 
 
-def _strip_known_postfix(name: str) -> str:
-    """Remove any known sheet postfix from the provided field name."""
-    for p in KNOWN_POSTFIXES:
-        if name.lower().endswith(p):
-            return name[: -len(p)]
+def _field_basename(name: str) -> str:
+    """Return column base name without known sheet prefix/postfix."""
+    low = name.lower()
+    if postfix := next((s for s in KNOWN_POSTFIXES if low.endswith(s)), ""):
+        name = name[: -len(postfix)]
+    if prefix := next((p for p in KNOWN_PREFIXES if low.startswith(p)), ""):
+        name = name[len(prefix) :]
     return name
 
 
 def _effective_exclude(field_names: Iterable[str], exclude_fields: Iterable[str], sheet: SheetName) -> list[str]:
     """Exclude fields by base name for the sheet, preserving protected IDs and order."""
-    exclude = {_strip_known_postfix(n) for n in exclude_fields}
+    exclude = {_field_basename(n) for n in exclude_fields}
     exclude -= {n for n in PROTECTED_FIELDS.get(sheet, ()) if n}
-    return [name for name in field_names if _strip_known_postfix(name) not in exclude]
+    return [name for name in field_names if _field_basename(name) not in exclude]
 
 
 def get_form(dc_name: str, office_slug: str) -> FlexForm:
@@ -258,7 +260,7 @@ def pick_from_choices(field: Any, rng: Random) -> Any:
 
 
 def _fake_value(field_name: str, fake: Faker, field_patterns: dict[str, FieldGen], rng: Random) -> Any:
-    base = _strip_known_postfix(field_name.lower())
+    base = _field_basename(field_name.lower())
 
     if base in field_patterns:
         return None if rng.random() < NULLABLE_RATE else field_patterns[base](fake, rng)

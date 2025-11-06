@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,6 +12,9 @@ from pytest_mock import MockerFixture
 from responses import RequestsMock
 
 from country_workspace.management.commands.sync import Command as SyncCommand, run_program_sync, run_geo_sync
+import country_workspace.management.commands.gen_rdi as gen_rdi_cmd
+from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
+
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
@@ -188,3 +192,98 @@ def test_sync(
 
     assert run_program_sync.call_count == run_program_sync_expected
     assert run_geo_sync_mock.call_count == run_geo_sync_expected
+
+
+@pytest.mark.parametrize(
+    ("cli_args", "expect"),
+    [
+        # PEOPLE mode
+        (
+            [
+                "afghanistan",
+                "-P",
+                "5",
+                "-L",
+                "en_US",
+                "-S",
+                "42",
+                "-o",
+                "out.xlsx",
+                "-X",
+                "wallet_address, email",
+                "-X",
+                "phone_no",
+            ],
+            {
+                "mode": GenerationMode.PEOPLE,
+                "office": "afghanistan",
+                "people": 5,
+                "locale": "en_US",
+                "seed": 42,
+                "filename": "out.xlsx",
+                "exclude": ("wallet_address", "email", "phone_no"),
+            },
+        ),
+        # HH_IND mode
+        (
+            ["afghanistan", "-H", "3", "--inds-min", "2", "--inds-max", "4", "-L", "en_US", "-S", "7"],
+            {
+                "mode": GenerationMode.HH_IND,
+                "office": "afghanistan",
+                "hh": 3,
+                "inds": (2, 4),
+                "locale": "en_US",
+                "seed": 7,
+                "filename": None,
+                "exclude": (),
+            },
+        ),
+    ],
+)
+def test_gen_rdi_happy_paths(mocker: MockerFixture, cli_args: list[str], expect: dict[str, any]) -> None:
+    """Smoke test: CLI builds GeneratorConfig and calls generate once."""
+    out = StringIO()
+    gen = mocker.patch.object(gen_rdi_cmd, "generate", return_value="used.xlsx")
+
+    call_command("gen_rdi", *cli_args, stdout=out)
+
+    # called once with GeneratorConfig instance
+    assert gen.call_count == 1
+    (cfg,), _ = gen.call_args
+    assert isinstance(cfg, GeneratorConfig)
+
+    # core expectations by mode
+    assert cfg.mode is expect["mode"]
+    assert cfg.office_slug == expect["office"]
+    assert cfg.locale == expect["locale"]
+    assert cfg.seed == expect["seed"]
+    assert cfg.filename == expect["filename"]
+
+    if cfg.mode is GenerationMode.PEOPLE:
+        assert cfg.people == expect["people"]
+    else:
+        assert cfg.hh_amount == expect["hh"]
+        assert cfg.inds_per_hh == expect["inds"]
+
+    assert tuple(cfg.exclude_fields) == expect["exclude"]
+
+    s = out.getvalue()
+    assert "RDI file 'used.xlsx' generated successfully." in s
+
+
+@pytest.mark.parametrize(
+    ("cli_args", "err"),
+    [
+        (["afghanistan", "-H", "1", "-P", "2"], "Cannot mix HH parameters"),
+        (["afghanistan", "-H", "0"], "--households must be > 0"),
+        (["afghanistan", "--inds-min", "2"], "Pass both --inds-min and --inds-max"),
+        (["afghanistan", "--inds-min", "5", "--inds-max", "3"], "--inds-min must be > 0"),
+        (["afghanistan", "-P", "0"], "--people must be > 0"),
+    ],
+)
+def test_gen_rdi_validation_errors(cli_args: list[str], err: str) -> None:
+    """Validation errors should raise CommandError with a helpful message."""
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError, match=re.escape(err)):
+        call_command("gen_rdi", *cli_args)
