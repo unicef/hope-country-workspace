@@ -73,7 +73,7 @@ class Program(BaseModel):
         DataChecker,
         blank=True,
         null=True,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="+",
         help_text="Checker to use with Household's records",
     )
@@ -82,7 +82,7 @@ class Program(BaseModel):
         DataChecker,
         blank=True,
         null=True,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="+",
         help_text="Checker to use with Individual's records",
     )
