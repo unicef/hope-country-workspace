@@ -1,5 +1,6 @@
 import re
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django import forms
 from django.db import transaction
@@ -41,6 +42,32 @@ class RegexUpdateForm(BaseActionForm):
         self.fields["field"].choices = choices
 
 
+class UpdateResult(NamedTuple):
+    original: Any
+    updated: Any
+
+
+def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replacement: str) -> UpdateResult:
+    original_value = json.get(key)
+
+    if not isinstance(original_value, str):
+        return UpdateResult(original_value, original_value)
+
+    updated_value = pattern.sub(replacement, original_value, 1)
+    json[key] = updated_value
+
+    return UpdateResult(original_value, updated_value)
+
+
+def update_checksum(records: "QuerySet[Beneficiary]", initial_fields: set[str]) -> Iterable[str]:
+    """Update checksum for all records in the queryset."""
+    fields = initial_fields.copy()
+    for record in records:
+        if update_fields := record.update_checksum(initial_fields):
+            fields.update(update_fields)
+    return fields
+
+
 def regex_update_impl(
     records: "QuerySet[Beneficiary]",
     config: dict[str, Any],
@@ -53,11 +80,11 @@ def regex_update_impl(
     ret = []
     with transaction.atomic():
         for record in records:
-            old_value = record.flex_fields.get(field_name, "")
-            new_value = config["regex"].sub(config["subst"], str(old_value), 1)
-            record.flex_fields[field_name] = new_value
-            if save:
-                record.save()
-            else:
-                ret.append((record.pk, old_value, new_value))
+            result = update_json(record.flex_fields, field_name, config["regex"], config["subst"])
+            ret.append((record.id, result.original, result.updated))
+
+        if save:
+            fields = update_checksum(records, {"flex_fields"})
+            records.bulk_update(records, fields, batch_size=1000)
+
     return ret
