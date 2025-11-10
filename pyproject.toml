@@ -52,7 +52,6 @@ dependencies = [
   "hope-flex-fields>=0.7.6",
   "hope-smart-export>=0.3",
   "hope-smart-import>=0.5",
-  "notebook>=7.4.3",
   "numpy>=2.3",
   "openpyxl>=3.1.5",
   "pandas>=2.3",
@@ -62,10 +61,8 @@ dependencies = [
   "psycopg2-binary>=2.9.9",
   "python-redis-lock[django]>=4",
   "redis",
-  "scikit-learn>=1.7",
   "sentry-sdk>=2.7.1",
   "social-auth-app-django",
-  "torch>=2.7.1",
   "unicef-security>=1.5.1",
 ]
 scripts.celery-monitor = "country_workspace.__monitor__:run"
@@ -105,6 +102,13 @@ docs = [
   "mkdocs-gen-files",
   "mkdocs-material",
   "mkdocstrings-python",
+]
+
+# ML libraries moved to separate group for development/analysis only
+ml = [
+  "notebook>=7.4.3",
+  "scikit-learn>=1.7",
+  "torch>=2.7.1",
 ]
 
 type-check = [
