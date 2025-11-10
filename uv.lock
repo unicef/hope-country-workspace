@@ -1361,7 +1361,6 @@ dependencies = [
     { name = "hope-flex-fields" },
     { name = "hope-smart-export" },
     { name = "hope-smart-import" },
-    { name = "notebook" },
     { name = "numpy" },
     { name = "openpyxl" },
     { name = "pandas" },
@@ -1371,10 +1370,8 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "python-redis-lock", extra = ["django"] },
     { name = "redis" },
-    { name = "scikit-learn" },
     { name = "sentry-sdk" },
     { name = "social-auth-app-django" },
-    { name = "torch" },
     { name = "unicef-security" },
 ]
 
@@ -1414,6 +1411,11 @@ docs = [
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+]
+ml = [
+    { name = "notebook" },
+    { name = "scikit-learn" },
+    { name = "torch" },
 ]
 type-check = [
     { name = "types-python-dateutil" },
@@ -1458,7 +1460,6 @@ requires-dist = [
     { name = "hope-flex-fields", specifier = ">=0.7.6" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },
-    { name = "notebook", specifier = ">=7.4.3" },
     { name = "numpy", specifier = ">=2.3" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3" },
@@ -1468,10 +1469,8 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "python-redis-lock", extras = ["django"], specifier = ">=4" },
     { name = "redis" },
-    { name = "scikit-learn", specifier = ">=1.7" },
     { name = "sentry-sdk", specifier = ">=2.7.1" },
     { name = "social-auth-app-django" },
-    { name = "torch", specifier = ">=2.7.1" },
     { name = "unicef-security", specifier = ">=1.5.1" },
 ]
 
@@ -1510,6 +1509,11 @@ docs = [
     { name = "mkdocs-gen-files" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
+]
+ml = [
+    { name = "notebook", specifier = ">=7.4.3" },
+    { name = "scikit-learn", specifier = ">=1.7" },
+    { name = "torch", specifier = ">=2.7.1" },
 ]
 type-check = [
     { name = "types-python-dateutil" },
