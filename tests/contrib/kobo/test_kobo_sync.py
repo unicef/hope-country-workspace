@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from constance.test.unittest import override_config
@@ -189,6 +189,10 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     mocker.patch(
         "country_workspace.contrib.kobo.sync.ContentType.objects.get_for_model", return_value=content_type_mock
     )
+
+    get_kobo_sync_log_name_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_kobo_sync_log_name")
+    get_kobo_sync_log_name_mock.return_value = "kobo_test_asset_uid"
+
     mocker.patch("django.db.transaction.atomic")
 
     id_generator_mock = mocker.Mock(name="id_generator")
@@ -214,8 +218,9 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2)
 
+    get_kobo_sync_log_name_mock.assert_called_once_with(asset_mock.uid)
     sync_log_class.objects.filter.assert_called_once_with(
-        name=asset_mock.uid, content_type=content_type_mock, object_id=_batch_mock.program.id
+        name="kobo_test_asset_uid", content_type=content_type_mock, object_id=_batch_mock.program.id
     )
     asset_mock.submissions.assert_called_once_with(min_id=100)
 
@@ -224,10 +229,10 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     assert set_roles_and_relationships_mock.call_count == 2
 
     sync_log_class.objects.update_or_create.assert_called_once_with(
-        name=asset_mock.uid,
+        name="kobo_test_asset_uid",
         content_type=content_type_mock,
         object_id=_batch_mock.program.id,
-        defaults={"last_id": "102"},
+        defaults={"last_id": "102", "last_update_date": ANY},
     )
 
 
@@ -241,6 +246,10 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     mocker.patch(
         "country_workspace.contrib.kobo.sync.ContentType.objects.get_for_model", return_value=content_type_mock
     )
+
+    get_kobo_sync_log_name_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_kobo_sync_log_name")
+    get_kobo_sync_log_name_mock.return_value = "kobo_test_asset_uid"
+
     mocker.patch("django.db.transaction.atomic")
 
     id_generator_mock = mocker.Mock(name="id_generator")
@@ -264,11 +273,47 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
         import_asset(batch_mock, asset_mock, config, id_generator_mock)
 
     sync_log_class.objects.update_or_create.assert_called_once_with(
-        name=asset_mock.uid,
+        name="kobo_test_asset_uid",
         content_type=content_type_mock,
         object_id=batch_mock.program.id,
-        defaults={"last_id": "101"},
+        defaults={"last_id": "101", "last_update_date": ANY},
     )
+
+
+def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) -> None:
+    sync_log_mock = Mock()
+    sync_log_mock.last_id = "100"
+    sync_log_class = mocker.patch("country_workspace.contrib.kobo.sync.SyncLog")
+    sync_log_class.objects.filter.return_value.first.return_value = sync_log_mock
+
+    content_type_mock = mocker.Mock()
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.ContentType.objects.get_for_model", return_value=content_type_mock
+    )
+
+    get_kobo_sync_log_name_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_kobo_sync_log_name")
+    get_kobo_sync_log_name_mock.return_value = "kobo_test_asset_uid"
+
+    id_generator_mock = mocker.Mock(name="id_generator")
+
+    asset_mock = Mock()
+    asset_mock.submissions = Mock(return_value=iter([]))  # No submissions
+
+    result = import_asset(
+        _batch_mock := Mock(name="batch"),
+        asset_mock,
+        config,
+        id_generator_mock,
+    )
+
+    assert result == ImportResult(households=0, individuals=0)
+
+    get_kobo_sync_log_name_mock.assert_called_once_with(asset_mock.uid)
+    sync_log_class.objects.filter.assert_called_once_with(
+        name="kobo_test_asset_uid", content_type=content_type_mock, object_id=_batch_mock.program.id
+    )
+    asset_mock.submissions.assert_called_once_with(min_id=100)
+    sync_log_class.objects.update_or_create.assert_not_called()
 
 
 def test_import_data(mocker: MockerFixture, config: Config) -> None:

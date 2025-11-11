@@ -143,7 +143,26 @@ def test_get_asset_list(mocker: MockerFixture) -> None:
     partial.assert_called_once_with(get_asset, data_getter)
 
 
-def test_get_submission_list(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(
+    ("min_id", "expected_query"),
+    [
+        pytest.param(
+            None,
+            {START_PARAMETER_NAME: START_PARAMETER_VALUE, LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE},
+            id="without_min_id",
+        ),
+        pytest.param(
+            12345,
+            {
+                START_PARAMETER_NAME: START_PARAMETER_VALUE,
+                LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE,
+                "query": '{"_id": {"$gt": 12345}}',
+            },
+            id="with_min_id",
+        ),
+    ],
+)
+def test_get_submission_list(mocker: MockerFixture, min_id: int | None, expected_query: dict) -> None:
     change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
     data_getter_mock = Mock()
     partial = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.partial")
@@ -153,11 +172,9 @@ def test_get_submission_list(mocker: MockerFixture) -> None:
     )
     handle_paginated_response_mock.return_value = (_item := Mock(),)
 
-    assert get_submission_list(data_getter_mock, BASE_URL) == map_mock.return_value
+    assert get_submission_list(data_getter_mock, BASE_URL, min_id=min_id) == map_mock.return_value
 
-    change_url_mock.assert_called_once_with(
-        BASE_URL, query={START_PARAMETER_NAME: START_PARAMETER_VALUE, LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE}
-    )
+    change_url_mock.assert_called_once_with(BASE_URL, query=expected_query)
     partial.assert_called_once_with(download_attachments, data_getter_mock)
     handle_paginated_response_mock.assert_called_once_with(
         data_getter_mock, change_url_mock.return_value, get_raw_submission_list, Submission
