@@ -180,10 +180,15 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
 
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
-    kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
-    last_imported_id = 100
-    kobo_submission_class.objects.filter.return_value.values_list.return_value.first.return_value = last_imported_id
+    sync_log_mock = Mock()
+    sync_log_mock.last_id = "100"
+    sync_log_class = mocker.patch("country_workspace.contrib.kobo.sync.SyncLog")
+    sync_log_class.objects.filter.return_value.first.return_value = sync_log_mock
 
+    content_type_mock = mocker.Mock()
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.ContentType.objects.get_for_model", return_value=content_type_mock
+    )
     mocker.patch("django.db.transaction.atomic")
 
     id_generator_mock = mocker.Mock(name="id_generator")
@@ -209,28 +214,33 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2)
 
-    # Verify watermark query
-    kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
-    kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with(
-        "last_submission_id", flat=True
+    sync_log_class.objects.filter.assert_called_once_with(
+        name=asset_mock.uid, content_type=content_type_mock, object_id=_batch_mock.program.id
     )
-
-    asset_mock.submissions.assert_called_once_with(min_id=last_imported_id)
+    asset_mock.submissions.assert_called_once_with(min_id=100)
 
     assert create_household_mock.call_count == 2
     assert create_individuals_mock.call_count == 2
     assert set_roles_and_relationships_mock.call_count == 2
 
-    kobo_submission_class.objects.update_or_create.assert_called_once_with(
-        asset_uid=asset_mock.uid, defaults={"last_submission_id": 102}
+    sync_log_class.objects.update_or_create.assert_called_once_with(
+        name=asset_mock.uid,
+        content_type=content_type_mock,
+        object_id=_batch_mock.program.id,
+        defaults={"last_id": "102"},
     )
 
 
 def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
-    kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
-    last_imported_id = 100
-    kobo_submission_class.objects.filter.return_value.values_list.return_value.first.return_value = last_imported_id
+    sync_log_mock = Mock()
+    sync_log_mock.last_id = "100"
+    sync_log_class = mocker.patch("country_workspace.contrib.kobo.sync.SyncLog")
+    sync_log_class.objects.filter.return_value.first.return_value = sync_log_mock
 
+    content_type_mock = mocker.Mock()
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.ContentType.objects.get_for_model", return_value=content_type_mock
+    )
     mocker.patch("django.db.transaction.atomic")
 
     id_generator_mock = mocker.Mock(name="id_generator")
@@ -249,16 +259,15 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
 
+    batch_mock = Mock(name="batch")
     with pytest.raises(ImportError, match=r"Kobo import failed for asset.*at submission 102"):
-        import_asset(
-            Mock(name="batch"),
-            asset_mock,
-            config,
-            id_generator_mock,
-        )
+        import_asset(batch_mock, asset_mock, config, id_generator_mock)
 
-    kobo_submission_class.objects.update_or_create.assert_called_once_with(
-        asset_uid=asset_mock.uid, defaults={"last_submission_id": 101}
+    sync_log_class.objects.update_or_create.assert_called_once_with(
+        name=asset_mock.uid,
+        content_type=content_type_mock,
+        object_id=batch_mock.program.id,
+        defaults={"last_id": "101"},
     )
 
 

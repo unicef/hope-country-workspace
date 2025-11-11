@@ -6,13 +6,14 @@ from constance import config as constance_config
 from requests import Session
 from requests.adapters import HTTPAdapter
 
+from django.contrib.contenttypes.models import ContentType
+
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
-from country_workspace.contrib.kobo.models.submission import KoboSubmission
-from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
@@ -154,9 +155,9 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     household_counter = 0
     individual_counter = 0
 
-    last_id = (
-        KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("last_submission_id", flat=True).first() or 0
-    )
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLog.objects.filter(name=asset.uid, content_type=program_ct, object_id=batch.program.id).first()
+    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else 0
 
     last_successful_id = last_id
     current_submission = None
@@ -181,14 +182,18 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
         error_msg = (
             f"Kobo import failed for asset {asset.uid} at submission {failed_id}. "
             f"Successfully imported {household_counter} households. "
-            f"Last successful submission ID: {last_successful_id}"
+            f"Last successful submission ID: {last_successful_id}. "
+            f"Error: {e}"
         )
         raise ImportError(error_msg) from e
 
     finally:
         if last_successful_id > last_id:
-            KoboSubmission.objects.update_or_create(
-                asset_uid=asset.uid, defaults={"last_submission_id": last_successful_id}
+            SyncLog.objects.update_or_create(
+                name=asset.uid,
+                content_type=program_ct,
+                object_id=batch.program.id,
+                defaults={"last_id": str(last_successful_id)},
             )
 
     return ImportResult(households=household_counter, individuals=individual_counter)
