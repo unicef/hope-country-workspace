@@ -8,7 +8,8 @@ from .base import BaseModelAdmin
 
 @admin.register(SyncLog)
 class SyncLogAdmin(BaseModelAdmin):
-    list_display = ("content_type", "content_object", "last_update_date", "last_id")
+    list_display = ("content_type", "name", "content_object", "last_update_date", "last_id")
+    search_fields = ("name", "content_type__model", "content_type__app_label")
 
     @button()
     def sync_flex_fields(self, request: HttpRequest) -> "HttpResponse":

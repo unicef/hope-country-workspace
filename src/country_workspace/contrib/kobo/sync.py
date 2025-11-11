@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterable
 from functools import partial
 from typing import Any, Final, TypedDict, cast
 from constance import config as constance_config
+from django.utils import timezone
 from requests import Session
 from requests.adapters import HTTPAdapter
 
@@ -17,6 +18,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual, Pro
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
+from country_workspace.utils.sync_log import get_kobo_sync_log_name
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -154,9 +156,10 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
 
     household_counter = 0
     individual_counter = 0
+    sync_log_name = get_kobo_sync_log_name(asset.uid)
 
     program_ct = ContentType.objects.get_for_model(Program)
-    sync_log = SyncLog.objects.filter(name=asset.uid, content_type=program_ct, object_id=batch.program.id).first()
+    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=batch.program.id).first()
     last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else 0
 
     last_successful_id = last_id
@@ -190,10 +193,10 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     finally:
         if last_successful_id > last_id:
             SyncLog.objects.update_or_create(
-                name=asset.uid,
+                name=sync_log_name,
                 content_type=program_ct,
                 object_id=batch.program.id,
-                defaults={"last_id": str(last_successful_id)},
+                defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
             )
 
     return ImportResult(households=household_counter, individuals=individual_counter)

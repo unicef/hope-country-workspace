@@ -45,7 +45,7 @@ class SyncManager(BaseManager):
 
 
 class SyncLog(BaseModel):
-    name = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    name = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField(blank=True, null=True)
     content_object = GenericForeignKey("content_type", "object_id")
