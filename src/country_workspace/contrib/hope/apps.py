@@ -4,6 +4,7 @@ from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, Country
 from .lookups import FinancialInstitutionChoice
 from .phone_numbers import PhoneNumberField
 from .beneficiary_reference import BeneficiaryReferenceModelChoiceField
+from .required_choice_field import ChoiceFieldWithEmptyDisplay
 
 
 class Config(AppConfig):
@@ -25,6 +26,7 @@ class Config(AppConfig):
         field_registry.register(FinancialInstitutionChoice)
         field_registry.register(PhoneNumberField)
         field_registry.register(BeneficiaryReferenceModelChoiceField)
+        field_registry.register(ChoiceFieldWithEmptyDisplay)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry
