@@ -1,5 +1,3 @@
-from country_workspace.contrib.kobo.models import KoboSubmission
-
 from .batch import Batch
 from .beneficiary_group import BeneficiaryGroup
 from .data_serializer import DataSerializer
@@ -26,7 +24,6 @@ __all__ = [
     "DataSerializer",
     "Household",
     "Individual",
-    "KoboSubmission",
     "MappingImporter",
     "Office",
     "Program",
