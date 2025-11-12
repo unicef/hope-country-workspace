@@ -8,7 +8,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
-from country_workspace.utils.jobs import generate_validation_job
+from country_workspace.utils.imports import generate_validation_job
 from country_workspace.utils.types import BeneficiaryMapping
 
 

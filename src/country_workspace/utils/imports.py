@@ -1,11 +1,15 @@
+from typing import TYPE_CHECKING
+
 from django.db.models import QuerySet
 from hope_flex_fields.models import DataChecker
 from strategy_field.utils import fqn
 
-from country_workspace.datasources.rdi.config import Sheet
 from country_workspace.models import AsyncJob, Program
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.workspaces.admin.cleaners.validate import validate_queryset
+
+if TYPE_CHECKING:
+    from country_workspace.datasources.rdi.config import Sheet
 
 
 def generate_validation_job(description: str, owner: str, program: Program, queryset: QuerySet) -> AsyncJob:
@@ -20,7 +24,7 @@ def generate_validation_job(description: str, owner: str, program: Program, quer
     )
 
 
-def validate_alien_fields(sheet: Sheet, datachecker: DataChecker) -> None:
+def validate_alien_fields(sheet: "Sheet", datachecker: DataChecker) -> None:
     row = next(sheet)
     raw_data = clean_field_names(row)
     fields = set(raw_data.keys())
