@@ -159,6 +159,7 @@ def bulk_update_export(
                 "model_name": opts.label,
                 "columns": columns,
                 "send_to": request.user.email,
+                "include_errors": form.cleaned_data["include_errors"],
             },
         )
         job.queue()

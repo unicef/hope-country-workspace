@@ -188,7 +188,12 @@ def _get_header_format(workbook: Workbook) -> Format:
     )
 
 
-def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
+def create_bulk_update_template(
+    queryset: "QuerySet[Beneficiary]",
+    program: Program,
+    columns: list[str],
+    include_errors: bool = False,
+) -> BytesIO:
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
 
@@ -197,6 +202,10 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
         worksheet = workbook.add_worksheet()
         worksheet.protect()
         worksheet.unprotect_range("C1:ZZ999", None)
+
+        original_columns = list(columns)
+        if include_errors:
+            columns.extend(["is_valid", "errors"])
 
         field_to_choices = {}
         for i, fld_name in enumerate(columns):
@@ -215,11 +224,17 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
 
         worksheet.freeze_panes(1, 0)
 
-        fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
+        def fmt(v):
+            return ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
+
         for row, record in enumerate(queryset, 1):
-            for col, fld in enumerate(columns):
+            for col, fld in enumerate(original_columns):
                 value = getattr(record, fld, record.flex_fields.get(fld))
                 worksheet.write(row, col, fmt(value))
+
+            if include_errors:
+                worksheet.write(row, len(original_columns), not bool(record.errors))
+                worksheet.write(row, len(original_columns) + 1, fmt(record.errors))
 
         _add_choices_worksheet(workbook, field_to_choices, columns)
 
@@ -228,7 +243,8 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
 
 
 def _extract_choices_from_field(field: FlexField) -> list[Any]:
-    flatten = lambda elements: [el[0] for el in elements]
+    def flatten(elements):
+        return [el[0] for el in elements]
 
     if (choices := field.attrs.get("choices")) or (choices := field.definition.attrs.get("choices")):
         return flatten(choices)
@@ -324,7 +340,10 @@ def export_bulk_update_template(job: AsyncJob) -> str:
         model = apps.get_model(job.config["model_name"])
         queryset = model.objects.filter(pk__in=job.config["pks"])
 
-        out = create_bulk_update_template(queryset, job.program, job.config["columns"])
+        include_errors = job.config.get("include_errors", False)
+        out = create_bulk_update_template(
+            queryset, job.program, job.config["columns"], include_errors=include_errors
+        )
         filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
         filepath = MEDIA_STORAGE.save(filename, out)
 
