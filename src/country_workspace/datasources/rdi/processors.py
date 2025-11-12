@@ -1,27 +1,25 @@
+import itertools
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
 from copy import deepcopy
-from functools import partial
 from typing import Any, cast, Mapping
 
+from PIL import Image
+from django.db.transaction import atomic
 from hope_smart_import.readers import open_xls_multi, SheetNotError
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as RDIImage
-from PIL import Image
-
-from django.db.transaction import atomic
 
 from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
+from country_workspace.utils.imports import generate_validation_job, validate_alien_fields
 from country_workspace.utils.functional import compose
-from country_workspace.utils.types import ValidateBeneficiaries
-from country_workspace.validators.beneficiaries import validate_beneficiaries
 from .config import Config, SheetName, Sheet
 from .exceptions import ColumnConfigurationError, SheetProcessingError, SheetNotFoundError
-from .utils import date_to_iso_string, datetime_to_date, validation_errors_handler
+from .utils import date_to_iso_string, datetime_to_date
 
 
 def image_location(image: RDIImage) -> tuple[int, int]:
@@ -182,29 +180,52 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             source=Batch.BatchSource.RDI,
         )
         with batch_ctx(batch.pk):
-            validate = partial(validate_beneficiaries, config=config, office=job.program.country_office)
             if config["master_detail"]:
-                return _import_master_detail(job, batch, config, validate)
-            return _import_people_only(job, batch, config, validate)
+                result = _import_master_detail(job, batch, config)
+            else:
+                result = _import_people_only(job, batch, config)
+
+        if not config.get("validate_after_import"):
+            return result
+
+        if job.config.get("master_detail"):
+            queryset = batch.household_set.all().prefetch_related("members")
+        else:
+            queryset = batch.individual_set.filter(household=None)
+
+        validation_job = generate_validation_job(
+            description=f"Validate records for batch {batch.pk}",
+            owner=job.owner,
+            program=job.program,
+            queryset=queryset,
+        )
+        validation_job.queue()
+        return result
 
 
-def _import_master_detail(
-    job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries
-) -> dict[str, int]:
+def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
-    household_mapping = process_households(household_sheet, job, batch, config)
-    individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
+    hh_sheet_gen1, hh_sheet_gen2 = itertools.tee(household_sheet)
+    ind_sheet_gen1, ind_sheet_gen2 = itertools.tee(individual_sheet)
+
+    if config.get("fail_if_alien"):
+        validate_alien_fields(hh_sheet_gen1, job.program.household_checker)
+        validate_alien_fields(ind_sheet_gen1, job.program.individual_checker)
+
+    household_mapping = process_households(hh_sheet_gen2, job, batch, config)
+    individuals_mapping = process_beneficiaries(ind_sheet_gen2, job, batch, config, household_mapping)
     _sync_ind_pks(household_mapping, individuals_mapping)
-    with validation_errors_handler(job, config, households=household_mapping, individuals=individuals_mapping):
-        validate(household_mapping)
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
-def _import_people_only(job: AsyncJob, batch: Batch, config: Config, validate: ValidateBeneficiaries) -> dict[str, int]:
+def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-    people_mapping = process_beneficiaries(people_sheet, job, batch, config)
-    with validation_errors_handler(job, config, people=people_mapping):
-        validate(people_mapping)
+    people_sheet_gen1, people_sheet_gen2 = itertools.tee(people_sheet)
+
+    if config.get("fail_if_alien"):
+        validate_alien_fields(people_sheet_gen1, job.program.individual_checker)
+
+    people_mapping = process_beneficiaries(people_sheet_gen2, job, batch, config)
     return {"people": len(people_mapping)}
 
 
