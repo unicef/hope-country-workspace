@@ -8,7 +8,6 @@ from country_workspace.workspaces.admin.forms import BaseImportForm
 
 
 class ImportAuroraForm(BaseImportForm):
-    batch_name = forms.CharField(required=False, help_text="Label for this batch.")
     registration = forms.ModelChoiceField(
         queryset=Registration.objects.none(),
         help_text="What type of registrations are being imported.",
