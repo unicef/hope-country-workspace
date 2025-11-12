@@ -8,8 +8,8 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.models.household import RELATIONSHIP_HEAD, RELATIONSHIP_FIELDNAME
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.jobs import generate_validation_job
 from country_workspace.utils.types import BeneficiaryMapping
-from country_workspace.validators.beneficiaries import validate_beneficiaries
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -62,8 +62,23 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-        if mapping := validate_records(records_data, cfg):
-            validate_beneficiaries(mapping, cfg, job.program.country_office)
+            result = validate_records(records_data, cfg)
+
+    if not job.config.get("validate_after_import"):
+        return result
+
+    if job.config.get("master_detail"):
+        queryset = batch.household_set.all().prefetch_related("members")
+    else:
+        queryset = batch.individual_set.filter(household=None)
+
+    validation_job = generate_validation_job(
+        description=f"Validate records for batch {batch.pk}",
+        owner=job.owner,
+        program=job.program,
+        queryset=queryset,
+    )
+    validation_job.queue()
 
     return total
 
