@@ -11,13 +11,13 @@ from country_workspace.contrib.hope.push import push_to_hope_core, PushConfig
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
+from country_workspace.utils.imports import generate_validation_job
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
-from .validate import validate_queryset
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -33,14 +33,11 @@ def validate_records(
 ) -> None:
     if model_admin._check_empty_queryset(request, queryset):
         return None
-    opts = queryset.model._meta
-    job = AsyncJob.objects.create(
+    job = generate_validation_job(
         description=validate_records.short_description,
-        type=AsyncJob.JobType.ACTION,
         owner=request.user,
-        action=fqn(validate_queryset),
         program=state.program,
-        config={"pks": list(queryset.values_list("pk", flat=True)), "model_name": opts.label},
+        queryset=queryset,
     )
     job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
