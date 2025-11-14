@@ -183,10 +183,9 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
         failed_id = current_submission.id if current_submission else "unknown (before first submission)"
 
         error_msg = (
-            f"Kobo import failed for asset {asset.uid} at submission {failed_id}. "
-            f"Successfully imported {household_counter} households. "
-            f"Last successful submission ID: {last_successful_id}. "
+            f"Successfully imported {household_counter} households, before stopping at submission {failed_id} due to:"
             f"Error: {e}"
+            f"Last successful submission ID: {last_successful_id}."
         )
         raise ImportError(error_msg) from e
 

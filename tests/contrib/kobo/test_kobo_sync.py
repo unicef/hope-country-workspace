@@ -259,8 +259,7 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     submission_2 = Mock()
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
-
-    with pytest.raises(ImportError, match=r"Kobo import failed for asset.*at submission 102"):
+    with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
 
     sync_log.refresh_from_db()
