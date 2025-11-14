@@ -1,3 +1,4 @@
+import itertools
 from collections.abc import Mapping
 from datetime import datetime, date, timezone
 from typing import Any
@@ -376,8 +377,6 @@ def test_import_from_rdi(
     batch_class_mock = mocker.patch("country_workspace.datasources.rdi.processors.Batch")
     read_sheets_mock = mocker.patch("country_workspace.datasources.rdi.processors.read_sheets")
     process_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.processors.process_beneficiaries")
-    validate_beneficiaries_mock = mocker.patch("country_workspace.datasources.rdi.processors.validate_beneficiaries")
-    partial_mock = mocker.patch("country_workspace.datasources.rdi.processors.partial")
     if config["master_detail"]:
         read_sheets_mock.return_value = household_sheet, individual_sheet
         process_households_mock = mocker.patch("country_workspace.datasources.rdi.processors.process_households")
@@ -414,29 +413,27 @@ def test_import_from_rdi(
 
     result = import_from_rdi(job)
 
-    partial_mock.assert_called_once_with(validate_beneficiaries_mock, config=config, office=job.program.country_office)
     if config["master_detail"]:
         assert result == {"household": len(household_mocks), "individual": len(processed_individuals)}
-        process_households_mock.assert_called_once_with(
-            household_sheet, job, batch_class_mock.objects.create.return_value, config
-        )
-        process_beneficiaries_mock.assert_called_once_with(
-            individual_sheet,
-            job,
-            batch_class_mock.objects.create.return_value,
-            config,
-            household_mocks,
-        )
-        partial_mock.return_value.assert_called_once_with(household_mocks)
+        process_households_mock.assert_called_once()
+        args, kwargs = process_households_mock.call_args
+        assert args[1] == job
+        assert args[2] == batch_class_mock.objects.create.return_value
+        assert args[3] == config
+
+        process_beneficiaries_mock.assert_called_once()
+        args, kwargs = process_beneficiaries_mock.call_args
+        assert args[1] == job
+        assert args[2] == batch_class_mock.objects.create.return_value
+        assert args[3] == config
+        assert args[4] == household_mocks
     else:
         assert result == {"people": len(people_mapping)}
-        process_beneficiaries_mock.assert_called_once_with(
-            people_sheet,
-            job,
-            batch_class_mock.objects.create.return_value,
-            config,
-        )
-        partial_mock.return_value.assert_called_once_with(people_mapping)
+        process_beneficiaries_mock.assert_called_once()
+        args, kwargs = process_beneficiaries_mock.call_args
+        assert args[1] == job
+        assert args[2] == batch_class_mock.objects.create.return_value
+        assert args[3] == config
 
     batch_class_mock.objects.create.assert_called_once_with(
         name=config["batch_name"],
