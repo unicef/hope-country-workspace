@@ -3,6 +3,7 @@ from django.contrib.contenttypes.models import ContentType
 from country_workspace.contrib.hope.client import HopeClient
 from unittest import mock
 
+from country_workspace.utils.sync_log import get_sync_log_name, get_kobo_sync_log_name, get_aurora_sync_log_name
 from testutils.factories import SyncLogFactory, FlexFieldFactory
 
 
@@ -48,3 +49,27 @@ def test_refresh(sync_log, data, lookup_ret, expect_called):
     else:
         assert [o.attrs for o in objs] == old_attrs
         assert sync_log.last_update_date == old_date
+
+
+@pytest.mark.parametrize(
+    ("prefix", "asset_uid", "expected"),
+    [
+        ("kobo", "abc123", "kobo_abc123"),
+        ("aurora", "xyz789", "aurora_xyz789"),
+        ("custom", "test_asset", "custom_test_asset"),
+    ],
+    ids=["kobo_prefix", "aurora_prefix", "custom_prefix"],
+)
+def test_get_sync_log_name(prefix, asset_uid, expected):
+    result = get_sync_log_name(prefix, asset_uid)
+    assert result == expected
+
+
+def test_get_kobo_sync_log_name():
+    result = get_kobo_sync_log_name("test_asset_123")
+    assert result == "kobo_test_asset_123"
+
+
+def test_get_aurora_sync_log_name():
+    result = get_aurora_sync_log_name("test_asset_456")
+    assert result == "aurora_test_asset_456"

@@ -45,6 +45,7 @@ class SyncManager(BaseManager):
 
 
 class SyncLog(BaseModel):
+    name = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField(blank=True, null=True)
     content_object = GenericForeignKey("content_type", "object_id")
@@ -53,6 +54,9 @@ class SyncLog(BaseModel):
     data = models.JSONField(default=dict, blank=True)
 
     objects = SyncManager()
+
+    class Meta:
+        unique_together = [("name", "content_type", "object_id")]
 
     def refresh(self) -> None:
         if not (fd := self.content_object) or "remote_url" not in self.data:
