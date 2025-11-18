@@ -1,4 +1,3 @@
-import itertools
 from collections.abc import Mapping
 from datetime import datetime, date, timezone
 from typing import Any
