@@ -12,6 +12,7 @@ from country_workspace.workspaces.admin.cleaners.actions import (
     calculate_checksum,
     push_to_hope,
     validate_records,
+    name_parser_action,
 )
 from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
@@ -80,6 +81,18 @@ def test_regex_update_redirects_when_queryset_empty(mock_redirect, mock_admin, m
     mock_redirect.return_value = HttpResponse()
 
     result = regex_update(mock_admin, mock_request, empty_queryset)
+
+    mock_redirect.assert_called_once_with(".")
+    assert result == mock_redirect.return_value
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
+def test_name_parser_action_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
+    empty_queryset = MagicMock()
+    empty_queryset.exists.return_value = False
+    mock_redirect.return_value = HttpResponse()
+
+    result = name_parser_action(mock_admin, mock_request, empty_queryset)
 
     mock_redirect.assert_called_once_with(".")
     assert result == mock_redirect.return_value
