@@ -18,6 +18,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual, Pro
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
+from country_workspace.utils.imports import generate_validation_job
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 
 
@@ -235,5 +236,13 @@ def import_data(job: AsyncJob) -> ImportResult:
             import_result = import_asset(batch, asset, config, id_generator)
             household_counter += import_result["households"]
             individual_counter += import_result["individuals"]
+
+    validation_job = generate_validation_job(
+        description=f"Validate records for batch {batch.pk}",
+        owner=job.owner,
+        program=job.program,
+        queryset=batch.household_set.all().prefetch_related("members"),
+    )
+    validation_job.queue()
 
     return ImportResult(households=household_counter, individuals=individual_counter)
