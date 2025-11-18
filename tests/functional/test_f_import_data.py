@@ -158,8 +158,7 @@ def test_kobo_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="kobo"].selected')
 
     browser_program.assert_element_visible("#id_kobo-batch_name")
-    # TODO(data): Uncomment this lines after kobo import form supports these fields
-    # browser_program.assert_element_visible("#id_rdi-fail_if_alien")  # noqa
-    # browser_program.assert_element_visible("#id_rdi-validate_after_import")  # noqa
+    browser_program.assert_element_visible("#id_kobo-fail_if_alien")
+    browser_program.assert_element_visible("#id_kobo-validate_after_import")
     browser_program.assert_element_visible("#id_kobo-project_id")
     browser_program.assert_element_visible("#id_kobo-individual_records_field")
