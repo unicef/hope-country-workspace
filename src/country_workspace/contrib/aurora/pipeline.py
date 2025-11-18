@@ -62,10 +62,10 @@ def import_from_aurora(job: AsyncJob) -> dict[str, int]:
                 total["households"] += 1
             records_data.append((record_id, individuals))
 
-            result = validate_records(records_data, cfg)
+            validate_records(records_data, cfg)
 
     if not job.config.get("validate_after_import"):
-        return result
+        return total
 
     if job.config.get("master_detail"):
         queryset = batch.household_set.all().prefetch_related("members")

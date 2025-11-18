@@ -15,7 +15,6 @@ from django import forms as django_forms
 from country_workspace.contrib.hope.constants import PEOPLE_CHECKER_NAME
 from country_workspace.models import Office, Individual, Household, Batch
 from country_workspace.state import state
-from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from tests.contrib.aurora import stub
 from tests.extras.testutils.factories import DataCheckerFactory
@@ -196,7 +195,7 @@ def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Fo
     data = (Path(__file__).parent.parent / "data/rdi_correct.xlsx").read_bytes()
     res = app.get(url)
 
-    res.forms["import-file"]["rdi-validate_mode"] = ValidateMode.NONE.value
+    res.forms["import-file"]["rdi-fail_if_alien"] = False
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_correct.xlsx", data)
 
@@ -207,12 +206,10 @@ def _test_import_rdi_hh_and_individuals(
     form_import_rdi: forms.Form,
     program: "CountryProgram",
     reference_field_names: tuple,
-    validation_mode: str,
 ):
     if not program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=True")
 
-    form_import_rdi["rdi-validate_mode"] = validation_mode
     form_import_rdi["rdi-household_id_column"] = "household_id"
     res = form_import_rdi.submit()
 
@@ -250,26 +247,7 @@ def test_import_rdi_hh_and_individuals_no_validation(
 ):
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_hh_and_individuals(
-            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.NONE.value
-        )
-
-
-@pytest.mark.django_db
-def test_import_rdi_hh_and_individuals_check_before(
-    force_migrated_records,
-    app,
-    program,
-    ff_relationship,
-    ff_sex,
-    form_import_rdi,
-    reference_field_names,
-):
-    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
-        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_hh_and_individuals(
-            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_BEFORE.value
-        )
+        _test_import_rdi_hh_and_individuals(form_import_rdi, program, reference_field_names)
 
 
 @pytest.mark.django_db
@@ -284,21 +262,17 @@ def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
 ):
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_hh_and_individuals(
-            form_import_rdi, program, reference_field_names, validation_mode=ValidateMode.CHECK_AND_FAIL_IF_ALIEN.value
-        )
+        _test_import_rdi_hh_and_individuals(form_import_rdi, program, reference_field_names)
 
 
 def _test_import_rdi_people_only(
     program: "CountryProgram",
     form_import_rdi: forms.Form,
-    validation_mode: str,
 ) -> None:
     if program.beneficiary_group.master_detail:
         pytest.skip("Test requires master_detail=False")
 
     form_import_rdi["rdi-people_prefix"] = "pp_"
-    form_import_rdi["rdi-validate_mode"] = validation_mode
     res = form_import_rdi.submit()
 
     assert res.status_code == 302
@@ -326,28 +300,7 @@ def test_import_rdi_people_only_with_no_validation(
 
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_people_only(
-            program=program, form_import_rdi=form_import_rdi, validation_mode=ValidateMode.NONE.value
-        )
-
-
-def test_import_rdi_people_only_with_check_before(
-    force_migrated_records: None,
-    app: "DjangoTestApp",
-    program: "CountryProgram",
-    form_import_rdi: forms.Form,
-    ff_sex: None,
-    ff_relationship_not_required: None,
-    ff_residence_status: None,
-) -> None:
-    program.individual_checker = get_people_checker()
-    program.save()
-
-    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
-        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_people_only(
-            program=program, form_import_rdi=form_import_rdi, validation_mode=ValidateMode.CHECK_BEFORE.value
-        )
+        _test_import_rdi_people_only(program=program, form_import_rdi=form_import_rdi)
 
 
 def test_import_rdi_people_only_with_fail_if_alien(
@@ -365,12 +318,11 @@ def test_import_rdi_people_only_with_fail_if_alien(
 
     with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
         mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_people_only(
-            program=program, form_import_rdi=form_import_rdi, validation_mode=ValidateMode.CHECK_AND_FAIL_IF_ALIEN.value
-        )
+        _test_import_rdi_people_only(program=program, form_import_rdi=form_import_rdi)
 
 
 @pytest.fixture
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
 def form_aurora(
     app: "DjangoTestApp", program: "CountryProgram", mocked_responses: responses.RequestsMock, stub_data: dict[str, Any]
 ) -> forms.Form:
@@ -379,6 +331,7 @@ def form_aurora(
     res.forms["select-tenant"].submit()
 
     url = reverse("workspace:workspaces_countryprogram_import_data", args=[program.pk])
+
     mocked_responses.add(
         responses.GET,
         re.compile(re.escape(config.AURORA_API_URL) + ".*"),
@@ -387,7 +340,8 @@ def form_aurora(
 
     res = app.get(url)
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
-    res.forms["import-aurora"]["aurora-validate_mode"] = ValidateMode.NONE.value
+    res.forms["import-aurora"]["aurora-validate_after_import"] = False  # Or True
+    res.forms["import-aurora"]["aurora-fail_if_alien"] = False
     res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
     return res.forms["import-aurora"]
@@ -407,7 +361,7 @@ def form_aurora(
         "update_head_name",
     ],
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_success(
     force_migrated_records: None,
     program: "CountryProgram",
@@ -480,7 +434,7 @@ def test_import_data_aurora_success(
         "invalid_record_id",
     ),
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_errors(
     force_migrated_records: None,
     program: "CountryProgram",
