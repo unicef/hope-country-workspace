@@ -15,7 +15,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
-    import_from_aurora,
+    import_data as import_from_aurora,
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default

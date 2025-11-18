@@ -1,14 +1,17 @@
-from typing import Any, Mapping
+from typing import Any, Mapping, NamedTuple
 from itertools import chain
 from copy import deepcopy
 from collections.abc import Iterable
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.utils import timezone
 
 from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.models import AsyncJob, Batch, Individual
+from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.sync_log import get_aurora_sync_log_name
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -16,48 +19,83 @@ class Config(BatchNameConfig, ValidateModeConfig):
     master_detail: bool
 
 
-def import_from_aurora(job: AsyncJob) -> dict[str, int]:
+class ImportResult(NamedTuple):
+    people: int
+
+
+def import_data(job: AsyncJob) -> ImportResult:
     config: Config = job.config
-
+    if config.get("master_detail"):
+        raise NotImplementedError
     if not config.get("registration_reference_pk"):
-        return {"errors": ["registration_reference_pk is required for Aurora import"]}
+        raise ImportError("registration_reference_pk is required for Aurora import")
 
-    with transaction.atomic():
-        batch = Batch.objects.create(
-            name=config["batch_name"],
-            program=job.program,
-            country_office=job.program.country_office,
-            imported_by=job.owner,
-            source=Batch.BatchSource.AURORA,
-        )
+    batch = Batch.objects.create(
+        name=config["batch_name"],
+        program=job.program,
+        country_office=job.program.country_office,
+        imported_by=job.owner,
+        source=Batch.BatchSource.AURORA,
+    )
 
-        if config["master_detail"]:
-            raise NotImplementedError
-        return _import_people(job, batch, config)
-
-
-def _import_people(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
+    total_people = 0
     client = AuroraClient()
+    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+        imported = import_result(batch, result, config)
+        total_people += imported.people
+    return ImportResult(people=total_people)
+
+
+def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
     people_counter = 0
+    sync_log_name = get_aurora_sync_log_name(config["registration_reference_pk"])
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=batch.program.id).first()
+    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else 0
+    last_successful_id = last_id
 
-    for record in client.get(f"registration/{config['registration_reference_pk']}/records/"):
-        normalized_row = flatten_top2_prefixed(record["fields"])
-        cleaned_fieldnames_row = clean_field_names(normalized_row)
-        if not (cleaned_fieldnames_row.get("full_name") or "").strip() and (
-            fullname := make_full_name(cleaned_fieldnames_row)
-        ):
-            cleaned_fieldnames_row["full_name"] = fullname
-        flex_fields = job.program.apply_mapping_importer(Individual, deepcopy(cleaned_fieldnames_row))
-        Individual.objects.create(
-            batch_id=batch.pk,
-            name="",
-            household=None,
-            flex_fields=flex_fields,
-            raw_data=record,
+    try:
+        current_id = int(result["pk"])
+        if current_id <= last_id:
+            return ImportResult(people=0)
+        with transaction.atomic():
+            create_people(batch, result, config)
+            people_counter += 1
+            last_successful_id = current_id
+    except Exception as e:
+        failed_id = result.get("pk", "unknown (before first record)")
+        error_msg = (
+            f"Successfully imported {people_counter} people, before stopping at record {failed_id} due to:\n"
+            f"Error: {e}\n"
+            f"Last successful record ID: {last_successful_id}."
         )
-        people_counter += 1
+        raise ImportError(error_msg) from e
+    finally:
+        if last_successful_id > last_id:
+            SyncLog.objects.update_or_create(
+                name=sync_log_name,
+                content_type=program_ct,
+                object_id=batch.program.id,
+                defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
+            )
+    return ImportResult(people=people_counter)
 
-    return {"people": people_counter}
+
+def create_people(batch: Batch, record: dict[str, Any], config: Config) -> Individual:
+    normalized_row = flatten_top2_prefixed(record["fields"])
+    cleaned_fieldnames_row = clean_field_names(normalized_row)
+    if not (cleaned_fieldnames_row.get("full_name") or "").strip() and (
+        fullname := make_full_name(cleaned_fieldnames_row)
+    ):
+        cleaned_fieldnames_row["full_name"] = fullname
+    flex_fields = batch.program.apply_mapping_importer(Individual, deepcopy(cleaned_fieldnames_row))
+    return Individual.objects.create(
+        batch_id=batch.pk,
+        name="",
+        household=None,
+        flex_fields=flex_fields,
+        raw_data=record,
+    )
 
 
 def flatten_top2_prefixed(
