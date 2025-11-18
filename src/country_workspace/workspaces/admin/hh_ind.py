@@ -63,6 +63,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.regex_update,
         actions.validate_records,
         actions.push_to_hope,
+        actions.name_parser_action,
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"

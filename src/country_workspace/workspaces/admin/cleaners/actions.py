@@ -16,6 +16,7 @@ from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
+from .name_parser import NameParserForm, name_parser_impl
 from .regex import RegexUpdateForm, regex_update_impl
 from .validate import validate_queryset
 
@@ -80,6 +81,53 @@ def mass_update(
         job.queue()
         model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
     return render(request, "workspace/actions/mass_update.html", ctx)
+
+
+@admin.action(description="Parse name into components", permissions=["name_parser"])
+def name_parser_action(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: "HttpRequest",
+    queryset: "QuerySet[Beneficiary]",
+) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
+
+    context = model_admin.get_common_context(request, title=_(name_parser_action.short_description))
+    context["checker"] = checker = model_admin.get_checker(request)
+    context["queryset"] = queryset
+    context["opts"] = model_admin.model._meta
+    context["preserved_filters"] = model_admin.get_preserved_filters(request)
+    if "_apply" in request.POST:
+        form = NameParserForm(request.POST, checker=checker, tenant=state.tenant)
+        if form.is_valid():
+            opts = queryset.model._meta
+            job = AsyncJob.objects.create(
+                description=name_parser_action.short_description,
+                type=AsyncJob.JobType.ACTION,
+                owner=state.request.user,
+                action=fqn(name_parser_impl),
+                program=state.program,
+                config={
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                    "model_name": opts.label,
+                    "kwargs": {"config": form.cleaned_data},
+                },
+            )
+            job.queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    else:
+        form = NameParserForm(
+            checker=checker,
+            tenant=state.tenant,
+            initial={
+                "action": request.POST["action"],
+                "select_across": request.POST["select_across"],
+                "_selected_action": request.POST.getlist("_selected_action"),
+            },
+        )
+
+    context["form"] = form
+    return render(request, "workspace/actions/name_parser.html", context)
 
 
 @admin.action(description="Update fields using RegEx", permissions=["regex_update"])

@@ -1,0 +1,24 @@
+{% extends "workspace/actions/base.html" %}{% load i18n %}
+{% block action-content %}
+    <div class="min-w-full py-5">
+        <p>
+            This action parses the content of a source field containing a full name and splits it into components
+            (given name, middle name, family name) into the selected destination fields.
+        </p>
+        <p>
+            The AI-based parser will try to identify the name components and assign them to the correct fields.
+        </p>
+    </div>
+    <div class="m-2 bg-white">
+        <form method="post" id="name-parser-form">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            <table class="min-w-full">
+                {{ form.as_table }}
+            </table>
+            <div class="submit-row">
+                <button type="submit" class="default" name="_apply">{% translate 'Apply' %}</button>
+            </div>
+        </form>
+    </div>
+{% endblock action-content %}
