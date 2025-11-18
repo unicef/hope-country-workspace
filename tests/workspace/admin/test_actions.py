@@ -61,6 +61,14 @@ def mock_request(rf):
     return request
 
 
+@pytest.fixture
+def mock_queryset():
+    qs = MagicMock()
+    qs.values_list.return_value.count.return_value = 1
+    qs.exists.return_value = True
+    return qs
+
+
 @patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
 def test_mass_update_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
     empty_queryset = MagicMock()
@@ -153,3 +161,32 @@ def test_check_empty_queryset_with_empty_queryset(beneficiary_admin, mock_reques
         "No records were selected. Please select at least one record to perform this action.",
         messages.WARNING,
     )
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+def test_bulk_update_export_without_include_errors(mock_create, mock_admin, mock_request, mock_queryset):
+    mock_request.POST = {
+        "_export": "",
+        "fields": ["field1", "field2"],
+    }
+    bulk_update_export(mock_admin, mock_request, mock_queryset)
+    mock_create.assert_called_once()
+    _, kwargs = mock_create.call_args
+    assert not kwargs["config"]["include_errors"]
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+def test_bulk_update_export_with_include_errors(mock_create, mock_admin, rf, mock_queryset):
+    request = rf.post(
+        "/",
+        {
+            "_export": "",
+            "fields": ["field1", "field2"],
+            "include_errors": "on",
+        },
+    )
+    request.user = MagicMock()
+    bulk_update_export(mock_admin, request, mock_queryset)
+    mock_create.assert_called_once()
+    _, kwargs = mock_create.call_args
+    assert kwargs["config"]["include_errors"]

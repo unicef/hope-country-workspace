@@ -1,5 +1,5 @@
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
@@ -224,7 +224,7 @@ def create_bulk_update_template(
 
         worksheet.freeze_panes(1, 0)
 
-        def fmt(v):
+        def fmt(v: Any) -> str:
             return ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
 
         for row, record in enumerate(queryset, 1):
@@ -243,7 +243,7 @@ def create_bulk_update_template(
 
 
 def _extract_choices_from_field(field: FlexField) -> list[Any]:
-    def flatten(elements):
+    def flatten(elements: Iterable[Any]) -> list[Any]:
         return [el[0] for el in elements]
 
     if (choices := field.attrs.get("choices")) or (choices := field.definition.attrs.get("choices")):
@@ -341,9 +341,7 @@ def export_bulk_update_template(job: AsyncJob) -> str:
         queryset = model.objects.filter(pk__in=job.config["pks"])
 
         include_errors = job.config.get("include_errors", False)
-        out = create_bulk_update_template(
-            queryset, job.program, job.config["columns"], include_errors=include_errors
-        )
+        out = create_bulk_update_template(queryset, job.program, job.config["columns"], include_errors=include_errors)
         filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
         filepath = MEDIA_STORAGE.save(filename, out)
 
