@@ -28,10 +28,12 @@ def validate_alien_fields(sheet: "Sheet", datachecker: DataChecker) -> None:
     row = next(sheet)
     raw_data = clean_field_names(row)
     fields = set(raw_data.keys())
+    if mapping_importer := datachecker.mappingimporter:
+        fields = {mapping_importer.rules_as_dict.get(f, f) for f in fields}
 
     if datachecker is None:
         return
 
-    dc_fields = {field.name for _, field in list(datachecker.get_fields())}
+    dc_fields = {f"{fieldset.prefix}{field.name}" for fieldset, field in list(datachecker.get_fields())}
     if not fields.issubset(dc_fields):
         raise ValueError(f"Alien values found for: {fields - dc_fields}")

@@ -4,7 +4,6 @@ import pytest
 from django.core.management import call_command
 
 from country_workspace.models import Household, Individual
-from country_workspace.workspaces.admin.forms import ValidateMode
 from testutils.factories import OfficeFactory
 from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.factories import CountryProgramFactory
@@ -50,8 +49,8 @@ def test_rdi_import_household(browser, program):
     browser.click_link("Programme")
     browser.click("#btn-import_data")
     browser.fill('input[name="rdi-batch_name"]', "Test Batch")
-    browser.select_option_by_value('select[name="rdi-validate_mode"]', ValidateMode.NONE.value)
-    test_file_path = Path(__file__).parent.parent / "data/rdi_one.xlsx"
+    browser.click('input[type="checkbox"][name="rdi-validate_after_import"]')
+    test_file_path = Path(__file__).parent.parent / "data/rdi_correct.xlsx"
     browser.choose_file('input[type="file"]', str(test_file_path))
     browser.click('input[type="submit"][value="Import"]')
     browser.click_link("Households")
