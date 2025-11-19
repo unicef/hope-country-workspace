@@ -50,128 +50,59 @@ registration: Final[dict[str, dict[str, list[dict[str, Any]]]]] = {
 }
 
 imported: Final[dict[str, dict[str, Any]]] = {
-    "correct": {
-        "page": 1,
+    "no_results": {
+        "results": [],
+    },
+    "two_results": {
         "results": [
             {
-                "id": 5,
-                "flatten": {
-                    "household_0_admin1": "UA01",
-                    "individuals_0_relationship": "head",
-                    "individuals_0_given_name": "John 5",
-                    "individuals_0_gender": "male",
-                    "id": 5,
+                "pk": 101,
+                "fields": {
+                    "individual-details": [
+                        {
+                            "given_name_i_c": "Alice",
+                            "family_name_i_c": "Green",
+                            "gender_i_c": "female",
+                            "birth_date_i_c": "1990-05-12",
+                        }
+                    ],
                 },
+                "remote_ip": "198.51.100.10",
+                "timestamp": "2025-10-17T14:49:13.554246Z",
             },
             {
-                "id": 6,
-                "flatten": {
-                    "household_0_admin1": "UA02",
-                    "individuals_0_relationship": "head",
-                    "individuals_0_given_name": "Jane 6",
-                    "individuals_0_gender": "female",
-                    "individuals_1_relationship": "son_daughter",
-                    "individuals_1_given_name": "Tom 6",
-                    "individuals_1_gender": "male",
-                    "id": 6,
+                "pk": 102,
+                "fields": {
+                    "individual-details": [
+                        {
+                            "given_name_i_c": "Bruno",
+                            "family_name_i_c": "Lopez",
+                            "gender_i_c": "male",
+                            "birth_date_i_c": "1987-03-01",
+                        }
+                    ],
                 },
+                "remote_ip": "198.51.100.11",
+                "timestamp": "2025-10-17T15:01:02.000000Z",
             },
         ],
     },
-    "no_individuals": {
-        "page": 1,
+    "invalid_pk": {
         "results": [
             {
-                "id": 7,
-                "flatten": {
-                    "household_0_admin1": "UA03",
-                    "id": 7,
+                "pk": None,
+                "fields": {
+                    "individual-details": [
+                        {
+                            "given_name_i_c": "Charlie",
+                            "family_name_i_c": "Nguyen",
+                            "gender_i_c": "other",
+                            "birth_date_i_c": "2000-01-01",
+                        }
+                    ],
                 },
-            },
-        ],
-    },
-    "multiple_households": {
-        "page": 1,
-        "results": [
-            {
-                "id": 8,
-                "flatten": {
-                    "household_0_admin1": "UA04",
-                    "household_1_admin1": "UA05",
-                    "individuals_0_relationship": "head",
-                    "individuals_0_given_name": "Alice 8",
-                    "individuals_0_gender": "female",
-                    "id": 8,
-                },
-            },
-        ],
-    },
-    "empty_household_data": {
-        "page": 1,
-        "results": [
-            {
-                "id": 9,
-                "flatten": {
-                    "individuals_0_relationship_i_c": "head",
-                    "individuals_0_given_name_i_c": "Bob 9",
-                    "individuals_0_gender_i_c": "male",
-                    "id": 9,
-                },
-            },
-        ],
-    },
-    "update_head_name": {
-        "page": 1,
-        "results": [
-            {
-                "id": 10,
-                "flatten": {
-                    "household_0_admin1_h_c": "UA06",
-                    "individuals_0_relationship_i_c": "head",
-                    "individuals_0_given_name_i_c": "Mike 10",
-                    "individuals_0_gender_i_c": "male",
-                    "individuals_0_family_name_i_c": "Doe 10",
-                    "id": 10,
-                },
-            },
-        ],
-    },
-    "invalid_key": {
-        "page": 1,
-        "results": [
-            {
-                "id": 11,
-                "flatten": {
-                    "individuals_wrong": "value",
-                    "household_invalid": "data",
-                    "id": 11,
-                },
-            },
-        ],
-    },
-    "multiple_individuals_if_not_hh": {
-        "page": 1,
-        "results": [
-            {
-                "id": 12,
-                "flatten": {
-                    "individuals_0_relationship": "head",
-                    "individuals_0_given_name": "Alice 12",
-                    "individuals_0_gender": "female",
-                    "individuals_1_given_name": "Tom 12",
-                    "id": 12,
-                },
-            },
-        ],
-    },
-    "invalid_record_id": {
-        "page": 1,
-        "results": [
-            {
-                "id": 13,
-                "flatten": {
-                    "individuals_0_given_name": "Tom 13",
-                },
+                "remote_ip": "198.51.100.12",
+                "timestamp": "2025-10-17T15:30:00.000000Z",
             },
         ],
     },
