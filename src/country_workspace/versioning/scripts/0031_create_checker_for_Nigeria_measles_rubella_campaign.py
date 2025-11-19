@@ -184,7 +184,7 @@ SPECS = {
             {
                 "name": "consent",
                 "definition": FIELDS["field_consent"],
-                "attrs": {"label": "Consent to Share Data"},
+                "attrs": {"label": "Consent to Share Data", "required": False},
             },
             {
                 "name": "name_enumerator",  # enumerator_code via mapping importer
@@ -239,7 +239,7 @@ SPECS = {
             {
                 "name": "estimated_birth_date",
                 "definition": FIELDS["field_estimated_birth_date"],
-                "attrs": {"label": "Estimated Birth Date"},
+                "attrs": {"label": "Estimated Birth Date", "required": False},
             },
             {
                 "name": "frontline_worker_designation",
