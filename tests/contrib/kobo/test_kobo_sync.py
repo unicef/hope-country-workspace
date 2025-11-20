@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from constance.test.unittest import override_config
+from django.contrib.contenttypes.models import ContentType
 from pytest_mock import MockerFixture
 from typing import TYPE_CHECKING
 from country_workspace.contrib.kobo.sync import (
@@ -23,7 +24,9 @@ from country_workspace.contrib.kobo.sync import (
     set_roles_and_relationships,
     get_id_generator,
 )
+from country_workspace.models import Program
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
+from testutils.factories import BatchFactory, SyncLogFactory
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.data.submission import Submission
@@ -179,35 +182,121 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     )
 
 
+@pytest.mark.django_db
 def test_import_asset(mocker: MockerFixture, config: Config) -> None:
-    kobo_submission_class = mocker.patch("country_workspace.contrib.kobo.sync.KoboSubmission")
-    kobo_submission_class.objects.filter.return_value.values_list.return_value = [(old_submission_id := 42)]
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+
+    mocker.patch("django.db.transaction.atomic")
+
     id_generator_mock = mocker.Mock(name="id_generator")
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
-    household_mock = create_household_mock.return_value
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
     individual_mocks = [mocker.Mock(), mocker.Mock()]
     create_individuals_mock.return_value = individual_mocks
     set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+
     asset_mock = Mock()
-    new_submission_mock = Mock()
-    old_submission_mock = Mock()
-    old_submission_mock.id = old_submission_id
-    asset_mock.submissions = [new_submission_mock, old_submission_mock]
+    asset_mock.uid = "test_asset_uid"
+    submission_1 = Mock()
+    submission_1.id = 101
+    submission_2 = Mock()
+    submission_2.id = 102
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
 
     result = import_asset(
-        batch_mock := Mock(name="batch"),
+        batch,
         asset_mock,
         config,
         id_generator_mock,
     )
 
-    assert result == ImportResult(households=1, individuals=len(individual_mocks))
-    kobo_submission_class.objects.filter.assert_called_once_with(asset_uid=asset_mock.uid)
-    kobo_submission_class.objects.filter.return_value.values_list.assert_called_once_with("submission_id", flat=True)
-    create_household_mock.assert_called_once_with(batch_mock, new_submission_mock, config, id_generator_mock)
-    create_individuals_mock.assert_called_once_with(batch_mock, household_mock, new_submission_mock, config)
-    set_roles_and_relationships_mock.assert_called_once_with(household_mock, individual_mocks)
+    assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2)
+
+    asset_mock.submissions.assert_called_once_with(min_id=100)
+
+    assert create_household_mock.call_count == 2
+    assert create_individuals_mock.call_count == 2
+    assert set_roles_and_relationships_mock.call_count == 2
+
+    # Verify sync log was updated
+    sync_log.refresh_from_db()
+    assert sync_log.last_id == "102"
+
+
+@pytest.mark.django_db
+def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+
+    mocker.patch("django.db.transaction.atomic")
+
+    id_generator_mock = mocker.Mock(name="id_generator")
+    mocker.patch("country_workspace.contrib.kobo.sync.create_household")
+    create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
+    individual_mocks = [mocker.Mock(), mocker.Mock()]
+    create_individuals_mock.return_value = individual_mocks
+
+    set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+    set_roles_and_relationships_mock.side_effect = [None, ValueError("Test error")]
+
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+    submission_1 = Mock()
+    submission_1.id = 101
+    submission_2 = Mock()
+    submission_2.id = 102
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+    with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
+        import_asset(batch, asset_mock, config, id_generator_mock)
+
+    sync_log.refresh_from_db()
+    assert sync_log.last_id == "101"
+
+
+@pytest.mark.django_db
+def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) -> None:
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+    initial_last_id = sync_log.last_id
+
+    id_generator_mock = mocker.Mock(name="id_generator")
+
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+    asset_mock.submissions = Mock(return_value=iter([]))  # No submissions
+
+    result = import_asset(
+        batch,
+        asset_mock,
+        config,
+        id_generator_mock,
+    )
+
+    assert result == ImportResult(households=0, individuals=0)
+
+    asset_mock.submissions.assert_called_once_with(min_id=100)
+
+    sync_log.refresh_from_db()
+    assert sync_log.last_id == initial_last_id
 
 
 def test_import_data(mocker: MockerFixture, config: Config) -> None:

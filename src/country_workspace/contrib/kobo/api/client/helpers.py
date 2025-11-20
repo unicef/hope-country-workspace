@@ -74,13 +74,21 @@ def get_asset_list(data_getter: DataGetter, url: str) -> Generator[Asset, None, 
     return handle_paginated_response(data_getter, url, get_raw_asset_list, partial(get_asset, data_getter))
 
 
-def get_submission_list(data_getter: DataGetter, url: str) -> Iterable[Submission]:
-    url_with_start_and_limit = change_url(
-        url, query={START_PARAMETER_NAME: START_PARAMETER_VALUE, LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE}
-    )
+def get_submission_list(data_getter: DataGetter, url: str, min_id: int | None = None) -> Iterable[Submission]:
+    import json
+
+    query_params = {
+        START_PARAMETER_NAME: START_PARAMETER_VALUE,
+        LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE,
+    }
+
+    if min_id is not None:
+        query_params["query"] = json.dumps({"_id": {"$gt": min_id}})
+
+    url_with_params = change_url(url, query=query_params)
     return map(
         partial(download_attachments, data_getter),
-        handle_paginated_response(data_getter, url_with_start_and_limit, get_raw_submission_list, Submission),
+        handle_paginated_response(data_getter, url_with_params, get_raw_submission_list, Submission),
     )
 
 

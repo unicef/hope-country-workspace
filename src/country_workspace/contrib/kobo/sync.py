@@ -3,19 +3,22 @@ from collections.abc import Callable, Iterable
 from functools import partial
 from typing import Any, Final, TypedDict, cast
 from constance import config as constance_config
+from django.utils import timezone
 from requests import Session
 from requests.adapters import HTTPAdapter
+
+from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
-from country_workspace.contrib.kobo.models import KoboSubmission
-from country_workspace.models import AsyncJob, Batch, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
+from country_workspace.utils.sync_log import get_kobo_sync_log_name
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -149,18 +152,51 @@ def set_roles_and_relationships(household: Household, individuals: list[Individu
 
 
 def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
+    from django.db import transaction
+
     household_counter = 0
     individual_counter = 0
+    sync_log_name = get_kobo_sync_log_name(asset.uid)
 
-    submission_ids = set(KoboSubmission.objects.filter(asset_uid=asset.uid).values_list("submission_id", flat=True))
-    for submission in asset.submissions:
-        if submission.id in submission_ids:
-            continue
-        household = create_household(batch, submission, config, id_generator)
-        household_counter += 1
-        individuals = create_individuals(batch, household, submission, config)
-        individual_counter += len(individuals)
-        set_roles_and_relationships(household, individuals)
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=batch.program.id).first()
+    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else 0
+
+    last_successful_id = last_id
+    current_submission = None
+
+    try:
+        for submission in asset.submissions(min_id=last_id):
+            current_submission = submission
+
+            with transaction.atomic():
+                household = create_household(batch, submission, config, id_generator)
+                individuals = create_individuals(batch, household, submission, config)
+                set_roles_and_relationships(household, individuals)
+
+                household_counter += 1
+                individual_counter += len(individuals)
+
+            last_successful_id = submission.id
+
+    except Exception as e:
+        failed_id = current_submission.id if current_submission else "unknown (before first submission)"
+
+        error_msg = (
+            f"Successfully imported {household_counter} households, before stopping at submission {failed_id} due to:"
+            f"Error: {e}"
+            f"Last successful submission ID: {last_successful_id}."
+        )
+        raise ImportError(error_msg) from e
+
+    finally:
+        if last_successful_id > last_id:
+            SyncLog.objects.update_or_create(
+                name=sync_log_name,
+                content_type=program_ct,
+                object_id=batch.program.id,
+                defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
+            )
 
     return ImportResult(households=household_counter, individuals=individual_counter)
 
