@@ -146,7 +146,7 @@ def bulk_update_export(
     form = BulkUpdateExportForm(request.POST, checker=checker)
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
-        columns = ["id", "version"] + form.cleaned_data["fields"]
+        columns = ["id", "version"] + form.cleaned_data["fields"] + ["is_valid", "errors"]
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=bulk_update_export.short_description,
