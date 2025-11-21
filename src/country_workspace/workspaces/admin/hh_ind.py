@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
-from concurrency.utils import fqn
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
@@ -16,12 +15,11 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from ...cache.manager import cache_manager
-from ...models import AsyncJob
 from ...state import state
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from .cleaners import actions
-from .cleaners.validate import validate_program
+from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import Base64ImageField, get_checker_fields
 
 if TYPE_CHECKING:
@@ -168,15 +166,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         program = state.program
-        job = AsyncJob.objects.create(
+        queryset = program.households.all() if program.beneficiary_group.master_detail else program.individuals.all()
+        create_validation_jobs(
             description="Validate Entire Programme",
-            type=AsyncJob.JobType.TASK,
             owner=request.user,
-            action=fqn(validate_program),
             program=program,
-            config={},
+            queryset=queryset,
         )
-        job.queue()
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 
     @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})
