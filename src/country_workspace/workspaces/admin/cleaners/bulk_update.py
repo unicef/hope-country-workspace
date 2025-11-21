@@ -3,6 +3,7 @@ from collections.abc import Callable
 from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
+from django.db.models import Case, When, Value, Q, CharField
 
 from constance import config as constance_config
 from django import forms
@@ -322,7 +323,14 @@ def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
 def export_bulk_update_template(job: AsyncJob) -> str:
     with state.set(tenant=job.program.country_office, program=job.program):
         model = apps.get_model(job.config["model_name"])
-        queryset = model.objects.filter(pk__in=job.config["pks"])
+        queryset = model.objects.filter(pk__in=job.config["pks"]).annotate(
+            is_valid=Case(
+                When(last_checked__isnull=True, then=Value("Not Checked")),
+                When(Q(last_checked__isnull=False) & Q(errors={}), then=Value("True")),
+                default=Value("False"),
+                output_field=CharField(),
+            )
+        )
 
         out = create_bulk_update_template(queryset, job.program, job.config["columns"])
         filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
