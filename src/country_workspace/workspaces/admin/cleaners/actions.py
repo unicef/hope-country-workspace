@@ -15,6 +15,7 @@ from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
+from .concatenate import ConcatenateFieldForm, concatenate_field_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
 from .validate import validate_queryset
@@ -236,3 +237,131 @@ def push_to_hope(
         )
     ctx = model_admin.get_common_context(request, title=push_to_hope.short_description, form=form)
     return render(request, "workspace/actions/push_to_hope.html", ctx)
+
+
+@admin.action(description="Concatenate field action", permissions=["mass_update"])
+def concatenate_field(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: "HttpRequest",
+    queryset: "QuerySet[Beneficiary]",
+) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
+    ctx = model_admin.get_common_context(request, title=_(concatenate_field.short_description))
+    ctx["checker"] = checker = model_admin.get_checker(request)
+    ctx["queryset"] = queryset
+    ctx["opts"] = model_admin.model._meta
+    ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
+    if "_preview" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            changes = concatenate_field_impl(queryset.all()[:10], form.cleaned_data, save=False)
+            ctx["changes"] = changes
+    elif "_apply" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            opts = queryset.model._meta
+            job = AsyncJob.objects.create(
+                description=concatenate_field.short_description,
+                type=AsyncJob.JobType.ACTION,
+                owner=state.request.user,
+                action=fqn(concatenate_field_impl),
+                program=state.program,
+                config={
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                    "model_name": opts.label,
+                    "kwargs": {"config": form.cleaned_data},
+                },
+            )
+            job.queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    else:
+        form = ConcatenateFieldForm(
+            checker=checker,
+            initial={
+                "action": request.POST["action"],
+                "select_across": request.POST["select_across"],
+                "_selected_action": request.POST.getlist("_selected_action"),
+            },
+        )
+
+    ctx["form"] = form
+    return render(request, "workspace/actions/concatenate.html", ctx)
+
+
+@admin.action(description="Generate full name", permissions=["mass_update"])
+def generate_full_name(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: "HttpRequest",
+    queryset: "QuerySet[Beneficiary]",
+) -> HttpResponse:
+    """Generate full name action - convenience action that uses concatenate with common name pattern."""
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
+    ctx = model_admin.get_common_context(request, title=_(generate_full_name.short_description))
+    ctx["checker"] = checker = model_admin.get_checker(request)
+    ctx["queryset"] = queryset
+    ctx["opts"] = model_admin.model._meta
+    ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
+
+    # Try to detect common name field names
+    checker_form = checker.get_form()()
+    available_fields = list(checker_form.fields.keys())
+
+    # Common field name patterns
+    first_name_fields = [f for f in available_fields if "first" in f.lower() and "name" in f.lower()]
+    middle_name_fields = [f for f in available_fields if "middle" in f.lower() and "name" in f.lower()]
+    last_name_fields = [f for f in available_fields if "last" in f.lower() and "name" in f.lower()]
+    full_name_fields = [f for f in available_fields if "full" in f.lower() and "name" in f.lower()]
+
+    # Build pattern
+    pattern_parts = []
+    if first_name_fields:
+        pattern_parts.append(f"{{{first_name_fields[0]}}}")
+    if middle_name_fields:
+        pattern_parts.append(f"{{{middle_name_fields[0]}}}")
+    if last_name_fields:
+        pattern_parts.append(f"{{{last_name_fields[0]}}}")
+
+    default_pattern = " ".join(pattern_parts) if pattern_parts else "{first_name} {middle_name} {last_name}"
+    # Use full_name field if available, otherwise use first available field
+    default_destination = full_name_fields[0] if full_name_fields else (available_fields[0] if available_fields else "")
+
+    if "_preview" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            changes = concatenate_field_impl(queryset.all()[:10], form.cleaned_data, save=False)
+            ctx["changes"] = changes
+    elif "_apply" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            opts = queryset.model._meta
+            job = AsyncJob.objects.create(
+                description=generate_full_name.short_description,
+                type=AsyncJob.JobType.ACTION,
+                owner=state.request.user,
+                action=fqn(concatenate_field_impl),
+                program=state.program,
+                config={
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                    "model_name": opts.label,
+                    "kwargs": {"config": form.cleaned_data},
+                },
+            )
+            job.queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    else:
+        form = ConcatenateFieldForm(
+            checker=checker,
+            initial={
+                "action": request.POST["action"],
+                "select_across": request.POST["select_across"],
+                "_selected_action": request.POST.getlist("_selected_action"),
+                "pattern": default_pattern,
+                "destination_field": default_destination,
+                "replace_only_empty": True,
+            },
+        )
+
+    ctx["form"] = form
+    return render(request, "workspace/actions/concatenate.html", ctx)
