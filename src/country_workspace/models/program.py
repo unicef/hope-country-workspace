@@ -161,13 +161,24 @@ class Program(BaseModel):
         return data
 
     def apply_mapping_importer(
-        self, m: type[Validable] | Validable, data: dict[str, str | int | bool]
+        self,
+        m: type[Validable] | Validable,
+        data: dict[str, str | int | bool],
+        mapping_id: int | None = None,
     ) -> dict[str, str | int | bool]:
         """Apply mapping importer from the checker's mappingimporter, if any."""
-        if (checker := self.get_checker_for(m)) is None:
-            return data
-        with suppress(ObjectDoesNotExist):
-            checker.mappingimporter.apply(data)
+        mapping_importers = []
+        if mapping_id:
+            mapping_importer = MappingImporter.objects.filter(id=mapping_id).first()
+            if mapping_importer:
+                mapping_importers = [mapping_importer]
+
+        elif (checker := self.get_checker_for(m)) is not None:
+            mapping_importers = list(checker.mapping_importers.all())
+
+        for mapping_importer in mapping_importers:
+            mapping_importer.apply(data)
+
         return data
 
     def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:

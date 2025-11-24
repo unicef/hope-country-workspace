@@ -4,7 +4,7 @@ from django import forms
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
-from country_workspace.models import BeneficiaryGroup
+from country_workspace.models import BeneficiaryGroup, Program
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
 
@@ -68,6 +68,47 @@ class BaseImportForm(forms.Form):
     fail_if_alien = forms.BooleanField(
         initial=True, required=False, help_text="Alien field will be checked on first record only"
     )
+    household_mapping = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        help_text=_("Optional mapping to apply to household data"),
+        empty_label=_("No mapping"),
+    )
+    individual_mapping = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        help_text=_("Optional mapping to apply to individual/people data"),
+        empty_label=_("No mapping"),
+    )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        from country_workspace.models import MappingImporter
+
+        # Extract custom kwargs
+        program = kwargs.pop("program", None)
+        kwargs.pop("office", None)
+
+        super().__init__(*args, **kwargs)
+
+        # Set up mapping fields based on program's data checkers
+        if program:
+            if program.household_checker:
+                self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
+                    office=program.country_office, data_checker=program.household_checker
+                )
+            else:
+                self.fields.pop("household_mapping", None)
+
+            if program.individual_checker:
+                self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
+                    office=program.country_office, data_checker=program.individual_checker
+                )
+            else:
+                self.fields.pop("individual_mapping", None)
+        else:
+            # Remove mapping fields if no program context
+            self.fields.pop("household_mapping", None)
+            self.fields.pop("individual_mapping", None)
 
 
 class ImportFileForm(BaseImportForm):
@@ -104,7 +145,16 @@ class ImportFileForm(BaseImportForm):
 
     file = forms.FileField(validators=[ValidatableFileValidator()])
 
-    def __init__(self, *args: Any, beneficiary_group: BeneficiaryGroup | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        beneficiary_group: BeneficiaryGroup | None = None,
+        program: Program | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if program:
+            kwargs["program"] = program
+
         super().__init__(*args, **kwargs)
         if not beneficiary_group:
             return

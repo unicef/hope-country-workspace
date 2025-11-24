@@ -109,6 +109,7 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
+    household_mapping_id = config.get("household_mapping_id")
     transform_row = compose(
         clean_field_names,
         partial(job.program.apply_mapping_importer, Household),
@@ -118,6 +119,12 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     for row in sheet:
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
+
+        label = get_value(row, config["household_label"])
+        raw_data = clean_field_names(row)
+        # TODO: transform_row add parameter
+        flex_fields = job.program.apply_mapping_importer(Household, deepcopy(raw_data), mapping_id=household_mapping_id)
+
         try:
             mapping[household_key] = cast(
                 "Household",
@@ -141,6 +148,7 @@ def process_beneficiaries(
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
+    individual_mapping_id = config.get("individual_mapping_id")
     transform_row = compose(
         clean_field_names,
         partial(job.program.apply_mapping_importer, Individual),
@@ -155,6 +163,12 @@ def process_beneficiaries(
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
+        raw_data = clean_field_names(cleaned_row)
+        # TODO: transform_row add parameter
+        flex_fields = job.program.apply_mapping_importer(
+            Individual, deepcopy(raw_data), mapping_id=individual_mapping_id
+        )
+
         try:
             mapping[beneficiary_key] = cast(
                 "Individual",
