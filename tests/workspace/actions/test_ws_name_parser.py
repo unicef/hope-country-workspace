@@ -1,13 +1,14 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from country_workspace.workspaces.admin.cleaners.name_parser import name_parser_impl
+from testutils.factories import CountryIndividualFactory
 
 pytestmark = [pytest.mark.django_db]
 
 
-def test_name_parser_impl(individual_factory):
+def test_name_parser_impl():
     """Test that name_parser_impl correctly splits names and updates flex fields."""
     # 1. Setup - Create test data
     full_name_field = "full_name"
@@ -16,9 +17,9 @@ def test_name_parser_impl(individual_factory):
     middle_name_field = "middle_name"
 
     individuals = [
-        individual_factory(flex_fields={full_name_field: "John Doe"}),
-        individual_factory(flex_fields={full_name_field: "Jane Marie Smith"}),
-        individual_factory(flex_fields={full_name_field: "No Change"}),
+        CountryIndividualFactory(flex_fields={full_name_field: "John Doe"}),
+        CountryIndividualFactory(flex_fields={full_name_field: "Jane Marie Smith"}),
+        CountryIndividualFactory(flex_fields={full_name_field: "No Change"}),
     ]
 
     config = {
@@ -29,13 +30,19 @@ def test_name_parser_impl(individual_factory):
         "country_code": "us",  # Mocked, so value doesn't matter
     }
 
-    # 2. Mock the parser
-    def mock_parser(name: str) -> list[str]:
+    # 2. Mock the parser - returns tuple of (name_dict, format)
+    def mock_parser(name: str):
+        mock = MagicMock()
         if name == "John Doe":
-            return ["given_name", "family_name"]
-        if name == "Jane Marie Smith":
-            return ["given_name", "middle_name", "family_name"]
-        return ["given_name"]
+            mock.as_dict.return_value = {"given_name": "John", "family_name": "Doe"}
+            mock.format.return_value = ["given_name", "family_name"]
+        elif name == "Jane Marie Smith":
+            mock.as_dict.return_value = {"given_name": "Jane", "middle_name": "Marie", "family_name": "Smith"}
+            mock.format.return_value = ["given_name", "middle_name", "family_name"]
+        else:
+            mock.as_dict.return_value = {"given_name": "No Change"}
+            mock.format.return_value = ["given_name"]
+        return mock
 
     # 3. Run the implementation
     with patch("country_workspace.workspaces.admin.cleaners.name_parser.get_parser") as mock_get_parser:
