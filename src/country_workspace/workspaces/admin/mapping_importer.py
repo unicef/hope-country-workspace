@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.contrib import admin
+from django.core.cache import cache
 from django.db.models import QuerySet
 from django.forms import ModelForm
 from django.http import HttpRequest
@@ -24,19 +25,44 @@ class CountryMappingImporterAdmin(WorkspaceModelAdmin):
         return CountryMappingImporter.objects.filter(office=state.tenant)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        """Allow add permission if user has tenant selected."""
-        return bool(state.tenant)
+        """Check user permission and tenant selection."""
+        return bool(state.tenant) and request.user.has_perm("country_workspace.add_mappingimporter")  # type: ignore[attr-defined]
+
+    def has_change_permission(self, request: HttpRequest, obj: CountryMappingImporter | None = None) -> bool:
+        """Check user permission to change mappings."""
+        return request.user.has_perm("country_workspace.change_mappingimporter")  # type: ignore[attr-defined]
 
     def has_delete_permission(self, request: HttpRequest, obj: CountryMappingImporter | None = None) -> bool:
-        """Allow delete permission."""
-        return True
+        """Check user permission to delete mappings."""
+        return request.user.has_perm("country_workspace.delete_mappingimporter")  # type: ignore[attr-defined]
+
+    def has_view_permission(self, request: HttpRequest, obj: CountryMappingImporter | None = None) -> bool:
+        """Check user permission to view mappings."""
+        return request.user.has_perm("country_workspace.view_mappingimporter")  # type: ignore[attr-defined]
 
     def save_model(self, request: HttpRequest, obj: CountryMappingImporter, form: ModelForm, change: bool) -> None:
-        """Set office to current tenant and created_by on create."""
+        """Set office to current tenant and created_by on create, invalidate cache."""
         if not change:
             obj.office = state.tenant
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        self._invalidate_mapping_cache()
+
+    def delete_model(self, request: HttpRequest, obj: CountryMappingImporter) -> None:
+        """Delete mapping and invalidate cache."""
+        super().delete_model(request, obj)
+        self._invalidate_mapping_cache()
+
+    def delete_queryset(self, request: HttpRequest, queryset: QuerySet[CountryMappingImporter]) -> None:
+        """Delete multiple mappings and invalidate cache."""
+        super().delete_queryset(request, queryset)
+        self._invalidate_mapping_cache()
+
+    def _invalidate_mapping_cache(self) -> None:
+        """Invalidate cache keys related to mapping importers."""
+        if state.tenant:
+            cache_key = f"mapping_importer_list:{state.tenant.pk}"
+            cache.delete(cache_key)
 
     def get_form(self, request: HttpRequest, obj: CountryMappingImporter | None = None, **kwargs: Any) -> ModelForm:
         """Customize form to filter data_checker by current office."""
@@ -49,10 +75,10 @@ class CountryMappingImporterAdmin(WorkspaceModelAdmin):
             programs = Program.objects.filter(country_office=state.tenant, enabled=True)
             checker_ids = set()
             for program in programs:
-                if program.household_checker_id:
-                    checker_ids.add(program.household_checker_id)
-                if program.individual_checker_id:
-                    checker_ids.add(program.individual_checker_id)
+                if program.household_checker_id:  # type: ignore[attr-defined]
+                    checker_ids.add(program.household_checker_id)  # type: ignore[attr-defined]
+                if program.individual_checker_id:  # type: ignore[attr-defined]
+                    checker_ids.add(program.individual_checker_id)  # type: ignore[attr-defined]
 
-            form.base_fields["data_checker"].queryset = DataChecker.objects.filter(id__in=checker_ids)
-        return form
+            form.base_fields["data_checker"].queryset = DataChecker.objects.filter(id__in=checker_ids)  # type: ignore[index]
+        return form  # type: ignore[return-value]

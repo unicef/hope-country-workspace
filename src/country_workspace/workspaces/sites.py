@@ -263,7 +263,7 @@ class TenantAdminSite(admin.AdminSite):
                     {
                         "name": _("Mappings"),
                         "url": reverse("workspace:workspaces_countrymappingimporter_changelist"),
-                        "icon": "icon-shuffle",
+                        "icon": "icon-loop",
                         "selected": getattr(self, "modeladmin_name", None) == "CountryMappingImporterAdmin",
                     },
                     {

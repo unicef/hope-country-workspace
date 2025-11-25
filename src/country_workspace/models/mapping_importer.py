@@ -39,6 +39,12 @@ class MappingImporter(BaseModel):
         verbose_name = _("Mapping Importer")
         verbose_name_plural = _("Mapping Importers")
         unique_together = [["office", "name"]]
+        permissions = (
+            ("add_mappingimporter", "Can add Mapping Importer"),
+            ("change_mappingimporter", "Can change Mapping Importer"),
+            ("delete_mappingimporter", "Can delete Mapping Importer"),
+            ("view_mappingimporter", "Can view Mapping Importer"),
+        )
 
     def __str__(self) -> str:
         return self.name
