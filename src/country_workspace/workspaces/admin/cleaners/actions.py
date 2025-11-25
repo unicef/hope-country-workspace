@@ -16,7 +16,7 @@ from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
-from .validate import validate_queryset
+from .validate import create_validation_jobs
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -31,19 +31,15 @@ def validate_records(
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
     if model_admin._check_empty_queryset(request, queryset):
-        return None
-    opts = queryset.model._meta
-    job = AsyncJob.objects.create(
+        return
+    create_validation_jobs(
         description=validate_records.short_description,
-        type=AsyncJob.JobType.ACTION,
         owner=request.user,
-        action=fqn(validate_queryset),
         program=state.program,
-        config={"pks": list(queryset.values_list("pk", flat=True)), "model_name": opts.label},
+        queryset=queryset,
     )
-    job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-    return job
+    return
 
 
 @admin.action(description="Mass update record fields", permissions=["mass_update"])
