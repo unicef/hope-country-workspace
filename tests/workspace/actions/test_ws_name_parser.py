@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -30,19 +30,12 @@ def test_name_parser_impl():
         "country_code": "us",  # Mocked, so value doesn't matter
     }
 
-    # 2. Mock the parser - returns tuple of (name_dict, format)
-    def mock_parser(name: str):
-        mock = MagicMock()
+    def mock_parser(name: str) -> list[str]:
         if name == "John Doe":
-            mock.as_dict.return_value = {"given_name": "John", "family_name": "Doe"}
-            mock.format.return_value = ["given_name", "family_name"]
-        elif name == "Jane Marie Smith":
-            mock.as_dict.return_value = {"given_name": "Jane", "middle_name": "Marie", "family_name": "Smith"}
-            mock.format.return_value = ["given_name", "middle_name", "family_name"]
-        else:
-            mock.as_dict.return_value = {"given_name": "No Change"}
-            mock.format.return_value = ["given_name"]
-        return mock
+            return ["given_name", "family_name"]
+        if name == "Jane Marie Smith":
+            return ["given_name", "middle_name", "family_name"]
+        return ["given_name"]
 
     # 3. Run the implementation
     with patch("country_workspace.workspaces.admin.cleaners.name_parser.get_parser") as mock_get_parser:
