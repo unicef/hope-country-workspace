@@ -112,6 +112,9 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def has_calculate_checksum_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.calculate_checksum")
 
+    def has_name_parser_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("country_workspace.name_parser_beneficiary")
+
     def _check_empty_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> bool:
         if not queryset.exists():
             self.message_user(
