@@ -508,16 +508,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "validate_after_import": form.cleaned_data.get("validate_after_import"),
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
-                "master_detail": (
-                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
-                ),
-                **(
-                    {
-                        "household_column_prefix": form.cleaned_data.get("household_column_prefix"),
-                        "household_label_column": form.cleaned_data.get("household_label_column"),
-                    }
-                    if master_detail else {}
-                ),
+                "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
                 "household_mapping_id": form.cleaned_data.get("household_mapping").id
                 if form.cleaned_data.get("household_mapping")
                 else None,

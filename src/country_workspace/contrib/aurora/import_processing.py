@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, NotRequired
 from itertools import chain
 from collections.abc import Mapping
 from functools import partial
@@ -18,6 +18,8 @@ from country_workspace.utils.functional import compose
 class Config(BatchNameConfig, ValidateModeConfig):
     registration_reference_pk: str | None
     master_detail: bool
+    household_mapping_id: NotRequired[int | None]
+    individual_mapping_id: NotRequired[int | None]
 
 
 class ImportResult(NamedTuple):
