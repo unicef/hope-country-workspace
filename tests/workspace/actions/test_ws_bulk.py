@@ -157,12 +157,15 @@ def test_create_bulk_update_template_with_errors(program):
         last_checked=(timezone.now() - datetime.timedelta(days=4)),
         errors={"cool_error": "cooler error text"},
     )
+    selected_fields = stub.header_base + stub.header_add["ind"] + stub.header_last
 
     job = Mock()
-    job.config = {"pks": CountryHouseholdFactory._meta.model.objects.values_list("id", flat=True)}
+    job.config = {
+        "pks": CountryHouseholdFactory._meta.model.objects.values_list("id", flat=True),
+        "columns": selected_fields,
+    }
     qs = _get_queryset_with_is_valid_annotation(CountryHouseholdFactory._meta.model, job)
 
-    selected_fields = stub.header_base + stub.header_add["ind"] + stub.header_last
     ret = create_bulk_update_template(
         qs,
         program,
