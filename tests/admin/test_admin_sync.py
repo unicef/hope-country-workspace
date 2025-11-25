@@ -15,7 +15,7 @@ from country_workspace.admin.sync import (
     TargetConfig,
     TargetArgs,
 )
-from country_workspace.contrib.aurora.models import Registration
+from country_workspace.contrib.aurora.models import Project
 from country_workspace.models import Office, Program, Country, AreaType, Area
 
 if TYPE_CHECKING:
@@ -39,9 +39,9 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
         (Country, "country_workspace"),
         (AreaType, "country_workspace"),
         (Area, "country_workspace"),
-        (Registration, "aurora"),
+        (Project, "aurora"),
     ],
-    ids=["Office", "Program", "Country", "AreaType", "Area", "Registration"],
+    ids=["Office", "Program", "Country", "AreaType", "Area", "Project"],
 )
 @pytest.mark.parametrize("delta_sync", [False, True], ids=["full", "delta"])
 @pytest.mark.parametrize("scenario", ["success", "error"], ids=["success", "error"])

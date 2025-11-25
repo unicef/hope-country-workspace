@@ -13,9 +13,9 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.aurora.pipeline import (
+from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
-    import_from_aurora,
+    import_data as import_from_aurora,
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
@@ -384,18 +384,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_mode": form.cleaned_data["validate_mode"],
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
-                "individuals_column_prefix": form.cleaned_data["individuals_column_prefix"],
-                "master_detail": (
-                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
-                ),
-                **(
-                    {
-                        "household_column_prefix": form.cleaned_data.get("household_column_prefix"),
-                        "household_label_column": form.cleaned_data.get("household_label_column"),
-                    }
-                    if master_detail
-                    else {}
-                ),
+                "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",
