@@ -338,14 +338,18 @@ def export_bulk_update_template(job: AsyncJob) -> str:
 
 
 def _get_queryset_with_is_valid_annotation(model: Validable, job: AsyncJob) -> QuerySet:
-    return model.objects.filter(pk__in=job.config["pks"]).annotate(
-        is_valid=Case(
-            When(last_checked__isnull=True, then=Value("Not Checked")),
-            When(Q(last_checked__isnull=False) & Q(errors={}), then=Value("True")),
-            default=Value("False"),
-            output_field=CharField(),
+    qs = model.objects.filter(pk__in=job.config["pks"])
+    if (columns := job.config.get("columns")) and ("is_valid" in columns and "errors" in columns):
+        qs = qs.annotate(
+            is_valid=Case(
+                When(last_checked__isnull=True, then=Value("Not Checked")),
+                When(Q(last_checked__isnull=False) & Q(errors={}), then=Value("True")),
+                default=Value("False"),
+                output_field=CharField(),
+            )
         )
-    )
+
+    return qs
 
 
 def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:  # noqa: C901
