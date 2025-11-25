@@ -117,6 +117,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         label = get_value(row, config["household_label"])
         raw_data = clean_field_names(row)
         flex_fields = job.program.apply_mapping_importer(Household, deepcopy(raw_data))
+        flex_fields = job.program.apply_default_fields(Household, flex_fields)
 
         try:
             mapping[household_key] = cast(
@@ -152,6 +153,7 @@ def process_beneficiaries(
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
         raw_data = clean_field_names(cleaned_row)
         flex_fields = job.program.apply_mapping_importer(Individual, deepcopy(raw_data))
+        flex_fields = job.program.apply_default_fields(Individual, flex_fields)
 
         try:
             mapping[beneficiary_key] = cast(

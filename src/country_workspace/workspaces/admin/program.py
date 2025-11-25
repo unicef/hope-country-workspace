@@ -19,8 +19,9 @@ from country_workspace.contrib.aurora.import_processing import (
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
+from country_workspace.models import Household, Individual
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, ImportFileForm
+from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm
 from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -275,6 +276,64 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["checker"]: "DataChecker" = program.individual_checker
         context["storage_field"] = "individual_columns"
         return self._configure_columns(request, SelectIndividualColumnsForm, context)
+
+    @button(
+        permission=can_change_country_program,
+        html_attrs={"title": _("Configure default Household field values.")},
+        visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
+        enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
+    )
+    def household_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["defaults_scope_model"] = Household
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    @button(
+        permission=can_change_country_program,
+        html_attrs={"title": _("Configure default Individual field values.")},
+    )
+    def individual_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["defaults_scope_model"] = Individual
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    def _set_defaults(
+        self,
+        request: HttpRequest,
+        form_class: type[MassDefaultsForm],
+        context: dict[str, Any],
+    ) -> HttpResponse:
+        program: CountryProgram = context["original"]
+        checker: "DataChecker" = context["checker"]
+        model_cls = context["defaults_scope_model"]
+        initial_defaults: dict[str, Any] = program.get_default_fields_for(model_cls)
+
+        if request.method == "POST":
+            selected_fields = request.POST.getlist("fields")
+            form = form_class(request.POST, checker=checker)
+
+            if form.is_valid():
+                new_defaults = {name: form.cleaned_data[name] for name in selected_fields if name in form.cleaned_data}
+
+                program.save_default_fields_for(model_cls, new_defaults)
+
+                self.message_user(
+                    request,
+                    _("Default values have been updated."),
+                    level=messages.SUCCESS,
+                )
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+        else:
+            selected_fields = list(initial_defaults.keys())
+            form = form_class(checker=checker, initial=initial_defaults)
+
+        context["form"] = form
+        context["selected_fields"] = selected_fields
+        return render(request, "workspace/program/set_defaults.html", context)
 
     @button(
         label=_("Update Records"),
