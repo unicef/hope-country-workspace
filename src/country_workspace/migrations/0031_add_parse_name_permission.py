@@ -3,7 +3,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0029_synclog_name_alter_synclog_unique_together"),
+        ("country_workspace", "0030_alter_synclog_name"),
     ]
 
     operations = [
