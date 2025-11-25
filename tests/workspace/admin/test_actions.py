@@ -425,3 +425,558 @@ def test_generate_full_name_prefills_pattern_and_destination(
     assert kwargs["initial"]["pattern"] == "{first_name} {last_name}"
     assert kwargs["initial"]["destination_field"] == "full_name"
     assert kwargs["initial"]["replace_only_empty"] is True
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
+def test_concatenate_field_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
+    empty_queryset = MagicMock()
+    empty_queryset.exists.return_value = False
+    mock_redirect.return_value = HttpResponse()
+
+    result = concatenate_field(mock_admin, mock_request, empty_queryset)
+
+    mock_redirect.assert_called_once_with(".")
+    assert result == mock_redirect.return_value
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
+def test_generate_full_name_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
+    empty_queryset = MagicMock()
+    empty_queryset.exists.return_value = False
+    mock_redirect.return_value = HttpResponse()
+
+    result = generate_full_name(mock_admin, mock_request, empty_queryset)
+
+    mock_redirect.assert_called_once_with(".")
+    assert result == mock_redirect.return_value
+
+
+def test_validate_records_schedules_job(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+    mock_async_job,
+):
+    result = validate_records(mock_admin, mock_request, non_empty_queryset)
+
+    assert result == mock_async_job
+    mock_async_job.queue.assert_called_once()
+    mock_admin.message_user.assert_called_with(mock_request, "Task scheduled", messages.SUCCESS)
+
+
+def test_mass_update_renders_form_on_initial_load(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.MassUpdateForm", return_value=mock_form)
+
+    response = mass_update(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_render.assert_called_once()
+
+
+def test_regex_update_renders_initial_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "regex_update", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1", "2"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.RegexUpdateForm", return_value=mock_form)
+
+    response = regex_update(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_render.assert_called_once()
+
+
+def test_concatenate_field_renders_initial_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "concatenate_field", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1", "2"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+
+    response = concatenate_field(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_render.assert_called_once()
+
+
+def test_bulk_update_export_renders_form_initially(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.BulkUpdateExportForm", return_value=mock_form)
+
+    response = bulk_update_export(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_render.assert_called_once()
+
+
+def test_push_to_hope_renders_initial_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "push_to_hope", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1", "2"])
+    mock_request.POST = post_data
+    mock_request.method = "GET"
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.PushToHopeForm", return_value=mock_form)
+
+    response = push_to_hope(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_render.assert_called_once()
+
+
+def test_generate_full_name_with_middle_name_field(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "generate_full_name", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form_instance = MagicMock()
+    mock_form_instance.fields = {
+        "first_name": MagicMock(),
+        "middle_name": MagicMock(),
+        "last_name": MagicMock(),
+        "full_name": MagicMock(),
+    }
+    form_factory = MagicMock(return_value=mock_form_instance)
+    checker = mock_admin.get_checker.return_value
+    checker.get_form.return_value = form_factory
+    mock_concatenate_form = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm")
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_concatenate_form.assert_called_once()
+    _, kwargs = mock_concatenate_form.call_args
+    assert "{middle_name}" in kwargs["initial"]["pattern"]
+
+
+def test_generate_full_name_without_full_name_field(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "generate_full_name", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form_instance = MagicMock()
+    mock_form_instance.fields = {
+        "first_name": MagicMock(),
+        "last_name": MagicMock(),
+        "name": MagicMock(),
+    }
+    form_factory = MagicMock(return_value=mock_form_instance)
+    checker = mock_admin.get_checker.return_value
+    checker.get_form.return_value = form_factory
+    mock_concatenate_form = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm")
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_concatenate_form.assert_called_once()
+    _, kwargs = mock_concatenate_form.call_args
+    # Should fall back to first available field
+    assert kwargs["initial"]["destination_field"] == "first_name"
+
+
+def test_generate_full_name_with_no_matching_name_fields(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "generate_full_name", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form_instance = MagicMock()
+    mock_form_instance.fields = {
+        "age": MagicMock(),
+        "status": MagicMock(),
+    }
+    form_factory = MagicMock(return_value=mock_form_instance)
+    checker = mock_admin.get_checker.return_value
+    checker.get_form.return_value = form_factory
+    mock_concatenate_form = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm")
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_concatenate_form.assert_called_once()
+    _, kwargs = mock_concatenate_form.call_args
+    # Should use default pattern when no name fields found
+    assert kwargs["initial"]["pattern"] == "{first_name} {middle_name} {last_name}"
+
+
+def test_generate_full_name_preview_adds_changes_to_context(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_preview": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = True
+    mock_form.cleaned_data = {"pattern": "{first_name}", "destination_field": "full_name"}
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+    changes = [{"id": 1, "updated": "value"}]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.concatenate_field_impl", return_value=changes)
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    ctx = mock_render.call_args.args[2]
+    assert ctx["changes"] == changes
+    assert ctx["form"] == mock_form
+
+
+def test_generate_full_name_apply_schedules_job(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+    mock_async_job,
+):
+    mock_request.POST = {"_apply": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = True
+    mock_form.cleaned_data = {"pattern": "{first_name}", "destination_field": "full_name"}
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_async_job.queue.assert_called_once()
+    mock_admin.message_user.assert_called_with(mock_request, "Task scheduled", messages.SUCCESS)
+
+
+def test_push_to_hope_with_custom_batch_name(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_async_job,
+):
+    mock_request.POST = {"_push": True}
+    mock_request.user.email = "user@example.com"
+    mock_request.user.id = 99
+    mock_request.method = "POST"
+    program = SimpleNamespace(
+        country_office=SimpleNamespace(slug="co", id=1),
+        beneficiary_group=SimpleNamespace(master_detail=True),
+        id=2,
+        hope_id=3,
+    )
+    mock_admin.get_selected_program.return_value = program
+    mock_redirect = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.redirect", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = True
+    mock_form.cleaned_data = {"batch_name": "CustomBatch"}
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.PushToHopeForm", return_value=mock_form)
+
+    result = push_to_hope(mock_admin, mock_request, non_empty_queryset)
+
+    assert result == mock_redirect.return_value
+    mock_async_job.queue.assert_called_once()
+
+
+def test_regex_update_with_invalid_form_on_preview(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_preview": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.RegexUpdateForm", return_value=mock_form)
+
+    response = regex_update(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    ctx = mock_render.call_args.args[2]
+    # Should not have changes in context since form is invalid
+    assert "changes" not in ctx
+
+
+def test_regex_update_with_invalid_form_on_apply(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+):
+    mock_request.POST = {"_apply": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.RegexUpdateForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = regex_update(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_concatenate_field_with_invalid_form_on_preview(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_preview": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+
+    response = concatenate_field(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    ctx = mock_render.call_args.args[2]
+    # Should not have changes in context since form is invalid
+    assert "changes" not in ctx
+
+
+def test_concatenate_field_with_invalid_form_on_apply(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+):
+    mock_request.POST = {"_apply": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = concatenate_field(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_generate_full_name_with_invalid_form_on_preview(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_preview": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    ctx = mock_render.call_args.args[2]
+    # Should not have changes in context since form is invalid
+    assert "changes" not in ctx
+
+
+def test_generate_full_name_with_invalid_form_on_apply(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+):
+    mock_request.POST = {"_apply": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_bulk_update_export_with_invalid_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_export": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.BulkUpdateExportForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = bulk_update_export(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_mass_update_with_invalid_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_apply": True}
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.MassUpdateForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = mass_update(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_push_to_hope_with_invalid_form(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.POST = {"_push": True}
+    mock_request.method = "POST"
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = False
+    mocker.patch("country_workspace.workspaces.admin.cleaners.actions.PushToHopeForm", return_value=mock_form)
+    mock_async_job_create = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create")
+
+    response = push_to_hope(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    # Should not create job since form is invalid
+    mock_async_job_create.assert_not_called()
+
+
+def test_generate_full_name_with_empty_fields_list(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    post_data = QueryDict(mutable=True)
+    post_data.update({"action": "generate_full_name", "select_across": "0"})
+    post_data.setlist("_selected_action", ["1"])
+    mock_request.POST = post_data
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render", return_value=HttpResponse()
+    )
+    mock_form_instance = MagicMock()
+    mock_form_instance.fields = {}
+    form_factory = MagicMock(return_value=mock_form_instance)
+    checker = mock_admin.get_checker.return_value
+    checker.get_form.return_value = form_factory
+    mock_concatenate_form = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.ConcatenateFieldForm")
+
+    response = generate_full_name(mock_admin, mock_request, non_empty_queryset)
+
+    assert response == mock_render.return_value
+    mock_concatenate_form.assert_called_once()
+    _, kwargs = mock_concatenate_form.call_args
+    # Should use default pattern and empty destination
+    assert kwargs["initial"]["pattern"] == "{first_name} {middle_name} {last_name}"
+    assert kwargs["initial"]["destination_field"] == ""
