@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from country_workspace.workspaces.admin.cleaners.name_parser import name_parser_impl
-from testutils.factories import CountryIndividualFactory
+from country_workspace.workspaces.admin.cleaners.name_parser import NameParserForm, name_parser_impl
+from testutils.factories import CountryIndividualFactory, DataCheckerFactory, OfficeFactory
 
 pytestmark = [pytest.mark.django_db]
 
@@ -65,3 +65,62 @@ def test_name_parser_impl():
     assert individuals[2].flex_fields[given_name_field] == "No Change"
     assert middle_name_field not in individuals[2].flex_fields
     assert family_name_field not in individuals[2].flex_fields
+
+
+def test_name_parser_form_prevents_source_as_destination():
+    """Test that the form validation prevents using source field as a destination field."""
+    office = OfficeFactory()
+    checker = DataCheckerFactory()
+
+    form = NameParserForm(
+        data={
+            "source_field": "full_name",
+            "given_name_field": "full_name",  # Same as source - should fail
+            "family_name_field": "family_name",
+            "country_code": "us",
+        },
+        checker=checker,
+        tenant=office,
+    )
+
+    assert not form.is_valid()
+    assert "source field cannot be the same as a destination field" in str(form.errors)
+
+
+def test_name_parser_form_prevents_duplicate_destinations():
+    """Test that the form validation prevents using the same field for multiple destinations."""
+    office = OfficeFactory()
+    checker = DataCheckerFactory()
+
+    form = NameParserForm(
+        data={
+            "source_field": "full_name",
+            "given_name_field": "name_part",
+            "family_name_field": "name_part",  # Same as given_name_field - should fail
+            "country_code": "us",
+        },
+        checker=checker,
+        tenant=office,
+    )
+
+    assert not form.is_valid()
+    assert "Each destination field must be unique" in str(form.errors)
+
+
+def test_name_parser_form_requires_at_least_one_destination():
+    """Test that the form validation requires at least one destination field."""
+    office = OfficeFactory()
+    checker = DataCheckerFactory()
+
+    form = NameParserForm(
+        data={
+            "source_field": "full_name",
+            "country_code": "us",
+            # No destination fields specified
+        },
+        checker=checker,
+        tenant=office,
+    )
+
+    assert not form.is_valid()
+    assert "At least one destination field must be selected" in str(form.errors)

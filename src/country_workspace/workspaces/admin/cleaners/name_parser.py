@@ -17,6 +17,18 @@ if TYPE_CHECKING:
 
 
 class NameParserForm(BaseActionForm):
+    """
+    Form for parsing full names into separate components (given name, middle name, family name).
+
+    This action uses machine learning models to intelligently split full names into their
+    constituent parts, helping to standardize name data that was collected in a single field.
+    This is particularly useful for:
+    - Data standardization across different sources
+    - Proper name formatting for official documents
+    - Improved searchability and filtering by name components
+    - Compliance with systems that require separate name fields
+    """
+
     source_field = forms.ChoiceField(choices=[])
     country_code = forms.ChoiceField(label="Country for parsing model", choices=[])
     given_name_field = forms.ChoiceField(choices=[], required=False)
@@ -40,6 +52,7 @@ class NameParserForm(BaseActionForm):
 
     def clean(self) -> dict[str, Any]:
         cleaned_data = super().clean()
+
         if not any(
             [
                 cleaned_data.get("given_name_field"),
@@ -48,6 +61,27 @@ class NameParserForm(BaseActionForm):
             ]
         ):
             raise forms.ValidationError("At least one destination field must be selected.")
+
+        source_field = cleaned_data.get("source_field")
+        destination_fields = [
+            cleaned_data.get("given_name_field"),
+            cleaned_data.get("middle_name_field"),
+            cleaned_data.get("family_name_field"),
+        ]
+
+        for field in destination_fields:
+            if field and field == source_field:
+                raise forms.ValidationError(
+                    f"The source field cannot be the same as a destination field. "
+                    f"'{source_field}' is selected as both source and destination."
+                )
+
+        selected_destinations = [f for f in destination_fields if f]
+        if len(selected_destinations) != len(set(selected_destinations)):
+            raise forms.ValidationError(
+                "Each destination field must be unique. You cannot use the same field for multiple name parts."
+            )
+
         return cleaned_data
 
 
@@ -86,7 +120,9 @@ def name_parser_impl(
 
             for name_type, field_name in field_mapping.items():
                 if field_name:
-                    record.flex_fields[field_name] = " ".join(grouped_parts[name_type])
+                    parts = grouped_parts[name_type]
+                    if parts:  # Only set the field if there are parts to join
+                        record.flex_fields[field_name] = " ".join(parts)
 
         if save:
             records.bulk_update(records, ["flex_fields"], batch_size=1000)
