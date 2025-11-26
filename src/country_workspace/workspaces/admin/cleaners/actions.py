@@ -12,7 +12,6 @@ from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
-
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
@@ -143,6 +142,8 @@ def bulk_update_export(
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
         columns = ["id", "version"] + form.cleaned_data["fields"]
+        if form.cleaned_data.get("include_errors", False):
+            columns += ["is_valid", "errors"]
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=bulk_update_export.short_description,

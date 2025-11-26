@@ -3,6 +3,7 @@ from collections.abc import Callable
 from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
+from django.db.models import Case, When, Value, Q, CharField
 
 from constance import config as constance_config
 from django import forms
@@ -20,13 +21,13 @@ from xlsxwriter import Workbook
 from xlsxwriter.format import Format
 from xlsxwriter.worksheet import Worksheet
 from country_workspace.models import AsyncJob, Program, Country
+from country_workspace.models.base import Validable
 from country_workspace.state import state
 from country_workspace.storages import MEDIA_STORAGE
 from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportError, BulkImportFileProcessingError
+from django.db.models import QuerySet
 
 if TYPE_CHECKING:
-    from django.db.models import QuerySet
-
     from country_workspace.types import Beneficiary
 
 """
@@ -322,7 +323,7 @@ def _send_template_email(job: AsyncJob, out: BytesIO, filename: str) -> None:
 def export_bulk_update_template(job: AsyncJob) -> str:
     with state.set(tenant=job.program.country_office, program=job.program):
         model = apps.get_model(job.config["model_name"])
-        queryset = model.objects.filter(pk__in=job.config["pks"])
+        queryset = _get_queryset_with_is_valid_annotation(model, job)
 
         out = create_bulk_update_template(queryset, job.program, job.config["columns"])
         filename = f"bulk_update_template/{job.program.pk}/{job.owner.pk}/{job.config['model_name']}.xlsx"
@@ -334,6 +335,21 @@ def export_bulk_update_template(job: AsyncJob) -> str:
         job.save(update_fields=["file"])
 
         return filepath
+
+
+def _get_queryset_with_is_valid_annotation(model: Validable, job: AsyncJob) -> QuerySet:
+    qs = model.objects.filter(pk__in=job.config["pks"])
+    if (columns := job.config.get("columns")) and ("is_valid" in columns and "errors" in columns):
+        qs = qs.annotate(
+            is_valid=Case(
+                When(last_checked__isnull=True, then=Value("Not Checked")),
+                When(Q(last_checked__isnull=False) & Q(errors={}), then=Value("True")),
+                default=Value("False"),
+                output_field=CharField(),
+            )
+        )
+
+    return qs
 
 
 def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:  # noqa: C901
