@@ -3,7 +3,15 @@ from unittest.mock import patch
 import pytest
 
 from country_workspace.workspaces.admin.cleaners.name_parser import NameParserForm, name_parser_impl
-from testutils.factories import CountryFactory, CountryIndividualFactory, DataCheckerFactory, OfficeFactory
+from testutils.factories import (
+    CountryFactory,
+    CountryIndividualFactory,
+    DataCheckerFactory,
+    DataCheckerFieldsetFactory,
+    FieldsetFactory,
+    FlexFieldFactory,
+    OfficeFactory,
+)
 
 pytestmark = [pytest.mark.django_db]
 
@@ -73,7 +81,13 @@ def test_name_parser_form_prevents_source_as_destination():
     office = OfficeFactory()
     office.countries.add(country)
 
-    checker = DataCheckerFactory(fields=["full_name", "given_name", "family_name"])
+    # Create checker with proper fieldset relationship and prefix
+    checker = DataCheckerFactory()
+    fieldset = FieldsetFactory()
+    FlexFieldFactory(fieldset=fieldset, name="full_name")
+    FlexFieldFactory(fieldset=fieldset, name="given_name")
+    FlexFieldFactory(fieldset=fieldset, name="family_name")
+    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix="flex_fields__")
 
     form_data = {
         **HIDDEN_FORM_FIELDS,
@@ -99,7 +113,12 @@ def test_name_parser_form_prevents_duplicate_destinations():
     office = OfficeFactory()
     office.countries.add(country)
 
-    checker = DataCheckerFactory(fields=["full_name", "name_part"])
+    # Create checker with proper fieldset relationship and prefix
+    checker = DataCheckerFactory()
+    fieldset = FieldsetFactory()
+    FlexFieldFactory(fieldset=fieldset, name="full_name")
+    FlexFieldFactory(fieldset=fieldset, name="name_part")
+    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix="flex_fields__")
 
     form_data = {
         **HIDDEN_FORM_FIELDS,
@@ -125,7 +144,11 @@ def test_name_parser_form_requires_at_least_one_destination():
     office = OfficeFactory()
     office.countries.add(country)
 
-    checker = DataCheckerFactory(fields=["full_name"])
+    # Create checker with proper fieldset relationship and prefix
+    checker = DataCheckerFactory()
+    fieldset = FieldsetFactory()
+    FlexFieldFactory(fieldset=fieldset, name="full_name")
+    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix="flex_fields__")
 
     form_data = {
         **HIDDEN_FORM_FIELDS,
