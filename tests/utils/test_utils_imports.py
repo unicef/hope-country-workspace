@@ -3,41 +3,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.utils.imports import generate_validation_job, validate_alien_fields
-
-
-@pytest.mark.django_db
-def test_generate_validation_job(mocker: MockerFixture) -> None:
-    fqn_mock = mocker.patch("country_workspace.utils.imports.fqn")
-    async_job_class_mock = mocker.patch("country_workspace.utils.imports.AsyncJob")
-
-    queryset_mock = Mock()
-    queryset_mock.model._meta.label = "test_app.TestModel"
-    values_list_mock = Mock()
-    values_list_mock.__iter__ = Mock(return_value=iter([1, 2, 3]))
-    queryset_mock.values_list.return_value = values_list_mock
-
-    program_mock = Mock()
-    owner_mock = Mock()
-    description = "Test validation job"
-
-    result = generate_validation_job(
-        description=description,
-        owner=owner_mock,
-        program=program_mock,
-        queryset=queryset_mock,
-    )
-
-    queryset_mock.values_list.assert_called_once_with("pk", flat=True)
-    async_job_class_mock.objects.create.assert_called_once_with(
-        description=description,
-        type=async_job_class_mock.JobType.ACTION,
-        owner=owner_mock,
-        action=fqn_mock.return_value,
-        program=program_mock,
-        config={"pks": [1, 2, 3], "model_name": "test_app.TestModel"},
-    )
-    assert result == async_job_class_mock.objects.create.return_value
+from country_workspace.utils.imports import validate_alien_fields
 
 
 def test_validate_alien_fields_no_mapping_no_errors(mocker: MockerFixture) -> None:

@@ -15,8 +15,9 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
-from country_workspace.utils.imports import generate_validation_job, validate_alien_fields
+from country_workspace.utils.imports import validate_alien_fields
 from country_workspace.utils.functional import compose
+from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from .config import Config, SheetName, Sheet
 from .exceptions import ColumnConfigurationError, SheetProcessingError, SheetNotFoundError
 from .utils import date_to_iso_string, datetime_to_date
@@ -193,13 +194,12 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         else:
             queryset = batch.individual_set.filter(household=None)
 
-        validation_job = generate_validation_job(
+        create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=job.program,
             queryset=queryset,
         )
-        validation_job.queue()
         return result
 
 
