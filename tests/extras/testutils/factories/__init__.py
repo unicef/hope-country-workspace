@@ -17,7 +17,13 @@ from .locations import AreaFactory, AreaTypeFactory, CountryFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .rdp import CountryRdpFactory, RdpFactory  # noqa
-from .smart_fields import DataCheckerFactory, FieldDefinitionFactory, FieldsetFactory, FlexFieldFactory  # noqa
+from .smart_fields import (
+    DataCheckerFactory,  # noqa
+    DataCheckerFieldsetFactory,  # noqa
+    FieldDefinitionFactory,  # noqa
+    FieldsetFactory,  # noqa
+    FlexFieldFactory,  # noqa
+)
 from .serializer import DataSerializerFactory  # noqa
 from .social import SocialAuthUserFactory  # noqa
 from .sync import SyncLogFactory  # noqa
