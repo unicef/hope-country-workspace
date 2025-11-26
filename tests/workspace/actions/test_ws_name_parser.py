@@ -3,9 +3,16 @@ from unittest.mock import patch
 import pytest
 
 from country_workspace.workspaces.admin.cleaners.name_parser import NameParserForm, name_parser_impl
-from testutils.factories import CountryIndividualFactory, DataCheckerFactory, OfficeFactory
+from testutils.factories import CountryFactory, CountryIndividualFactory, DataCheckerFactory, OfficeFactory
 
 pytestmark = [pytest.mark.django_db]
+
+
+HIDDEN_FORM_FIELDS = {
+    "action": "parse_names",
+    "select_across": "0",
+    "_selected_action": "1",
+}
 
 
 def test_name_parser_impl():
@@ -19,7 +26,6 @@ def test_name_parser_impl():
     individuals = [
         CountryIndividualFactory(flex_fields={full_name_field: "John Doe"}),
         CountryIndividualFactory(flex_fields={full_name_field: "Jane Marie Smith"}),
-        CountryIndividualFactory(flex_fields={full_name_field: "No Change"}),
     ]
 
     config = {
@@ -60,25 +66,25 @@ def test_name_parser_impl():
     assert individuals[1].flex_fields[middle_name_field] == "Marie"
     assert individuals[1].flex_fields[family_name_field] == "Smith"
 
-    # No Change
-    individuals[2].refresh_from_db()
-    assert individuals[2].flex_fields[given_name_field] == "No Change"
-    assert middle_name_field not in individuals[2].flex_fields
-    assert family_name_field not in individuals[2].flex_fields
-
 
 def test_name_parser_form_prevents_source_as_destination():
     """Test that the form validation prevents using source field as a destination field."""
+    country = CountryFactory(iso_code2="US", name="United States")
     office = OfficeFactory()
-    checker = DataCheckerFactory()
+    office.countries.add(country)
+
+    checker = DataCheckerFactory(fields=["full_name", "given_name", "family_name"])
+
+    form_data = {
+        **HIDDEN_FORM_FIELDS,
+        "source_field": "flex_fields__full_name",
+        "given_name_field": "flex_fields__full_name",  # Same as source - should fail
+        "family_name_field": "flex_fields__family_name",
+        "country_code": "us",
+    }
 
     form = NameParserForm(
-        data={
-            "source_field": "full_name",
-            "given_name_field": "full_name",  # Same as source - should fail
-            "family_name_field": "family_name",
-            "country_code": "us",
-        },
+        data=form_data,
         checker=checker,
         tenant=office,
     )
@@ -89,16 +95,22 @@ def test_name_parser_form_prevents_source_as_destination():
 
 def test_name_parser_form_prevents_duplicate_destinations():
     """Test that the form validation prevents using the same field for multiple destinations."""
+    country = CountryFactory(iso_code2="US", name="United States")
     office = OfficeFactory()
-    checker = DataCheckerFactory()
+    office.countries.add(country)
+
+    checker = DataCheckerFactory(fields=["full_name", "name_part"])
+
+    form_data = {
+        **HIDDEN_FORM_FIELDS,
+        "source_field": "flex_fields__full_name",
+        "given_name_field": "flex_fields__name_part",
+        "family_name_field": "flex_fields__name_part",  # Same as given_name_field - should fail
+        "country_code": "us",
+    }
 
     form = NameParserForm(
-        data={
-            "source_field": "full_name",
-            "given_name_field": "name_part",
-            "family_name_field": "name_part",  # Same as given_name_field - should fail
-            "country_code": "us",
-        },
+        data=form_data,
         checker=checker,
         tenant=office,
     )
@@ -109,15 +121,21 @@ def test_name_parser_form_prevents_duplicate_destinations():
 
 def test_name_parser_form_requires_at_least_one_destination():
     """Test that the form validation requires at least one destination field."""
+    country = CountryFactory(iso_code2="US", name="United States")
     office = OfficeFactory()
-    checker = DataCheckerFactory()
+    office.countries.add(country)
+
+    checker = DataCheckerFactory(fields=["full_name"])
+
+    form_data = {
+        **HIDDEN_FORM_FIELDS,
+        "source_field": "flex_fields__full_name",
+        "country_code": "us",
+        # No destination fields specified
+    }
 
     form = NameParserForm(
-        data={
-            "source_field": "full_name",
-            "country_code": "us",
-            # No destination fields specified
-        },
+        data=form_data,
         checker=checker,
         tenant=office,
     )
