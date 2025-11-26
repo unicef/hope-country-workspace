@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import pytest
 import responses
-from constance import config
 from constance.test import override_config
 from django.urls import reverse
 from strategy_field.utils import fqn
@@ -333,7 +332,7 @@ def form_aurora(
 
     mocked_responses.add(
         responses.GET,
-        re.compile(re.escape(config.AURORA_API_URL) + ".*"),
+        re.compile(r"https://hope-dummy\.org/api/.*"),
         json=stub_data,
     )
 
@@ -358,7 +357,7 @@ def form_aurora(
         "two_results",
     ],
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest/", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_success(
     force_migrated_records: None,
     program: "CountryProgram",
@@ -390,7 +389,7 @@ def test_import_data_aurora_success(
     [stub.imported["invalid_pk"]],
     ids=["invalid_pk"],
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest/", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_failure(
     force_migrated_records: None,
     program: "CountryProgram",
