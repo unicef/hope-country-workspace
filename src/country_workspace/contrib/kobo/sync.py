@@ -1,13 +1,16 @@
 import re
 from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Any, Final, TypedDict, cast
+from typing import Any, Final, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
 from requests import Session
 from requests.adapters import HTTPAdapter
 
 from django.contrib.contenttypes.models import ContentType
+
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
@@ -25,6 +28,23 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 class Config(BatchNameConfig, ValidateModeConfig):
     project_id: str
     individual_records_field: str
+
+
+class AlienFieldsError(Exception):
+    """Raised when alien fields are detected in imported data."""
+
+    def __init__(self, household_alien_fields: set[str], individual_alien_fields: set[str]) -> None:
+        self.household_alien_fields = household_alien_fields
+        self.individual_alien_fields = individual_alien_fields
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        parts = []
+        if self.household_alien_fields:
+            parts.append(f"Household alien fields: {', '.join(sorted(self.household_alien_fields))}")
+        if self.individual_alien_fields:
+            parts.append(f"Individual alien fields: {', '.join(sorted(self.individual_alien_fields))}")
+        return " | ".join(parts) if parts else "Alien fields detected"
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -152,8 +172,54 @@ def set_roles_and_relationships(household: Household, individuals: list[Individu
     household.save(update_fields=["flex_fields"])
 
 
+def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
+    """Get set of allowed field names from a DataChecker."""
+    if not checker:
+        return set()
+    return {field_name for field_name, _ in get_checker_fields(checker)}
+
+
+def get_alien_fields(data: dict[str, Any], allowed_fields: set[str]) -> set[str]:
+    """Return fields in data that are not in allowed_fields."""
+    data_fields = set(data.keys())
+    return data_fields - allowed_fields
+
+
+def check_for_alien_fields(
+    batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
+) -> None:
+    """Check first submission for alien fields and raise if found."""
+    # Extract and preprocess household data
+    raw_household_fields = extract_household_data(submission, config["individual_records_field"])
+    household_fields = preprocess(
+        raw_household_fields,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        partial(mapping_importer, Household),
+    )
+
+    # Check household fields
+    household_allowed_fields = get_allowed_fields(batch.program.household_checker)
+    household_alien = get_alien_fields(household_fields, household_allowed_fields)
+
+    # Check individual fields
+    individual_alien: set[str] = set()
+    if individuals_data := submission.get(config["individual_records_field"]):
+        first_individual = individuals_data[0]
+        individual_fields = preprocess(
+            first_individual,
+            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            partial(mapping_importer, Individual),
+        )
+        individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
+        individual_alien = get_alien_fields(individual_fields, individual_allowed_fields)
+
+    if household_alien or individual_alien:
+        raise AlienFieldsError(household_alien, individual_alien)
+
+
 def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
     from django.db import transaction
+    from itertools import chain
 
     household_counter = 0
     individual_counter = 0
@@ -166,8 +232,20 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     last_successful_id = last_id
     current_submission = None
 
+    validate_mode = ValidateMode(config.get("validate_mode", ValidateMode.CHECK_AND_FAIL_IF_ALIEN))
+    fail_if_alien = validate_mode is ValidateMode.CHECK_AND_FAIL_IF_ALIEN
+    submissions_iterator = asset.submissions(min_id=last_id)
+
     try:
-        for submission in asset.submissions(min_id=last_id):
+        if fail_if_alien:
+            try:
+                first_submission = next(submissions_iterator)
+            except StopIteration:
+                return ImportResult(households=0, individuals=0)
+            check_for_alien_fields(batch, first_submission, config, batch.program.apply_mapping_importer)
+            submissions_iterator = chain([first_submission], submissions_iterator)
+
+        for submission in submissions_iterator:
             current_submission = submission
 
             with transaction.atomic():
