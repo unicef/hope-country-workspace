@@ -13,6 +13,7 @@ header_add: Final[dict[str, tuple[str, ...]]] = {
         "role",
     ],
 }
+header_last: Final[tuple[str, ...]] = ["is_valid", "errors"]
 
 batch_name: Final[str] = "TestBatch"
 batch_size: Final[int] = 10

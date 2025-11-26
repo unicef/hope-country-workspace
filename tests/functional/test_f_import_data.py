@@ -109,44 +109,10 @@ def test_aurora_import_tab(browser_program):
         "#id_aurora-fail_if_alien",
         "#id_aurora-validate_after_import",
         "#id_aurora-registration",
-        "#id_aurora-individuals_column_prefix",
     ]
 
     for input_id in aurora_input_ids:
         browser_program.assert_element_visible(input_id)
-
-    assert browser_program.get_value("#id_aurora-individuals_column_prefix") == "individuals_"
-
-
-@pytest.mark.selenium
-def test_aurora_import_tab_with_beneficiary(browser_program_beneficiary, program_beneficiary):
-    browser_program_beneficiary.click('button[data-input-value="aurora"]')
-    browser_program_beneficiary.assert_element_not_visible("#tab-rdi")
-    browser_program_beneficiary.assert_element_visible("#tab-aurora")
-    browser_program_beneficiary.assert_element_not_visible("#tab-kobo")
-    browser_program_beneficiary.assert_element_present('button[data-input-value="aurora"].selected')
-
-    common_input_ids = [
-        "#id_aurora-batch_name",
-        "#id_aurora-fail_if_alien",
-        "#id_aurora-validate_after_import",
-        "#id_aurora-registration",
-        "#id_aurora-individuals_column_prefix",
-    ]
-
-    for input_id in common_input_ids:
-        browser_program_beneficiary.assert_element_visible(input_id)
-
-    if program_beneficiary.beneficiary_group.master_detail:
-        browser_program_beneficiary.assert_element_visible("#id_aurora-household_column_prefix")
-        browser_program_beneficiary.assert_element_visible("#id_aurora-household_label_column")
-        assert browser_program_beneficiary.get_value("#id_aurora-household_column_prefix") == "household_"
-        assert browser_program_beneficiary.get_value("#id_aurora-household_label_column") == "family_name"
-    else:
-        browser_program_beneficiary.assert_element_not_present("#id_aurora-household_column_prefix")
-        browser_program_beneficiary.assert_element_not_present("#id_aurora-household_label_column")
-
-    assert browser_program_beneficiary.get_value("#id_aurora-individuals_column_prefix") == "individuals_"
 
 
 @pytest.mark.selenium

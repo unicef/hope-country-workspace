@@ -14,6 +14,11 @@ if TYPE_CHECKING:
 
 class BulkUpdateExportForm(BaseActionForm):
     fields = forms.MultipleChoiceField(choices=[], widget=forms.CheckboxSelectMultiple())
+    include_errors = forms.BooleanField(
+        label=_("Include errors and validity status"),
+        required=False,
+        initial=False,
+    )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")

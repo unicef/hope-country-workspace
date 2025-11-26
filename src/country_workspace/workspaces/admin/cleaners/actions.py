@@ -11,13 +11,12 @@ from country_workspace.contrib.hope.push import push_to_hope_core, PushConfig
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
-from country_workspace.utils.imports import generate_validation_job
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
-
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .mass_update import MassUpdateForm, mass_update_impl
 from .regex import RegexUpdateForm, regex_update_impl
+from .validate import create_validation_jobs
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -32,16 +31,15 @@ def validate_records(
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
     if model_admin._check_empty_queryset(request, queryset):
-        return None
-    job = generate_validation_job(
+        return
+    create_validation_jobs(
         description=validate_records.short_description,
         owner=request.user,
         program=state.program,
         queryset=queryset,
     )
-    job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-    return job
+    return
 
 
 @admin.action(description="Mass update record fields", permissions=["mass_update"])
@@ -144,6 +142,8 @@ def bulk_update_export(
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
         columns = ["id", "version"] + form.cleaned_data["fields"]
+        if form.cleaned_data.get("include_errors", False):
+            columns += ["is_valid", "errors"]
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=bulk_update_export.short_description,

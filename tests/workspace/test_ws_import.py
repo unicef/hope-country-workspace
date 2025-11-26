@@ -15,6 +15,7 @@ from django import forms as django_forms
 from country_workspace.contrib.hope.constants import PEOPLE_CHECKER_NAME
 from country_workspace.models import Office, Individual, Household, Batch
 from country_workspace.state import state
+from country_workspace.workspaces.admin.forms import ValidateMode
 from country_workspace.contrib.aurora.exceptions import TooManyBeneficiaryError
 from tests.contrib.aurora import stub
 from tests.extras.testutils.factories import DataCheckerFactory
@@ -322,7 +323,7 @@ def test_import_rdi_people_only_with_fail_if_alien(
 
 
 @pytest.fixture
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
 def form_aurora(
     app: "DjangoTestApp", program: "CountryProgram", mocked_responses: responses.RequestsMock, stub_data: dict[str, Any]
 ) -> forms.Form:
@@ -349,113 +350,65 @@ def form_aurora(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    ("stub_data", "hh_count", "ind_count"),
+    ("stub_data", "expected_people"),
     [
-        (stub.imported["no_individuals"], 0, 0),
-        (stub.imported["empty_household_data"], 1, 1),
-        (stub.imported["update_head_name"], 1, 1),
+        (stub.imported["no_results"], 0),
+        (stub.imported["two_results"], 2),
     ],
     ids=[
-        "no_individuals",
-        "empty_household_data",
-        "update_head_name",
+        "no_results",
+        "two_results",
     ],
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
 def test_import_data_aurora_success(
     force_migrated_records: None,
     program: "CountryProgram",
     form_aurora: forms.Form,
     stub_data: dict[str, Any],
-    hh_count: int,
-    ind_count: int,
+    expected_people: int,
 ) -> None:
-    form_aurora.submit()
+    if program.beneficiary_group.master_detail:
+        with pytest.raises(NotImplementedError):
+            form_aurora.submit()
 
-    master_detail = program.beneficiary_group.master_detail
-    households = program.households.all()
-    individuals = program.individuals.all()
-    assert individuals.count() == ind_count
-    assert households.count() == (hh_count if master_detail else 0)
+        assert program.individuals.count() == 0
+        assert program.households.count() == 0
+        return
 
-    if master_detail:
-        if hh_count == 2:
-            assert {hh.members.count() for hh in households} == {1, 2}
-            assert {hh.heads().first().name for hh in households} == {"John 5", "Jane 6"}
-        elif hh_count == 1 and stub_data == stub.imported["update_head_name"]:
-            assert households.first().name == "Doe 10"
+    assert program.individuals.count() == 0
+    assert program.households.count() == 0
+
+    res = form_aurora.submit()
+
+    assert res.status_code in (200, 302)
+    assert program.individuals.count() == expected_people
+    assert program.households.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    ("stub_data", "hh_count", "ind_count", "error_type", "error_message"),
-    [
-        (
-            stub.imported["correct"],
-            2,
-            3,
-            TooManyBeneficiaryError,
-            r"Expected one Individual for record 6, but got 2",
-        ),
-        (
-            stub.imported["multiple_households"],
-            0,
-            1,
-            TooManyBeneficiaryError,
-            r"Expected one Household for record 8, but got 2",
-        ),
-        (
-            stub.imported["invalid_key"],
-            0,
-            0,
-            ValueError,
-            r".*must contain an underscore",
-        ),
-        (
-            stub.imported["multiple_individuals_if_not_hh"],
-            1,
-            2,
-            TooManyBeneficiaryError,
-            r"Expected one Individual for record 12, but got 2",
-        ),
-        (
-            stub.imported["invalid_record_id"],
-            0,
-            0,
-            ValueError,
-            r"Invalid or missing record ID: None",
-        ),
-    ],
-    ids=(
-        "correct_multiple_individuals",
-        "multiple_households",
-        "invalid_key",
-        "multiple_individuals_if_not_hh",
-        "invalid_record_id",
-    ),
+    "stub_data",
+    [stub.imported["invalid_pk"]],
+    ids=["invalid_pk"],
 )
-@override_config(AURORA_API_URL="https://hope-dummy.org/api/", AURORA_API_TOKEN="dummy_token")
-def test_import_data_aurora_errors(
+@override_config(AURORA_API_URL="https://hope-dummy.org/api/rest", AURORA_API_TOKEN="dummy_token")
+def test_import_data_aurora_failure(
     force_migrated_records: None,
     program: "CountryProgram",
     form_aurora: forms.Form,
     stub_data: dict[str, Any],
-    hh_count: int,
-    ind_count: int,
-    error_type: type[Exception],
-    error_message: str,
 ) -> None:
-    master_detail = program.beneficiary_group.master_detail
-    expected_success = (
-        (stub_data == stub.imported["multiple_households"] and not master_detail)
-        or (stub_data == stub.imported["multiple_individuals_if_not_hh"] and master_detail)
-        or (stub_data == stub.imported["correct"] and master_detail)
-    )
-
-    if expected_success:
-        form_aurora.submit()
-        assert program.individuals.count() == ind_count
-        assert program.households.count() == (hh_count if master_detail else 0)
-    else:
-        with pytest.raises(error_type, match=error_message):
+    if program.beneficiary_group.master_detail:
+        with pytest.raises(NotImplementedError):
             form_aurora.submit()
+
+        assert program.individuals.count() == 0
+        assert program.households.count() == 0
+        return
+
+    with pytest.raises(ImportError, match=r"Last successful record ID"):
+        form_aurora.submit()
+
+    assert program.individuals.count() == 0
+    assert program.households.count() == 0
