@@ -58,7 +58,6 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.bulk_update_export,
         actions.calculate_checksum,
         actions.concatenate_field,
-        actions.generate_full_name,
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
