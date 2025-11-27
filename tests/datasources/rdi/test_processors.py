@@ -240,8 +240,12 @@ def test_process_households(
 
     assert result == {row[config["household_id_column"]]: mock_create.return_value for row in household_sheet}
 
+    household_mapping_id = config.get("household_mapping_id")
     job.program.apply_mapping_importer.assert_has_calls(
-        [call(Household, clean_field_names_mock.return_value) for _ in household_sheet]
+        [
+            call(Household, clean_field_names_mock.return_value, mapping_id=household_mapping_id)
+            for row in household_sheet
+        ]
     )
     job.program.apply_default_fields.assert_has_calls(
         [call(Household, job.program.apply_mapping_importer.return_value) for _ in household_sheet]
@@ -287,6 +291,8 @@ def test_process_beneficiaries_with_households(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    deepcopy_mock = mocker.patch("country_workspace.datasources.rdi.processors.deepcopy")
+    deepcopy_mock.side_effect = lambda x: x  # Return the same object for simplicity
 
     result = process_beneficiaries(
         individual_sheet,
@@ -297,9 +303,12 @@ def test_process_beneficiaries_with_households(
     )
 
     assert len(result) == len(list(individual_sheet))
-
+    individual_mapping_id = config.get("individual_mapping_id")
     job_mock.program.apply_mapping_importer.assert_has_calls(
-        [call(Individual, clean_field_names_mock.return_value) for _ in individual_sheet]
+        [
+            call(Individual, clean_field_names_mock.return_value, mapping_id=individual_mapping_id)
+            for row in individual_sheet
+        ]
     )
     job_mock.program.apply_default_fields.assert_has_calls(
         [call(Individual, job_mock.program.apply_mapping_importer.return_value) for _ in individual_sheet]
@@ -329,6 +338,8 @@ def test_process_beneficiaries_people_only(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    deepcopy_mock = mocker.patch("country_workspace.datasources.rdi.processors.deepcopy")
+    deepcopy_mock.side_effect = lambda x: x  # Return the same object for simplicity
 
     result = process_beneficiaries(
         people_sheet,
@@ -339,11 +350,14 @@ def test_process_beneficiaries_people_only(
     )
 
     assert len(result) == len(list(people_sheet))
+    individual_mapping_id = config.get("individual_mapping_id")
     expected_calls, expected_apply_mapping_calls, expected_apply_default_calls = [], [], []
     for __, row in enumerate(people_sheet, 1):
         prefix = config.get("people_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
-        expected_apply_mapping_calls.append(call(Individual, clean_field_names_mock.return_value))
+        expected_apply_mapping_calls.append(
+            call(Individual, clean_field_names_mock.return_value, mapping_id=individual_mapping_id)
+        )
         expected_apply_default_calls.append(call(Individual, job_mock.program.apply_mapping_importer.return_value))
         expected_calls.append(
             call(

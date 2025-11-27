@@ -104,9 +104,7 @@ def test_mapping_importer_unique_constraint(office, data_checker):
         )
 
 
-@patch("country_workspace.admin.mapping_importer.cache")
-def test_admin_save_invalidates_cache(mock_cache, app, data_checker, office, admin_user):
-    """Test that saving a mapping invalidates the cache in the main admin."""
+def test_admin_save_invalidates_cache(app, data_checker, office, admin_user):
     url = reverse("admin:country_workspace_mappingimporter_add")
     res = app.get(url)
 
@@ -116,14 +114,14 @@ def test_admin_save_invalidates_cache(mock_cache, app, data_checker, office, adm
     form["name"] = "Cache Test Mapping"
     form["rules"] = "field1=field2"
 
-    form.submit()
+    res = form.submit()
+    assert res.status_code == 302
 
     assert MappingImporter.objects.filter(name="Cache Test Mapping").exists()
 
 
 def test_workspace_admin_queryset_filters_by_office(app, office, data_checker, admin_user):
     """Test that workspace admin only shows mappings for current office."""
-    from country_workspace.state import state
     from testutils.factories import OfficeFactory, ProgramFactory
 
     other_office = OfficeFactory()
@@ -146,9 +144,9 @@ def test_workspace_admin_queryset_filters_by_office(app, office, data_checker, a
         data_checker=data_checker,
     )
 
-    # Set the state to the first office and program
-    state.tenant = office
-    state.program = program1
+    # Set the state by accessing a program page first
+    url = reverse("workspace:workspaces_countryprogram_change", args=[program1.pk])
+    app.get(url)
 
     # Now check the mapping list
     url = reverse("workspace:workspaces_countrymappingimporter_changelist")
@@ -251,7 +249,6 @@ def test_admin_permissions_check_delete(app, mapping_importer, admin_user):
 @patch("country_workspace.workspaces.admin.mapping_importer.cache")
 def test_admin_delete_invalidates_cache(mock_cache, app, mapping_importer, admin_user):
     """Test that deleting a mapping invalidates the cache."""
-    from country_workspace.state import state
     from testutils.factories import ProgramFactory
 
     # Create a program to select the office
@@ -261,20 +258,16 @@ def test_admin_delete_invalidates_cache(mock_cache, app, mapping_importer, admin
         enabled=True,
     )
 
-    state.tenant = mapping_importer.office
-    state.program = program
+    url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+    app.get(url)
 
     url = reverse("workspace:workspaces_countrymappingimporter_delete", args=[mapping_importer.pk])
     res = app.get(url)
 
-    form = None
-    for f in res.forms.values():
-        if hasattr(f, "method") and f.method == "POST":
-            form = f
-            break
+    form = res.forms["countrymappingimporter_form"]
+    res = form.submit()
 
-    assert form is not None, "Delete confirmation form not found"
-    form.submit()
+    assert res.status_code == 302
 
     # Verify cache.delete was called
     mock_cache.delete.assert_called()
