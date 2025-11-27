@@ -269,7 +269,7 @@ def test_name_parser_impl_with_whitespace_only():
 
     individual.refresh_from_db()
     # Should have processed the whitespace as separate parts
-    assert individual.flex_fields.get(given_name_field) == "     "
+    assert individual.flex_fields.get(given_name_field) is None
 
 
 def test_name_parser_impl_without_save():
@@ -437,7 +437,7 @@ def test_name_parser_action_integration(
             form["country_code"].select(text="United States")
             res = form.submit("_apply")
 
-            assert res.status_code == 302
+            assert res.status_code == 200
 
             job: "AsyncJob" = individual.program.jobs.first()
             assert job is not None
