@@ -1,17 +1,25 @@
+import datetime
 import io
 from typing import TYPE_CHECKING, Any
 from unittest import mock
+from unittest.mock import Mock
 
 import openpyxl
 import pytest
 import xlsxwriter
 from django.urls import reverse
+from django.utils import timezone
 from testutils.factories import FlexFieldFactory
 from testutils.utils import select_office
 from webtest import Upload
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.bulk_update import TYPES, create_bulk_update_template
+from country_workspace.workspaces.admin.cleaners.bulk_update import (
+    TYPES,
+    create_bulk_update_template,
+    _get_queryset_with_is_valid_annotation,
+)
+from tests.extras.testutils.factories import CountryHouseholdFactory
 from tests.workspace.actions import stub
 
 if TYPE_CHECKING:
@@ -136,6 +144,54 @@ def test_create_bulk_update_template(household: "CountryHousehold", force_migrat
     sheet = workbook.worksheets[0]
     headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
     assert headers == selected_fields
+
+
+def test_create_bulk_update_template_with_errors(program):
+    CountryHouseholdFactory.create_batch(2, batch__program=program)
+    CountryHouseholdFactory.create_batch(
+        3, batch__program=program, last_checked=(timezone.now() - datetime.timedelta(days=3)), errors={}
+    )
+    CountryHouseholdFactory.create_batch(
+        4,
+        batch__program=program,
+        last_checked=(timezone.now() - datetime.timedelta(days=4)),
+        errors={"cool_error": "cooler error text"},
+    )
+    selected_fields = stub.header_base + stub.header_add["ind"] + stub.header_last
+
+    job = Mock()
+    job.config = {
+        "pks": CountryHouseholdFactory._meta.model.objects.values_list("id", flat=True),
+        "columns": selected_fields,
+    }
+    qs = _get_queryset_with_is_valid_annotation(CountryHouseholdFactory._meta.model, job)
+
+    ret = create_bulk_update_template(
+        qs,
+        program,
+        selected_fields,
+    )
+
+    workbook = openpyxl.load_workbook(io.BytesIO(ret.getvalue()))
+    sheet = workbook.worksheets[0]
+    headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+    assert headers == selected_fields
+
+    valid_count = 0
+    invalid_count = 0
+    not_checked_count = 0
+    for row in sheet.iter_rows(min_row=2):
+        is_valid = row[-2].value
+        if is_valid == "True":
+            valid_count += 1
+        elif is_valid == "False":
+            invalid_count += 1
+        elif is_valid == "Not Checked":
+            not_checked_count += 1
+
+    assert valid_count == 3
+    assert invalid_count == 4
+    assert not_checked_count == 2
 
 
 def test_bulk_update_export(
