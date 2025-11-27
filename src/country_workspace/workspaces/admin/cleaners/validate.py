@@ -2,11 +2,14 @@ import logging
 from typing import Any
 from itertools import batched
 from collections.abc import Iterable
+
+from concurrency.utils import fqn
+from constance import config
 from django.db.models import Model, QuerySet, Prefetch
 from django.db.models.query import prefetch_related_objects
 
 from country_workspace.context import batch_ctx
-from country_workspace.models import AsyncJob, Household, Individual
+from country_workspace.models import AsyncJob, Household, Individual, Program
 from country_workspace.state import state
 
 
@@ -50,17 +53,6 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
     return {"valid": valid, "invalid": invalid}
 
 
-def validate_program(job: AsyncJob) -> dict[str, int]:
-    try:
-        program = job.program
-        qs = program.households.all() if program.beneficiary_group.master_detail else program.individuals.all()
-        return validate_queryset(qs)
-
-    except Exception as e:  # pragma: no cover
-        logger.error("Error during program validation: %s", e)
-        raise
-
-
 def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
     valid = invalid = 0
     for obj in objs:
@@ -70,3 +62,18 @@ def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
             else:
                 invalid += 1
     return valid, invalid
+
+
+def create_validation_jobs(description: str, owner: str, program: Program, queryset: QuerySet) -> AsyncJob:
+    opts = queryset.model._meta
+    queryset = queryset.values_list("pk", flat=True).order_by("pk")
+    for chunk in batched(queryset, config.CHUNK_SIZE_FOR_VALIDATION_TASK):
+        job = AsyncJob.objects.create(
+            description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
+            type=AsyncJob.JobType.ACTION,
+            owner=owner,
+            action=fqn(validate_queryset),
+            program=program,
+            config={"pks": chunk, "model_name": opts.label},
+        )
+        job.queue()

@@ -64,6 +64,7 @@ CONSTANCE_CONFIG = {
     ),
     "MAILJET_API_KEY": (MAILJET_API_KEY, "Mailjet API key", str),
     "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_input"),
+    "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {
@@ -83,6 +84,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "MAILJET_SECRET_KEY",
     ),
     "Data consistency": ("CONCURRENCY_GUARD",),
+    "System": ("CHUNK_SIZE_FOR_VALIDATION_TASK",),
 }
 
 # Mapping of config keys to masked default display values in the Constance admin UI.

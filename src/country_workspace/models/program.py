@@ -1,5 +1,6 @@
 from contextlib import suppress
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -93,7 +94,6 @@ class Program(BaseModel):
     individual_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
-
     serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self) -> str:
