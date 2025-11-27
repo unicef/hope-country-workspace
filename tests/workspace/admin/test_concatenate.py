@@ -144,3 +144,60 @@ def test_concatenate_field_impl_skips_when_replace_only_empty(mocker: MockerFixt
 
     assert result == [(2, "Existing", "Existing")]
     bulk_update.assert_not_called()
+
+
+def test_concatenate_field_impl_handles_none_flex_fields(mocker: MockerFixture):
+    """Test that concatenate_field_impl handles records with None flex_fields."""
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.concatenate.transaction.atomic", return_value=nullcontext()
+    )
+
+    class DummyRecord:
+        def __init__(self, pk: int):
+            self.id = pk
+            self.flex_fields = None
+
+        def update_checksum(self, initial_fields: set[str]) -> set[str]:
+            return {"checksum"}
+
+    record = DummyRecord(3)
+    bulk_update = MagicMock()
+    records = DummyRecords([record], bulk_update)
+
+    result = concatenate_field_impl(records, {"destination_field": "full_name", "pattern": "{first_name} {last_name}"})
+
+    # Since flex_fields is None, concatenate_value returns empty values
+    assert result == [(3, None, "")]
+    # flex_fields should be initialized to {} and then updated
+    assert record.flex_fields == {"full_name": ""}
+    bulk_update.assert_called_once()
+
+
+def test_concatenate_field_impl_with_save_false(mocker: MockerFixture):
+    """Test that concatenate_field_impl does not save when save=False."""
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.concatenate.transaction.atomic", return_value=nullcontext()
+    )
+
+    class DummyRecord:
+        def __init__(self, pk: int, flex_fields: dict[str, str]):
+            self.id = pk
+            self.flex_fields = flex_fields
+
+        def update_checksum(self, initial_fields: set[str]) -> set[str]:
+            return set()
+
+    record = DummyRecord(4, {"first": "Jane", "last": "Smith"})
+    bulk_update = MagicMock()
+    records = DummyRecords([record], bulk_update)
+
+    result = concatenate_field_impl(
+        records,
+        {"destination_field": "full_name", "pattern": "{first} {last}"},
+        save=False,
+    )
+
+    assert result == [(4, None, "Jane Smith")]
+    assert record.flex_fields["full_name"] == "Jane Smith"
+    # bulk_update should NOT be called when save=False
+    bulk_update.assert_not_called()
