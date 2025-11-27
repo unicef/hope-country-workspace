@@ -119,10 +119,9 @@ def name_parser_impl(
                 grouped_parts[name_type].append(part)
 
             for name_type, field_name in field_mapping.items():
-                if field_name:
-                    parts = grouped_parts[name_type]
-                    if parts:  # Only set the field if there are parts to join
-                        record.flex_fields[field_name] = " ".join(parts)
+                parts = grouped_parts[name_type]
+                if parts:  # Only set the field if there are parts to join
+                    record.flex_fields[field_name] = " ".join(parts)
 
         if save:
             records.bulk_update(records, ["flex_fields"], batch_size=1000)
