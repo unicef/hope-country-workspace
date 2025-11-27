@@ -66,7 +66,7 @@ def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
 
 def create_validation_jobs(description: str, owner: str, program: Program, queryset: QuerySet) -> AsyncJob:
     opts = queryset.model._meta
-    queryset = queryset.values_list("pk", flat=True).order_by("pk")
+    queryset = queryset.order_by("pk").values_list("pk", flat=True)
     for chunk in batched(queryset, config.CHUNK_SIZE_FOR_VALIDATION_TASK):
         job = AsyncJob.objects.create(
             description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
