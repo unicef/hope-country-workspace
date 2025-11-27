@@ -110,3 +110,10 @@ def test_validate_alien_fields_with_mapping_unmapped_field(mocker: MockerFixture
     datachecker_mock.get_fields.return_value = [(fieldset_mock, field1_mock), (fieldset_mock, field2_mock)]
 
     validate_alien_fields(sheet_mock, datachecker_mock)
+
+
+def test_validate_alien_fields_without_dc() -> None:
+    datachecker = None
+    sheet_mock = iter([{"raw_field1": "value1", "raw_field2": "value2"}])
+
+    assert validate_alien_fields(sheet_mock, datachecker) is None

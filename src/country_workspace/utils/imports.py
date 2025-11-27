@@ -9,14 +9,14 @@ if TYPE_CHECKING:
 
 
 def validate_alien_fields(sheet: "Sheet", datachecker: DataChecker) -> None:
+    if datachecker is None:
+        return
+
     row = next(sheet)
     raw_data = clean_field_names(row)
     fields = set(raw_data.keys())
     if mapping_importer := datachecker.mappingimporter:
         fields = {mapping_importer.rules_as_dict.get(f, f) for f in fields}
-
-    if datachecker is None:
-        return
 
     dc_fields = {f"{fieldset.prefix}{field.name}" for fieldset, field in list(datachecker.get_fields())}
     if not fields.issubset(dc_fields):
