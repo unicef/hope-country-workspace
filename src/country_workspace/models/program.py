@@ -167,6 +167,8 @@ class Program(BaseModel):
         mapping_id: int | None = None,
     ) -> dict[str, str | int | bool]:
         """Apply mapping importer from the checker's mappingimporter, if any."""
+        from country_workspace.models import MappingImporter
+
         mapping_importers = []
         if mapping_id:
             mapping_importer = MappingImporter.objects.filter(id=mapping_id).first()
