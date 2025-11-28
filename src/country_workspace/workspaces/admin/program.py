@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
-from admin_extra_buttons.api import button
+from admin_extra_buttons.api import button, choice, view
+from admin_extra_buttons.buttons import ChoiceButton
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -20,6 +21,7 @@ from country_workspace.contrib.aurora.import_processing import (
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
 from country_workspace.models import Household, Individual
+from country_workspace.models.base import Validable
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm
 from ..permissions import can_change_country_program, can_import_program_data
@@ -117,13 +119,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             css={},
         )
 
-    def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
+    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryProgram]:
         return CountryProgram.objects.filter(country_office=state.tenant, enabled=True)
 
-    def has_add_permission(self, request: HttpResponse) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_delete_permission(self, request: HttpResponse, obj: CountryProgram | None = None) -> bool:
+    def has_delete_permission(self, request: HttpRequest, obj: CountryProgram | None = None) -> bool:
         return False
 
     def get_fieldsets(
@@ -195,7 +197,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         }
         return super().change_view(request, object_id, form_url, extra_context)
 
-    def changelist_view(self, request: HttpRequest, extra_context: dict[str, None] | None = None) -> HttpResponse:
+    def changelist_view(self, request: HttpRequest, extra_context: dict[str, Any] | None = None) -> HttpResponse:
         url = reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])
         return HttpResponseRedirect(url)
 
@@ -211,24 +213,37 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             group_label = obj.beneficiary_group.group_label or _("Household")
             member_label = obj.beneficiary_group.member_label or _("Individual")
             dynamic_labels = {
-                "individual_columns": f"{member_label} columns",
+                "individual_columns": f"{member_label}",
             }
             if obj.beneficiary_group.master_detail:
-                dynamic_labels["household_columns"] = f"{group_label} columns"
+                dynamic_labels["household_columns"] = f"{group_label}"
             extra_context = {
                 **extra_context,
                 "dynamic_field_labels": dynamic_labels,
                 "btnlabels": {
-                    "individual_columns": f"{member_label} Columns",
-                    "household_columns": f"{group_label} Columns",
+                    "individual_columns": f"{member_label}",
+                    "household_columns": f"{group_label}",
                 },
             }
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
+    @staticmethod
+    def _can_configure(
+        button: ChoiceButton,
+        model: type[Validable],
+        require_master_detail: bool = False,
+    ) -> bool:
+        if not (program := button.context.get("original")):
+            return False
+        bg = getattr(program, "beneficiary_group", None)
+        if not bg or (require_master_detail and not bg.master_detail):
+            return False
+        return program.get_checker_for(model) is not None
+
     def _configure_columns(
         self,
         request: HttpRequest,
-        form_class: "type[SelectColumnsForm|SelectIndividualColumnsForm]",
+        form_class: type[SelectColumnsForm] | type[SelectIndividualColumnsForm],
         context: dict[str, Any],
     ) -> "HttpResponse":
         program: "CountryProgram" = context["original"]
@@ -252,54 +267,6 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["form"] = form
 
         return render(request, "workspace/program/configure_columns.html", context)
-
-    @button(
-        permission=can_change_country_program,
-        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
-        visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
-        enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
-    )
-    def household_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
-        context = self.get_common_context(request, pk, title="Configure default Household columns")
-        program: "CountryProgram" = context["original"]
-        context["checker"]: "DataChecker" = program.household_checker
-        context["storage_field"] = "household_columns"
-        return self._configure_columns(request, SelectColumnsForm, context)
-
-    @button(
-        permission=can_change_country_program,
-        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
-    )
-    def individual_columns(self, request: HttpRequest, pk: str) -> "HttpResponse | HttpResponseRedirect":
-        context = self.get_common_context(request, pk, title="Configure default Individual columns")
-        program: "CountryProgram" = context["original"]
-        context["checker"]: "DataChecker" = program.individual_checker
-        context["storage_field"] = "individual_columns"
-        return self._configure_columns(request, SelectIndividualColumnsForm, context)
-
-    @button(
-        permission=can_change_country_program,
-        html_attrs={"title": _("Configure default Household field values.")},
-        visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
-        enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
-    )
-    def household_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
-        context = self.get_common_context(request, pk)
-        program: CountryProgram = context["original"]
-        context["checker"] = program.household_checker
-        context["defaults_scope_model"] = Household
-        return self._set_defaults(request, MassDefaultsForm, context)
-
-    @button(
-        permission=can_change_country_program,
-        html_attrs={"title": _("Configure default Individual field values.")},
-    )
-    def individual_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
-        context = self.get_common_context(request, pk)
-        program: CountryProgram = context["original"]
-        context["checker"] = program.individual_checker
-        context["defaults_scope_model"] = Individual
-        return self._set_defaults(request, MassDefaultsForm, context)
 
     def _set_defaults(
         self,
@@ -334,6 +301,92 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["form"] = form
         context["selected_fields"] = selected_fields
         return render(request, "workspace/program/set_defaults.html", context)
+
+    @view(
+        label=_("Configure Columns"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_columns(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure highlighted/group columns via choice."""
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure default Household columns"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["storage_field"] = "household_columns"
+        return self._configure_columns(request, SelectColumnsForm, context)
+
+    @view(
+        label=_("Set Defaults"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure default values for group records via choice."""
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["defaults_scope_model"] = Household
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    @choice(
+        label=_("Household Columns"),
+        change_form=True,
+        change_list=False,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_group(self, button: ChoiceButton) -> None:
+        """Group-level choice for group_label: Columns + Defaults."""
+        button.choices = [
+            self.household_columns,
+            self.household_defaults,
+        ]
+
+    @view(
+        label=_("Configure Columns"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_columns(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure highlighted/member columns via choice."""
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure default Individual columns"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["storage_field"] = "individual_columns"
+        return self._configure_columns(request, SelectIndividualColumnsForm, context)
+
+    @view(
+        label=_("Set Defaults"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure default values for member records via choice."""
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["defaults_scope_model"] = Individual
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    @choice(
+        label=_("Individual Columns"),
+        change_form=True,
+        change_list=False,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_group(self, button: ChoiceButton) -> None:
+        """Group-level choice for member_label: Columns + Defaults."""
+        button.choices = [
+            self.individual_columns,
+            self.individual_defaults,
+        ]
 
     @button(
         label=_("Update Records"),
