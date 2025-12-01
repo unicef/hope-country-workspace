@@ -430,27 +430,33 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["selected_program"] = program = context["original"]
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
 
+        form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program)
+        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
+        form_kobo = ImportKoboForm(
+            prefix="kobo", kobo_country_code=program.country_office.kobo_country_code, program=program
+        )
+
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
                 case "rdi":
                     if not (form_rdi := self.import_rdi(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
                 case "aurora":
                     if not (form_aurora := self.import_aurora(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
                 case "kobo":
                     if not (form_kobo := self.import_kobo(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-        else:
-            form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program)
-            form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-            form_kobo = ImportKoboForm(
-                prefix="kobo", kobo_country_code=program.country_office.kobo_country_code, program=program
-            )
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
 
-            context["form_rdi"] = form_rdi
-            context["form_aurora"] = form_aurora
-            context["form_kobo"] = form_kobo
+        context["form_rdi"] = form_rdi
+        context["form_aurora"] = form_aurora
+        context["form_kobo"] = form_kobo
 
         return render(request, "workspace/program/import.html", context)
 
