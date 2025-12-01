@@ -11,7 +11,6 @@ from country_workspace.models import Office
 from country_workspace.workspaces.admin import CountryProgramAdmin
 from country_workspace.workspaces.admin.program import KOBO_IMPORT_JOB_DESCRIPTION
 from country_workspace.workspaces.models import CountryProgram
-from country_workspace.workspaces.admin.forms import ValidateMode
 
 
 def test__country_program_admin__import_kobo__job_description(mocker: MockerFixture) -> None:
@@ -107,7 +106,8 @@ def test_import_kobo_valid_form(program_admin, mock_request, mock_program):
 
         mock_request.POST = {
             "kobo-batch_name": "Test Import Batch",
-            "kobo-validate_mode": ValidateMode.NONE.value,
+            "fail_if_alien": True,
+            "validate_after_import": True,
             "kobo-project_id": "test_project_123",
             "kobo-individual_records_field": "individual_questions",
             "_selected_tab": "kobo",

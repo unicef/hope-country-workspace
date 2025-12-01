@@ -1,5 +1,4 @@
-from typing import TypedDict
-from country_workspace.workspaces.admin.forms import ValidateMode
+from typing import TypedDict, NotRequired
 
 
 class BatchNameConfig(TypedDict):
@@ -7,4 +6,5 @@ class BatchNameConfig(TypedDict):
 
 
 class ValidateModeConfig(TypedDict):
-    validate_mode: ValidateMode
+    validate_after_import: NotRequired[bool]
+    fail_if_alien: NotRequired[bool]
