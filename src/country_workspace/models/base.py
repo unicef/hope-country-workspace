@@ -80,6 +80,7 @@ class Validable(Cachable, models.Model):
             ("export_beneficiary", "Can Export Beneficiary Records"),
             ("push_beneficiary_to_hope", "Can Push Beneficiary Records To HOPE core"),
             ("calculate_checksum", "Can RegEx update Beneficiary Records"),
+            ("name_parser_beneficiary", "Can Parse Name into Components"),
         )
 
     def __str__(self) -> str:

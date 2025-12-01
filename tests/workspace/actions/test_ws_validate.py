@@ -6,7 +6,9 @@ import pytest
 from django.urls import reverse
 from testutils.utils import select_office
 
+from country_workspace.models import Household, Individual
 from country_workspace.state import state
+from country_workspace.workspaces.admin.cleaners.validate import validate_queryset
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -14,7 +16,7 @@ if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
 
     from country_workspace.models import AsyncJob
-    from country_workspace.workspaces.models import CountryHousehold
+    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 
 @pytest.fixture
@@ -78,3 +80,45 @@ def test_ws_validate(
             household.refresh_from_db()
             assert household.last_checked.date() == datetime.date(2020, 1, 1)
             assert household.errors
+
+
+@pytest.mark.django_db
+def test_validate_queryset_empty_queryset(program, force_migrated_records):
+    """Test validate_queryset with an empty queryset returns zeros."""
+    empty_qs = Household.objects.none()
+    result = validate_queryset(empty_qs)
+    assert result == {"valid": 0, "invalid": 0}
+
+
+@pytest.mark.django_db
+def test_validate_queryset_individuals(program, force_migrated_records):
+    """Test validate_queryset processes Individual queryset (else branch)."""
+    from testutils.factories import IndividualFactory
+
+    # Create some individuals
+    ind1: "CountryIndividual" = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={
+            "birth_date": "1990-01-01",
+            "full_name": "John Doe",
+            "gender": "MALE",
+        },
+    )
+    ind2: "CountryIndividual" = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={
+            "birth_date": "1985-05-15",
+            "full_name": "Jane Smith",
+            "gender": "FEMALE",
+        },
+    )
+
+    qs = Individual.objects.filter(pk__in=[ind1.pk, ind2.pk])
+
+    result = validate_queryset(qs)
+
+    assert result["valid"] + result["invalid"] == 2

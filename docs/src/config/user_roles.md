@@ -103,6 +103,10 @@ Result: Jane can collect data only for the Cash Transfer Program in Ukraine offi
 
     Allows users to calculate checksums for data integrity verification.
 
+- **`workspaces.name_parser_beneficiary`** - Can Parse Name into Components
+
+    Allows users to parse name into components.
+
 ### Job Permissions
 
 - **`country_workspace.debug_job`** - Can debug background jobs
