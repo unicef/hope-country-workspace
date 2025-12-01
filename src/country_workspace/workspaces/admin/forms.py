@@ -4,9 +4,9 @@ from django import forms
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
+from country_workspace.models import BeneficiaryGroup
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
-from country_workspace.models import BeneficiaryGroup
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -14,6 +14,11 @@ if TYPE_CHECKING:
 
 class BulkUpdateExportForm(BaseActionForm):
     fields = forms.MultipleChoiceField(choices=[], widget=forms.CheckboxSelectMultiple())
+    include_errors = forms.BooleanField(
+        label=_("Include errors and validity status"),
+        required=False,
+        initial=False,
+    )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
@@ -59,13 +64,9 @@ class ValidateMode(TextChoices):
 
 class BaseImportForm(forms.Form):
     batch_name = forms.CharField(required=False, help_text="Label for this batch")
-    validate_mode = forms.TypedChoiceField(
-        choices=ValidateMode.choices,
-        coerce=ValidateMode,
-        empty_value=ValidateMode.CHECK_AND_FAIL_IF_ALIEN,
-        initial=ValidateMode.CHECK_AND_FAIL_IF_ALIEN,
-        required=True,
-        help_text=_("How to validate data before import"),
+    validate_after_import = forms.BooleanField(initial=True, required=False)
+    fail_if_alien = forms.BooleanField(
+        initial=True, required=False, help_text="Alien field will be checked on first record only"
     )
 
 

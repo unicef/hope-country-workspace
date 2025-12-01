@@ -1,0 +1,44 @@
+{% extends "workspace/actions/base.html" %}{% load i18n %}
+{% block action-content %}
+    <div class="min-w-full py-5">
+        All selected {{ opts.verbose_name_plural }} will be updated by concatenating fields based on the pattern.<br/>
+        Use field placeholders like <code>{first_name}</code>, <code>{middle_name}</code>, <code>{last_name}</code> in the pattern.
+    </div>
+    <div class="m-2 bg-white">
+        <form method="post" id="concatenate-field-form">
+            {% csrf_token %}
+            {{ form.non_fields_errors }}
+            <table class="min-w-full">
+                {{ form.as_table }}
+            </table>
+            <div></div>
+            <div class="submit-row">
+                <input type="submit" value="{% translate 'Preview' %}" class="default" name="_preview">
+            </div>
+            {% if changes %}
+                <h3>Preview (showing first 10 records):</h3>
+                <table class="min-w-full">
+                    <thead>
+                        <tr>
+                            <th>Record ID</th>
+                            <th>Original Value</th>
+                            <th>New Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in changes %}
+                            <tr>
+                                <td>{{ result.record_id }}</td>
+                                <td>{{ result.original|default:"(empty)" }}</td>
+                                <td>{{ result.updated }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="submit-row">
+                    <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply">
+                </div>
+            {% endif %}
+        </form>
+    </div>
+{% endblock action-content %}

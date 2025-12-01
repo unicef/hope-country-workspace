@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
-from concurrency.utils import fqn
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
@@ -16,12 +15,11 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from ...cache.manager import cache_manager
-from ...models import AsyncJob
 from ...state import state
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from .cleaners import actions
-from .cleaners.validate import validate_program
+from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import Base64ImageField, get_checker_fields
 
 if TYPE_CHECKING:
@@ -59,10 +57,12 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     actions = [
         actions.bulk_update_export,
         actions.calculate_checksum,
+        actions.concatenate_field,
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
         actions.push_to_hope,
+        actions.name_parser_action,
     ]
     list_per_page = 20
     object_history_template = "workspace/individual/object_history.html"
@@ -110,6 +110,9 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
 
     def has_calculate_checksum_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.calculate_checksum")
+
+    def has_name_parser_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("country_workspace.name_parser_beneficiary")
 
     def _check_empty_queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> bool:
         if not queryset.exists():
@@ -168,15 +171,13 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         program = state.program
-        job = AsyncJob.objects.create(
+        queryset = program.households.all() if program.beneficiary_group.master_detail else program.individuals.all()
+        create_validation_jobs(
             description="Validate Entire Programme",
-            type=AsyncJob.JobType.TASK,
             owner=request.user,
-            action=fqn(validate_program),
             program=program,
-            config={},
+            queryset=queryset,
         )
-        job.queue()
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 
     @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})

@@ -12,12 +12,13 @@ from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
-
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
+from .concatenate import ConcatenateFieldForm, concatenate_field_impl
 from .mass_update import MassUpdateForm, mass_update_impl
+from .name_parser import NameParserForm, name_parser_impl
 from .regex import RegexUpdateForm, regex_update_impl
-from .validate import validate_queryset
+from .validate import create_validation_jobs
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -32,19 +33,15 @@ def validate_records(
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
     if model_admin._check_empty_queryset(request, queryset):
-        return None
-    opts = queryset.model._meta
-    job = AsyncJob.objects.create(
+        return
+    create_validation_jobs(
         description=validate_records.short_description,
-        type=AsyncJob.JobType.ACTION,
         owner=request.user,
-        action=fqn(validate_queryset),
         program=state.program,
-        config={"pks": list(queryset.values_list("pk", flat=True)), "model_name": opts.label},
+        queryset=queryset,
     )
-    job.queue()
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-    return job
+    return
 
 
 @admin.action(description="Mass update record fields", permissions=["mass_update"])
@@ -80,6 +77,53 @@ def mass_update(
         job.queue()
         model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
     return render(request, "workspace/actions/mass_update.html", ctx)
+
+
+@admin.action(description="Parse name into components", permissions=["name_parser"])
+def name_parser_action(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: "HttpRequest",
+    queryset: "QuerySet[Beneficiary]",
+) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
+
+    context = model_admin.get_common_context(request, title=_(name_parser_action.short_description))
+    context["checker"] = checker = model_admin.get_checker(request)
+    context["queryset"] = queryset
+    context["opts"] = model_admin.model._meta
+    context["preserved_filters"] = model_admin.get_preserved_filters(request)
+    if "_apply" in request.POST:
+        form = NameParserForm(request.POST, checker=checker, tenant=state.tenant)
+        if form.is_valid():
+            opts = queryset.model._meta
+            job = AsyncJob.objects.create(
+                description=name_parser_action.short_description,
+                type=AsyncJob.JobType.ACTION,
+                owner=state.request.user,
+                action=fqn(name_parser_impl),
+                program=state.program,
+                config={
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                    "model_name": opts.label,
+                    "kwargs": {"config": form.cleaned_data},
+                },
+            )
+            job.queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    else:
+        form = NameParserForm(
+            checker=checker,
+            tenant=state.tenant,
+            initial={
+                "action": request.POST["action"],
+                "select_across": request.POST["select_across"],
+                "_selected_action": request.POST.getlist("_selected_action"),
+            },
+        )
+
+    context["form"] = form
+    return render(request, "workspace/actions/name_parser.html", context)
 
 
 @admin.action(description="Update fields using RegEx", permissions=["regex_update"])
@@ -147,6 +191,8 @@ def bulk_update_export(
     ctx["form"] = form
     if "_export" in request.POST and form.is_valid():
         columns = ["id", "version"] + form.cleaned_data["fields"]
+        if form.cleaned_data.get("include_errors", False):
+            columns += ["is_valid", "errors"]
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=bulk_update_export.short_description,
@@ -236,3 +282,53 @@ def push_to_hope(
         )
     ctx = model_admin.get_common_context(request, title=push_to_hope.short_description, form=form)
     return render(request, "workspace/actions/push_to_hope.html", ctx)
+
+
+@admin.action(description="Concatenate field action", permissions=["mass_update"])
+def concatenate_field(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: "HttpRequest",
+    queryset: "QuerySet[Beneficiary]",
+) -> HttpResponse:
+    if model_admin._check_empty_queryset(request, queryset):
+        return redirect(".")
+    ctx = model_admin.get_common_context(request, title=_(concatenate_field.short_description))
+    ctx["checker"] = checker = model_admin.get_checker(request)
+    ctx["queryset"] = queryset
+    ctx["opts"] = model_admin.model._meta
+    ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
+    if "_preview" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            changes = concatenate_field_impl(queryset.all()[:10], form.cleaned_data, save=False)
+            ctx["changes"] = changes
+    elif "_apply" in request.POST:
+        form = ConcatenateFieldForm(request.POST, checker=checker)
+        if form.is_valid():
+            opts = queryset.model._meta
+            job = AsyncJob.objects.create(
+                description=concatenate_field.short_description,
+                type=AsyncJob.JobType.ACTION,
+                owner=state.request.user,
+                action=fqn(concatenate_field_impl),
+                program=state.program,
+                config={
+                    "pks": list(queryset.values_list("pk", flat=True)),
+                    "model_name": opts.label,
+                    "kwargs": {"config": form.cleaned_data},
+                },
+            )
+            job.queue()
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    else:
+        form = ConcatenateFieldForm(
+            checker=checker,
+            initial={
+                "action": request.POST["action"],
+                "select_across": request.POST["select_across"],
+                "_selected_action": request.POST.getlist("_selected_action"),
+            },
+        )
+
+    ctx["form"] = form
+    return render(request, "workspace/actions/concatenate.html", ctx)

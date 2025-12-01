@@ -48,3 +48,21 @@ def test_apply_successful(mapping_importer, rules, data, expected):
     result = mi.apply(data)
     assert result == expected
     assert result is data
+
+
+@pytest.mark.parametrize(
+    ("rules", "expected"),
+    [
+        ("", {}),
+        ("gender=sex", {"gender": "sex"}),
+        ("gender=sex\nage=birth_year", {"gender": "sex", "age": "birth_year"}),
+        (
+            "field1=mapped1\nfield2=mapped2\nfield3=mapped3",
+            {"field1": "mapped1", "field2": "mapped2", "field3": "mapped3"},
+        ),
+    ],
+    ids=["empty_rules", "single_rule", "multiple_rules", "three_rules"],
+)
+def test_rules_as_dict(mapping_importer, rules, expected):
+    mi = mapping_importer(rules=rules)
+    assert mi.rules_as_dict == expected

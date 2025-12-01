@@ -31,14 +31,20 @@ class MappingImporter(BaseModel):
     def __str__(self) -> str:
         return self.name
 
+    @property
+    def rules_as_dict(self) -> dict[str, str]:
+        if not self.rules:
+            return {}
+
+        return dict(line.split("=", 1) for line in self.rules.splitlines())
+
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply mapping rules to transform field names."""
         if not self.rules:
             return data
 
-        for rule in (line.strip() for line in self.rules.splitlines()):
-            old_field, new_field = rule.split("=", 1)
-            if old_field in data:
-                data[new_field] = data.pop(old_field)
+        for external, internal in self.rules_as_dict.items():
+            if external in data:
+                data[internal] = data.pop(external)
 
         return data
