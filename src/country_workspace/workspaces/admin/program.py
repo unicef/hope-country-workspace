@@ -348,7 +348,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_mode": form.cleaned_data["validate_mode"],
+                "validate_after_import": form.cleaned_data.get("validate_after_import"),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
                 **(
                     {
@@ -382,7 +383,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if form.is_valid():
             config: AuroraConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_mode": form.cleaned_data["validate_mode"],
+                "validate_after_import": form.cleaned_data.get("validate_after_import"),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
             }
@@ -405,7 +407,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if form.is_valid():
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_mode": form.cleaned_data["validate_mode"],
+                "validate_after_import": form.cleaned_data.get("validate_after_import"),
+                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
             }

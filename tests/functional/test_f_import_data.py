@@ -66,7 +66,8 @@ def test_rdi_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program.assert_element_visible("#id_rdi-batch_name")
-    browser_program.assert_element_visible("#id_rdi-validate_mode")
+    browser_program.assert_element_visible("#id_rdi-fail_if_alien")
+    browser_program.assert_element_visible("#id_rdi-validate_after_import")
     browser_program.assert_element_visible("#id_rdi-first_line")
     browser_program.assert_element_visible("#id_rdi-file")
 
@@ -79,7 +80,8 @@ def test_rdi_import_tab_with_beneficiary(browser_program_beneficiary, program_be
     browser_program_beneficiary.assert_element_present('button[data-input-value="rdi"].selected')
 
     browser_program_beneficiary.assert_element_visible("#id_rdi-batch_name")
-    browser_program_beneficiary.assert_element_visible("#id_rdi-validate_mode")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-fail_if_alien")
+    browser_program_beneficiary.assert_element_visible("#id_rdi-validate_after_import")
     browser_program_beneficiary.assert_element_visible("#id_rdi-first_line")
     browser_program_beneficiary.assert_element_visible("#id_rdi-beneficiary_id_column")
     browser_program_beneficiary.assert_element_visible("#id_rdi-file")
@@ -104,7 +106,8 @@ def test_aurora_import_tab(browser_program):
 
     aurora_input_ids = [
         "#id_aurora-batch_name",
-        "#id_aurora-validate_mode",
+        "#id_aurora-fail_if_alien",
+        "#id_aurora-validate_after_import",
         "#id_aurora-registration",
     ]
 
@@ -121,6 +124,7 @@ def test_kobo_import_tab(browser_program):
     browser_program.assert_element_present('button[data-input-value="kobo"].selected')
 
     browser_program.assert_element_visible("#id_kobo-batch_name")
-    browser_program.assert_element_visible("#id_kobo-validate_mode")
+    browser_program.assert_element_visible("#id_kobo-fail_if_alien")
+    browser_program.assert_element_visible("#id_kobo-validate_after_import")
     browser_program.assert_element_visible("#id_kobo-project_id")
     browser_program.assert_element_visible("#id_kobo-individual_records_field")

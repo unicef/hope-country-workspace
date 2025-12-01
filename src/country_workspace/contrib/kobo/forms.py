@@ -7,7 +7,6 @@ from country_workspace.workspaces.admin.forms import BaseImportForm
 
 
 class ImportKoboForm(BaseImportForm):
-    batch_name = forms.CharField(required=False, help_text="Label for this batch")
     project_id = forms.ChoiceField(required=True, choices=(), help_text="Select a project")
     individual_records_field = forms.CharField(
         required=False,

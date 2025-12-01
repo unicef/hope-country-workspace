@@ -314,6 +314,8 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     )
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
 
+    create_validation_jobs_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+
     result = import_data(job_mock)
 
     assert result == ImportResult(households=household_counter, individuals=individual_counter)
@@ -327,6 +329,8 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
     import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config, get_id_generator_mock.return_value)
     get_id_generator_mock.assert_called_once()
+
+    create_validation_jobs_mock.assert_called_once()
 
 
 def test_get_fullname_key_key_exists() -> None:
