@@ -197,6 +197,7 @@ def test_check_empty_queryset_with_empty_queryset(beneficiary_admin, mock_reques
         messages.WARNING,
     )
 
+
 def test_concatenate_field_preview_renders_changes(
     mocker: MockerFixture,
     mock_admin,
@@ -323,6 +324,7 @@ def test_concatenate_field_with_invalid_form_on_apply(
     assert response == mock_render.return_value
     # Should not create job since form is invalid
     mock_async_job_create.assert_not_called()
+
 
 def test_name_parser_action_with_valid_form(mock_admin, mock_request):
     """Test name_parser_action when form is valid - should schedule job."""
