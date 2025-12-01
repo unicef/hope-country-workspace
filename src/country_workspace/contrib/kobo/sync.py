@@ -10,6 +10,7 @@ from requests.adapters import HTTPAdapter
 from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
+from country_workspace.utils.flex_fields import get_checker_fields
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -214,12 +215,10 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     last_successful_id = last_id
     current_submission = None
 
-    validate_mode = ValidateMode(config.get("validate_mode", ValidateMode.CHECK_AND_FAIL_IF_ALIEN))
-    fail_if_alien = validate_mode is ValidateMode.CHECK_AND_FAIL_IF_ALIEN
     submissions_iterator = asset.submissions(min_id=last_id)
 
     try:
-        if fail_if_alien:
+        if config.get("fail_if_alien"):
             try:
                 first_submission = next(submissions_iterator)
             except StopIteration:
@@ -297,11 +296,12 @@ def import_data(job: AsyncJob) -> ImportResult:
             household_counter += import_result["households"]
             individual_counter += import_result["individuals"]
 
-    create_validation_jobs(
-        description=f"Validate records for batch {batch.pk}",
-        owner=job.owner,
-        program=job.program,
-        queryset=batch.household_set.all().prefetch_related("members"),
-    )
+    if config.get("validate_after_import"):
+        create_validation_jobs(
+            description=f"Validate records for batch {batch.pk}",
+            owner=job.owner,
+            program=job.program,
+            queryset=batch.household_set.all().prefetch_related("members"),
+        )
 
     return ImportResult(households=household_counter, individuals=individual_counter)

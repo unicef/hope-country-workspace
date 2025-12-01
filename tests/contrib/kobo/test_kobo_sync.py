@@ -30,7 +30,6 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import Program
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
-from country_workspace.workspaces.admin.forms import ValidateMode
 from testutils.factories import BatchFactory, SyncLogFactory
 
 if TYPE_CHECKING:
@@ -52,7 +51,8 @@ def config() -> Config:
         "batch_name": BATCH_NAME,
         "project_id": PROJECT_ID,
         "individual_records_field": INDIVIDUAL_RECORDS_FIELD,
-        "validate_mode": ValidateMode.NONE,
+        "validate_after_import": True,
+        "fail_if_alien": False,
     }
 
 
@@ -209,9 +209,9 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     asset_mock = Mock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock()
+    submission_1 = Mock(spec=dict)
     submission_1.id = 101
-    submission_2 = Mock()
+    submission_2 = Mock(spec=dict)
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
 
@@ -259,9 +259,9 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
 
     asset_mock = Mock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock()
+    submission_1 = Mock(spec=dict)
     submission_1.id = 101
-    submission_2 = Mock()
+    submission_2 = Mock(spec=dict)
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
@@ -508,9 +508,7 @@ def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, co
 
 @pytest.mark.django_db
 def test_import_asset_with_fail_if_alien_enabled(mocker: MockerFixture, config: Config) -> None:
-    from country_workspace.workspaces.admin.forms import ValidateMode
-
-    config["validate_mode"] = ValidateMode.CHECK_AND_FAIL_IF_ALIEN
+    config["fail_if_alien"] = True
 
     batch = BatchFactory()
     asset_mock = Mock()
@@ -533,10 +531,8 @@ def test_import_asset_with_fail_if_alien_enabled(mocker: MockerFixture, config: 
 
 
 @pytest.mark.django_db
-def test_import_asset_with_validate_mode_none(mocker: MockerFixture, config: Config) -> None:
-    from country_workspace.workspaces.admin.forms import ValidateMode
-
-    config["validate_mode"] = ValidateMode.NONE
+def test_import_asset_with_fail_if_alien_disabled(mocker: MockerFixture, config: Config) -> None:
+    config["fail_if_alien"] = False
 
     batch = BatchFactory()
     asset_mock = Mock()
