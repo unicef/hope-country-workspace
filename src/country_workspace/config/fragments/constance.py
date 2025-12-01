@@ -65,6 +65,25 @@ CONSTANCE_CONFIG = {
     "MAILJET_API_KEY": (MAILJET_API_KEY, "Mailjet API key", str),
     "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_input"),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
+    "KOBO_FIELDS_TO_IGNORE": (
+        [
+            "audit",
+            "collect_individual_data",
+            "deviceid",
+            "start",
+            "end",
+            "hh_geopoint",
+            "instanceid",
+            "number_alternate",
+            "number_primary",
+            "number_repeat",
+            "org_name_enumerator",
+            "rootuuid",
+            "uuid",
+        ],
+        "List of Kobo system specific fields to ignore during data import",
+        list,
+    ),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {

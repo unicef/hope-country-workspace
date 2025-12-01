@@ -10,7 +10,6 @@ from requests.adapters import HTTPAdapter
 from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
-from country_workspace.utils.flex_fields import get_checker_fields
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -162,13 +161,15 @@ def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
     """Get set of allowed field names from a DataChecker."""
     if not checker:
         return set()
-    return {field_name for field_name, _ in get_checker_fields(checker)}
+    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}
 
 
-def get_alien_fields(data: dict[str, Any], allowed_fields: set[str]) -> set[str]:
+def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
     """Return fields in data that are not in allowed_fields."""
     data_fields = set(data.keys())
-    return data_fields - allowed_fields
+    kobo_specific_fields = set(constance_config.KOBO_FIELDS_TO_IGNORE)
+    extras = extras or set()
+    return data_fields - kobo_specific_fields - set(extras) - allowed_fields
 
 
 def check_for_alien_fields(
@@ -183,7 +184,11 @@ def check_for_alien_fields(
     )
 
     household_allowed_fields = get_allowed_fields(batch.program.household_checker)
-    household_alien = get_alien_fields(household_fields, household_allowed_fields)
+    household_alien = get_alien_fields(
+        data=household_fields,
+        allowed_fields=household_allowed_fields,
+        extras={config["individual_records_field"]},
+    )
 
     individual_alien: set[str] = set()
     if individuals_data := submission.get(config["individual_records_field"]):
@@ -194,7 +199,11 @@ def check_for_alien_fields(
             partial(mapping_importer, Individual),
         )
         individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
-        individual_alien = get_alien_fields(individual_fields, individual_allowed_fields)
+        individual_alien = get_alien_fields(
+            data=individual_fields,
+            allowed_fields=individual_allowed_fields,
+            extras={config["individual_records_field"]},
+        )
 
     if household_alien or individual_alien:
         raise AlienFieldsError(household_alien, individual_alien)

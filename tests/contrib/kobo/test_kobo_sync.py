@@ -30,7 +30,14 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import Program
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
-from testutils.factories import BatchFactory, SyncLogFactory
+from testutils.factories import (
+    BatchFactory,
+    DataCheckerFactory,
+    FieldsetFactory,
+    FlexFieldFactory,
+    SyncLogFactory,
+)
+from testutils.factories.smart_fields import DataCheckerFieldsetFactory
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.data.submission import Submission
@@ -386,17 +393,22 @@ def test_get_id_generator() -> None:
     assert [id_generator() for _ in range(5)] == [1, 2, 3, 4, 5]
 
 
-def test_get_allowed_fields(mocker: MockerFixture) -> None:
-    from hope_flex_fields.models import DataChecker
+@pytest.mark.django_db
+def test_get_allowed_fields() -> None:
+    checker = DataCheckerFactory()
 
-    checker_mock = mocker.Mock(spec=DataChecker)
-    get_checker_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_checker_fields")
-    get_checker_fields_mock.return_value = [("field1", "label1"), ("field2", "label2"), ("field3", "label3")]
+    def add_field(prefix: str, field_name: str) -> None:
+        fieldset = FieldsetFactory()
+        FlexFieldFactory(fieldset=fieldset, name=field_name)
+        DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix=prefix)
 
-    allowed = get_allowed_fields(checker_mock)
+    add_field("", "field1")
+    add_field("fs1_", "field2")
+    add_field("fs2_", "field3")
 
-    assert allowed == {"field1", "field2", "field3"}
-    get_checker_fields_mock.assert_called_once_with(checker_mock)
+    allowed = get_allowed_fields(checker)
+
+    assert allowed == {"field1", "fs1_field2", "fs2_field3"}
 
 
 def test_get_allowed_fields_no_checker() -> None:
