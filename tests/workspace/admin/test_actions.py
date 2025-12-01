@@ -12,6 +12,7 @@ from country_workspace.workspaces.admin.cleaners.actions import (
     calculate_checksum,
     push_to_hope,
     validate_records,
+    name_parser_action,
 )
 from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
@@ -86,6 +87,18 @@ def test_regex_update_redirects_when_queryset_empty(mock_redirect, mock_admin, m
 
 
 @patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
+def test_name_parser_action_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
+    empty_queryset = MagicMock()
+    empty_queryset.exists.return_value = False
+    mock_redirect.return_value = HttpResponse()
+
+    result = name_parser_action(mock_admin, mock_request, empty_queryset)
+
+    mock_redirect.assert_called_once_with(".")
+    assert result == mock_redirect.return_value
+
+
+@patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
 def test_bulk_update_export_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
     empty_queryset = MagicMock()
     empty_queryset.exists.return_value = False
@@ -153,3 +166,117 @@ def test_check_empty_queryset_with_empty_queryset(beneficiary_admin, mock_reques
         "No records were selected. Please select at least one record to perform this action.",
         messages.WARNING,
     )
+
+
+def test_name_parser_action_with_valid_form(mock_admin, mock_request):
+    """Test name_parser_action when form is valid - should schedule job."""
+    from unittest.mock import MagicMock, patch
+
+    mock_request.POST = {"_apply": True}
+    non_empty_queryset = MagicMock()
+    non_empty_queryset.exists.return_value = True
+    non_empty_queryset.model._meta = MagicMock()
+    non_empty_queryset.values_list.return_value.flat = True
+    non_empty_queryset.values_list.return_value = [1, 2, 3]
+
+    with (
+        patch("country_workspace.workspaces.admin.cleaners.actions.render") as mock_render,
+        patch("country_workspace.workspaces.admin.cleaners.actions.NameParserForm") as mock_form_class,
+        patch("country_workspace.workspaces.admin.cleaners.actions.state") as mock_state,
+        patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob") as mock_async_job,
+    ):
+        mock_render.return_value = HttpResponse()
+        mock_state.tenant = MagicMock()
+        mock_state.request.user = MagicMock()
+        mock_state.program = MagicMock()
+
+        mock_form = MagicMock()
+        mock_form.is_valid.return_value = True
+        mock_form.cleaned_data = {"source_field": "full_name", "target_fields": ["first", "last"]}
+        mock_form_class.return_value = mock_form
+
+        mock_job = MagicMock()
+        mock_async_job.objects.create.return_value = mock_job
+
+        result = name_parser_action(mock_admin, mock_request, non_empty_queryset)
+
+        assert result == mock_render.return_value
+        mock_job.queue.assert_called_once()
+        mock_admin.message_user.assert_called_with(mock_request, "Task scheduled", messages.SUCCESS)
+
+
+def test_name_parser_action_with_invalid_form(mock_admin, mock_request):
+    """Test name_parser_action when form is invalid - should render form with errors without scheduling job."""
+    from unittest.mock import MagicMock, patch
+
+    mock_request.POST = {"_apply": True}
+    non_empty_queryset = MagicMock()
+    non_empty_queryset.exists.return_value = True
+    non_empty_queryset.model._meta = MagicMock()
+
+    with (
+        patch("country_workspace.workspaces.admin.cleaners.actions.render") as mock_render,
+        patch("country_workspace.workspaces.admin.cleaners.actions.NameParserForm") as mock_form_class,
+        patch("country_workspace.workspaces.admin.cleaners.actions.state") as mock_state,
+        patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob") as mock_async_job,
+    ):
+        mock_render.return_value = HttpResponse()
+        mock_state.tenant = MagicMock()
+
+        mock_form = MagicMock()
+        mock_form.is_valid.return_value = False
+        mock_form_class.return_value = mock_form
+
+        result = name_parser_action(mock_admin, mock_request, non_empty_queryset)
+
+        # Should render the form with errors
+        assert result == mock_render.return_value
+        # Should NOT create or queue any job
+        mock_async_job.objects.create.assert_not_called()
+        # Should NOT show success message
+        mock_admin.message_user.assert_not_called()
+        # Should render the template with the invalid form
+        mock_render.assert_called_once()
+        call_args = mock_render.call_args
+        assert call_args[0][1] == "workspace/actions/name_parser.html"
+        assert "form" in call_args[0][2]
+        assert call_args[0][2]["form"] == mock_form
+
+
+def test_name_parser_action_renders_initial_form(mock_admin, mock_request):
+    """Test name_parser_action renders initial form when not submitting."""
+    from unittest.mock import MagicMock, patch
+
+    mock_post = MagicMock()
+    mock_post.__getitem__ = lambda self, key: {
+        "action": "name_parser_action",
+        "select_across": "0",
+    }[key]
+    mock_post.getlist = MagicMock(return_value=["1", "2"])
+    mock_request.POST = mock_post
+
+    non_empty_queryset = MagicMock()
+    non_empty_queryset.exists.return_value = True
+    non_empty_queryset.model._meta = MagicMock()
+
+    with (
+        patch("country_workspace.workspaces.admin.cleaners.actions.render") as mock_render,
+        patch("country_workspace.workspaces.admin.cleaners.actions.NameParserForm") as mock_form_class,
+        patch("country_workspace.workspaces.admin.cleaners.actions.state") as mock_state,
+    ):
+        mock_render.return_value = HttpResponse()
+        mock_state.tenant = MagicMock()
+
+        mock_form = MagicMock()
+        mock_form_class.return_value = mock_form
+
+        result = name_parser_action(mock_admin, mock_request, non_empty_queryset)
+
+        assert result == mock_render.return_value
+        # Should create form with initial data
+        mock_form_class.assert_called_once()
+        call_kwargs = mock_form_class.call_args[1]
+        assert "initial" in call_kwargs
+        assert call_kwargs["initial"]["action"] == "name_parser_action"
+        # Should render template
+        mock_render.assert_called_once()
