@@ -2,7 +2,7 @@ import itertools
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
-from copy import deepcopy
+from functools import partial
 from typing import Any, cast, Mapping
 
 from PIL import Image
@@ -18,6 +18,7 @@ from country_workspace.utils.fields import clean_field_names, Record
 from country_workspace.utils.imports import validate_alien_fields
 from country_workspace.utils.functional import compose
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+
 from .config import Config, SheetName, Sheet
 from .exceptions import ColumnConfigurationError, SheetProcessingError, SheetNotFoundError
 from .utils import date_to_iso_string, datetime_to_date
@@ -108,25 +109,23 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
+    transform_row = compose(
+        clean_field_names,
+        partial(job.program.apply_mapping_importer, Household),
+        partial(job.program.apply_default_fields, Household),
+    )
 
     for row in sheet:
-        household_key = get_value(row, config["household_id_column"])
-        if household_key in mapping:
+        if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
-
-        label = get_value(row, config["household_label"])
-        raw_data = clean_field_names(row)
-        flex_fields = job.program.apply_mapping_importer(Household, deepcopy(raw_data))
-        flex_fields = job.program.apply_default_fields(Household, flex_fields)
-
         try:
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
                     batch_id=batch.pk,
-                    name=str(label),
-                    flex_fields=flex_fields,
-                    raw_data=raw_data,
+                    name=str(get_value(row, config["household_label"])),
+                    flex_fields=transform_row(row),
+                    raw_data=row,
                 ),
             )
         except Exception as e:
@@ -142,6 +141,11 @@ def process_beneficiaries(
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
+    transform_row = compose(
+        clean_field_names,
+        partial(job.program.apply_mapping_importer, Individual),
+        partial(job.program.apply_default_fields, Individual),
+    )
 
     for row in sheet:
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
@@ -151,10 +155,6 @@ def process_beneficiaries(
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
-        raw_data = clean_field_names(cleaned_row)
-        flex_fields = job.program.apply_mapping_importer(Individual, deepcopy(raw_data))
-        flex_fields = job.program.apply_default_fields(Individual, flex_fields)
-
         try:
             mapping[beneficiary_key] = cast(
                 "Individual",
@@ -162,8 +162,8 @@ def process_beneficiaries(
                     batch_id=batch.pk,
                     name=name,
                     household=household,
-                    flex_fields=flex_fields,
-                    raw_data=raw_data,
+                    flex_fields=transform_row(cleaned_row),
+                    raw_data=row,
                 ),
             )
         except Exception as e:
