@@ -167,7 +167,9 @@ def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
 def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
     """Return fields in data that are not in allowed_fields."""
     data_fields = set(data.keys())
-    kobo_specific_fields = set(constance_config.KOBO_FIELDS_TO_IGNORE)
+    kobo_specific_fields = {
+        field.strip() for field in constance_config.KOBO_FIELDS_TO_IGNORE.split(",") if field.strip()
+    }
     extras = extras or set()
     return data_fields - kobo_specific_fields - set(extras) - allowed_fields
 

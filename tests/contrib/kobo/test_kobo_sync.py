@@ -425,6 +425,16 @@ def test_get_alien_fields() -> None:
     assert alien == {"alien1"}
 
 
+def test_get_alien_fields_respects_constance_ignore() -> None:
+    data = {"audit": "value1", "uuid": "value2", "field2": "value3"}
+    allowed = set()
+
+    with override_config(KOBO_FIELDS_TO_IGNORE="audit, uuid"):
+        alien = get_alien_fields(data, allowed)
+
+    assert alien == {"field2"}
+
+
 def test_get_alien_fields_none_found() -> None:
     data = {"field1": "value1", "field2": "value2"}
     allowed = {"field1", "field2", "field3"}
