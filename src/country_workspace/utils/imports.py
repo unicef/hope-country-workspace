@@ -15,7 +15,7 @@ def validate_alien_fields(sheet: "Sheet", datachecker: DataChecker) -> None:
     row = next(sheet)
     raw_data = clean_field_names(row)
     fields = set(raw_data.keys())
-    if mapping_importers := datachecker.mapping_importers:
+    if mapping_importers := datachecker.mapping_importers.all():
         fields = {mapping_importer.rules_as_dict.get(f, f) for f in fields for mapping_importer in mapping_importers}
 
     dc_fields = {f"{fieldset.prefix}{field.name}" for fieldset, field in list(datachecker.get_fields())}
