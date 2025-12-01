@@ -90,25 +90,17 @@ class BaseImportForm(forms.Form):
 
         super().__init__(*args, **kwargs)
 
-        # Set up mapping fields based on program's data checkers
-        if program:
-            if program.household_checker:
-                self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
-                    office=program.country_office, data_checker=program.household_checker
+        for field_name, attribute in [
+            ("household_mapping", "household_checker"),
+            ("individual_mapping", "individual_checker"),
+        ]:
+            if program and getattr(program, attribute):
+                self.fields[field_name].queryset = MappingImporter.objects.filter(
+                    office=program.country_office,
+                    data_checker=getattr(program, attribute),
                 )
             else:
-                self.fields.pop("household_mapping", None)
-
-            if program.individual_checker:
-                self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
-                    office=program.country_office, data_checker=program.individual_checker
-                )
-            else:
-                self.fields.pop("individual_mapping", None)
-        else:
-            # Remove mapping fields if no program context
-            self.fields.pop("household_mapping", None)
-            self.fields.pop("individual_mapping", None)
+                self.fields.pop(field_name, None)
 
 
 class ImportFileForm(BaseImportForm):

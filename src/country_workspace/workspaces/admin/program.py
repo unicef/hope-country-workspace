@@ -538,21 +538,26 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
         form = ImportKoboForm(
-            request.POST, prefix="kobo", kobo_country_code=program.country_office.kobo_country_code, program=program
+            request.POST,
+            prefix="kobo",
+            kobo_country_code=program.country_office.kobo_country_code,
+            program=program,
         )
         if form.is_valid():
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
+                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
+                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
-                "household_mapping_id": form.cleaned_data.get("household_mapping").id
-                if form.cleaned_data.get("household_mapping")
-                else None,
-                "individual_mapping_id": form.cleaned_data.get("individual_mapping").id
-                if form.cleaned_data.get("individual_mapping")
-                else None,
+                "household_mapping_id": (
+                    household_mapping.id if (household_mapping := form.cleaned_data.get("household_mapping")) else None
+                ),
+                "individual_mapping_id": (
+                    individual_mapping.id
+                    if (individual_mapping := form.cleaned_data.get("individual_mapping"))
+                    else None
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
