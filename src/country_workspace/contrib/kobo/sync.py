@@ -9,6 +9,8 @@ from requests.adapters import HTTPAdapter
 
 from django.contrib.contenttypes.models import ContentType
 
+from country_workspace.contrib.kobo.exceptions import AlienFieldsError
+
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
@@ -28,23 +30,6 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 class Config(BatchNameConfig, ValidateModeConfig):
     project_id: str
     individual_records_field: str
-
-
-class AlienFieldsError(Exception):
-    """Raised when alien fields are detected in imported data."""
-
-    def __init__(self, household_alien_fields: set[str], individual_alien_fields: set[str]) -> None:
-        self.household_alien_fields = household_alien_fields
-        self.individual_alien_fields = individual_alien_fields
-        super().__init__(self._format_message())
-
-    def _format_message(self) -> str:
-        parts = []
-        if self.household_alien_fields:
-            parts.append(f"Household alien fields: {', '.join(sorted(self.household_alien_fields))}")
-        if self.individual_alien_fields:
-            parts.append(f"Individual alien fields: {', '.join(sorted(self.individual_alien_fields))}")
-        return " | ".join(parts) if parts else "Alien fields detected"
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -189,7 +174,6 @@ def check_for_alien_fields(
     batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
 ) -> None:
     """Check first submission for alien fields and raise if found."""
-    # Extract and preprocess household data
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
@@ -197,11 +181,9 @@ def check_for_alien_fields(
         partial(mapping_importer, Household),
     )
 
-    # Check household fields
     household_allowed_fields = get_allowed_fields(batch.program.household_checker)
     household_alien = get_alien_fields(household_fields, household_allowed_fields)
 
-    # Check individual fields
     individual_alien: set[str] = set()
     if individuals_data := submission.get(config["individual_records_field"]):
         first_individual = individuals_data[0]
