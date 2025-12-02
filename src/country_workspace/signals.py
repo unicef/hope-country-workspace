@@ -65,11 +65,13 @@ def invalidate_entities_on_datachecker_change(
         if not instance.pk:
             return
 
-        old_instance = Program.objects.filter(pk=instance.pk).first()
-
-        if (
-            old_instance.household_checker.pk != instance.household_checker.pk
-            or old_instance.individual_checker.pk != instance.individual_checker.pk
-            or old_instance.beneficiary_validator.__class__ is not instance.beneficiary_validator.__class__
+        if not (old_instance := Program.objects.filter(pk=instance.pk).first()):
+            return
+        pk = lambda o: getattr(o, "pk", None)
+        bv_type = lambda i: type(i.beneficiary_validator) if getattr(i, "beneficiary_validator", None) else None
+        if (pk(old_instance.household_checker), pk(old_instance.individual_checker), bv_type(old_instance)) != (
+            pk(instance.household_checker),
+            pk(instance.individual_checker),
+            bv_type(instance),
         ):
             _process_program(program=instance)
