@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
+from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.contrib.aurora.import_processing import (
     Config,
     ImportResult,
@@ -11,6 +12,7 @@ from country_workspace.contrib.aurora.import_processing import (
     import_result,
     create_people,
     flatten_top2_prefixed,
+    check_alien_fields,
 )
 
 
@@ -67,6 +69,56 @@ def test_import_data_calls_client_and_aggregates(mocker: MockerFixture, config: 
     assert import_result_mock.call_count == 2
     import_result_mock.assert_any_call(batch, {"pk": "5"}, config)
     import_result_mock.assert_any_call(batch, {"pk": "6"}, config)
+
+
+def test_import_data_calls_check_alien_fields_when_fail_if_alien_true(mocker: MockerFixture, config: Config) -> None:
+    job = Mock()
+    job.config = {**config, "fail_if_alien": True}
+    job.program = Mock()
+    job.program.country_office = Mock()
+    job.owner = Mock()
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client = client_cls.return_value
+    client.get.return_value = [{"pk": "5", "fields": {"field1": "value1"}}, {"pk": "6"}]
+
+    check_alien_fields_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.check_alien_fields")
+    import_result_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.import_result")
+    import_result_mock.side_effect = [ImportResult(people=1), ImportResult(people=2)]
+
+    res = import_data(job)
+
+    assert res == ImportResult(people=3)
+    check_alien_fields_mock.assert_called_once_with({"field1": "value1"}, job.program)
+    assert import_result_mock.call_count == 2
+
+
+def test_import_data_does_not_call_check_alien_fields_when_fail_if_alien_false(
+    mocker: MockerFixture, config: Config
+) -> None:
+    job = Mock()
+    job.config = {**config, "fail_if_alien": False}
+    job.program = Mock()
+    job.program.country_office = Mock()
+    job.owner = Mock()
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client = client_cls.return_value
+    client.get.return_value = [{"pk": "5", "fields": {"field1": "value1"}}, {"pk": "6"}]
+
+    check_alien_fields_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.check_alien_fields")
+    import_result_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.import_result")
+    import_result_mock.side_effect = [ImportResult(people=1), ImportResult(people=2)]
+
+    res = import_data(job)
+
+    assert res == ImportResult(people=3)
+    check_alien_fields_mock.assert_not_called()
+    assert import_result_mock.call_count == 2
 
 
 # --- import_result ----------------------------------------------------------------
@@ -194,6 +246,58 @@ def test_create_people_creates_individual_with_transformed_fields(mocker: Mocker
         raw_data=record,
     )
     assert res is create_ind.return_value
+
+
+def test_check_alien_fields_with_no_individual_checker() -> None:
+    program = Mock()
+    program.individual_checker = None
+    fields = {"some_field": "value"}
+
+    assert check_alien_fields(fields, program) is None
+
+
+def test_check_alien_fields_raises_when_alien_fields_present(mocker: MockerFixture) -> None:
+    program = Mock()
+    individual_checker = Mock()
+    field1 = Mock()
+    field1.name = "field1"
+    field2 = Mock()
+    field2.name = "field2"
+    individual_checker.get_fields.return_value = [("", field1), ("", field2)]
+    program.individual_checker = individual_checker
+
+    fields = {"field1": "value1", "alien_field": "value2"}
+
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.compose",
+        return_value=lambda row: {"field1": "value1", "alien_field": "value2"},
+    )
+
+    with pytest.raises(AuroraAlienFieldError) as exc_info:
+        check_alien_fields(fields, program)
+
+    assert "alien_field" in str(exc_info.value)
+    assert exc_info.value.alien_fields == {"alien_field"}
+
+
+def test_check_alien_fields_returns_none_when_all_fields_valid(mocker: MockerFixture) -> None:
+    program = Mock()
+    individual_checker = Mock()
+    field1 = Mock()
+    field1.name = "field1"
+    field2 = Mock()
+    field2.name = "field2"
+    individual_checker.get_fields.return_value = [("", field1), ("", field2)]
+    program.individual_checker = individual_checker
+
+    fields = {"field1": "value1", "field2": "value2"}
+
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.compose",
+        return_value=lambda row: {"field1": "value1", "field2": "value2"},
+    )
+
+    assert check_alien_fields(fields, program) is None
 
 
 # --- flatten_top2_prefixed / make_full_name --------------------------------------
