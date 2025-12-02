@@ -1,9 +1,8 @@
 import pytest
 
-from country_workspace.models import Program
 from testutils.factories import ProgramFactory, IndividualFactory, HouseholdFactory
 
-from country_workspace.models import DataSerializer, Individual, Household
+from country_workspace.models import Program, DataSerializer, Individual, Household
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
 
 
@@ -163,3 +162,61 @@ def test_program_get_columns_for(program: Program, attr_name: str, model_cls: ty
 def test_program_get_columns_for_unsupported_model_raises(program: Program) -> None:
     with pytest.raises(TypeError):
         program.get_columns_for(Program)
+
+
+@pytest.mark.parametrize(
+    ("model_cls", "expected"),
+    [
+        (Household, {"h": 1}),
+        (Individual, {"i": 2}),
+    ],
+)
+def test_program_get_default_fields_for_scope(program: Program, model_cls: type, expected: dict) -> None:
+    program.system_fields = {
+        "default_fields": {
+            "household": {"h": 1},
+            "individual": {"i": 2},
+        }
+    }
+    assert program.get_default_fields_for(model_cls) == expected
+
+
+@pytest.mark.parametrize(
+    ("model_cls", "scope_key"),
+    [
+        (Household, "household"),
+        (Individual, "individual"),
+    ],
+)
+def test_program_save_default_fields_for_updates_scope(program: Program, model_cls: type, scope_key: str) -> None:
+    program.system_fields = {"default_fields": {"other": {"keep": True}}}
+
+    defaults = {"foo": "bar"}
+    program.save_default_fields_for(model_cls, defaults)
+
+    assert program.system_fields["default_fields"][scope_key] == defaults
+    assert program.system_fields["default_fields"]["other"] == {"keep": True}
+
+
+def test_program_apply_default_fields_without_defaults_returns_original(program: Program) -> None:
+    program.system_fields = {}
+    data = {"field": "value"}
+
+    result = program.apply_default_fields(Household, data)
+
+    assert result is data
+    assert result == {"field": "value"}
+
+
+def test_program_apply_default_fields_applies_only_missing_or_none(program: Program) -> None:
+    program.system_fields = {
+        "default_fields": {
+            "household": {"a": 1, "b": 2},
+        }
+    }
+    data = {"a": "keep", "b": None, "c": 3}
+
+    result = program.apply_default_fields(Household, data)
+
+    assert result is data
+    assert result == {"a": "keep", "b": 2, "c": 3}

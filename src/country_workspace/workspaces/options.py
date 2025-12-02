@@ -1,7 +1,11 @@
 from typing import TYPE_CHECKING, Any
+from collections.abc import Iterator
 from urllib.parse import urlencode
 
 from admin_extra_buttons.mixins import ExtraButtonsMixin
+from admin_extra_buttons.buttons import ChoiceButton as BaseChoiceButton
+from admin_extra_buttons.handlers import ChoiceHandler
+from admin_extra_buttons.utils import labelize
 from adminfilters.autocomplete import AutoCompleteFilter
 from adminfilters.mixin import AdminFiltersMixin
 from django import forms
@@ -22,6 +26,43 @@ if TYPE_CHECKING:
 class WorkspaceAutoCompleteFilter(AutoCompleteFilter):
     def get_url(self) -> str:
         return reverse("%s:autocomplete" % self.admin_site.namespace)
+
+
+class FixedChoiceButton(BaseChoiceButton):
+    def get_choices(self) -> Iterator[dict[str, Any]]:
+        namespace = self.admin_site.name
+        for handler_config in self.choices:
+            handler = handler_config.func.extra_buttons_handler
+            if self.change_list and handler.single_object_invocation:
+                url = reverse(f"{namespace}:{handler.url_name}")
+            elif not handler.single_object_invocation and self.change_form and self.original:
+                url = reverse(f"{namespace}:{handler.url_name}", args=[self.context["original"].pk])
+            else:
+                url = None
+            if url:
+                yield {
+                    "label": handler.config.get("label", labelize(handler.name)),
+                    "url": url,
+                    "selected": self.request.path == url,
+                }
+
+    @property
+    def enabled(self) -> bool:
+        return super().enabled
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self._enabled = value
+
+    @property
+    def has_choices(self) -> bool:
+        return next(self.get_choices(), None) is not None
+
+    def can_render(self) -> bool:
+        return self.visible and self.authorized() and self.has_choices
+
+
+ChoiceHandler.button_class = FixedChoiceButton
 
 
 class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin, admin.ModelAdmin):
@@ -66,7 +107,11 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
             js=[
                 "workspace/js/cl%s.js" % extra,
             ],
-            css={},
+            css={
+                "screen": [
+                    "workspace/css/admin_extra.css",
+                ],
+            },
         )
 
     def get_preserved_filters(self, request: HttpRequest) -> str:

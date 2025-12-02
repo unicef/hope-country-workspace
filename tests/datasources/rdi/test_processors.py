@@ -225,7 +225,7 @@ def test_normalize_row_structure_name_column_detection(row: Record, expected_nam
 
 @patch("country_workspace.datasources.rdi.processors.Household.objects")
 def test_process_households(
-    mock_household_objects,
+    mock_household_objects: Any,
     mocker: MockerFixture,
     config: Config,
     household_sheet: Sheet,
@@ -235,12 +235,16 @@ def test_process_households(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+
     result = process_households(household_sheet, job := Mock(), batch := Mock(), config)
 
     assert result == {row[config["household_id_column"]]: mock_create.return_value for row in household_sheet}
 
     job.program.apply_mapping_importer.assert_has_calls(
-        [call(Household, clean_field_names_mock.return_value) for row in household_sheet]
+        [call(Household, clean_field_names_mock.return_value) for _ in household_sheet]
+    )
+    job.program.apply_default_fields.assert_has_calls(
+        [call(Household, job.program.apply_mapping_importer.return_value) for _ in household_sheet]
     )
 
     mock_create.assert_has_calls(
@@ -248,12 +252,13 @@ def test_process_households(
             call(
                 batch_id=batch.pk,
                 name=str(row[config["household_label"]]),
-                flex_fields=job.program.apply_mapping_importer.return_value,
-                raw_data=clean_field_names_mock.return_value,
+                flex_fields=job.program.apply_default_fields.return_value,
+                raw_data=row,
             )
             for row in household_sheet
         ]
     )
+
     clean_field_names_mock.assert_has_calls((call(row) for row in household_sheet))
 
 
@@ -271,7 +276,7 @@ def test_process_households_failed_to_save_household(
 
 @patch("country_workspace.datasources.rdi.processors.Individual.objects")
 def test_process_beneficiaries_with_households(
-    mock_individual_objects,
+    mock_individual_objects: Any,
     mocker: MockerFixture,
     config: Config,
     individual_sheet: Sheet,
@@ -292,21 +297,27 @@ def test_process_beneficiaries_with_households(
     )
 
     assert len(result) == len(list(individual_sheet))
+
     job_mock.program.apply_mapping_importer.assert_has_calls(
-        [call(Individual, clean_field_names_mock.return_value) for row in individual_sheet]
+        [call(Individual, clean_field_names_mock.return_value) for _ in individual_sheet]
     )
+    job_mock.program.apply_default_fields.assert_has_calls(
+        [call(Individual, job_mock.program.apply_mapping_importer.return_value) for _ in individual_sheet]
+    )
+
     mock_create.assert_has_calls(
         [
             call(
                 batch_id=batch_mock.pk,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["household_id_column"]]],
-                flex_fields=job_mock.program.apply_mapping_importer.return_value,
-                raw_data=clean_field_names_mock.return_value,
+                flex_fields=job_mock.program.apply_default_fields.return_value,
+                raw_data=row,
             )
             for row in individual_sheet
         ]
     )
+
     clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
@@ -328,22 +339,25 @@ def test_process_beneficiaries_people_only(
     )
 
     assert len(result) == len(list(people_sheet))
-    expected_calls, expected_apply_mapping_calls = [], []
+    expected_calls, expected_apply_mapping_calls, expected_apply_default_calls = [], [], []
     for __, row in enumerate(people_sheet, 1):
         prefix = config.get("people_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
         expected_apply_mapping_calls.append(call(Individual, clean_field_names_mock.return_value))
+        expected_apply_default_calls.append(call(Individual, job_mock.program.apply_mapping_importer.return_value))
         expected_calls.append(
             call(
                 batch_id=batch_mock.pk,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
-                flex_fields=job_mock.program.apply_mapping_importer.return_value,
-                raw_data=clean_field_names_mock.return_value,
+                flex_fields=job_mock.program.apply_default_fields.return_value,
+                raw_data=row,
             )
         )
+
     mock_create.assert_has_calls(expected_calls)
     job_mock.program.apply_mapping_importer.assert_has_calls(expected_apply_mapping_calls)
+    job_mock.program.apply_default_fields.assert_has_calls(expected_apply_default_calls)
 
 
 def test_process_beneficiaries_failed_to_create(

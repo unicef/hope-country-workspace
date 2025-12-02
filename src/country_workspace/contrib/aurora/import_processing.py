@@ -88,6 +88,7 @@ def create_people(batch: Batch, record: dict[str, Any], config: Config) -> Indiv
         clean_field_names,
         partial(batch.program.apply_mapping_importer, Individual),
         make_full_name,
+        partial(batch.program.apply_default_fields, Individual),
     )
     return Individual.objects.create(
         batch_id=batch.pk,

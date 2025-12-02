@@ -124,3 +124,12 @@ class ImportFileForm(BaseImportForm):
 
         [self.fields.pop(field_name, None) for field_name in fields_to_exclude]
         [setattr(self.fields["beneficiary_id_column"], attr, v) for attr, v in field_cfg.items()]
+
+
+class MassDefaultsForm(forms.Form):
+    def __init__(self, *args: Any, checker: "DataChecker", **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        source_form = checker.get_form()()
+        for field in source_form.fields.values():
+            field.required = False
+        self.fields.update(source_form.fields)

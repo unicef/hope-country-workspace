@@ -71,9 +71,14 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
 type Raw = dict[str, Any]
 
 
-def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...], mapping_importer: Callable[[Raw], Raw]) -> Raw:
+def preprocess(
+    raw: Raw,
+    fields_to_uppercase: tuple[str, ...],
+    mapping_importer: Callable[[Raw], Raw],
+    default_fields_applier: Callable[[Raw], Raw],
+) -> Raw:
     clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
-    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer)
+    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)
     return processor(raw)
 
 
@@ -88,6 +93,7 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
             raw_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
             partial(batch.program.apply_mapping_importer, Individual),
+            partial(batch.program.apply_default_fields, Individual),
         )
         fullname = get_fullname_key(individual_fields)
         individuals.append(
@@ -111,6 +117,7 @@ def create_household(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
         partial(batch.program.apply_mapping_importer, Household),
+        partial(batch.program.apply_default_fields, Household),
     )
     household_fields["household_id"] = id_generator()
     return cast(
