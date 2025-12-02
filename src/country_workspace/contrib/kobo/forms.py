@@ -22,8 +22,7 @@ class ImportKoboForm(BaseImportForm):
         program: Program | None = None,
         **kwargs: Any,
     ) -> None:
-        if program:
-            kwargs["program"] = program
+        kwargs["program"] = program
 
         super().__init__(*args, **kwargs)
         if kobo_country_code:
