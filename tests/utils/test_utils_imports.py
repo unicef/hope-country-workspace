@@ -13,7 +13,7 @@ def test_validate_alien_fields_no_mapping_no_errors(mocker: MockerFixture) -> No
     sheet_mock = iter([{"raw_field1": "value1", "raw_field2": "value2"}])
 
     datachecker_mock = Mock()
-    datachecker_mock.mapping_importers = None
+    datachecker_mock.mapping_importers.all.return_value = []
 
     fieldset_mock = Mock()
     fieldset_mock.prefix = ""
@@ -40,7 +40,7 @@ def test_validate_alien_fields_with_mapping_no_errors(mocker: MockerFixture) -> 
         "source_field1": "target_field1",
         "source_field2": "target_field2",
     }
-    datachecker_mock.mapping_importers = [mapping_importer_mock]
+    datachecker_mock.mapping_importers.all.return_value = [mapping_importer_mock]
 
     fieldset_mock = Mock()
     fieldset_mock.prefix = ""
@@ -60,7 +60,7 @@ def test_validate_alien_fields_with_prefix(mocker: MockerFixture) -> None:
     sheet_mock = iter([{"raw_field": "value"}])
 
     datachecker_mock = Mock()
-    datachecker_mock.mapping_importers = None
+    datachecker_mock.mapping_importers.all.return_value = []
 
     fieldset_mock = Mock()
     fieldset_mock.prefix = "pp_"
@@ -78,7 +78,7 @@ def test_validate_alien_fields_raises_error_for_alien_fields(mocker: MockerFixtu
     sheet_mock = iter([{"raw_field": "value"}])
 
     datachecker_mock = Mock()
-    datachecker_mock.mapping_importers = None
+    datachecker_mock.mapping_importers.all.return_value = []
 
     fieldset_mock = Mock()
     fieldset_mock.prefix = ""
@@ -99,7 +99,7 @@ def test_validate_alien_fields_with_mapping_unmapped_field(mocker: MockerFixture
     datachecker_mock = Mock()
     mapping_importer_mock = Mock()
     mapping_importer_mock.rules_as_dict = {"field1": "mapped_field1"}
-    datachecker_mock.mapping_importers = [mapping_importer_mock]
+    datachecker_mock.mapping_importers.all.return_value = [mapping_importer_mock]
 
     fieldset_mock = Mock()
     fieldset_mock.prefix = ""
