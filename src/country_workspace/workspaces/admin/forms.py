@@ -129,5 +129,7 @@ class ImportFileForm(BaseImportForm):
 class MassDefaultsForm(forms.Form):
     def __init__(self, *args: Any, checker: "DataChecker", **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        for name, field in checker.get_form()().fields.items():
-            self.fields[name] = field
+        source_form = checker.get_form()()
+        for field in source_form.fields.values():
+            field.required = False
+        self.fields.update(source_form.fields)

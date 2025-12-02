@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0030_alter_synclog_name"),
+        ("country_workspace", "0031_add_parse_name_permission"),
     ]
 
     operations = [

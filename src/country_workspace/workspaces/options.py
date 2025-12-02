@@ -107,7 +107,11 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
             js=[
                 "workspace/js/cl%s.js" % extra,
             ],
-            css={},
+            css={
+                "screen": [
+                    "workspace/css/admin_extra.css",
+                ],
+            },
         )
 
     def get_preserved_filters(self, request: HttpRequest) -> str:
