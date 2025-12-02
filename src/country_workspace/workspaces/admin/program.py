@@ -462,7 +462,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
         form = ImportFileForm(
-            request.POST, request.FILES, prefix="rdi", beneficiary_group=program.beneficiary_group, program=program
+            request.POST,
+            request.FILES,
+            prefix="rdi",
+            beneficiary_group=program.beneficiary_group,
+            program=program,
         )
         if form.is_valid():
             config: RDIConfig = {
@@ -470,8 +474,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
+                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
+                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
                 **(
                     {
@@ -485,11 +489,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 ),
                 "first_line": form.cleaned_data["first_line"],
                 "send_to": request.user.email,
-                "household_mapping_id": form.cleaned_data.get("household_mapping").id
-                if form.cleaned_data.get("household_mapping")
+                "household_mapping_id": household_mapping.id
+                if (household_mapping := form.cleaned_data.get("household_mapping"))
                 else None,
-                "individual_mapping_id": form.cleaned_data.get("individual_mapping").id
-                if form.cleaned_data.get("individual_mapping")
+                "individual_mapping_id": individual_mapping.id
+                if (individual_mapping := form.cleaned_data.get("individual_mapping"))
                 else None,
             }
             job: AsyncJob = AsyncJob.objects.create(
