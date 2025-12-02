@@ -4,7 +4,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0031_add_parse_name_permission"),
+        ("country_workspace", "0032_program_system_fields"),
         ("hope_flex_fields", "0013_fielddefinition_validated_alter_datachecker_id_and_more"),
     ]
 
