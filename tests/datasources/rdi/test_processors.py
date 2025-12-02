@@ -291,8 +291,6 @@ def test_process_beneficiaries_with_households(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
-    deepcopy_mock = mocker.patch("country_workspace.datasources.rdi.processors.deepcopy")
-    deepcopy_mock.side_effect = lambda x: x  # Return the same object for simplicity
 
     result = process_beneficiaries(
         individual_sheet,
@@ -338,8 +336,6 @@ def test_process_beneficiaries_people_only(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
-    deepcopy_mock = mocker.patch("country_workspace.datasources.rdi.processors.deepcopy")
-    deepcopy_mock.side_effect = lambda x: x  # Return the same object for simplicity
 
     result = process_beneficiaries(
         people_sheet,
