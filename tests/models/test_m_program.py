@@ -240,7 +240,7 @@ def test_apply_mapping_importer_with_mapping_id(program: Program):
     data: dict[str, Any] = {"name": "Test"}
     mock_importer = MagicMock(spec=MappingImporter)
 
-    with patch("country_workspace.models.program.MappingImporter.objects.filter") as mock_filter:
+    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
         mock_filter.return_value.first.return_value = mock_importer
         result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
 
@@ -253,7 +253,7 @@ def test_apply_mapping_importer_with_invalid_mapping_id(program: Program):
     mapping_id = 999
     data: dict[str, Any] = {"name": "Test"}
 
-    with patch("country_workspace.models.program.MappingImporter.objects.filter") as mock_filter:
+    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
         mock_filter.return_value.first.return_value = None
         result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
 

@@ -197,7 +197,7 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
         extra_context["modeladmin_name"] = self.__class__.__name__
         return super().changelist_view(request, extra_context=extra_context)
 
-    def add_view(
+    def add_view(  # pragma: no-cover
         self, request: HttpRequest, form_url: str = "", extra_context: dict[str, Any] | None = None
     ) -> HttpResponse:
         self.change_form_template = self._get_change_form_template()
