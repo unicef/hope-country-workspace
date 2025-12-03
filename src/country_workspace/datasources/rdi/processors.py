@@ -196,13 +196,13 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         else:
             queryset = batch.individual_set.filter(household=None)
 
-        create_validation_jobs(
-            description=f"Validate records for batch {batch.pk}",
-            owner=job.owner,
-            program=job.program,
-            queryset=queryset,
-        )
-        return result
+    create_validation_jobs(
+        description=f"Validate records for batch {batch.pk}",
+        owner=job.owner,
+        program=job.program,
+        queryset=queryset,
+    )
+    return result
 
 
 def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
