@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Any, Final, NotRequired, TypedDict, cast
+from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
 from requests import Session
@@ -11,8 +11,6 @@ from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
-if TYPE_CHECKING:
-    from hope_flex_fields.models import DataChecker
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
@@ -25,6 +23,9 @@ from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELD
 from country_workspace.utils.functional import compose
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
