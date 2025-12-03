@@ -3,6 +3,7 @@ from collections.abc import Iterable
 from enum import StrEnum
 
 from django.db import models
+from django.db.models import Q
 from django.utils.translation import gettext as _
 from hope_flex_fields.models import DataChecker
 from strategy_field.fields import StrategyField
@@ -174,7 +175,9 @@ class Program(BaseModel):
                 mapping_importers = [mapping_importer]
 
         elif (checker := self.get_checker_for(m)) is not None:
-            mapping_importers = list(checker.mapping_importers.all())
+            mapping_importers = list(
+                checker.mapping_importers.filter(Q(office=self.country_office) | Q(office__isnull=True))
+            )
 
         for mapping_importer in mapping_importers:
             mapping_importer.apply(data)

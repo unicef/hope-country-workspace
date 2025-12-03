@@ -1,9 +1,22 @@
 import pytest
+from unittest.mock import MagicMock, patch
+from tests.extras.testutils.factories import (
+    ProgramFactory,
+    IndividualFactory,
+    HouseholdFactory,
+    MappingImporterFactory,
+    OfficeFactory,
+)
 
-from testutils.factories import ProgramFactory, IndividualFactory, HouseholdFactory
-
-from country_workspace.models import Program, DataSerializer, Individual, Household
+from country_workspace.models import (
+    Program,
+    DataSerializer,
+    Individual,
+    Household,
+    MappingImporter,
+)
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
+from typing import Any
 
 
 @pytest.fixture
@@ -161,7 +174,7 @@ def test_program_get_columns_for(program: Program, attr_name: str, model_cls: ty
 
 def test_program_get_columns_for_unsupported_model_raises(program: Program) -> None:
     with pytest.raises(TypeError):
-        program.get_columns_for(Program)
+        program.get_columns_for(object)
 
 
 @pytest.mark.parametrize(
@@ -220,3 +233,61 @@ def test_program_apply_default_fields_applies_only_missing_or_none(program: Prog
 
     assert result is data
     assert result == {"a": "keep", "b": 2, "c": 3}
+
+
+def test_apply_mapping_importer_with_mapping_id(program: Program):
+    mapping_id = 123
+    data: dict[str, Any] = {"name": "Test"}
+    mock_importer = MagicMock(spec=MappingImporter)
+
+    with patch("country_workspace.models.program.MappingImporter.objects.filter") as mock_filter:
+        mock_filter.return_value.first.return_value = mock_importer
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+        mock_filter.assert_called_once_with(id=mapping_id)
+        mock_importer.apply.assert_called_once_with(data)
+        assert result == data
+
+
+def test_apply_mapping_importer_with_invalid_mapping_id(program: Program):
+    mapping_id = 999
+    data: dict[str, Any] = {"name": "Test"}
+
+    with patch("country_workspace.models.program.MappingImporter.objects.filter") as mock_filter:
+        mock_filter.return_value.first.return_value = None
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+        mock_filter.assert_called_once_with(id=mapping_id)
+        assert result == data
+
+
+def test_apply_mapping_importer_from_checker(program: Program):
+    data: dict[str, Any] = {"name": "Test"}
+
+    office = program.country_office
+    other_office = OfficeFactory()
+
+    # Importer for the correct office - should be used
+    importer1 = MappingImporterFactory(office=office)
+    importer1.apply = MagicMock()
+
+    # Importer with no office (global) - should be used
+    importer2 = MappingImporterFactory(office=None)
+    importer2.apply = MagicMock()
+
+    # Importer for another office - should NOT be used
+    importer3 = MappingImporterFactory(office=other_office)
+    importer3.apply = MagicMock()
+
+    mock_checker = MagicMock()
+    mock_checker.mapping_importers.filter.return_value = [importer1, importer2]
+
+    with patch.object(program, "get_checker_for", return_value=mock_checker) as mock_get_checker_for:
+        result = program.apply_mapping_importer(Household, data)
+
+        mock_get_checker_for.assert_called_once_with(Household)
+        assert mock_checker.mapping_importers.filter.call_count == 1
+        importer1.apply.assert_called_once_with(data)
+        importer2.apply.assert_called_once_with(data)
+        importer3.apply.assert_not_called()
+        assert result == data

@@ -30,6 +30,21 @@ def mapping_importer_admin():
 
 
 class TestCountryMappingImporterAdmin:
+    def test_add_view(self, mapping_importer_admin, mock_request):
+        template_name = "some_template.html"
+        with (
+            patch.object(
+                mapping_importer_admin, "_get_change_form_template", return_value=template_name
+            ) as mock_get_template,
+            patch(
+                "country_workspace.workspaces.admin.mapping_importer.WorkspaceModelAdmin.add_view"
+            ) as mock_super_add_view,
+        ):
+            mapping_importer_admin.add_view(mock_request)
+            assert mapping_importer_admin.change_form_template == template_name
+            mock_get_template.assert_called_once()
+            mock_super_add_view.assert_called_once_with(mock_request, form_url="", extra_context=None)
+
     def test_get_queryset(self, mapping_importer_admin, mock_request, mock_tenant):
         state.tenant = mock_tenant
         with patch.object(CountryMappingImporter, "objects") as mock_objects:
