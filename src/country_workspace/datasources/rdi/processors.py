@@ -188,13 +188,13 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             else:
                 result = _import_people_only(job, batch, config)
 
-        if not config.get("validate_after_import"):
-            return result
+    if not config.get("validate_after_import"):
+        return result
 
-        if job.config.get("master_detail"):
-            queryset = batch.household_set.all().prefetch_related("members")
-        else:
-            queryset = batch.individual_set.filter(household=None)
+    if job.config.get("master_detail"):
+        queryset = batch.household_set.all().prefetch_related("members")
+    else:
+        queryset = batch.individual_set.filter(household=None)
 
     create_validation_jobs(
         description=f"Validate records for batch {batch.pk}",
