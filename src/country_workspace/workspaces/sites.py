@@ -261,6 +261,12 @@ class TenantAdminSite(admin.AdminSite):
                         "selected": getattr(self, "modeladmin_name", None) == "CountryBatchAdmin",
                     },
                     {
+                        "name": _("Mappings"),
+                        "url": reverse("workspace:workspaces_countrymappingimporter_changelist"),
+                        "icon": "icon-loop",
+                        "selected": getattr(self, "modeladmin_name", None) == "CountryMappingImporterAdmin",
+                    },
+                    {
                         "name": apps.get_model("country_workspace", "Rdp")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryrdp_changelist"),
                         "icon": "icon-mail-envelope",

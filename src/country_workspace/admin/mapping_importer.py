@@ -10,12 +10,14 @@ from country_workspace.models import MappingImporter
 @admin.register(MappingImporter)
 class MappingImporterAdmin(BaseModelAdmin):
     readonly_fields = ("created_at", "last_modified", "created_by")
-    list_display = ("name", "data_checker", "created_by", "created_at", "last_modified")
+    list_display = ("name", "office", "data_checker", "created_by", "created_at", "last_modified")
     list_filter = (
-        "data_checker",
+        ("office", AutoCompleteFilter),
+        ("data_checker", AutoCompleteFilter),
         ("created_by", AutoCompleteFilter),
     )
-    search_fields = ("name",)
+    search_fields = ("name", "description")
+    autocomplete_fields = ("office", "data_checker")
 
     def save_model(self, request: HttpRequest, obj: MappingImporter, form: ModelForm, change: bool) -> None:
         if not change:

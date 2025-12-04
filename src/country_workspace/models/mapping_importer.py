@@ -9,9 +9,20 @@ from country_workspace.validators.mapping import FieldMappingRulesValidator
 
 
 class MappingImporter(BaseModel):
-    data_checker = models.OneToOneField(DataChecker, on_delete=models.CASCADE, related_name="%(class)s")
     name = models.CharField(max_length=255)
     description = models.CharField(max_length=255, blank=True)
+    office = models.ForeignKey(
+        "Office",
+        on_delete=models.CASCADE,
+        related_name="mapping_importers",
+        help_text=_("Business Area (Office) this mapping belongs to"),
+    )
+    data_checker = models.ForeignKey(
+        DataChecker,
+        on_delete=models.CASCADE,
+        related_name="mapping_importers",
+        help_text=_("DataChecker (Household/Individual) this mapping is valid for"),
+    )
     rules = models.TextField(
         blank=True,
         default="",
@@ -27,6 +38,7 @@ class MappingImporter(BaseModel):
     class Meta:
         verbose_name = _("Mapping Importer")
         verbose_name_plural = _("Mapping Importers")
+        unique_together = [["office", "name"]]
 
     def __str__(self) -> str:
         return self.name

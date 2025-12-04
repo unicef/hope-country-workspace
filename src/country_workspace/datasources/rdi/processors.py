@@ -109,15 +109,17 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
+    household_mapping_id = config.get("household_mapping_id")
     transform_row = compose(
         clean_field_names,
-        partial(job.program.apply_mapping_importer, Household),
+        partial(job.program.apply_mapping_importer, Household, mapping_id=household_mapping_id),
         partial(job.program.apply_default_fields, Household),
     )
 
     for row in sheet:
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
+
         try:
             mapping[household_key] = cast(
                 "Household",
@@ -141,9 +143,10 @@ def process_beneficiaries(
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
+    individual_mapping_id = config.get("individual_mapping_id")
     transform_row = compose(
         clean_field_names,
-        partial(job.program.apply_mapping_importer, Individual),
+        partial(job.program.apply_mapping_importer, Individual, mapping_id=individual_mapping_id),
         partial(job.program.apply_default_fields, Individual),
     )
 
@@ -155,6 +158,7 @@ def process_beneficiaries(
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
+
         try:
             mapping[beneficiary_key] = cast(
                 "Individual",
@@ -235,7 +239,7 @@ def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
     pk_mapping = {v.flex_fields.get("individual_id"): v.pk for _, v in individuals_mapping.items()}
 
     for v in households_mapping.values():
-        hh_flex_fields = v.flex_fields
+        hh_flex_fields = v.flex_fields.copy()
         hh_flex_fields["head_of_household"] = pk_mapping.get(v.flex_fields.get("head_of_household"))
         hh_flex_fields["primary_collector"] = pk_mapping.get(v.flex_fields.get("primary_collector"))
         if alt_id := v.flex_fields.get("alternate_collector"):  # is optional
