@@ -39,6 +39,8 @@ def mock_program():
     program = MagicMock(spec=CountryProgram)
     program.country_office = MagicMock(spec=Office)
     program.country_office.kobo_country_code = "ABC"
+    program.household_checker = None
+    program.individual_checker = None
     return program
 
 

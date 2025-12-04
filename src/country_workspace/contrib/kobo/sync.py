@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Any, Final, TypedDict, cast, TYPE_CHECKING
+from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
 from requests import Session
@@ -11,8 +11,6 @@ from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
-if TYPE_CHECKING:
-    from hope_flex_fields.models import DataChecker
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
@@ -26,10 +24,15 @@ from country_workspace.utils.functional import compose
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
+
 
 class Config(BatchNameConfig, ValidateModeConfig):
     project_id: str
     individual_records_field: str
+    household_mapping_id: NotRequired[int | None]
+    individual_mapping_id: NotRequired[int | None]
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -93,11 +96,12 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
 
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> list[Individual]:
     individuals = []
+    individual_mapping_id = config.get("individual_mapping_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual_fields = preprocess(
             raw_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            partial(batch.program.apply_mapping_importer, Individual),
+            partial(batch.program.apply_mapping_importer, Individual, mapping_id=individual_mapping_id),
             partial(batch.program.apply_default_fields, Individual),
         )
         fullname = get_fullname_key(individual_fields)
@@ -117,11 +121,12 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 def create_household(
     batch: Batch, submission: Submission, config: Config, id_generator: Callable[[], int]
 ) -> Household:
+    household_mapping_id = config.get("household_mapping_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial(batch.program.apply_mapping_importer, Household),
+        partial(batch.program.apply_mapping_importer, Household, mapping_id=household_mapping_id),
         partial(batch.program.apply_default_fields, Household),
     )
     household_fields["household_id"] = id_generator()
