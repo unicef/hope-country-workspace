@@ -59,7 +59,7 @@ def household(program):
 def households_for_regex(program):
     from testutils.factories import CountryHouseholdFactory
 
-    for add in ["", r"\["]:
+    for add in ["", "["]:
         hsld = CountryHouseholdFactory.create(batch__program=program, batch__country_office=program.country_office)
         hsld.flex_fields["address"] = add
         hsld.save()
@@ -69,7 +69,7 @@ def households_for_regex(program):
 def individuals_for_regex(program):
     from testutils.factories import CountryIndividualFactory
 
-    for add in ["", r"\["]:
+    for add in ["", "["]:
         indv = CountryIndividualFactory(
             household__batch__program=program, household__batch__country_office=program.country_office
         )
