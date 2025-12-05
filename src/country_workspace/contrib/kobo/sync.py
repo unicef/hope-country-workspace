@@ -312,12 +312,10 @@ def import_data(job: AsyncJob) -> ImportResult:
     household_counter = 0
     individual_counter = 0
 
-    for asset in client.assets:
-        # TODO @Misuk: fetch specific asset
-        if config["project_id"] == asset.uid:
-            import_result = import_asset(batch, asset, config, id_generator)
-            household_counter += import_result["households"]
-            individual_counter += import_result["individuals"]
+    asset = client.get_asset(config["project_id"])
+    import_result = import_asset(batch, asset, config, id_generator)
+    household_counter += import_result["households"]
+    individual_counter += import_result["individuals"]
 
     if config.get("validate_after_import"):
         create_validation_jobs(
