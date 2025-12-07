@@ -209,12 +209,20 @@ def _test_update_with_regex(
     browser.fill("#id_subst", subst)
 
     browser.click('input[name="_preview"]')
-    browser.wait_for_element("//table//tr[1]/th", by=By.XPATH, timeout=10)
 
     if expected_error:
+        browser.wait_for_element(By.CLASS_NAME, "errorlist", timeout=10)
         error_message = browser.find_element(By.CLASS_NAME, "errorlist").text
         assert expected_error == error_message
         return
+
+    browser.wait_for_element("//table//tr[1]/th", by=By.XPATH, timeout=10)
+
+    browser.wait_for_element("//table//tr[position()>1]/td", by=By.XPATH, timeout=10)
+
+    import time
+
+    time.sleep(0.5)  # for DOM
 
     headers = browser.find_elements(By.XPATH, "//table//tr[1]/th")
     header_texts = [h.text.strip().lower() for h in headers]
