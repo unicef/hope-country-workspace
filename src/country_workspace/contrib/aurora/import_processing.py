@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple, NotRequired
+from typing import Any, NamedTuple, NotRequired, Callable
 from itertools import chain
 from collections.abc import Mapping
 from functools import partial
@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from country_workspace.contrib.aurora.client import AuroraClient
+from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
@@ -43,10 +44,25 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     total_people = 0
     client = AuroraClient()
-    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+    for i, result in enumerate(client.get(f"registration/{config['registration_reference_pk']}/records/")):
+        if i == 0 and config.get("fail_if_alien", False):
+            check_alien_fields(result.get("fields"), job.program)
         imported = import_result(batch, result, config)
         total_people += imported.people
     return ImportResult(people=total_people)
+
+
+def check_alien_fields(fields: dict, program: Program) -> None:
+    if not program.individual_checker:
+        return
+
+    transform_individual_row = build_individual_transform(program)
+    flex_fields = set(transform_individual_row(fields).keys())
+    dc_fields = {f.name for _, f in program.individual_checker.get_fields()}
+
+    if not flex_fields.issubset(dc_fields):
+        aliens = flex_fields - dc_fields
+        raise AuroraAlienFieldError(aliens)
 
 
 def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
@@ -85,13 +101,7 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
 
 
 def create_people(batch: Batch, record: dict[str, Any], config: Config) -> Individual:
-    transform_individual_row = compose(
-        flatten_top2_prefixed,
-        clean_field_names,
-        partial(batch.program.apply_mapping_importer, Individual),
-        make_full_name,
-        partial(batch.program.apply_default_fields, Individual),
-    )
+    transform_individual_row = build_individual_transform(batch.program)
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
@@ -133,3 +143,13 @@ def make_full_name(row: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
         row["full_name"] = full
 
     return row
+
+
+def build_individual_transform(program: Program) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+    return compose(
+        flatten_top2_prefixed,
+        clean_field_names,
+        partial(program.apply_mapping_importer, Individual),
+        make_full_name,
+        partial(program.apply_default_fields, Individual),
+    )
