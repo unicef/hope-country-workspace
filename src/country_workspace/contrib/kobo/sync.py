@@ -190,11 +190,13 @@ def check_for_alien_fields(
     batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
 ) -> None:
     """Check first submission for alien fields and raise if found."""
+    default_fields_applier = lambda x: x
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
         partial(mapping_importer, Household),
+        default_fields_applier,
     )
 
     household_allowed_fields = get_allowed_fields(batch.program.household_checker)
@@ -211,6 +213,7 @@ def check_for_alien_fields(
             first_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
             partial(mapping_importer, Individual),
+            default_fields_applier,
         )
         individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
         individual_alien = get_alien_fields(
