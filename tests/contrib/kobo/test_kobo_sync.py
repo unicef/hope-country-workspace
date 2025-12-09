@@ -344,7 +344,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
-    make_client_mock.return_value.assets = [asset_mock]
+    make_client_mock.return_value.get_asset.return_value = asset_mock
     import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
     import_asset_mock.return_value = ImportResult(
         households=(household_counter := 1), individuals=(individual_counter := 2)
