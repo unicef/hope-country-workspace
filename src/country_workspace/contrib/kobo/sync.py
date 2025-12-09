@@ -33,6 +33,7 @@ class Config(BatchNameConfig, ValidateModeConfig):
     individual_records_field: str
     household_mapping_id: NotRequired[int | None]
     individual_mapping_id: NotRequired[int | None]
+    master_detail: bool
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -70,6 +71,12 @@ def make_client(country_code: str) -> Client:
 
 def extract_household_data(submission: Submission, individual_records_field: str) -> dict[str, Any]:
     return {key: value for key, value in submission.items() if key != individual_records_field}
+
+
+def extract_people_data(submission: Submission, individual_records_field: str) -> dict[str, Any]:
+    people_data = {key: value for key, value in submission.items() if key != individual_records_field}
+    people_data.update(**submission.get(individual_records_field, [])[0])
+    return people_data
 
 
 def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +143,24 @@ def create_household(
             batch=batch,
             flex_fields=household_fields,
         ),
+    )
+
+
+def create_people(batch: Batch, submission: Submission, config: Config) -> Individual:
+    raw_people_fields = extract_people_data(submission, config["individual_records_field"])
+    people_fields = preprocess(
+        raw_people_fields,
+        INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        partial(batch.program.apply_mapping_importer, Individual, mapping_id=config.get("household_mapping_id")),
+        partial(batch.program.apply_default_fields, Individual),
+    )
+    fullname = get_fullname_key(people_fields)
+    return Individual.objects.create(
+        batch=batch,
+        household=None,
+        name=people_fields.get(fullname, "") if fullname else "",
+        flex_fields=people_fields,
+        raw_data=people_fields,
     )
 
 
@@ -256,12 +281,16 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
             current_submission = submission
 
             with transaction.atomic():
-                household = create_household(batch, submission, config, id_generator)
-                individuals = create_individuals(batch, household, submission, config)
-                set_roles_and_relationships(household, individuals)
+                if config["master_detail"]:
+                    household = create_household(batch, submission, config, id_generator)
+                    individuals = create_individuals(batch, household, submission, config)
+                    set_roles_and_relationships(household, individuals)
 
-                household_counter += 1
-                individual_counter += len(individuals)
+                    household_counter += 1
+                    individual_counter += len(individuals)
+                else:
+                    create_people(batch, submission, config)
+                    individual_counter += 1
 
             last_successful_id = submission.id
 
@@ -312,13 +341,8 @@ def import_data(job: AsyncJob) -> ImportResult:
     id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
-    household_counter = 0
-    individual_counter = 0
-
     asset = client.get_asset(config["project_id"])
     import_result = import_asset(batch, asset, config, id_generator)
-    household_counter += import_result["households"]
-    individual_counter += import_result["individuals"]
 
     if config.get("validate_after_import"):
         create_validation_jobs(
@@ -328,4 +352,4 @@ def import_data(job: AsyncJob) -> ImportResult:
             queryset=batch.household_set.all().prefetch_related("members"),
         )
 
-    return ImportResult(households=household_counter, individuals=individual_counter)
+    return ImportResult(households=import_result["households"], individuals=import_result["individuals"])

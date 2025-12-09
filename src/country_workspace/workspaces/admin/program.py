@@ -562,6 +562,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     if (individual_mapping := form.cleaned_data.get("individual_mapping"))
                     else None
                 ),
+                "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
