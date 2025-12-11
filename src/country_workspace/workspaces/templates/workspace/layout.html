@@ -17,7 +17,26 @@
     {% endblock scripts %}
     {{ media }}
     {% tailwind_css %}
-    {% block extrahead %}{% endblock %}
+    {% block extrahead %}
+    <script>
+        document.addEventListener("DOMContentLoaded", function (event) {
+            const url = window.location.href;
+            let color = '';
+            if (window.location.hostname === 'localhost') {
+                color = '#FF6600';
+            } else if (url.includes('-trn')) {
+                color = '#BF360C';
+            } else if (url.includes('-stg')) {
+                color = '#673AB7';
+            } else if (url.includes('-dev')) {
+                color = '#00796B';
+            } else {
+                color = '#00ADEF';
+            }
+            document.getElementById("header-bar").style.backgroundColor = color;
+        });
+    </script>
+    {% endblock extrahead %}
 </head>
 <body class="web">
 {% if messages %}
@@ -51,7 +70,7 @@
         {% endblock logo %}
         {% block content-header %}
             <div class="flex flex-1 flex-col">
-                <div class="flex h-16 bg-unicef-gray text-white align-middle">{% block areas %}
+                <div id="header-bar" class="flex h-16 bg-unicef-gray text-white align-middle">{% block areas %}
                     <div class="text-white cursor-pointer w-16">
                         <div id="open-sidebar" class="hidden p-5">
                             <svg class="sidebar-button text-white hidden" focusable="false" viewBox="0 0 24 24"
