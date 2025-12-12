@@ -3,8 +3,9 @@ from typing import Any
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker
+from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker, FlexField
 
+from country_workspace.cache.manager import cache_manager
 from country_workspace.models import Program
 from country_workspace.workspaces.models import CountryProgram
 
@@ -75,3 +76,16 @@ def invalidate_entities_on_datachecker_change(
             bv_type(instance),
         ):
             _process_program(program=instance)
+
+
+@receiver(post_save, sender=FlexField, dispatch_uid="cw_on_flex_field_change")
+def invalidate_fieldset_fields_admin_cache(
+    sender: type[FlexField],
+    instance: FlexField,
+    created: bool | None = None,
+    **kwargs: Any,
+) -> None:
+    if not (fieldset := getattr(instance, "fieldset", None)):
+        return
+
+    cache_manager.invalidate_containing(f"adminhope_flex_fieldsfieldset{fieldset.pk}")
