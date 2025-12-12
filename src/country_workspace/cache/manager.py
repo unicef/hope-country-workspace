@@ -12,7 +12,6 @@ from sentry_sdk import capture_exception
 
 from country_workspace import VERSION
 from country_workspace.state import state
-
 from .signals import cache_get, cache_invalidate, cache_set
 
 if TYPE_CHECKING:
@@ -127,6 +126,23 @@ class CacheManager:
             prefix,
             *[slugify(request.path), slugify(str(sorted(request.GET.items()))), *[str(e) for e in args]],
         )
+
+    def invalidate_pattern(self, pattern: str) -> int:
+        client = self.get_redis_client()
+        deleted_count = 0
+
+        cursor = 0
+        while True:
+            cursor, keys = client.scan(cursor=cursor, match=pattern, count=100)
+            if keys:
+                deleted_count += client.delete(*keys)
+            if cursor == 0:
+                break
+
+        return deleted_count
+
+    def invalidate_containing(self, substring: str) -> int:
+        return self.invalidate_pattern(f"*{substring}*")
 
 
 cache_manager = CacheManager()
