@@ -83,3 +83,42 @@ def test_invalidate(manager, program):
     manager.incr_cache_version(program=program)
     v = manager.get_cache_version(program=program)
     assert v == 3
+
+
+def test_invalidate_pattern_no_matches(manager):
+    manager.store("test:key", "value")
+
+    deleted_count = manager.invalidate_pattern("nonexistent:*")
+
+    assert deleted_count == 0
+    assert manager.retrieve("test:key") == "value"
+
+
+def test_invalidate_containing(manager):
+    manager.store("prefix:user:123:data", "value1")
+    manager.store("prefix:user:123:settings", "value2")
+    manager.store("prefix:user:456:data", "value3")
+    manager.store("prefix:order:789", "value4")
+
+    assert manager.retrieve("prefix:user:123:data") == "value1"
+    assert manager.retrieve("prefix:user:123:settings") == "value2"
+    assert manager.retrieve("prefix:user:456:data") == "value3"
+    assert manager.retrieve("prefix:order:789") == "value4"
+
+    deleted_count = manager.invalidate_containing("user:123")
+
+    assert deleted_count == 2
+    assert manager.retrieve("prefix:user:123:data") is None
+    assert manager.retrieve("prefix:user:123:settings") is None
+
+    assert manager.retrieve("prefix:user:456:data") == "value3"
+    assert manager.retrieve("prefix:order:789") == "value4"
+
+
+def test_invalidate_containing_no_matches(manager):
+    manager.store("test:key", "value")
+
+    deleted_count = manager.invalidate_containing("nonexistent")
+
+    assert deleted_count == 0
+    assert manager.retrieve("test:key") == "value"
