@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from hope_flex_fields.models import DataChecker
@@ -13,6 +13,7 @@ from country_workspace.contrib.hope.constants import (
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
 from country_workspace.signals import (
     _process_datachecker_change,
+    invalidate_fieldset_fields_admin_cache,
 )
 from country_workspace.validators.registry import NoopValidator
 from tests.extras.testutils.factories import (
@@ -23,7 +24,7 @@ from tests.extras.testutils.factories import (
     FieldsetFactory,
 )
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
-from tests.extras.testutils.factories.smart_fields import DataCheckerFactory
+from tests.extras.testutils.factories.smart_fields import DataCheckerFactory, FlexFieldFactory
 
 
 @pytest.fixture
@@ -207,3 +208,30 @@ def test_no_invalidation_on_other_field_change(program):
     for hh in HouseholdFactory._meta.model.objects.all():
         hh.refresh_from_db()
         assert hh.errors == {"x": "1"}
+
+
+def test_invalidate_fieldset_fields_admin_cache_on_flexfield_save():
+    fieldset = FieldsetFactory.create()
+
+    with patch("country_workspace.signals.cache_manager.invalidate_containing") as mocked:
+        FlexFieldFactory.create(fieldset=fieldset, name="test_field")
+        mocked.assert_called_once_with(f"adminhope_flex_fieldsfieldset{fieldset.pk}")
+
+
+def test_invalidate_fieldset_fields_admin_cache_on_flexfield_update():
+    fieldset = FieldsetFactory.create()
+    flex_field = FlexFieldFactory.create(fieldset=fieldset, name="test_field")
+
+    with patch("country_workspace.signals.cache_manager.invalidate_containing") as mocked:
+        flex_field.name = "updated_name"
+        flex_field.save()
+        mocked.assert_called_once_with(f"adminhope_flex_fieldsfieldset{fieldset.pk}")
+
+
+def test_invalidate_fieldset_fields_admin_cache_no_fieldset():
+    instance = MagicMock()
+    instance.fieldset = None
+
+    with patch("country_workspace.signals.cache_manager.invalidate_containing") as mocked:
+        invalidate_fieldset_fields_admin_cache(sender=MagicMock, instance=instance)
+        mocked.assert_not_called()
