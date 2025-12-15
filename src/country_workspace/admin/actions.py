@@ -1,0 +1,84 @@
+from typing import Any, cast
+
+from django import forms
+from django.contrib import admin, messages
+from django.contrib.admin import helpers
+from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
+from django.utils.translation import gettext as _
+
+from country_workspace.models import MappingImporter, Program
+from country_workspace.models.household import Household
+from country_workspace.models.individual import Individual
+
+
+class ReprocessForm(forms.Form):
+    mapping_importer = forms.ModelChoiceField(
+        queryset=MappingImporter.objects.none(),
+        required=True,
+        label=_("Select Mapping Importer"),
+        empty_label=_("Select a mapping..."),
+    )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        queryset = kwargs.pop("queryset", MappingImporter.objects.none())
+        super().__init__(*args, **kwargs)
+        cast(forms.ModelChoiceField, self.fields["mapping_importer"]).queryset = queryset
+
+
+@admin.action(description=_("Reprocess records (apply mapping)"))
+def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> HttpResponse:
+    model = queryset.model
+    checker_field = None
+
+    if issubclass(model, Household):
+        checker_field = "household_checker"
+    elif issubclass(model, Individual):
+        checker_field = "individual_checker"
+
+    if "apply" in request.POST:
+        mapping_id = request.POST.get("mapping_importer")
+
+        if mapping_id:
+            try:
+                mapping = MappingImporter.objects.get(pk=mapping_id)
+            except MappingImporter.DoesNotExist:
+                modeladmin.message_user(request, _("Selected mapping not found."), messages.ERROR)
+                return HttpResponseRedirect(request.get_full_path())
+
+            count = 0
+            for record in queryset:
+                if record.raw_data:
+                    data = record.raw_data.copy()
+                    mapping.apply(data)
+                    record.flex_fields = data
+
+                    record.last_checked = None
+                    record.errors = {}
+
+                    record.save(update_fields=["flex_fields", "last_checked", "errors"])
+                    count += 1
+
+            modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)
+            return HttpResponseRedirect(request.get_full_path())
+
+    mapping_qs = MappingImporter.objects.none()
+    if checker_field:
+        program_ids = queryset.values_list("batch__program", flat=True).distinct()
+        checker_ids = Program.objects.filter(id__in=program_ids).values_list(checker_field, flat=True).distinct()
+        mapping_qs = MappingImporter.objects.filter(data_checker__id__in=checker_ids)
+
+    form = ReprocessForm(queryset=mapping_qs)
+
+    context = {
+        **modeladmin.admin_site.each_context(request),
+        "title": _("Reprocess Records"),
+        "objects": queryset,
+        "form": form,
+        "opts": modeladmin.model._meta,
+        "action_checkbox_name": helpers.ACTION_CHECKBOX_NAME,
+        "media": modeladmin.media,
+    }
+
+    return render(request, "admin/country_workspace/reprocess_confirmation.html", context)
