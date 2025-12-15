@@ -1,9 +1,11 @@
 from typing import TYPE_CHECKING
-
+import json
 from admin_extra_buttons.decorators import button
 from django.contrib.admin import register
+from django.utils.html import format_html
 from django_celery_boost.admin import CeleryTaskModelAdmin
 from django_celery_boost.models import CeleryTaskModel
+from django_celery_results.models import TaskResult
 
 from ..permissions import can_debug_async_job
 from ..models import CountryAsyncJob
@@ -33,7 +35,26 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
     search_fields = ("description",)
-    fields = ("description",)
+    fields = ("description", "formatted_error")
+    readonly_fields = ("formatted_error",)
+
+    def formatted_error(self, obj: "CountryAsyncJob | None") -> str:
+        if not obj or not obj.curr_async_result_id:
+            return ""
+
+        task_result = TaskResult.objects.filter(task_id=obj.curr_async_result_id).first()
+        if not task_result or not task_result.result:
+            return ""
+
+        try:
+            if isinstance(task_result.result, str):
+                data = json.loads(task_result.result)
+            else:
+                data = task_result.result
+        except (json.JSONDecodeError, TypeError):
+            data = task_result.result
+
+        return format_html("<pre>{}</pre>", json.dumps(data, indent=2))
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
         return False
