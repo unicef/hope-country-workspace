@@ -1,14 +1,17 @@
 import pytest
+from django.test import override_settings
 
 pytestmark = pytest.mark.xdist_group("selenium")
 
 
+@override_settings(LOGIN_ENABLED=True)
 @pytest.mark.selenium
 def test_admin_login(browser):
     browser.login()
     browser.assert_text("Welcome to HOPE Workspace", "div#content h1")
 
 
+@override_settings(LOGIN_ENABLED=True)
 @pytest.mark.selenium
 def test_logout(browser):
     browser.login()
