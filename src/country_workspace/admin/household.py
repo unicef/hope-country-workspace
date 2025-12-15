@@ -7,12 +7,14 @@ from django.utils.translation import gettext as _
 from django.http import HttpRequest, HttpResponse
 
 from ..models import Household
+from .actions import reprocess_records
 from .base import BaseModelAdmin
 from .filters import IsValidFilter
 
 
 @admin.register(Household)
 class HouseholdAdmin(BaseModelAdmin):
+    actions = [reprocess_records]
     list_display = ("name", "country_office", "program", "batch", "removed")
     list_filter = (
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
