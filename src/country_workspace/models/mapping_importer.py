@@ -15,6 +15,8 @@ class MappingImporter(BaseModel):
         "Office",
         on_delete=models.CASCADE,
         related_name="mapping_importers",
+        null=True,
+        blank=True,
         help_text=_("Business Area (Office) this mapping belongs to"),
     )
     data_checker = models.ForeignKey(
