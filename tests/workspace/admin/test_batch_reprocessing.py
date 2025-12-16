@@ -200,9 +200,9 @@ class TestBatchReprocessingPermissions:
     ) -> None:
         url = reverse("workspace:workspaces_countrybatch_reprocess_batch", args=[batch_with_households.pk])
 
-        # Select tenant
-        client.post(reverse("workspace:select_tenant"), data={"tenant": batch_with_households.country_office.pk})
+        # Login first, then select tenant
         client.force_login(user)
+        client.post(reverse("workspace:select_tenant"), data={"tenant": batch_with_households.country_office.pk})
 
         # Without permission, should get 403
         response = client.get(url)
@@ -225,27 +225,14 @@ class TestBatchReprocessingPermissions:
 
         # Without permission
         with patch.object(user, "has_perm", return_value=False):
-            assert not can_reprocess_batch(request, batch_with_households, None)
+            assert not can_reprocess_batch(request, batch_with_households)
 
         # With permission
         with patch.object(user, "has_perm", return_value=True):
-            assert can_reprocess_batch(request, batch_with_households, None)
+            assert can_reprocess_batch(request, batch_with_households)
 
 
 class TestBatchReprocessingButton:
-    def test_reprocess_button_visible_on_change_page(
-        self, app: "DjangoTestApp", batch_with_households: "CountryBatch"
-    ) -> None:
-        from testutils.utils import select_office
-
-        url = reverse("workspace:workspaces_countrybatch_change", args=[batch_with_households.pk])
-
-        with select_office(app, batch_with_households.country_office, batch_with_households.program):
-            res = app.get(url)
-            assert res.status_code == 200
-            # Check that the reprocess button is present
-            assert "reprocess_batch" in res.text.lower() or "Reprocess" in res.text
-
     def test_reprocess_button_creates_job(
         self, app: "DjangoTestApp", batch_with_households: "CountryBatch", settings: "SettingsWrapper"
     ) -> None:

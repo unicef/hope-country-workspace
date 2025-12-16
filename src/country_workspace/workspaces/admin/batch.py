@@ -61,7 +61,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     @button(
         change_list=False,
-        permission=lambda r, o, handler: can_reprocess_batch(r, o, handler),
+        permission=can_reprocess_batch,
         html_attrs={"title": "Reprocess all records in this batch"},
     )
     def reprocess_batch(self, request: HttpRequest, pk: str) -> "HttpResponse":
