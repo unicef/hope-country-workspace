@@ -27,7 +27,7 @@ def update_cache(sender: "type[Model]", instance: Model, **kwargs: Any) -> None:
         program = instance
     elif isinstance(instance, (AsyncJob | CountryAsyncJob | Batch | CountryBatch | Rdp | CountryRdp)):
         program = instance.program
-    elif isinstance(instance, (MappingImporter | CountryMappingImporter)):
+    elif isinstance(instance, (MappingImporter | CountryMappingImporter)) and getattr(instance, "office_id", None):
         office = instance.office
 
     if program:
