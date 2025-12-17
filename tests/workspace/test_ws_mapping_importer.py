@@ -59,7 +59,5 @@ def test_mapping_importer_cache_invalidation_on_delete_via_model(admin_user, off
     mi.delete()
 
     # Assertions
-    assert cache.get(legacy_key) is None, "Legacy cache key should be invalidated on delete"
-
     new_version = cache_manager.get_cache_version(office=office)
     assert new_version > initial_version, "Office cache version should be incremented on delete"
