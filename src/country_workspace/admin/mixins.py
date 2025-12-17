@@ -15,10 +15,7 @@ class JobErrorDisplayMixin:
             return ""
 
         try:
-            if isinstance(task_result.result, str):
-                data = json.loads(task_result.result)
-            else:
-                data = task_result.result
+            data = json.loads(task_result.result)
         except (json.JSONDecodeError, TypeError):
             data = task_result.result
 
