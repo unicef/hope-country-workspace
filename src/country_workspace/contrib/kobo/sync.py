@@ -135,6 +135,7 @@ def create_household(
         batch.program.households.create(
             batch=batch,
             flex_fields=household_fields,
+            raw_data=household_fields,
         ),
     )
 

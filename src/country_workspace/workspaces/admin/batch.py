@@ -1,15 +1,19 @@
 from typing import Any
 
 from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.decorators import link
+from admin_extra_buttons.decorators import button, link
 from django.contrib.admin import register
 from django.db.models import QuerySet
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
+from strategy_field.utils import fqn
 
+from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.models import AsyncJob
 from ...state import state
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
+from ..permissions import can_reprocess_batch
 from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from .hh_ind import SelectedProgramMixin
@@ -54,3 +58,40 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         base = reverse("workspace:workspaces_countryhousehold_changelist")
         obj = btn.context["original"]
         btn.href = f"{base}?batch__exact={obj.pk}"
+
+    @button(
+        change_list=False,
+        permission=can_reprocess_batch,
+        html_attrs={"title": "Re-validate all records in this batch (excludes records already pushed to HOPE)"},
+    )
+    def reprocess_batch(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        obj: CountryBatch | None = self.get_object(request, pk)
+        if not obj:
+            return HttpResponse("Batch not found", status=404)
+
+        def execute_reprocess(req: HttpRequest) -> None:
+            job = AsyncJob.objects.create(
+                description=f"Reprocess batch: {obj.name}",
+                type=AsyncJob.JobType.TASK,
+                owner=req.user,
+                action=fqn("country_workspace.workspaces.admin.batch_reprocessing.reprocess_batch"),
+                program=obj.program,
+                batch=obj,
+                config={"batch_id": obj.pk},
+            )
+            job.queue()
+
+        return confirm_action(
+            self,
+            request,
+            execute_reprocess,
+            message=f"Are you sure you want to reprocess batch '{obj.name}'?",
+            description=(
+                "This will re-validate all households and individuals in this batch. "
+                "Records already pushed to HOPE Core will be automatically excluded."
+            ),
+            success_message="Batch reprocessing has been scheduled.",
+            pk=pk,
+            title="Reprocess Batch",
+            template="workspace/admin_extra_buttons/confirm.html",
+        )
