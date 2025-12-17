@@ -109,7 +109,7 @@ def test_sync_area_types(mocker: MockerFixture, delta_sync: bool, expect_error: 
     rec = AREA_TYPES["results"][0]
 
     if expect_error:
-        with pytest.raises(SkipRecordError, match="Country not found."):
+        with pytest.raises(SkipRecordError, match=r"Country not found."):
             cfg["prepare_defaults"](rec)
     else:
         expected = {
@@ -143,7 +143,7 @@ def test_sync_areas(mocker: MockerFixture, delta_sync: bool, expect_error: bool)
     rec = AREAS["results"][0]
 
     if expect_error:
-        with pytest.raises(SkipRecordError, match="AreaType not found."):
+        with pytest.raises(SkipRecordError, match=r"AreaType not found."):
             cfg["prepare_defaults"](rec)
     else:
         expected = {

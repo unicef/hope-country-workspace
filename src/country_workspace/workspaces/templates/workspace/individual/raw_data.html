@@ -1,4 +1,5 @@
-{% extends "workspace/raw_data.html" %}{% load i18n workspace_modify workspace_urls %}
+{% extends "workspace/raw_data.html" %}
+{% load i18n workspace_modify workspace_urls %}
 {% block page-title %}
     {% if selected_household %}
         &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>

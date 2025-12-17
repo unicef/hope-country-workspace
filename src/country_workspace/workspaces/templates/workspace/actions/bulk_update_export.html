@@ -1,24 +1,25 @@
-{% extends "workspace/actions/base.html" %}{% load i18n static %}
+{% extends "workspace/actions/base.html" %}
+{% load i18n static %}
 {% block content %}
     <div>
         Select the columns you want to update
     </div>
     <form method="post" id="bulk-update-form">
         <div class="submit-row">
-            <input type="submit" value="{% translate 'Export' %}" class="default" name="_export">
+            <input type="submit" value="{% translate 'Export' %}" class="default" name="_export" />
         </div>
         {% csrf_token %}
         <label for="select-all">
-            <input type="checkbox" id="select-all">Select all
+            <input type="checkbox" id="select-all" />
+            Select all
         </label>
         <table>
             {{ form.as_table }}
         </table>
         {% load admin_urls i18n workspace_urls %}
         <div class="submit-row float-right">
-            <input type="submit" value="{% translate 'Export' %}" class="default" name="_export">
+            <input type="submit" value="{% translate 'Export' %}" class="default" name="_export" />
         </div>
-
     </form>
     {% block admin_change_form_document_ready %}
         {% block document_ready %}

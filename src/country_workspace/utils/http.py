@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def get_server_host(request: "HttpRequest | None" = None) -> str:
     req: HttpRequest | None = request or state.request
     host = req.get_host()
-    domain, port = split_domain_port(host)
+    domain, _port = split_domain_port(host)
     return domain
 
 

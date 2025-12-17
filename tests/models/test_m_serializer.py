@@ -27,5 +27,5 @@ def test_clean_valid(data_serializer: DataSerializer):
 @pytest.mark.parametrize("code", ["", "function {"])
 def test_clean_invalid_js(data_serializer: DataSerializer, code: str):
     data_serializer.code = code
-    with pytest.raises(ValidationError, match="Invalid JavaScript code"):
+    with pytest.raises(ValidationError, match=r"Invalid JavaScript code"):
         data_serializer.clean()

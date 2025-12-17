@@ -18,7 +18,6 @@ exclude_docs: |
 
 markdown_extensions:
   - admonition
-  - pymdownx.details
   - pymdownx.magiclink
   - pymdownx.superfences:
       custom_fences:
@@ -32,10 +31,6 @@ theme:
   custom_dir: docs/_theme/overrides
   favicon: img/favicon.ico
   logo: img/logo.png
-#  highlightjs: true
-#  hljs_languages:
-#    - yaml
-#    - django
   user_color_mode_toggle: true
   features:
     - content.action.edit

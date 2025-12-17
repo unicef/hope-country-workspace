@@ -17,6 +17,8 @@ from ..exceptions import HopeSyncError, SkipRecordError
 
 logging.basicConfig()
 
+logger = logging.getLogger(__name__)
+
 
 MESSAGES: Final[dict[str, str]] = {
     "RECORD_MISSING_REFERENCE_ID": "Skipping record due to missing 'id': {record}",
@@ -112,7 +114,7 @@ def safe_get(client: HopeClient, endpoint: EndpointConfig, stats: Stats) -> Gene
     except RemoteError as e:
         error = format_msg("REMOTE_API_FAILURE", path=endpoint.get("path"), error=str(e))
         add_error(stats, error)
-        logging.error(error)
+        logger.error(error)
         raise HopeSyncError(error) from e
 
 
@@ -130,7 +132,7 @@ def validated_reference_id(record: dict[str, Any]) -> str | None:
     """Return record['id'] if present; warn and return None otherwise."""
     reference_id_val = record.get("id")
     if not reference_id_val:
-        logging.warning(format_msg("RECORD_MISSING_REFERENCE_ID", record=record))
+        logger.warning(format_msg("RECORD_MISSING_REFERENCE_ID", record=record))
     return reference_id_val
 
 
@@ -159,7 +161,7 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
     client = client or HopeClient()
 
     with cache.lock(f"sync-{model_name}"):
-        logging.info(format_msg("SYNC_START", entity=model_name))
+        logger.info(format_msg("SYNC_START", entity=model_name))
         for record in safe_get(client, config["endpoint"], stats):
             if not (reference_id_val := validated_reference_id(record)):
                 continue
@@ -176,15 +178,15 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
                     post_process(instance, created)
                 stats["add" if created else "upd"] += 1
             except SkipRecordError as e:
-                logging.warning(format_msg("RECORD_SKIPPED", reference_id_val=reference_id_val, error=str(e)))
+                logger.warning(format_msg("RECORD_SKIPPED", reference_id_val=reference_id_val, error=str(e)))
             except (DatabaseError, KeyError, AttributeError) as e:
                 error = format_msg("RECORD_SYNC_FAILURE", reference_id_val=reference_id_val, error=str(e))
                 add_error(stats, error)
-                logging.error(error)
+                logger.error(error)
         if stats["errors"]:
             raise HopeSyncError(stats["errors"])
         SyncLog.objects.register_sync(model)
-        logging.info(format_msg("SYNC_COMPLETE", entity=model_name, result=stats, errors_count=0))
+        logger.info(format_msg("SYNC_COMPLETE", entity=model_name, result=stats, errors_count=0))
         return stats
 
 

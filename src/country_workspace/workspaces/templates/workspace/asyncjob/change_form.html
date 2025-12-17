@@ -5,7 +5,6 @@
     &rsaquo; <a href="{% add_preserved_filters wcl %}">Background Jobs</a>{% admin_url modeladmin %}
     &rsaquo; {{ original }}{% admin_url original %}
 {% endblock page-title %}
-
 {% block object-tools %}
     <div class="flex items-center">
         <div class="flex-none px-10 text-xl font-bold text-blue-700">
@@ -16,34 +15,51 @@
         </div>
     </div>
 {% endblock object-tools %}
-
 {% block after_field_sets %}
     <table class="min-w-full">
         <tr>
-            <th>Queue time</th>
-            <td>{{ original.datetime_queued }}</td>
+            <th>
+                Queue time
+            </th>
+            <td>
+                {{ original.datetime_queued }}
+            </td>
         </tr>
         <tr>
-            <th>Type</th>
-            <td>{{ original.type }}</td>
+            <th>
+                Type
+            </th>
+            <td>
+                {{ original.type }}
+            </td>
         </tr>
         <tr>
-            <th>Owner</th>
-            <td>{{ original.owner }}</td>
+            <th>
+                Owner
+            </th>
+            <td>
+                {{ original.owner }}
+            </td>
         </tr>
         <tr>
-            <th>File</th>
-            <td>{{ original.file }}</td>
+            <th>
+                File
+            </th>
+            <td>
+                {{ original.file }}
+            </td>
         </tr>
         {% if perms.app_name.change_model_name_lower_cased %}
             {% if original and original.task_info.error %}
                 <tr>
-                    <th>Error</th>
-                    <td>{{ original.task_info.error }}</td>
+                    <th>
+                        Error
+                    </th>
+                    <td>
+                        {{ original.task_info.error }}
+                    </td>
                 </tr>
             {% endif %}
         {% endif %}
     </table>
-
-
 {% endblock after_field_sets %}

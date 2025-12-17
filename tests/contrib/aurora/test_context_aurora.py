@@ -85,7 +85,7 @@ def test_sync_registrations(mocker: MockerFixture, delta_sync: bool, expect_erro
     _assert_params(delta_sync, config, REGISTRATION["modified_after"])
 
     if expect_error:
-        with pytest.raises(SkipRecordError, match="Project not found."):
+        with pytest.raises(SkipRecordError, match=r"Project not found."):
             config["prepare_defaults"](REGISTRATION["results"][0])
     else:
         expected_defaults = {
@@ -112,7 +112,7 @@ def test_prepare_defaults_registration_invalid_url(mocker: MockerFixture) -> Non
         "project": "not-a-valid-url",
     }
 
-    with pytest.raises(SkipRecordError, match="Invalid project URL format."):
+    with pytest.raises(SkipRecordError, match=r"Invalid project URL format."):
         config["prepare_defaults"](bad_rec)
 
 
