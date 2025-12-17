@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0033_update_mapping_importer_with_office"),
+        ("country_workspace", "0034_add_reprocess_batch_permission"),
     ]
 
     operations = [
