@@ -62,7 +62,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     @button(
         change_list=False,
         permission=can_reprocess_batch,
-        html_attrs={"title": "Reprocess all records in this batch"},
+        html_attrs={"title": "Re-validate all records in this batch (excludes records already pushed to HOPE)"},
     )
     def reprocess_batch(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: CountryBatch | None = self.get_object(request, pk)
@@ -86,7 +86,10 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             request,
             execute_reprocess,
             message=f"Are you sure you want to reprocess batch '{obj.name}'?",
-            description="This will re-validate all households and individuals in this batch.",
+            description=(
+                "This will re-validate all households and individuals in this batch. "
+                "Records already pushed to HOPE Core will be automatically excluded."
+            ),
             success_message="Batch reprocessing has been scheduled.",
             pk=pk,
             title="Reprocess Batch",

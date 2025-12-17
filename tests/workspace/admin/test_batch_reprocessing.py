@@ -365,3 +365,167 @@ class TestBatchReprocessingIntegration:
         # Verify the result
         assert result["validation_jobs_created"] > 0
         assert result["households"] > 0
+
+    def test_reprocess_batch_excludes_removed_households(
+        self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
+    ) -> None:
+        from testutils.factories import AsyncJobFactory, CountryHouseholdFactory
+
+        # Add another household to the batch
+        CountryHouseholdFactory(
+            batch=batch_with_households,
+            flex_fields={"size": 3},
+        )
+
+        total_households = batch_with_households.household_set.count()
+        assert total_households >= 2
+
+        # Mark half of the households as removed (pushed to HOPE)
+        households = list(batch_with_households.household_set.all())
+        for hh in households[::2]:  # Every other household
+            hh.removed = True
+            hh.save()
+
+        removed_count = batch_with_households.household_set.filter(removed=True).count()
+        not_removed_count = batch_with_households.household_set.filter(removed=False).count()
+
+        job = AsyncJobFactory(
+            program=batch_with_households.program,
+            batch=batch_with_households,
+            owner=user,
+            config={"batch_id": batch_with_households.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+            result = reprocess_batch(job)
+
+            # Only non-removed households should be processed
+            assert result["households"] == not_removed_count
+            assert result["skipped_households"] == removed_count
+            assert result["validation_jobs_created"] > 0
+
+            # Verify the queryset passed to create_validation_jobs excludes removed records
+            if mock_create.called:
+                call_args = mock_create.call_args_list[0]
+                queryset = call_args[1]["queryset"]
+                assert queryset.filter(removed=True).count() == 0
+
+    def test_reprocess_batch_excludes_removed_individuals(
+        self, batch_with_individuals: "CountryBatch", force_migrated_records, user: "User"
+    ) -> None:
+        from testutils.factories import AsyncJobFactory, CountryIndividualFactory
+
+        # Add more individuals to the batch
+        CountryIndividualFactory(
+            household=None,
+            batch=batch_with_individuals,
+            flex_fields={"full_name": "Jane Doe"},
+        )
+        CountryIndividualFactory(
+            household=None,
+            batch=batch_with_individuals,
+            flex_fields={"full_name": "Bob Smith"},
+        )
+
+        total_individuals = batch_with_individuals.individual_set.filter(household=None).count()
+        assert total_individuals >= 3
+
+        # Mark some individuals as removed (pushed to HOPE)
+        individuals = list(batch_with_individuals.individual_set.filter(household=None))
+        for ind in individuals[:2]:  # First two individuals
+            ind.removed = True
+            ind.save()
+
+        removed_count = batch_with_individuals.individual_set.filter(household=None, removed=True).count()
+        not_removed_count = batch_with_individuals.individual_set.filter(household=None, removed=False).count()
+
+        job = AsyncJobFactory(
+            program=batch_with_individuals.program,
+            batch=batch_with_individuals,
+            owner=user,
+            config={"batch_id": batch_with_individuals.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+            result = reprocess_batch(job)
+
+            # Only non-removed individuals should be processed
+            assert result["individuals"] == not_removed_count
+            assert result["skipped_individuals"] == removed_count
+            assert result["validation_jobs_created"] > 0
+
+            # Verify the queryset passed to create_validation_jobs excludes removed records
+            if mock_create.called:
+                call_args = mock_create.call_args_list[0]
+                queryset = call_args[1]["queryset"]
+                assert queryset.filter(removed=True).count() == 0
+
+    def test_reprocess_batch_all_removed(self, batch_with_households: "CountryBatch", user: "User") -> None:
+        from testutils.factories import AsyncJobFactory
+
+        # Mark all households as removed
+        batch_with_households.household_set.update(removed=True)
+
+        job = AsyncJobFactory(
+            program=batch_with_households.program,
+            batch=batch_with_households,
+            owner=user,
+            config={"batch_id": batch_with_households.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+            result = reprocess_batch(job)
+
+            # No households should be processed
+            assert result["households"] == 0
+            assert result["skipped_households"] > 0
+            assert result["validation_jobs_created"] == 0
+
+            # create_validation_jobs should not be called
+            mock_create.assert_not_called()
+
+    def test_reprocess_batch_mixed_removed_status(
+        self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
+    ) -> None:
+        from testutils.factories import AsyncJobFactory, CountryIndividualFactory
+
+        # Add standalone individuals
+        CountryIndividualFactory(
+            household=None,
+            batch=batch_with_households,
+            flex_fields={"full_name": "Standalone 1"},
+        )
+        CountryIndividualFactory(
+            household=None,
+            batch=batch_with_households,
+            flex_fields={"full_name": "Standalone 2"},
+        )
+
+        # Mark one household and one individual as removed
+        household = batch_with_households.household_set.first()
+        household.removed = True
+        household.save()
+
+        individual = batch_with_households.individual_set.filter(household=None).first()
+        individual.removed = True
+        individual.save()
+
+        job = AsyncJobFactory(
+            program=batch_with_households.program,
+            batch=batch_with_households,
+            owner=user,
+            config={"batch_id": batch_with_households.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            # Check that removed records are excluded
+            assert result["skipped_households"] == 1
+            assert result["skipped_individuals"] == 1
+            assert result["households"] >= 0
+            assert result["individuals"] >= 1
+
+            # Validation jobs should be created for non-removed records
+            if result["households"] > 0 or result["individuals"] > 0:
+                assert result["validation_jobs_created"] > 0
