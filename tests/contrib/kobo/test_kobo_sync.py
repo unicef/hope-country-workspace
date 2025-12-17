@@ -215,7 +215,9 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     preprocess_mock.return_value.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
 
     batch_mock.program.households.create.assert_called_once_with(
-        batch=batch_mock, flex_fields=preprocess_mock.return_value
+        batch=batch_mock,
+        flex_fields=preprocess_mock.return_value,
+        raw_data=preprocess_mock.return_value,
     )
 
 
