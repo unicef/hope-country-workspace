@@ -210,7 +210,14 @@ class TestBatchReprocessingPermissions:
 
         # With permission, should get 200
         with user_grant_permissions(user, "country_workspace.reprocess_batch", batch_with_households.program):
-            client.post(reverse("workspace:select_tenant"), data={"tenant": batch_with_households.country_office.pk})
+            client.post(
+                reverse("workspace:select_tenant"),
+                data={"tenant": batch_with_households.country_office.pk},
+            )
+            client.post(
+                reverse("workspace:select_program"),
+                data={"program": batch_with_households.program.pk},
+            )
             response = client.get(url)
             assert response.status_code == 200
 
@@ -248,7 +255,9 @@ class TestBatchReprocessingButton:
 
             # Confirm the action
             initial_job_count = AsyncJob.objects.count()
-            res = res.form.submit()
+            # Use the confirmation form (last form on the page)
+            form = res.forms[list(res.forms.keys())[-1]]
+            res = form.submit()
 
             # Should redirect after successful submission
             assert res.status_code == 302
@@ -307,7 +316,9 @@ class TestBatchReprocessingIntegration:
             assert res.status_code == 200
 
             # Submit the form
-            res = res.form.submit()
+            # Use the confirmation form (last form on the page)
+            form = res.forms[list(res.forms.keys())[-1]]
+            res = form.submit()
             assert res.status_code == 302
 
             # Verify job was created and executed

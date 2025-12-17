@@ -90,4 +90,5 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             success_message="Batch reprocessing has been scheduled.",
             pk=pk,
             title="Reprocess Batch",
+            template="workspace/admin_extra_buttons/confirm.html",
         )
