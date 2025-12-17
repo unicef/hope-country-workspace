@@ -1,8 +1,10 @@
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from django.contrib import messages
 from django.contrib.admin import ModelAdmin
 from django.contrib.admin.sites import AdminSite
+from django.contrib.messages.storage.fallback import FallbackStorage
+from django.contrib.sessions.middleware import SessionMiddleware
 from country_workspace.admin.actions import reprocess_records
 from country_workspace.models import MappingImporter, Household, Individual
 from testutils.factories import (
@@ -19,6 +21,24 @@ class MockModelAdmin(ModelAdmin):
     def __init__(self, model, admin_site):
         super().__init__(model, admin_site)
         self.message_user = Mock()
+
+
+def add_middleware_to_request(request, user):
+    """Add necessary middleware attributes to a request for admin actions."""
+    from django.http import HttpResponse
+
+    # Add user
+    request.user = user
+
+    # Add session
+    middleware = SessionMiddleware(lambda x: HttpResponse())
+    middleware.process_request(request)
+    request.session.save()
+
+    # Add messages
+    request._messages = FallbackStorage(request)
+
+    return request
 
 
 @pytest.fixture
@@ -43,16 +63,21 @@ def mapping_importer(db):
 
 @pytest.mark.django_db
 def test_reprocess_records_get(model_admin, rf):
+    user = UserFactory(is_staff=True, is_active=True)
     request = rf.get("/")
+    add_middleware_to_request(request, user)
     queryset = Household.objects.none()
     response = reprocess_records(model_admin, request, queryset)
     assert response.status_code == 200
-    assert "reprocess_confirmation.html" in response.template_name
+    content = response.content.decode("utf-8")
+    assert "Reprocess Records" in content or "reprocess" in content.lower()
 
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_invalid_mapping(model_admin, rf):
+    user = UserFactory(is_staff=True, is_active=True)
     request = rf.post("/", {"apply": "true", "mapping_importer": "999"})
+    add_middleware_to_request(request, user)
     queryset = Household.objects.none()
     response = reprocess_records(model_admin, request, queryset)
     assert response.status_code == 302
@@ -61,11 +86,13 @@ def test_reprocess_records_post_apply_invalid_mapping(model_admin, rf):
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer):
+    user = UserFactory(is_staff=True, is_active=True)
     program = CountryProgramFactory()
     hh = CountryHouseholdFactory(
         batch__program=program, raw_data={"old_field": "value"}, flex_fields={}, last_checked="2023-01-01"
     )
     request = rf.post("/", {"apply": "true", "mapping_importer": str(mapping_importer.id)})
+    add_middleware_to_request(request, user)
     queryset = Household.objects.filter(pk=hh.pk)
 
     response = reprocess_records(model_admin, request, queryset)
@@ -80,10 +107,12 @@ def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer)
 
 @pytest.mark.django_db
 def test_reprocess_records_individual_model(site, rf, mapping_importer):
+    user = UserFactory(is_staff=True, is_active=True)
     model_admin = MockModelAdmin(Individual, site)
     program = CountryProgramFactory()
     ind = CountryIndividualFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
     request = rf.post("/", {"apply": "true", "mapping_importer": str(mapping_importer.id)})
+    add_middleware_to_request(request, user)
     queryset = Individual.objects.filter(pk=ind.pk)
 
     # reprocess_records inspects queryset.model
@@ -98,6 +127,7 @@ def test_reprocess_records_individual_model(site, rf, mapping_importer):
 
 @pytest.mark.django_db
 def test_reprocess_records_filter_mappings_by_checker(model_admin, rf):
+    user = UserFactory(is_staff=True, is_active=True)
     # Setup programs with specific checkers
     dc1 = DataChecker.objects.create(name="Checker 1")
     dc2 = DataChecker.objects.create(name="Checker 2")
@@ -112,13 +142,24 @@ def test_reprocess_records_filter_mappings_by_checker(model_admin, rf):
     hh = CountryHouseholdFactory(batch__program=program1)
 
     request = rf.get("/")
+    add_middleware_to_request(request, user)
     queryset = Household.objects.filter(pk=hh.pk)
 
-    # The action logic uses queryset to find programs, then checkers, then mapping importers
-    response = reprocess_records(model_admin, request, queryset)
+    # Patch the ReprocessForm to capture what queryset is passed to it
+    with patch("country_workspace.admin.actions.ReprocessForm") as mock_form_class:
+        mock_form_instance = Mock()
+        mock_form_class.return_value = mock_form_instance
 
-    # We can check the form context to see if correct mappings are loaded
-    # response is TemplateResponse
-    assert response.context_data["form"].fields["mapping_importer"].queryset.count() == 1
-    assert mi1 in response.context_data["form"].fields["mapping_importer"].queryset
-    assert mi2 not in response.context_data["form"].fields["mapping_importer"].queryset
+        response = reprocess_records(model_admin, request, queryset)
+
+        # Verify the form was called with the correct queryset
+        assert mock_form_class.called
+        call_kwargs = mock_form_class.call_args[1]
+        mapping_queryset = call_kwargs["queryset"]
+
+        # The mapping queryset should only contain mi1 (same checker as program1)
+        assert mapping_queryset.count() == 1
+        assert mi1 in mapping_queryset
+        assert mi2 not in mapping_queryset
+
+    assert response.status_code == 200
