@@ -12,6 +12,7 @@ __all__ = ["CountryBatch", "CountryHousehold", "CountryIndividual", "CountryMapp
 class CountryBatch(Batch):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
         verbose_name = "Country Batch"
         verbose_name_plural = "Country Batches"
 
@@ -19,6 +20,7 @@ class CountryBatch(Batch):
 class CountryHousehold(Household):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
         verbose_name = "Country Household"
         verbose_name_plural = "Country Households"
 
@@ -34,11 +36,13 @@ class CountryHousehold(Household):
 class CountryIndividual(Individual):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
 
 
 class CountryProgram(Program):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
 
 
 class CountryChecker(DataChecker):
@@ -48,6 +52,7 @@ class CountryChecker(DataChecker):
 class CountryAsyncJob(AsyncJob):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
         verbose_name = "Background Job"
         verbose_name_plural = "Background Jobs"
 
@@ -55,6 +60,7 @@ class CountryAsyncJob(AsyncJob):
 class CountryRdp(Rdp):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
         verbose_name = "Country Registration Data Push"
         verbose_name_plural = "Country Registration Data Pushes"
 
@@ -62,5 +68,6 @@ class CountryRdp(Rdp):
 class CountryMappingImporter(MappingImporter):
     class Meta:
         proxy = True
+        app_label = "country_workspace"
         verbose_name = "Mapping"
         verbose_name_plural = "Mappings"

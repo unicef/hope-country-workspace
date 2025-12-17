@@ -221,7 +221,7 @@ class TestReprocessBatchTask:
             queryset = call_kwargs["queryset"]
 
             # Verify that members are prefetched
-            assert "members" in str(queryset.query)
+            assert "members" in queryset._prefetch_related_lookups
 
     def test_reprocess_batch_result_structure(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory

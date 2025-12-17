@@ -209,7 +209,7 @@ class TestBatchReprocessingPermissions:
         assert response.status_code == 403
 
         # With permission, should get 200
-        with user_grant_permissions(user, "country_workspace.reprocess_batch", batch_with_households):
+        with user_grant_permissions(user, "country_workspace.reprocess_batch", batch_with_households.program):
             client.post(reverse("workspace:select_tenant"), data={"tenant": batch_with_households.country_office.pk})
             response = client.get(url)
             assert response.status_code == 200
