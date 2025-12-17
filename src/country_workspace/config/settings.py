@@ -24,6 +24,7 @@ INSTALLED_APPS = (
     "django.contrib.sitemaps",
     "django.contrib.staticfiles",
     "django.contrib.postgres",
+    "unicef_security",
     "country_workspace.apps.HCWAdminConfig",
     # ddt
     "debug_toolbar",

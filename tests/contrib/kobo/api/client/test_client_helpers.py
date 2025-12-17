@@ -13,6 +13,7 @@ from country_workspace.contrib.kobo.api.client.helpers import (
     get_submission_list,
     handle_paginated_response,
     change_url,
+    get_asset_url,
     PROJECT_VIEW_ASSETS_PATH,
     ASSETS_PATH,
     SAFE_URL_CHARS,
@@ -76,6 +77,16 @@ def test_get_asset_list_url(mocker: MockerFixture, project_view_id: str | None, 
     get_asset_list_url(BASE_URL, project_view_id, country_code)
 
     change_url_mock.assert_called_once_with(BASE_URL, path=expected_path, query=expected_query, safe=SAFE_URL_CHARS)
+
+
+def test_get_asset_url(mocker: MockerFixture) -> None:
+    change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
+    asset_id = "asset-id"
+    expected_path = f"api/v2/assets/{asset_id}/"
+
+    get_asset_url(BASE_URL, asset_id)
+
+    change_url_mock.assert_called_once_with(BASE_URL, path=expected_path)
 
 
 def test_handle_paginated_response() -> None:

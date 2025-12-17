@@ -1,9 +1,9 @@
-from contextlib import suppress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from collections.abc import Iterable
+from enum import StrEnum
 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
+from django.db.models import Q
 from django.utils.translation import gettext as _
 from hope_flex_fields.models import DataChecker
 from strategy_field.fields import StrategyField
@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
     from .household import Household
     from .individual import Individual
+
+
+class BeneficiaryScope(StrEnum):
+    HOUSEHOLD = "household"
+    INDIVIDUAL = "individual"
 
 
 class Program(BaseModel):
@@ -95,6 +100,17 @@ class Program(BaseModel):
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
     serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True, blank=True)
+    # Internal metadata used by the workspace.
+    # Expected JSON structure (simplified):
+    # - key "default_fields": an object with two optional keys:
+    #   - "household":  mapping "<field_name>" -> <default_value>
+    #   - "individual": mapping "<field_name>" -> <default_value>
+    # - other keys may be added in the future.
+    system_fields = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_('Internal metadata (e.g. "default_fields" for household/individual defaults).'),
+    )
 
     def __str__(self) -> str:
         return self.name
@@ -116,26 +132,26 @@ class Program(BaseModel):
 
         return Individual.objects.filter(batch__program=self)
 
-    def get_checker_for(self, m: type[Validable] | Validable) -> DataChecker:
-        from country_workspace.models import Household, Individual
-        from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-
-        if isinstance(m, (Household | CountryHousehold)) or m in (Household, CountryHousehold):
-            return self.household_checker
-        if isinstance(m, (Individual | CountryIndividual)) or m in (Individual, CountryIndividual):
-            return self.individual_checker
-        raise ValueError(m)
-
-    def get_columns_for(self, model_cls: type[Validable]) -> list[str]:
+    @staticmethod
+    def _scope_for(m: type[Validable] | Validable) -> BeneficiaryScope:
+        """Return 'household' or 'individual' for a given model class or instance."""
         from country_workspace.models import Household, Individual
 
-        if issubclass(model_cls, Household):
-            raw = self.household_columns
-        elif issubclass(model_cls, Individual):
-            raw = self.individual_columns
-        else:
-            raise TypeError(f"Unsupported model {model_cls!r}")
+        cls = m if isinstance(m, type) else type(m)
+        if issubclass(cls, Household):
+            return BeneficiaryScope.HOUSEHOLD
+        if issubclass(cls, Individual):
+            return BeneficiaryScope.INDIVIDUAL
+        raise TypeError(f"Unsupported model {m!r}")
 
+    def get_checker_for(self, m: type[Validable] | Validable) -> DataChecker | None:
+        scope = self._scope_for(m)
+        return getattr(self, f"{scope.value}_checker")
+
+    def get_columns_for(self, m: type[Validable]) -> list[str]:
+        """Return list of column names for the given model class."""
+        scope = self._scope_for(m)
+        raw = getattr(self, f"{scope.value}_columns")
         return [c.strip() for c in raw.splitlines() if c.strip()]
 
     def serialize(self, data: list[dict]) -> Iterable:
@@ -144,9 +160,55 @@ class Program(BaseModel):
         return data
 
     def apply_mapping_importer(
-        self, m: type[Validable] | Validable, data: dict[str, str | int | bool]
+        self,
+        m: type[Validable] | Validable,
+        data: dict[str, str | int | bool],
+        mapping_id: int | None = None,
     ) -> dict[str, str | int | bool]:
-        # skip if mapping importer not found
-        with suppress(ObjectDoesNotExist):
-            self.get_checker_for(m).mappingimporter.apply(data)
+        """Apply mapping importer from the checker's mappingimporter, if any."""
+        from country_workspace.models import MappingImporter
+
+        mapping_importers = []
+        if mapping_id:
+            mapping_importer = MappingImporter.objects.filter(id=mapping_id).first()
+            if mapping_importer:
+                mapping_importers = [mapping_importer]
+
+        elif (checker := self.get_checker_for(m)) is not None:
+            mapping_importers = list(
+                checker.mapping_importers.filter(Q(office=self.country_office) | Q(office__isnull=True))
+            )
+
+        for mapping_importer in mapping_importers:
+            mapping_importer.apply(data)
+
+        return data
+
+    def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:
+        """Return defaults from system_fields['default_fields'][scope] for the given model."""
+        scope = self._scope_for(m).value
+        default_fields = (self.system_fields or {}).get("default_fields") or {}
+        raw = default_fields.get(scope) or {}
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    def save_default_fields_for(self, m: type[Validable] | Validable, defaults: dict[str, Any]) -> None:
+        """Replace system_fields['default_fields'][scope] with the given defaults and save."""
+        scope = self._scope_for(m).value
+
+        system_fields = dict(self.system_fields or {})
+        default_fields = dict(system_fields.get("default_fields") or {})
+
+        default_fields[scope] = defaults
+        system_fields["default_fields"] = default_fields
+
+        self.system_fields = system_fields
+        self.save(update_fields=["system_fields"])
+
+    def apply_default_fields(self, m: type[Validable] | Validable, data: dict[str, Any]) -> dict[str, Any]:
+        """Apply default fields for the given model to the provided data dict."""
+        if not (defaults := self.get_default_fields_for(m)):
+            return data
+        for field_name, default_value in defaults.items():
+            if field_name not in data or data[field_name] is None:
+                data[field_name] = default_value
         return data

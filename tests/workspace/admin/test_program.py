@@ -3,7 +3,8 @@ from unittest.mock import patch, MagicMock, Mock
 import pytest
 from django.contrib import messages
 from django.contrib.auth.models import User
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponseRedirect
+from django.http.request import QueryDict
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.kobo.forms import ImportKoboForm
@@ -38,6 +39,8 @@ def mock_program():
     program = MagicMock(spec=CountryProgram)
     program.country_office = MagicMock(spec=Office)
     program.country_office.kobo_country_code = "ABC"
+    program.household_checker = None
+    program.individual_checker = None
     return program
 
 
@@ -128,3 +131,61 @@ def test_import_kobo_valid_form(program_admin, mock_request, mock_program):
             program_admin.message_user.assert_called_once_with(mock_request, expected_message, level=messages.SUCCESS)
 
             assert result is None
+
+
+def test_set_defaults_get(program_admin, mock_request, mock_program, mocker: MockerFixture) -> None:
+    mock_request.method = "GET"
+    mock_program.get_default_fields_for.return_value = {"field1": "v1", "field2": "v2"}
+
+    form_class = mocker.MagicMock()
+    render = mocker.patch("country_workspace.workspaces.admin.program.render")
+
+    context = {
+        "original": mock_program,
+        "checker": "checker",
+        "defaults_scope_model": "Model",
+    }
+
+    response = program_admin._set_defaults(mock_request, form_class, context)
+
+    form_class.assert_called_once_with(checker="checker", initial={"field1": "v1", "field2": "v2"})
+    assert context["selected_fields"] == ["field1", "field2"]
+    render.assert_called_once_with(mock_request, "workspace/program/set_defaults.html", context)
+    assert response is render.return_value
+
+
+@pytest.mark.parametrize("is_valid", [True, False])
+def test_set_defaults_post(program_admin, mock_request, mock_program, mocker: MockerFixture, is_valid: bool) -> None:
+    mock_request.method = "POST"
+    data = QueryDict("", mutable=True)
+    data.setlist("fields", ["field1", "field3"])
+    mock_request.POST = data
+
+    context = {
+        "original": mock_program,
+        "checker": "checker",
+        "defaults_scope_model": "Model",
+    }
+
+    form = MagicMock()
+    form.is_valid.return_value = is_valid
+    form.cleaned_data = {"field1": "v1", "field2": "v2", "field3": "v3"}
+    form_class = mocker.MagicMock(return_value=form)
+
+    render = mocker.patch("country_workspace.workspaces.admin.program.render")
+    mocker.patch(
+        "country_workspace.workspaces.admin.program.reverse",
+        return_value="/workspaces/countryprogram/42/change/",
+    )
+    mock_program.pk = 42
+
+    response = program_admin._set_defaults(mock_request, form_class, context)
+
+    form_class.assert_called_once_with(mock_request.POST, checker="checker")
+
+    if is_valid:
+        mock_program.save_default_fields_for.assert_called_once_with("Model", {"field1": "v1", "field3": "v3"})
+        assert isinstance(response, HttpResponseRedirect)
+    else:
+        mock_program.save_default_fields_for.assert_not_called()
+        assert response is render.return_value

@@ -65,26 +65,43 @@ CONSTANCE_CONFIG = {
     "MAILJET_API_KEY": (MAILJET_API_KEY, "Mailjet API key", str),
     "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_input"),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
+    "KOBO_FIELDS_TO_IGNORE": (
+        "audit, collect_individual_data, deviceid, start, end, hh_geopoint, instanceid, number_alternate, "
+        "number_primary, number_repeat, org_name_enumerator, rootuuid, uuid",
+        "Comma separated Kobo system specific fields to ignore during data import",
+        str,
+    ),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {
-    "New User Options": ("NEW_USER_IS_STAFF", "NEW_USER_DEFAULT_GROUP"),
-    "Cache": ("CACHE_TIMEOUT", "CACHE_BY_VERSION"),
-    "Remote System Tokens": (
-        "AURORA_API_TOKEN",
-        "AURORA_API_URL",
-        "HOPE_API_TOKEN",
-        "HOPE_API_URL",
+    "Remote System Settings - Kobo": (
         "KOBO_API_TOKEN",
         "KOBO_MASTER_API_TOKEN",
         "KOBO_PROJECT_VIEW_ID",
         "KOBO_KF_URL",
         "KOBO_CACHE_TTL",
+        "KOBO_FIELDS_TO_IGNORE",
+    ),
+    "Remote System Settings - Aurora": (
+        "AURORA_API_TOKEN",
+        "AURORA_API_URL",
+    ),
+    "Remote System Settings - HOPE": (
+        "HOPE_API_TOKEN",
+        "HOPE_API_URL",
+    ),
+    "Remote System Settings - Mailjet": (
         "MAILJET_API_KEY",
         "MAILJET_SECRET_KEY",
     ),
-    "Data consistency": ("CONCURRENCY_GUARD",),
-    "System": ("CHUNK_SIZE_FOR_VALIDATION_TASK",),
+    "System Settings": (
+        "CACHE_TIMEOUT",
+        "CACHE_BY_VERSION",
+        "CHUNK_SIZE_FOR_VALIDATION_TASK",
+        "NEW_USER_IS_STAFF",
+        "NEW_USER_DEFAULT_GROUP",
+        "CONCURRENCY_GUARD",
+    ),
 }
 
 # Mapping of config keys to masked default display values in the Constance admin UI.

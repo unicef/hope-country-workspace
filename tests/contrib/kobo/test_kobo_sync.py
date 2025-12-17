@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from constance.test.unittest import override_config
@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 from typing import TYPE_CHECKING
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
+    AlienFieldsError,
     Config,
     ImportResult,
     create_household,
@@ -23,10 +24,20 @@ from country_workspace.contrib.kobo.sync import (
     HOUSEHOLD_FIELDS_TO_UPPERCASE,
     set_roles_and_relationships,
     get_id_generator,
+    get_allowed_fields,
+    get_alien_fields,
+    check_for_alien_fields,
 )
 from country_workspace.models import Program
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
-from testutils.factories import BatchFactory, SyncLogFactory
+from testutils.factories import (
+    BatchFactory,
+    DataCheckerFactory,
+    FieldsetFactory,
+    FlexFieldFactory,
+    SyncLogFactory,
+)
+from testutils.factories.smart_fields import DataCheckerFieldsetFactory
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.data.submission import Submission
@@ -47,6 +58,7 @@ def config() -> Config:
         "batch_name": BATCH_NAME,
         "project_id": PROJECT_ID,
         "individual_records_field": INDIVIDUAL_RECORDS_FIELD,
+        "validate_after_import": True,
         "fail_if_alien": False,
     }
 
@@ -114,6 +126,11 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+
+    mapping_importer_partial = Mock(name="mapping_importer_partial")
+    default_fields_partial = Mock(name="default_fields_partial")
+    partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
+
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
             (
@@ -133,11 +150,19 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
     assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
 
-    partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, individual_class_mock)
+    partial_mock.assert_has_calls(
+        [
+            call(batch_mock.program.apply_mapping_importer, individual_class_mock, mapping_id=None),
+            call(batch_mock.program.apply_default_fields, individual_class_mock),
+        ]
+    )
+    assert partial_mock.call_count == 2
+
     preprocess_mock.assert_called_once_with(
         individual_data,
         INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-        partial_mock.return_value,
+        mapping_importer_partial,
+        default_fields_partial,
     )
 
     get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
@@ -158,6 +183,10 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
     id_generator_mock = mocker.Mock(name="id_generator")
 
+    mapping_importer_partial = Mock(name="mapping_importer_partial")
+    default_fields_partial = Mock(name="default_fields_partial")
+    partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
+
     household = create_household(
         batch_mock := Mock(name="batch"),
         submission_mock := Mock(name="submission"),
@@ -168,17 +197,27 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
 
-    partial_mock.assert_called_once_with(batch_mock.program.apply_mapping_importer, household_class_mock)
+    partial_mock.assert_has_calls(
+        [
+            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None),
+            call(batch_mock.program.apply_default_fields, household_class_mock),
+        ]
+    )
+    assert partial_mock.call_count == 2
+
     preprocess_mock.assert_called_once_with(
         extract_household_data_mock.return_value,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial_mock.return_value,
+        mapping_importer_partial,
+        default_fields_partial,
     )
     id_generator_mock.assert_called_once()
     preprocess_mock.return_value.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
 
     batch_mock.program.households.create.assert_called_once_with(
-        batch=batch_mock, flex_fields=preprocess_mock.return_value
+        batch=batch_mock,
+        flex_fields=preprocess_mock.return_value,
+        raw_data=preprocess_mock.return_value,
     )
 
 
@@ -204,9 +243,9 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     asset_mock = Mock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock()
+    submission_1 = Mock(spec=dict)
     submission_1.id = 101
-    submission_2 = Mock()
+    submission_2 = Mock(spec=dict)
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
 
@@ -254,9 +293,9 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
 
     asset_mock = Mock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock()
+    submission_1 = Mock(spec=dict)
     submission_1.id = 101
-    submission_2 = Mock()
+    submission_2 = Mock(spec=dict)
     submission_2.id = 102
     asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
@@ -307,7 +346,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
-    make_client_mock.return_value.assets = [asset_mock]
+    make_client_mock.return_value.get_asset.return_value = asset_mock
     import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
     import_asset_mock.return_value = ImportResult(
         households=(household_counter := 1), individuals=(individual_counter := 2)
@@ -347,12 +386,21 @@ def test_preprocess(mocker: MockerFixture) -> None:
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
     compose_mock = mocker.patch("country_workspace.contrib.kobo.sync.compose")
     mapping_importer = Mock(name="mapping_importer")
+    default_fields_applier = Mock(name="default_fields_applier")
     individual = Mock()
     fields_to_uppercase = ("first", "second")
 
-    assert preprocess(individual, fields_to_uppercase, mapping_importer) == compose_mock.return_value.return_value
+    assert (
+        preprocess(individual, fields_to_uppercase, mapping_importer, default_fields_applier)
+        == compose_mock.return_value.return_value
+    )
     partial_mock.assert_called_once_with(clean_field_names_mock, fields_to_uppercase=fields_to_uppercase)
-    compose_mock.assert_called_once_with(normalize_json_mock, partial_mock.return_value, mapping_importer)
+    compose_mock.assert_called_once_with(
+        normalize_json_mock,
+        partial_mock.return_value,
+        mapping_importer,
+        default_fields_applier,
+    )
     compose_mock.return_value.assert_called_once_with(individual)
 
 
@@ -379,3 +427,189 @@ def test_set_roles_and_relationships(
 def test_get_id_generator() -> None:
     id_generator = get_id_generator()
     assert [id_generator() for _ in range(5)] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.django_db
+def test_get_allowed_fields() -> None:
+    checker = DataCheckerFactory()
+
+    def add_field(prefix: str, field_name: str) -> None:
+        fieldset = FieldsetFactory()
+        FlexFieldFactory(fieldset=fieldset, name=field_name)
+        DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix=prefix)
+
+    add_field("", "field1")
+    add_field("fs1_", "field2")
+    add_field("fs2_", "field3")
+
+    allowed = get_allowed_fields(checker)
+
+    assert allowed == {"field1", "fs1_field2", "fs2_field3"}
+
+
+def test_get_allowed_fields_no_checker() -> None:
+    allowed = get_allowed_fields(None)
+    assert allowed == set()
+
+
+def test_get_alien_fields() -> None:
+    data = {"field1": "value1", "field2": "value2", "alien1": "value3"}
+    allowed = {"field1", "field2", "field3"}
+
+    alien = get_alien_fields(data, allowed)
+
+    assert alien == {"alien1"}
+
+
+def test_get_alien_fields_respects_constance_ignore() -> None:
+    data = {"audit": "value1", "uuid": "value2", "field2": "value3"}
+    allowed = set()
+
+    with override_config(KOBO_FIELDS_TO_IGNORE="audit, uuid"):
+        alien = get_alien_fields(data, allowed)
+
+    assert alien == {"field2"}
+
+
+def test_get_alien_fields_none_found() -> None:
+    data = {"field1": "value1", "field2": "value2"}
+    allowed = {"field1", "field2", "field3"}
+
+    alien = get_alien_fields(data, allowed)
+
+    assert alien == set()
+
+
+def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config) -> None:
+    from hope_flex_fields.models import DataChecker
+
+    batch_mock = Mock()
+    batch_mock.program.household_checker = Mock(spec=DataChecker)
+    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+
+    submission_mock = Mock()
+    submission_mock.get.return_value = [{"individual_field": "value"}]
+
+    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
+    get_allowed_fields_mock.return_value = {"household_field", "individual_field"}
+
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
+    preprocess_mock.return_value = {"household_field": "value"}
+
+    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    extract_household_data_mock.return_value = {"household_field": "value"}
+
+    # Should not raise
+    check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+
+
+def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, config: Config) -> None:
+    from hope_flex_fields.models import DataChecker
+
+    batch_mock = Mock()
+    batch_mock.program.household_checker = Mock(spec=DataChecker)
+    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+
+    submission_mock = Mock()
+    submission_mock.get.return_value = []
+
+    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    extract_household_data_mock.return_value = {"known_field": "value", "alien_field": "value"}
+
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
+    preprocess_mock.return_value = {"known_field": "value", "alien_field": "value"}
+
+    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
+    get_allowed_fields_mock.return_value = {"known_field"}
+
+    with pytest.raises(AlienFieldsError) as exc_info:
+        check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+
+    assert exc_info.value.household_alien_fields == {"alien_field"}
+    assert exc_info.value.individual_alien_fields == set()
+
+
+def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, config: Config) -> None:
+    from hope_flex_fields.models import DataChecker
+
+    batch_mock = Mock()
+    batch_mock.program.household_checker = Mock(spec=DataChecker)
+    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+
+    submission_mock = Mock()
+    submission_mock.get.return_value = [{"known_field": "value", "alien_individual_field": "value"}]
+
+    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    extract_household_data_mock.return_value = {"household_field": "value"}
+
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
+    # First call for household, second for individual
+    preprocess_mock.side_effect = [
+        {"household_field": "value"},
+        {"known_field": "value", "alien_individual_field": "value"},
+    ]
+
+    def get_allowed_fields_side_effect(checker):
+        if checker == batch_mock.program.household_checker:
+            return {"household_field"}
+        return {"known_field"}
+
+    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
+    get_allowed_fields_mock.side_effect = get_allowed_fields_side_effect
+
+    with pytest.raises(AlienFieldsError) as exc_info:
+        check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+
+    assert exc_info.value.household_alien_fields == set()
+    assert exc_info.value.individual_alien_fields == {"alien_individual_field"}
+
+
+@pytest.mark.django_db
+def test_import_asset_with_fail_if_alien_enabled(mocker: MockerFixture, config: Config) -> None:
+    config["fail_if_alien"] = True
+
+    batch = BatchFactory()
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+
+    submission_mock = Mock()
+    submission_mock.id = 101
+    asset_mock.submissions = Mock(return_value=iter([submission_mock]))
+
+    check_for_alien_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.check_for_alien_fields")
+    check_for_alien_fields_mock.side_effect = AlienFieldsError({"alien_hh_field"}, {"alien_ind_field"})
+
+    id_generator_mock = Mock()
+
+    with pytest.raises(ImportError) as exc_info:
+        import_asset(batch, asset_mock, config, id_generator_mock)
+
+    assert "alien_hh_field" in str(exc_info.value) or "AlienFieldsError" in str(exc_info.value)
+    check_for_alien_fields_mock.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_import_asset_with_fail_if_alien_disabled(mocker: MockerFixture, config: Config) -> None:
+    config["fail_if_alien"] = False
+
+    batch = BatchFactory()
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+
+    submission_mock = Mock()
+    submission_mock.id = 101
+    asset_mock.submissions = Mock(return_value=iter([submission_mock]))
+
+    check_for_alien_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.check_for_alien_fields")
+    mocker.patch("country_workspace.contrib.kobo.sync.create_household")
+    create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
+    create_individuals_mock.return_value = []
+    mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+
+    id_generator_mock = Mock()
+
+    result = import_asset(batch, asset_mock, config, id_generator_mock)
+
+    # check_for_alien_fields should not be called when validate_mode is NONE
+    check_for_alien_fields_mock.assert_not_called()
+    assert result["households"] == 1

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
-from admin_extra_buttons.api import button
+from admin_extra_buttons.api import button, choice, view
+from admin_extra_buttons.buttons import ChoiceButton
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -19,8 +20,10 @@ from country_workspace.contrib.aurora.import_processing import (
 )
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
+from country_workspace.models import Household, Individual
+from country_workspace.models.base import Validable
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, ImportFileForm
+from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm
 from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -116,13 +119,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             css={},
         )
 
-    def get_queryset(self, request: HttpResponse) -> QuerySet[CountryProgram]:
+    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryProgram]:
         return CountryProgram.objects.filter(country_office=state.tenant, enabled=True)
 
-    def has_add_permission(self, request: HttpResponse) -> bool:
+    def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_delete_permission(self, request: HttpResponse, obj: CountryProgram | None = None) -> bool:
+    def has_delete_permission(self, request: HttpRequest, obj: CountryProgram | None = None) -> bool:
         return False
 
     def get_fieldsets(
@@ -194,7 +197,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         }
         return super().change_view(request, object_id, form_url, extra_context)
 
-    def changelist_view(self, request: HttpRequest, extra_context: dict[str, None] | None = None) -> HttpResponse:
+    def changelist_view(self, request: HttpRequest, extra_context: dict[str, Any] | None = None) -> HttpResponse:
         url = reverse("workspace:workspaces_countryprogram_change", args=[state.program.pk])
         return HttpResponseRedirect(url)
 
@@ -210,24 +213,37 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             group_label = obj.beneficiary_group.group_label or _("Household")
             member_label = obj.beneficiary_group.member_label or _("Individual")
             dynamic_labels = {
-                "individual_columns": f"{member_label} columns",
+                "individual_columns": f"{member_label}",
             }
             if obj.beneficiary_group.master_detail:
-                dynamic_labels["household_columns"] = f"{group_label} columns"
+                dynamic_labels["household_columns"] = f"{group_label}"
             extra_context = {
                 **extra_context,
                 "dynamic_field_labels": dynamic_labels,
                 "btnlabels": {
-                    "individual_columns": f"{member_label} Columns",
-                    "household_columns": f"{group_label} Columns",
+                    "individual_columns": f"{member_label}",
+                    "household_columns": f"{group_label}",
                 },
             }
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
+    @staticmethod
+    def _can_configure(
+        button: ChoiceButton,
+        model: type[Validable],
+        require_master_detail: bool = False,
+    ) -> bool:
+        if not (program := button.context.get("original")):
+            return False
+        bg = getattr(program, "beneficiary_group", None)
+        if not bg or (require_master_detail and not bg.master_detail):
+            return False
+        return program.get_checker_for(model) is not None
+
     def _configure_columns(
         self,
         request: HttpRequest,
-        form_class: "type[SelectColumnsForm|SelectIndividualColumnsForm]",
+        form_class: type[SelectColumnsForm] | type[SelectIndividualColumnsForm],
         context: dict[str, Any],
     ) -> "HttpResponse":
         program: "CountryProgram" = context["original"]
@@ -252,29 +268,125 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         return render(request, "workspace/program/configure_columns.html", context)
 
-    @button(
+    def _set_defaults(
+        self,
+        request: HttpRequest,
+        form_class: type[MassDefaultsForm],
+        context: dict[str, Any],
+    ) -> HttpResponse:
+        program: CountryProgram = context["original"]
+        checker: "DataChecker" = context["checker"]
+        model_cls = context["defaults_scope_model"]
+        initial_defaults: dict[str, Any] = program.get_default_fields_for(model_cls)
+
+        if request.method == "POST":
+            selected_fields = request.POST.getlist("fields")
+            form = form_class(request.POST, checker=checker)
+
+            if form.is_valid():
+                new_defaults = {name: form.cleaned_data[name] for name in selected_fields if name in form.cleaned_data}
+
+                program.save_default_fields_for(model_cls, new_defaults)
+
+                self.message_user(
+                    request,
+                    _("Default values have been updated."),
+                    level=messages.SUCCESS,
+                )
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+        else:
+            selected_fields = list(initial_defaults.keys())
+            form = form_class(checker=checker, initial=initial_defaults)
+
+        context["form"] = form
+        context["selected_fields"] = selected_fields
+        return render(request, "workspace/program/set_defaults.html", context)
+
+    @view(
+        label=_("Configure Columns"),
         permission=can_change_country_program,
-        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
-        visible=lambda btn: btn.context["original"].beneficiary_group.master_detail,
-        enabled=lambda btn: btn.context["original"].beneficiary_group.master_detail,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
     )
-    def household_columns(self, request: HttpResponse, pk: str) -> "HttpResponse | HttpResponseRedirect":
-        context = self.get_common_context(request, pk, title="Configure default Household columns")
-        program: "CountryProgram" = context["original"]
-        context["checker"]: "DataChecker" = program.household_checker
+    def household_columns(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure highlighted/group columns via choice."""
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure default Household columns"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
         context["storage_field"] = "household_columns"
         return self._configure_columns(request, SelectColumnsForm, context)
 
-    @button(
+    @view(
+        label=_("Set Defaults"),
         permission=can_change_country_program,
-        html_attrs={"title": "Allow to select columns to be highlighted in the list view."},
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
     )
-    def individual_columns(self, request: HttpRequest, pk: str) -> "HttpResponse | HttpResponseRedirect":
-        context = self.get_common_context(request, pk, title="Configure default Individual columns")
-        program: "CountryProgram" = context["original"]
-        context["checker"]: "DataChecker" = program.individual_checker
+    def household_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure default values for group records via choice."""
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["defaults_scope_model"] = Household
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    @choice(
+        label=_("Household Columns"),
+        change_form=True,
+        change_list=False,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_group(self, button: ChoiceButton) -> None:
+        """Group-level choice for group_label: Columns + Defaults."""
+        button.choices = [
+            self.household_columns,
+            self.household_defaults,
+        ]
+
+    @view(
+        label=_("Configure Columns"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_columns(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure highlighted/member columns via choice."""
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure default Individual columns"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
         context["storage_field"] = "individual_columns"
         return self._configure_columns(request, SelectIndividualColumnsForm, context)
+
+    @view(
+        label=_("Set Defaults"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_defaults(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Workspace wrapper: configure default values for member records via choice."""
+        context = self.get_common_context(request, pk)
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["defaults_scope_model"] = Individual
+        return self._set_defaults(request, MassDefaultsForm, context)
+
+    @choice(
+        label=_("Individual Columns"),
+        change_form=True,
+        change_list=False,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_group(self, button: ChoiceButton) -> None:
+        """Group-level choice for member_label: Columns + Defaults."""
+        button.choices = [
+            self.individual_columns,
+            self.individual_defaults,
+        ]
 
     @button(
         label=_("Update Records"),
@@ -318,38 +430,52 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context["selected_program"] = program = context["original"]
         context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
 
+        form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program)
+        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
+        form_kobo = ImportKoboForm(
+            prefix="kobo", kobo_country_code=program.country_office.kobo_country_code, program=program
+        )
+
         if request.method == "POST":
             match request.POST.get("_selected_tab"):
                 case "rdi":
                     if not (form_rdi := self.import_rdi(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
                 case "aurora":
                     if not (form_aurora := self.import_aurora(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
                 case "kobo":
                     if not (form_kobo := self.import_kobo(request, program)):
-                        return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-        else:
-            form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group)
-            form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-            form_kobo = ImportKoboForm(prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
+                        return HttpResponseRedirect(
+                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+                        )
 
-            context["form_rdi"] = form_rdi
-            context["form_aurora"] = form_aurora
-            context["form_kobo"] = form_kobo
+        context["form_rdi"] = form_rdi
+        context["form_aurora"] = form_aurora
+        context["form_kobo"] = form_kobo
 
         return render(request, "workspace/program/import.html", context)
 
     def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
-        form = ImportFileForm(request.POST, request.FILES, prefix="rdi", beneficiary_group=program.beneficiary_group)
+        form = ImportFileForm(
+            request.POST,
+            request.FILES,
+            prefix="rdi",
+            beneficiary_group=program.beneficiary_group,
+            program=program,
+        )
         if form.is_valid():
             config: RDIConfig = {
                 "master_detail": (
                     master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
                 ),
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
+                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
+                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
                 **(
                     {
@@ -363,6 +489,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 ),
                 "first_line": form.cleaned_data["first_line"],
                 "send_to": request.user.email,
+                "household_mapping_id": household_mapping.id
+                if (household_mapping := form.cleaned_data.get("household_mapping"))
+                else None,
+                "individual_mapping_id": individual_mapping.id
+                if (individual_mapping := form.cleaned_data.get("individual_mapping"))
+                else None,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",
@@ -387,6 +519,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
+                "household_mapping_id": form.cleaned_data.get("household_mapping").id
+                if form.cleaned_data.get("household_mapping")
+                else None,
+                "individual_mapping_id": form.cleaned_data.get("individual_mapping").id
+                if form.cleaned_data.get("individual_mapping")
+                else None,
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",
@@ -403,14 +541,27 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return form
 
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
-        form = ImportKoboForm(request.POST, prefix="kobo", kobo_country_code=program.country_office.kobo_country_code)
+        form = ImportKoboForm(
+            request.POST,
+            prefix="kobo",
+            kobo_country_code=program.country_office.kobo_country_code,
+            program=program,
+        )
         if form.is_valid():
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
+                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
+                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
+                "household_mapping_id": (
+                    household_mapping.id if (household_mapping := form.cleaned_data.get("household_mapping")) else None
+                ),
+                "individual_mapping_id": (
+                    individual_mapping.id
+                    if (individual_mapping := form.cleaned_data.get("individual_mapping"))
+                    else None
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),

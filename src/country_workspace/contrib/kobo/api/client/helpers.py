@@ -16,6 +16,7 @@ from country_workspace.contrib.kobo.api.raw import (
 
 API_ROOT: Final[str] = "api/v2"
 ASSETS_PATH: Final[str] = f"{API_ROOT}/assets.json"
+ASSET_PATH: Final[str] = f"{API_ROOT}/assets/{{asset_id}}/"
 PROJECT_VIEW_ASSETS_PATH: Final[str] = f"{API_ROOT}/project-views/{{project_view_id}}/assets/"  # last / is important
 COUNTRY_CODE_SELECTOR: Final[str] = "settings__country_codes__contains"
 QUERY_PARAMETER_NAME: Final[str] = "q"
@@ -46,6 +47,11 @@ def get_asset_list_url(base_url: str, project_view_id: str | None = None, countr
         query[QUERY_PARAMETER_NAME] = f"{COUNTRY_CODE_SELECTOR}:{country_code}"
 
     return change_url(base_url, path=path, query=query, safe=SAFE_URL_CHARS)
+
+
+def get_asset_url(base_url: str, asset_id: str) -> str:
+    path = ASSET_PATH.format(asset_id=asset_id)
+    return change_url(base_url, path=path)
 
 
 def handle_paginated_response[T, U](

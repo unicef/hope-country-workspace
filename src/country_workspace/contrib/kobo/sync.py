@@ -1,13 +1,16 @@
 import re
 from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Any, Final, TypedDict, cast
+from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
 from requests import Session
 from requests.adapters import HTTPAdapter
 
 from django.contrib.contenttypes.models import ContentType
+
+from country_workspace.contrib.kobo.exceptions import AlienFieldsError
+
 
 from country_workspace.contrib.kobo.api.client.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
@@ -21,10 +24,15 @@ from country_workspace.utils.functional import compose
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
+if TYPE_CHECKING:
+    from hope_flex_fields.models import DataChecker
+
 
 class Config(BatchNameConfig, ValidateModeConfig):
     project_id: str
     individual_records_field: str
+    household_mapping_id: NotRequired[int | None]
+    individual_mapping_id: NotRequired[int | None]
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -71,9 +79,14 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
 type Raw = dict[str, Any]
 
 
-def preprocess(raw: Raw, fields_to_uppercase: tuple[str, ...], mapping_importer: Callable[[Raw], Raw]) -> Raw:
+def preprocess(
+    raw: Raw,
+    fields_to_uppercase: tuple[str, ...],
+    mapping_importer: Callable[[Raw], Raw],
+    default_fields_applier: Callable[[Raw], Raw],
+) -> Raw:
     clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
-    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer)
+    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)
     return processor(raw)
 
 
@@ -83,11 +96,13 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
 
 def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> list[Individual]:
     individuals = []
+    individual_mapping_id = config.get("individual_mapping_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual_fields = preprocess(
             raw_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            partial(batch.program.apply_mapping_importer, Individual),
+            partial(batch.program.apply_mapping_importer, Individual, mapping_id=individual_mapping_id),
+            partial(batch.program.apply_default_fields, Individual),
         )
         fullname = get_fullname_key(individual_fields)
         individuals.append(
@@ -106,11 +121,13 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 def create_household(
     batch: Batch, submission: Submission, config: Config, id_generator: Callable[[], int]
 ) -> Household:
+    household_mapping_id = config.get("household_mapping_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial(batch.program.apply_mapping_importer, Household),
+        partial(batch.program.apply_mapping_importer, Household, mapping_id=household_mapping_id),
+        partial(batch.program.apply_default_fields, Household),
     )
     household_fields["household_id"] = id_generator()
     return cast(
@@ -118,6 +135,7 @@ def create_household(
         batch.program.households.create(
             batch=batch,
             flex_fields=household_fields,
+            raw_data=household_fields,
         ),
     )
 
@@ -152,8 +170,66 @@ def set_roles_and_relationships(household: Household, individuals: list[Individu
     household.save(update_fields=["flex_fields"])
 
 
+def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
+    """Get set of allowed field names from a DataChecker."""
+    if not checker:
+        return set()
+    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}
+
+
+def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
+    """Return fields in data that are not in allowed_fields."""
+    data_fields = set(data.keys())
+    kobo_specific_fields = {
+        field.strip() for field in constance_config.KOBO_FIELDS_TO_IGNORE.split(",") if field.strip()
+    }
+    extras = extras or set()
+    return data_fields - kobo_specific_fields - set(extras) - allowed_fields
+
+
+def check_for_alien_fields(
+    batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
+) -> None:
+    """Check first submission for alien fields and raise if found."""
+    default_fields_applier = lambda x: x
+    raw_household_fields = extract_household_data(submission, config["individual_records_field"])
+    household_fields = preprocess(
+        raw_household_fields,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        partial(mapping_importer, Household),
+        default_fields_applier,
+    )
+
+    household_allowed_fields = get_allowed_fields(batch.program.household_checker)
+    household_alien = get_alien_fields(
+        data=household_fields,
+        allowed_fields=household_allowed_fields,
+        extras={config["individual_records_field"]},
+    )
+
+    individual_alien: set[str] = set()
+    if individuals_data := submission.get(config["individual_records_field"]):
+        first_individual = individuals_data[0]
+        individual_fields = preprocess(
+            first_individual,
+            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            partial(mapping_importer, Individual),
+            default_fields_applier,
+        )
+        individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
+        individual_alien = get_alien_fields(
+            data=individual_fields,
+            allowed_fields=individual_allowed_fields,
+            extras={config["individual_records_field"]},
+        )
+
+    if household_alien or individual_alien:
+        raise AlienFieldsError(household_alien, individual_alien)
+
+
 def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
     from django.db import transaction
+    from itertools import chain
 
     household_counter = 0
     individual_counter = 0
@@ -166,8 +242,18 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     last_successful_id = last_id
     current_submission = None
 
+    submissions_iterator = asset.submissions(min_id=last_id)
+
     try:
-        for submission in asset.submissions(min_id=last_id):
+        if config.get("fail_if_alien"):
+            try:
+                first_submission = next(submissions_iterator)
+            except StopIteration:
+                return ImportResult(households=0, individuals=0)
+            check_for_alien_fields(batch, first_submission, config, batch.program.apply_mapping_importer)
+            submissions_iterator = chain([first_submission], submissions_iterator)
+
+        for submission in submissions_iterator:
             current_submission = submission
 
             with transaction.atomic():
@@ -230,18 +316,17 @@ def import_data(job: AsyncJob) -> ImportResult:
     household_counter = 0
     individual_counter = 0
 
-    for asset in client.assets:
-        # TODO @Misuk: fetch specific asset
-        if config["project_id"] == asset.uid:
-            import_result = import_asset(batch, asset, config, id_generator)
-            household_counter += import_result["households"]
-            individual_counter += import_result["individuals"]
+    asset = client.get_asset(config["project_id"])
+    import_result = import_asset(batch, asset, config, id_generator)
+    household_counter += import_result["households"]
+    individual_counter += import_result["individuals"]
 
-    create_validation_jobs(
-        description=f"Validate records for batch {batch.pk}",
-        owner=job.owner,
-        program=job.program,
-        queryset=batch.household_set.all().prefetch_related("members"),
-    )
+    if config.get("validate_after_import"):
+        create_validation_jobs(
+            description=f"Validate records for batch {batch.pk}",
+            owner=job.owner,
+            program=job.program,
+            queryset=batch.household_set.all().prefetch_related("members"),
+        )
 
     return ImportResult(households=household_counter, individuals=individual_counter)

@@ -2,7 +2,6 @@ from typing import Any, Callable
 
 from django.contrib import messages
 from django.contrib.admin import ModelAdmin
-from django.contrib.admin.templatetags.admin_urls import admin_urlname
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -46,6 +45,8 @@ def confirm_action(  # noqa: PLR0913
                 modeladmin.message_user(request, error_message or str(e), messages.ERROR)
         if ret:
             return ret
-        return HttpResponseRedirect(reverse(admin_urlname(opts, "changelist")))
+        namespace = modeladmin.admin_site.name
+        url_name = f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"
+        return HttpResponseRedirect(reverse(url_name))
 
     return TemplateResponse(request, template, context)

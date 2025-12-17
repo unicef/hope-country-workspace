@@ -14,6 +14,8 @@ class ImportAuroraForm(BaseImportForm):
     )
 
     def __init__(self, *args: Any, program: Program | None = None, **kwargs: Any) -> None:
+        if program:
+            kwargs["program"] = program
         super().__init__(*args, **kwargs)
         if program:
             self.fields["registration"].queryset = (

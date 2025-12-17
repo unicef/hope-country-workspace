@@ -22,6 +22,7 @@ class Batch(BaseModel):
         unique_together = (("import_date", "name"),)
         verbose_name = _("Batch")
         verbose_name_plural = _("Batches")
+        permissions = (("reprocess_batch", "Can reprocess batch"),)
 
     def __str__(self) -> str:
         return self.name or f"Batch self.pk ({self.country_office})"
