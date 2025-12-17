@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.urls import reverse
 
 from ..models import Individual
+from .actions import reprocess_records
 from .base import BaseModelAdmin
 from .filters import IsValidFilter
 
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 @admin.register(Individual)
 class IndividualAdmin(BaseModelAdmin):
+    actions = [reprocess_records]
     list_display = ("name", "household", "country_office", "program", "batch", "removed")
     search_fields = ("name",)
     list_filter = (
