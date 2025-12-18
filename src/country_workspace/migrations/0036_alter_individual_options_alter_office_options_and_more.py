@@ -2,6 +2,15 @@
 
 import django.db.models.deletion
 from django.db import migrations, models
+from django.db.migrations.state import StateApps
+from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+
+
+def fill_office(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor) -> None:
+    MappingImporter = apps.get_model("country_workspace", "MappingImporter")
+    Office = apps.get_model("country_workspace", "Office")
+    default_office = Office.objects.first()
+    MappingImporter.objects.filter(office__isnull=True).update(office=default_office)
 
 
 class Migration(migrations.Migration):
@@ -18,6 +27,7 @@ class Migration(migrations.Migration):
             name="office",
             options={"ordering": ["name"]},
         ),
+        migrations.RunPython(fill_office, migrations.RunPython.noop),
         migrations.AlterField(
             model_name="mappingimporter",
             name="office",
