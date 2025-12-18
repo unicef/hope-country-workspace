@@ -1,19 +1,30 @@
 {% load i18n static %}
-
 <table class="djdt-max-height-100">
     <thead>
         <tr>
-            <th>{% translate "Url" %}</th>
-            <th>{% translate "Params" %}</th>
-            <th>{% translate "Timing" %}</th>
+            <th>
+                {% translate "Url" %}
+            </th>
+            <th>
+                {% translate "Params" %}
+            </th>
+            <th>
+                {% translate "Timing" %}
+            </th>
         </tr>
     </thead>
     <tbody id="djdtHistoryRequests">
         {% for entry in calls %}
             <tr>
-            <td>{{ entry.url }}</td>
-            <td>{{ entry.params }}</td>
-            <td>{{ entry.timing }}</td>
+                <td>
+                    {{ entry.url }}
+                </td>
+                <td>
+                    {{ entry.params }}
+                </td>
+                <td>
+                    {{ entry.timing }}
+                </td>
             </tr>
         {% endfor %}
     </tbody>

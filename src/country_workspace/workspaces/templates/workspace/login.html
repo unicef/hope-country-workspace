@@ -1,35 +1,34 @@
-{% extends "workspace/layout.html" %}{% load feature_flags i18n static %}
+{% extends "workspace/layout.html" %}
+{% load feature_flags i18n static %}
 {% block extrahead %}
     <script src="{% static "d3.min.js" %}"></script>
-
 {% endblock extrahead %}
-
-{% block logo %}{% endblock %}
-
-{% block sidebar %}{% endblock %}
-
+{% block logo %}
+{% endblock %}
+{% block sidebar %}
+{% endblock %}
 {% block content-header %}
     <div class="flex flex-1 flex-col bg-unicef-blue">
         <div class="flex-grow">
-
-            <img src="{% static "hope_logo.png" %}" class="pl-8 h-16">
+            <img src="{% static "hope_logo.png" %}" class="pl-8 h-16" />
         </div>
     </div>
 {% endblock content-header %}
-
 {% block content %}
     {% flag_enabled 'LOCAL_LOGIN' as FLAG_LOCAL_LOGIN %}
     <div class="flex items-center justify-center">
-        <div class="text-5xl pt-20">HOPE Workspace</div>
+        <div class="text-5xl pt-20">
+            HOPE Workspace
+        </div>
     </div>
     <div class="flex items-center justify-center">
         <div class="w-1/4 pt-10">
             <div class="text-center">
-                <a class="button primary"
-                   href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">{% translate "SSO Login" %}</a>
-
+                <a class="button primary" href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">{% translate "SSO Login" %}</a>
                 {% if FLAG_LOCAL_LOGIN %}
-                    <div class="m-5">OR</div>
+                    <div class="m-5">
+                        OR
+                    </div>
                     <div class="my-5 border-2 rounded">
                         <form id="login-form" method="post">
                             {% csrf_token %}

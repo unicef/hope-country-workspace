@@ -1,8 +1,6 @@
 {% extends "workspace/layout.html" %}
-
 {% block sidebar %}
 {% endblock sidebar %}
-
 {% block content %}
     <div class="flex items-center justify-center text-center">
         <div class="w-1/4 mt-40">
@@ -10,15 +8,19 @@
                 <form id="select-tenant" method="post" action="{% url 'workspace:select_tenant' %}">
                     {% csrf_token %}{{ tenant_form }}
                     <div class="submit-row">
-                        <input type="submit" value="Enter">
+                        <input type="submit" value="Enter" />
                     </div>
                 </form>
             {% else %}
-                <div>You do not have any Office enabled.</div>
+                <div>
+                    You do not have any Office enabled.
+                </div>
                 <form method="post" action="{% url "admin:logout" %}">
                     {% csrf_token %}
                     <span class="w-full px-4">
-                        <button class="button m-auto" type="submit">Logout</button>
+                        <button class="button m-auto" type="submit">
+                            Logout
+                        </button>
                     </span>
                 </form>
             {% endif %}

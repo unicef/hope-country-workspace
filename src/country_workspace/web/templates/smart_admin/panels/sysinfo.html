@@ -1,37 +1,41 @@
-{% extends "smart_admin/console.html" %}{% load i18n static sysinfo %}
+{% extends "smart_admin/console.html" %}
+{% load i18n static sysinfo %}
 {% block extrahead %}
-  {{ block.super }}
-  <link rel="stylesheet" type="text/css" href="{% static "sysinfo/sysinfo.css" %}"/>
-  <link rel="stylesheet" type="text/css" href="{% static "smart_admin/smart_admin.css" %}"/>
-
+    {{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static "sysinfo/sysinfo.css" %}" />
+    <link rel="stylesheet" type="text/css" href="{% static "smart_admin/smart_admin.css" %}" />
 {% endblock extrahead %}
-
-{% block userlinks %}<a name="top"/>{{ block.super }}{% endblock %}
-
-{% block content_title %}{% if title %}<h1>System Information</h1>{% endif %}{% endblock %}
-
-{% block left %}
-  <input id="filterInput" type="text">
-  <div>
-    {% url "sys-info" as json %}
-    {% if json %}
-      <span style="float:right"><a href="{{ json }}">view json</a></span>
+{% block userlinks %}
+    <a name="top" />{{ block.super }}
+{% endblock %}
+{% block content_title %}
+    {% if title %}
+        <h1>
+            System Information
+        </h1>
     {% endif %}
-  </div>
-  {% section 'project' %}
-  {% section 'python' %}
-  {% section 'modules' %}
-  {% section 'host' %}
-  {% section 'os' %}
-  {% section 'process' %}
-  {% section 'environ' %}
-  {% section 'extra' %}
+{% endblock %}
+{% block left %}
+    <input id="filterInput" type="text" />
+    <div>
+        {% url "sys-info" as json %}
+        {% if json %}
+            <span style="float:right"><a href="{{ json }}">view json</a></span>
+        {% endif %}
+    </div>
+    {% section 'project' %}
+    {% section 'python' %}
+    {% section 'modules' %}
+    {% section 'host' %}
+    {% section 'os' %}
+    {% section 'process' %}
+    {% section 'environ' %}
+    {% section 'extra' %}
 {% endblock left %}
-
 {% block footer %}
-{# <script src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script> #}
-  <script src="{% static 'admin/js/jquery.init.js' %}"></script>
-  <script>
+    {# <script src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script> #}
+    <script src="{% static 'admin/js/jquery.init.js' %}"></script>
+    <script>
     let $ = django.jQuery;
 
     function delay(callback, ms) {
@@ -63,5 +67,5 @@
       });
     }, 300)).trigger('keyup').focus();
 
-  </script>
+    </script>
 {% endblock footer %}

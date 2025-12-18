@@ -1,10 +1,11 @@
-{% extends "workspace/actions/base.html" %}{% load i18n workspace_urls %}
+{% extends "workspace/actions/base.html" %}
+{% load i18n workspace_urls %}
 {% block action-content %}
     Selected beneficiaries will be pushed to the HOPE core system.
     <div>
         <form method="post" id="push-to-hope-form">
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Push' %}" class="default" name="_push">
+                <input type="submit" value="{% translate 'Push' %}" class="default" name="_push" />
             </div>
             {% csrf_token %}
             <table>

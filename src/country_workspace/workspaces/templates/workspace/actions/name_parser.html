@@ -1,4 +1,5 @@
-{% extends "workspace/actions/base.html" %}{% load i18n %}
+{% extends "workspace/actions/base.html" %}
+{% load i18n %}
 {% block action-content %}
     <div class="min-w-full py-5">
         <p>
@@ -17,7 +18,7 @@
                 {{ form.as_table }}
             </table>
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply">
+                <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply" />
             </div>
         </form>
     </div>
