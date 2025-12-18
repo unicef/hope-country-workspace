@@ -39,10 +39,10 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             logger.warning("Individual mapping %s not found, skipping mapping", individual_mapping_id)
 
     total_households = batch.household_set.count()
-    total_individuals = batch.individual_set.filter(household=None).count()
+    total_individuals = batch.individual_set.count()
 
     households_to_process = batch.household_set.filter(removed=False)
-    individuals_to_process = batch.individual_set.filter(household=None, removed=False)
+    individuals_to_process = batch.individual_set.filter(removed=False)
 
     household_count = households_to_process.count()
     individual_count = individuals_to_process.count()
