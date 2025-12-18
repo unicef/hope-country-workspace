@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -151,8 +152,8 @@ def _test_export_generation(browser: CountryWorkspaceSeleniumTC, household: "Cou
     browser.click("button[name='index'][value='0']")
     browser.click("#select-all")
     browser.click("input[name='_export']")
+    browser.click('//a[div[normalize-space()="Async Jobs"]]')
 
-    browser.click('//a[div[text()="Async Jobs"]]')
     browser.wait_for_element("table#result_list", timeout=10)
     rows = browser.find_elements("table#result_list tbody tr")
     assert any("Export records as .xlsx for bulk updates" in row.text for row in rows)
@@ -230,11 +231,14 @@ def _test_update_with_regex(
         assert hdr in header_texts
 
     cells = browser.find_elements(By.XPATH, "//table//tr/td")
-    found = any(subst in cell.text.strip() for cell in cells)
+    if subst.lower() in ["empty", "Empty"]:
+        found = any(cell.text.strip() == "" for cell in cells)
+    else:
+        found = any(subst.lower() in re.sub(r"\s+", " ", cell.text).strip().lower() for cell in cells)
     assert found, f"'{subst}' not found in any table cell."
 
     browser.click('input[name="_apply"]')
-    browser.click('//a[div[text()="Async Jobs"]]')
+    browser.click('//a[div[normalize-space()="Async Jobs"]]')
     browser.wait_for_element("table#result_list", timeout=10)
     rows = browser.find_elements("table#result_list tbody tr")
     assert any("Update fields using RegEx" in row.text for row in rows)

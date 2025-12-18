@@ -1,14 +1,15 @@
-{% extends "workspace/action_page.html" %}{% load i18n workspace_modify workspace_urls %}
+{% extends "workspace/action_page.html" %}
+{% load i18n workspace_modify workspace_urls %}
 {% block page-title %}
     &rsaquo; <a href="">{{ modeladmin.title_plural }}</a>{% admin_url modeladmin %}
     &rsaquo; {{ title }}
 {% endblock page-title %}
-
 {% block content %}
     <div id="content">
         <div id="content-main">
             <div class="block px-5 min-w-full">
-                {% block action-content %}{% endblock %}
+                {% block action-content %}
+                {% endblock %}
             </div>
         </div>
     </div>

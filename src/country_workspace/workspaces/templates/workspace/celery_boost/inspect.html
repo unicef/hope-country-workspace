@@ -1,49 +1,67 @@
-{% extends "workspace/action_page.html" %}{% load admin_modify celery_boost i18n static workspace_modify workspace_urls %}
+{% extends "workspace/action_page.html" %}
+{% load admin_modify celery_boost i18n static workspace_modify workspace_urls %}
 {% block page-title %}
     {% url "workspace:workspaces_countryasyncjob_changelist" as wcl %}
     {% url "workspace:workspaces_countryasyncjob_change" original.pk as wcc %}
-        &rsaquo; <a href="{% add_preserved_filters wcl %}">Background jobs</a>{% admin_url modeladmin %}
-        &rsaquo; <a href="{% add_preserved_filters wcc %}">{{ original }}</a>{% admin_url original %}
-        &rsaquo; Inspect
+    &rsaquo; <a href="{% add_preserved_filters wcl %}">Background jobs</a>{% admin_url modeladmin %}
+    &rsaquo; <a href="{% add_preserved_filters wcc %}">{{ original }}</a>{% admin_url original %}
+    &rsaquo; Inspect
 {% endblock page-title %}
-
 {% block action-content %}
     {% if flower_addr %}
         <a class="button" target="flower" href="{{ flower_addr }}/task/{{ original.curr_async_result_id }}">Flower</a>
     {% endif %}
-    <h3 class="text-xl">Task Info</h3>
+    <h3 class="text-xl">
+        Task Info
+    </h3>
     {% if original.task_info %}
-    <table>
-        {% for k,v in original.task_info.items %}
-            {% if k|is_safe_celery_info %}
-                <tr>
-                    <th>{{ k }}</th>
-                    <td>{{ v|default_if_none:"-" }}</td>
-                </tr>
-            {% endif %}
-        {% endfor %}
+        <table>
+            {% for k,v in original.task_info.items %}
+                {% if k|is_safe_celery_info %}
+                    <tr>
+                        <th>
+                            {{ k }}
+                        </th>
+                        <td>
+                            {{ v|default_if_none:"-" }}
+                        </td>
+                    </tr>
+                {% endif %}
+            {% endfor %}
             <tr>
-                <th>position in queue</th>
-                <td>{{ original.queue_position }}</td>
+                <th>
+                    position in queue
+                </th>
+                <td>
+                    {{ original.queue_position }}
+                </td>
             </tr>
-    </table>
+        </table>
     {% else %}
-        <p>Task registration pending. Please try in a few minutes.</p>
+        <p>
+            Task registration pending. Please try in a few minutes.
+        </p>
     {% endif %}
-
-
-    <h3 class="text-xl">Queue Info</h3>
+    <h3 class="text-xl">
+        Queue Info
+    </h3>
     <table>
         {% for k,v in original.queue_info.items %}
             {% if k == "headers" %}
                 <tr>
-                    <th>{{ k }}</th>
+                    <th>
+                        {{ k }}
+                    </th>
                     <td>
                         <table>
                             {% for k1,v1 in original.queue_info.headers.items %}
                                 <tr>
-                                    <td>{{ k1 }}</td>
-                                    <td>{{ v1 }}</td>
+                                    <td>
+                                        {{ k1 }}
+                                    </td>
+                                    <td>
+                                        {{ v1 }}
+                                    </td>
                                 </tr>
                             {% endfor %}
                         </table>
@@ -51,11 +69,14 @@
                 </tr>
             {% else %}
                 <tr>
-                    <th>{{ k }}</th>
-                    <td>{{ v }}</td>
+                    <th>
+                        {{ k }}
+                    </th>
+                    <td>
+                        {{ v }}
+                    </td>
                 </tr>
             {% endif %}
         {% endfor %}
     </table>
-
 {% endblock action-content %}

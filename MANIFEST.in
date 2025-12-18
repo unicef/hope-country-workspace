@@ -1,33 +1,39 @@
-exclude *
-exclude requirements.txt
-exclude src/country_workspace/workspaces/theme/static_src
-exclude __pycache__
+include package.json
+include package-lock.json
+include *.py
+
+recursive-include docs *
+recursive-include src/{{cookiecutter.package_name}} *
+recursive-include tests *
+
+exclude Dockerfile*
+exclude .dockerignore
+exclude .tx
+exclude ~*
+exclude docker
 exclude node_modules
 
-include README.md
-include MANIFEST.in
-include AUTHORS
-include CHANGES.md
-include LICENSE.md
-include pyproject.toml
-include *.py
-include uv.lock
+exclude hooks
+exclude extras
+exclude plugins
+exclude .pytest_cache
+exclude .demo
+exclude .venv
+exclude .envrc
+exclude .demo-sax
+exclude .DS_Store
+exclude .css.map
+exclude .js.map
 
-
-recursive-include src/country_workspace *
-recursive-include src/country_workspace *.html
-
-recursive-exclude src/**/node_modules *.*
-
-prune **/~*
-prune src/**/node_modules
-prune tests
-prune src/**/__pycache__
-prune src/**/theme/static_src
-
-global-exclude .*
-global-exclude .pyi
-global-exclude *.scss
-global-exclude *~
-global-exclude ~*
-exclude manage.py
+recursive-exclude docker *
+recursive-exclude . ~*
+recursive-exclude .tx *
+recursive-exclude .venv *
+recursive-exclude extras *
+recursive-exclude plugins *
+recursive-exclude hooks *
+recursive-exclude . *.pyc
+recursive-exclude .pytest_cache *
+recursive-exclude **/__pycache__ *
+recursive-exclude **/node_modules *
+recursive-exclude **/static_src *

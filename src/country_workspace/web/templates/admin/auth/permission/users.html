@@ -1,12 +1,24 @@
-{% extends "admin_extra_buttons/action_page.html" %}{% load admin_urls i18n %}
+{% extends "admin_extra_buttons/action_page.html" %}
+{% load admin_urls i18n %}
 {% block action-content %}
-    <h1>{% translate 'Users' %}</h1>
-    <ul>{% for user in data.users %}
-        <li><a href="{% url user_opts|admin_urlname:'change' user.pk %}">{{ user }}</a></li>{% endfor %}
+    <h1>
+        {% translate 'Users' %}
+    </h1>
+    <ul>
+        {% for user in data.users %}
+            <li>
+                <a href="{% url user_opts|admin_urlname:'change' user.pk %}">{{ user }}</a>
+            </li>
+        {% endfor %}
     </ul>
-    <h1>{% translate 'Groups' %}</h1>
-    <ul>{% for group in data.group %}
-        <li><a href="{% url 'admin:auth_group_change' group.pk %}">{{ user }}</a></li>{% endfor %}
+    <h1>
+        {% translate 'Groups' %}
+    </h1>
+    <ul>
+        {% for group in data.group %}
+            <li>
+                <a href="{% url 'admin:auth_group_change' group.pk %}">{{ user }}</a>
+            </li>
+        {% endfor %}
     </ul>
-
 {% endblock action-content %}

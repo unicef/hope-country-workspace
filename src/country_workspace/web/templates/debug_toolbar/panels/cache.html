@@ -1,76 +1,134 @@
 {% load i18n static %}
-<h4>get</h4>
+<h4>
+    get
+</h4>
 <table class="djdt-max-height-100">
     <thead>
         <tr>
-            <th>{% translate "time" %}</th>
-            <th>{% translate "tenant" %}</th>
-            <th>{% translate "key" %}</th>
-            <th>{% translate "args" %}</th>
-            <th>{% translate "kwargs" %}</th>
-            <th>{% translate "hit" %}</th>
+            <th>
+                {% translate "time" %}
+            </th>
+            <th>
+                {% translate "tenant" %}
+            </th>
+            <th>
+                {% translate "key" %}
+            </th>
+            <th>
+                {% translate "args" %}
+            </th>
+            <th>
+                {% translate "kwargs" %}
+            </th>
+            <th>
+                {% translate "hit" %}
+            </th>
         </tr>
     </thead>
     <tbody id="djdtHistoryRequests">
         {% for entry in gets %}
             <tr>
-            <td>{{ entry.timestamp }}</td>
-            <td>{{ entry.tenant }}</td>
-            <td>{{ entry.key }}</td>
-            <td>{{ entry.args }}</td>
-            <td>{{ entry.kwargs }}</td>
-            <td>{{ entry.hit }}</td>
+                <td>
+                    {{ entry.timestamp }}
+                </td>
+                <td>
+                    {{ entry.tenant }}
+                </td>
+                <td>
+                    {{ entry.key }}
+                </td>
+                <td>
+                    {{ entry.args }}
+                </td>
+                <td>
+                    {{ entry.kwargs }}
+                </td>
+                <td>
+                    {{ entry.hit }}
+                </td>
             </tr>
         {% endfor %}
     </tbody>
 </table>
-
-<h4>set</h4>
-
+<h4>
+    set
+</h4>
 <table class="djdt-max-height-100">
     <thead>
         <tr>
-            <th>{% translate "time" %}</th>
-            <th>{% translate "tenant" %}</th>
-            <th>{% translate "key" %}</th>
-{# <th>{% trans "hit" %}</th> #}
+            <th>
+                {% translate "time" %}
+            </th>
+            <th>
+                {% translate "tenant" %}
+            </th>
+            <th>
+                {% translate "key" %}
+            </th>
+            {# <th>{% trans "hit" %}</th> #}
         </tr>
     </thead>
     <tbody id="djdtHistoryRequests">
         {% for entry in sets %}
             <tr>
-            <td>{{ entry.timestamp }}</td>
-            <td>{{ entry.tenant }}</td>
-            <td>{{ entry.key }}</td>
-{# <td>{{ entry.hit }}</td> #}
+                <td>
+                    {{ entry.timestamp }}
+                </td>
+                <td>
+                    {{ entry.tenant }}
+                </td>
+                <td>
+                    {{ entry.key }}
+                </td>
+                {# <td>{{ entry.hit }}</td> #}
             </tr>
         {% endfor %}
     </tbody>
 </table>
-
-
-<h4>store</h4>
+<h4>
+    store
+</h4>
 <table class="djdt-max-height-100">
     <thead>
         <tr>
-            <th>{% translate "time" %}</th>
-            <th>{% translate "key" %}</th>
-            <th>{% translate "Office" %}</th>
-            <th>{% translate "Programme" %}</th>
-            <th>{% translate "path" %}</th>
+            <th>
+                {% translate "time" %}
+            </th>
+            <th>
+                {% translate "key" %}
+            </th>
+            <th>
+                {% translate "Office" %}
+            </th>
+            <th>
+                {% translate "Programme" %}
+            </th>
+            <th>
+                {% translate "path" %}
+            </th>
         </tr>
     </thead>
     <tbody id="djdtHistoryRequests">
         {% for entry in stores %}
             <tr>
-            <td>{{ entry.timestamp }}</td>
-            <td>{{ entry.key }}</td>
-            <td>{{ entry.tenant }}</td>
-            <td>{{ entry.key }}</td>
-            <td>{{ entry.extra.path }}</td>
-{# <td>{{ entry.hit }}</td> #}
-{# <td>{{ entry.2 }}</td> #}
-{# <td>{{ entry.3 }}</td> #}
+                <td>
+                    {{ entry.timestamp }}
+                </td>
+                <td>
+                    {{ entry.key }}
+                </td>
+                <td>
+                    {{ entry.tenant }}
+                </td>
+                <td>
+                    {{ entry.key }}
+                </td>
+                <td>
+                    {{ entry.extra.path }}
+                </td>
+                {# <td>{{ entry.hit }}</td> #}
+                {# <td>{{ entry.2 }}</td> #}
+                {# <td>{{ entry.3 }}</td> #}
             </tr>
         {% endfor %}
     </tbody>

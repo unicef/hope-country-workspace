@@ -1,12 +1,11 @@
-{% extends "workspace/actions/base.html" %}{% load i18n workspace_urls %}
-
-
+{% extends "workspace/actions/base.html" %}
+{% load i18n workspace_urls %}
 {% block action-content %}
     All selected records will be updated with the values below
     <div>
         <form method="post" id="mass-update-form">
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply">
+                <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply" />
             </div>
             {% csrf_token %}
             <table>
@@ -14,10 +13,8 @@
             </table>
             {% load admin_urls i18n workspace_urls %}
             <div class="submit-row float-right">
-                <input type="submit" value="{% translate 'Apply' %}" class="default float-right"
-                       name="_apply">
+                <input type="submit" value="{% translate 'Apply' %}" class="default float-right" name="_apply" />
             </div>
-
         </form>
     </div>
 {% endblock action-content %}

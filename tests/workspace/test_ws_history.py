@@ -50,11 +50,11 @@ def test_individual_history(app, individual: "CountryIndividual"):
 
         assert res.status_code == 200
         pq = PyQuery(res.content)
-        assert pq("table.history tbody tr td div.old_value")[0].text == "Name 1"
-        assert pq("table.history tbody tr td div.new_value")[0].text == "Name 2"
+        assert pq("table.history tbody tr td div.old_value")[0].text.strip() == "Name 1"
+        assert pq("table.history tbody tr td div.new_value")[0].text.strip() == "Name 2"
 
-        assert pq("table.history tbody tr td div.old_value")[1].text is None
-        assert pq("table.history tbody tr td div.new_value")[1].text == "Name 1"
+        assert pq("table.history tbody tr td div.old_value")[1].text.strip() == ""
+        assert pq("table.history tbody tr td div.new_value")[1].text.strip() == "Name 1"
 
         res = app.get(url, headers={"etag": etag})
         assert res.status_code == 304

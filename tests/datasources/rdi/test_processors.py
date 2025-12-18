@@ -439,13 +439,13 @@ def test_import_from_rdi(
     if config["master_detail"]:
         assert result == {"household": len(household_mocks), "individual": len(processed_individuals)}
         process_households_mock.assert_called_once()
-        args, kwargs = process_households_mock.call_args
+        args, _ = process_households_mock.call_args
         assert args[1] == job
         assert args[2] == batch_class_mock.objects.create.return_value
         assert args[3] == config
 
         process_beneficiaries_mock.assert_called_once()
-        args, kwargs = process_beneficiaries_mock.call_args
+        args, _ = process_beneficiaries_mock.call_args
         assert args[1] == job
         assert args[2] == batch_class_mock.objects.create.return_value
         assert args[3] == config
@@ -453,7 +453,7 @@ def test_import_from_rdi(
     else:
         assert result == {"people": len(people_mapping)}
         process_beneficiaries_mock.assert_called_once()
-        args, kwargs = process_beneficiaries_mock.call_args
+        args, _ = process_beneficiaries_mock.call_args
         assert args[1] == job
         assert args[2] == batch_class_mock.objects.create.return_value
         assert args[3] == config
