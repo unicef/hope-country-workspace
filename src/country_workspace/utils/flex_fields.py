@@ -53,8 +53,7 @@ class Base64ImageField(forms.ImageField):
                 return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
             return cleaned_data
 
-        # if we return cleaned_data here, False will be stored, so we return None explicitly
-        return None
+        return ""
 
 
 def split_consent_sharing_options(value: str) -> list[str]:

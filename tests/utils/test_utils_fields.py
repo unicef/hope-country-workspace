@@ -52,7 +52,7 @@ def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
     instance = Mock(spec=Base64ImageField)
     initial_data = None
 
-    assert Base64ImageField.clean(instance, False, initial_data) is None
+    assert Base64ImageField.clean(instance, False, initial_data) == ""
     super_clean_mock.assert_called_once_with(False, initial_data)
 
 
