@@ -1,36 +1,13 @@
 import logging
 from typing import Any
 
-from country_workspace.models import AsyncJob, Batch
+from country_workspace.models import AsyncJob, Batch, MappingImporter
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 logger = logging.getLogger(__name__)
 
 
-def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
-    """
-    Reprocess (re-validate) all records in a batch.
-
-    This task re-runs validation on all households and individuals in a batch.
-    It's useful when:
-    - Validation rules have been updated in the program configuration
-    - Data has been modified and needs to be revalidated
-    - Initial validation encountered errors that have been fixed
-
-    Records that have been pushed to HOPE Core (removed=True) are excluded
-    from reprocessing as they should not be modified.
-
-    Args:
-        job: AsyncJob containing batch_id in config
-
-    Returns:
-        dict with processing statistics
-
-    Raises:
-        ValueError: if batch_id is not provided
-        Batch.DoesNotExist: if batch is not found
-
-    """
+def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
     batch_id = job.config.get("batch_id")
     if not batch_id:
         raise ValueError("batch_id is required in job config")
@@ -39,6 +16,27 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     if not batch:
         logger.error("Batch %s not found", batch_id)
         raise Batch.DoesNotExist(f"Batch {batch_id} not found")
+
+    # Get optional mapping importers
+    household_mapping_id = job.config.get("household_mapping_id")
+    individual_mapping_id = job.config.get("individual_mapping_id")
+
+    household_mapping = None
+    individual_mapping = None
+
+    if household_mapping_id:
+        try:
+            household_mapping = MappingImporter.objects.get(pk=household_mapping_id)
+            logger.info("Using household mapping: %s", household_mapping)
+        except MappingImporter.DoesNotExist:
+            logger.warning("Household mapping %s not found, skipping mapping", household_mapping_id)
+
+    if individual_mapping_id:
+        try:
+            individual_mapping = MappingImporter.objects.get(pk=individual_mapping_id)
+            logger.info("Using individual mapping: %s", individual_mapping)
+        except MappingImporter.DoesNotExist:
+            logger.warning("Individual mapping %s not found, skipping mapping", individual_mapping_id)
 
     total_households = batch.household_set.count()
     total_individuals = batch.individual_set.filter(household=None).count()
@@ -58,6 +56,36 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
             skipped_individuals,
             batch.name,
         )
+
+    # Apply mappings if provided
+    mapped_households = 0
+    mapped_individuals = 0
+
+    if household_mapping and household_count > 0:
+        logger.info("Applying household mapping to %d households", household_count)
+        for household in households_to_process:
+            if household.raw_data:
+                data = household.raw_data.copy()
+                household_mapping.apply(data)
+                household.flex_fields = data
+                household.last_checked = None
+                household.errors = {}
+                household.save(update_fields=["flex_fields", "last_checked", "errors"])
+                mapped_households += 1
+        logger.info("Applied mapping to %d households", mapped_households)
+
+    if individual_mapping and individual_count > 0:
+        logger.info("Applying individual mapping to %d individuals", individual_count)
+        for individual in individuals_to_process:
+            if individual.raw_data:
+                data = individual.raw_data.copy()
+                individual_mapping.apply(data)
+                individual.flex_fields = data
+                individual.last_checked = None
+                individual.errors = {}
+                individual.save(update_fields=["flex_fields", "last_checked", "errors"])
+                mapped_individuals += 1
+        logger.info("Applied mapping to %d individuals", mapped_individuals)
 
     validation_jobs_created = 0
 
@@ -88,6 +116,8 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
         "individuals": individual_count,
         "skipped_households": skipped_households,
         "skipped_individuals": skipped_individuals,
+        "mapped_households": mapped_households,
+        "mapped_individuals": mapped_individuals,
         "validation_jobs_created": validation_jobs_created,
     }
 

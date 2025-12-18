@@ -2,14 +2,17 @@ from typing import Any
 
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
+from django import forms
+from django.contrib import messages
 from django.contrib.admin import register
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.compat.admin_extra_buttons import confirm_action
-from country_workspace.models import AsyncJob
+from country_workspace.models import AsyncJob, MappingImporter, Program
 from ...state import state
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
@@ -25,6 +28,43 @@ class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
             p = state.tenant.programs.get(pk=self.lookup_val)
             queryset = super().queryset(request, queryset).filter(program=p)
         return queryset
+
+
+class BatchReprocessForm(forms.Form):
+    household_mapping = forms.ModelChoiceField(
+        queryset=MappingImporter.objects.none(),
+        required=False,
+        label=_("Household Mapping"),
+        empty_label=_("No mapping (validation only)"),
+        help_text=_("Optional: Select a mapping to apply to household data before validation"),
+    )
+    individual_mapping = forms.ModelChoiceField(
+        queryset=MappingImporter.objects.none(),
+        required=False,
+        label=_("Individual Mapping"),
+        empty_label=_("No mapping (validation only)"),
+        help_text=_("Optional: Select a mapping to apply to individual data before validation"),
+    )
+
+    def __init__(self, *args: Any, program: Program | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+        if program:
+            if program.household_checker:
+                self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
+                    office=program.country_office,
+                    data_checker=program.household_checker,
+                )
+            else:
+                self.fields.pop("household_mapping", None)
+
+            if program.individual_checker:
+                self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
+                    office=program.country_office,
+                    data_checker=program.individual_checker,
+                )
+            else:
+                self.fields.pop("individual_mapping", None)
 
 
 @register(CountryBatch, site=workspace)
@@ -69,29 +109,46 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if not obj:
             return HttpResponse("Batch not found", status=404)
 
-        def execute_reprocess(req: HttpRequest) -> None:
-            job = AsyncJob.objects.create(
-                description=f"Reprocess batch: {obj.name}",
-                type=AsyncJob.JobType.TASK,
-                owner=req.user,
-                action=fqn("country_workspace.workspaces.admin.batch_reprocessing.reprocess_batch"),
-                program=obj.program,
-                batch=obj,
-                config={"batch_id": obj.pk},
-            )
-            job.queue()
+        # Handle form submission
+        if request.method == "POST" and "apply" in request.POST:
+            form = BatchReprocessForm(request.POST, program=obj.program)
+            if form.is_valid():
+                config = {"batch_id": obj.pk}
 
-        return confirm_action(
-            self,
+                if form.cleaned_data.get("household_mapping"):
+                    config["household_mapping_id"] = form.cleaned_data["household_mapping"].pk
+                if form.cleaned_data.get("individual_mapping"):
+                    config["individual_mapping_id"] = form.cleaned_data["individual_mapping"].pk
+
+                job = AsyncJob.objects.create(
+                    description=f"Reprocess batch: {obj.name}",
+                    type=AsyncJob.JobType.TASK,
+                    owner=request.user,
+                    action=fqn("country_workspace.workspaces.admin.batch_reprocessing.reprocess_batch"),
+                    program=obj.program,
+                    batch=obj,
+                    config=config,
+                )
+                job.queue()
+
+                self.message_user(request, "Batch reprocessing has been scheduled.", messages.SUCCESS)
+
+                # Redirect to changelist
+                namespace = self.admin_site.name
+                opts = self.model._meta
+                url_name = f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"
+                return HttpResponseRedirect(reverse(url_name))
+
+            self.message_user(request, "Please correct the errors below.", messages.ERROR)
+        else:
+            form = BatchReprocessForm(program=obj.program)
+
+        context = self.get_common_context(
             request,
-            execute_reprocess,
-            message=f"Are you sure you want to reprocess batch '{obj.name}'?",
-            description=(
-                "This will re-validate all households and individuals in this batch. "
-                "Records already pushed to HOPE Core will be automatically excluded."
-            ),
-            success_message="Batch reprocessing has been scheduled.",
             pk=pk,
             title="Reprocess Batch",
-            template="workspace/admin_extra_buttons/confirm.html",
+            form=form,
+            batch=obj,
         )
+
+        return render(request, "workspace/admin_extra_buttons/reprocess_batch_form.html", context)
