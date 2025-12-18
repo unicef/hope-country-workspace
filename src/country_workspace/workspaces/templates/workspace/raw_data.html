@@ -1,4 +1,5 @@
-{% extends "workspace/action_page.html" %}{% load i18n workspace_modify workspace_urls %}
+{% extends "workspace/action_page.html" %}
+{% load i18n workspace_modify workspace_urls %}
 {% block page-title %}
     {% if selected_household %}
         &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>
@@ -14,18 +15,21 @@
         &rsaquo; Raw Data
     {% endif %}
 {% endblock page-title %}
-
 {% block content %}
-        <div id="content"  class="min-w-full">
+    <div id="content"  class="min-w-full">
         <div id="content-main"  class="min-w-full">
-    <table>
-        {% for name, value in original.raw_data.items %}
-            <tr>
-                <th>{{ name }}</th>
-                <td>{{ value }}</td>
-            </tr>
-        {% endfor %}
-    </table>
+            <table>
+                {% for name, value in original.raw_data.items %}
+                    <tr>
+                        <th>
+                            {{ name }}
+                        </th>
+                        <td>
+                            {{ value }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
         </div>
-        </div>
+    </div>
 {% endblock content %}

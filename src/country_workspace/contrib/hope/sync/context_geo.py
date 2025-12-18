@@ -15,6 +15,9 @@ from country_workspace.contrib.hope.sync.base import (
 )
 from country_workspace.models import Country, AreaType, Area
 
+logger = logging.getLogger(__name__)
+
+
 MODELS: Final[tuple[type[Model], ...]] = (Country,)
 """List of models to synchronize."""
 
@@ -104,7 +107,7 @@ def _assign_parents(model: type[Model], parent_mapping: dict[str, str]) -> None:
         try:
             instance = model.objects.get(hope_id=child_id)
         except model.DoesNotExist:
-            logging.info(
+            logger.info(
                 format_msg(
                     "RECORD_SKIPPED",
                     reference_id_val=child_id,
@@ -115,7 +118,7 @@ def _assign_parents(model: type[Model], parent_mapping: dict[str, str]) -> None:
         try:
             parent = model.objects.get(hope_id=parent_id)
         except model.DoesNotExist:
-            logging.info(
+            logger.info(
                 format_msg(
                     "RECORD_SKIPPED",
                     reference_id_val=child_id,
@@ -130,7 +133,7 @@ def _assign_parents(model: type[Model], parent_mapping: dict[str, str]) -> None:
         try:
             model.objects.bulk_update(updates, fields=["parent"])
         except InvalidMove as e:
-            logging.error(
+            logger.error(
                 format_msg(
                     "RECORD_SYNC_FAILURE",
                     reference_id_val="multiple",

@@ -24,7 +24,7 @@ class ReprocessForm(forms.Form):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         queryset = kwargs.pop("queryset", MappingImporter.objects.none())
         super().__init__(*args, **kwargs)
-        cast(forms.ModelChoiceField, self.fields["mapping_importer"]).queryset = queryset
+        cast("forms.ModelChoiceField", self.fields["mapping_importer"]).queryset = queryset
 
 
 @admin.action(description=_("Reprocess records (apply mapping)"))

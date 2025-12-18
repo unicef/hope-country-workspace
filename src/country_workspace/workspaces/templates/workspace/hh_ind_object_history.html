@@ -1,42 +1,61 @@
-{% extends "workspace/_base.html" %}{% load admin_urls i18n workspace_urls %}
-{% block page-title %}{% endblock %}
-
+{% extends "workspace/_base.html" %}
+{% load admin_urls i18n workspace_urls %}
+{% block page-title %}
+{% endblock %}
 {% block content %}
     <div id="content-main">
         <div id="change-history" class="module">
             <table class="history">
                 <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>User</th>
-                    <th>
-                        <div class="flex">
-                            <div class="grow field_name">Field</div>
-                            <div class="flex-none old_value">Old</div>
-                            <div class="flex-none new_value">New</div>
-                        </div>
-                    </th>
-                </tr>
+                    <tr>
+                        <th>
+                            Date
+                        </th>
+                        <th>
+                            User
+                        </th>
+                        <th>
+                            <div class="flex">
+                                <div class="grow field_name">
+                                    Field
+                                </div>
+                                <div class="flex-none old_value">
+                                    Old
+                                </div>
+                                <div class="flex-none new_value">
+                                    New
+                                </div>
+                            </div>
+                        </th>
+                    </tr>
                 </thead>
                 <tbody>
-                {% for entry in history %}
-                    <tr class="hover:bg-yellow-200">
-                        <th class="w-32 whitespace-nowrap p-2 px-5">
-                            {% admin_url "pghistory.events" pk=entry.pgh_id %}
-                            {{ entry.date }}
-                        </th>
-                        <td class="w-20 px-5">{{ entry.user.username }}</td>
-                        <td class="px-5">
-                            {% for field, data in entry.changes.items %}
-                                <div class="flex over:bg-yellow-100">
-                                    <div class="grow field_name">{{ field }}</div>
-                                    <div class="flex-none old_value">{{ data.from }}</div>
-                                    <div class="flex-none new_value">{{ data.to }}</div>
-                                </div>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                {% endfor %}
+                    {% for entry in history %}
+                        <tr class="hover:bg-yellow-200">
+                            <th class="w-32 whitespace-nowrap p-2 px-5">
+                                {% admin_url "pghistory.events" pk=entry.pgh_id %}
+                                {{ entry.date }}
+                            </th>
+                            <td class="w-20 px-5">
+                                {{ entry.user.username }}
+                            </td>
+                            <td class="px-5">
+                                {% for field, data in entry.changes.items %}
+                                    <div class="flex over:bg-yellow-100">
+                                        <div class="grow field_name">
+                                            {{ field }}
+                                        </div>
+                                        <div class="flex-none old_value">
+                                            {{ data.from }}
+                                        </div>
+                                        <div class="flex-none new_value">
+                                            {{ data.to }}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>

@@ -1,5 +1,8 @@
 target-version = "py312"
 line-length = 120
+exclude = [
+  ".semgrep",
+]
 
 [lint]
 select = [
@@ -70,6 +73,7 @@ ignore = [
   "I001", # unsorted imports https://docs.astral.sh/ruff/rules/unsorted-imports/#unsorted-imports-i001
   "ISC001", # conflicts with ruff format command
   "PLR2004", # Magic value used in comparison
+  "PLC0415",  # import top
   "RUF005", # collection-literal-concatenation: syntax not compatible with py2
   "RUF012", # mutable-class-default: typing is not available for py2
   "SIM108", # Use ternary operator instead of...
@@ -83,6 +87,7 @@ ignore = [
   "UP035", # Import from `collections.abc` instead: `Sequence`
   "UP037", # [*] Remove quotes from type annotation
 ]
+
 
 [format]
 quote-style = "double"
@@ -104,6 +109,9 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 
 
 [lint.per-file-ignores]
+".semgrep/**/*.py" = ["ALL"]
+"docs/**.py" = ["TC002", "U"]
 "tests/**.py" = ["S101", "PGH004", "TRY002", "TRY", "PYI024", "PD901", "INP001", "PLR2004", "S", "SIM117", "D", "UP", "PLR0913", "ANN", "N999"]
-"src/**/versioning/**.py" = ["N999", ]
+"src/country_workspace/version.py" = ["ALL", ]
 "src/**/migrations/**.py" = ["E501", ]
+"src/**/versioning/**.py" = ["N999", ]

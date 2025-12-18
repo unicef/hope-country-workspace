@@ -1,24 +1,22 @@
 {% load i18n %}
 {% spaceless %}
-<li>
-    <select
-        {% include "admin_extra_buttons/includes/attrs.html" with button=button %}
-        onchange="if (this.value) { window.location.href = this.value; }"
-    >
-        <option value="#">
-            {% if button.label == "Individual Columns" %}
-                {{ btnlabels.individual_columns|default:button.label }}
-            {% elif button.label == "Household Columns" %}
-                {{ btnlabels.household_columns|default:button.label }}
-            {% else %}
-                {{ button.label }}
-            {% endif %}
-        </option>
-        {% for choice in button.get_choices %}
-            <option value="{{ choice.url }}"{% if choice.selected %} selected="selected"{% endif %}>
-                {{ choice.label }}
+    <li>
+        <select {% include "admin_extra_buttons/includes/attrs.html" with button=button %}
+                onchange="if (this.value) { window.location.href = this.value; }">
+            <option value="#">
+                {% if button.label == "Individual Columns" %}
+                    {{ btnlabels.individual_columns|default:button.label }}
+                {% elif button.label == "Household Columns" %}
+                    {{ btnlabels.household_columns|default:button.label }}
+                {% else %}
+                    {{ button.label }}
+                {% endif %}
             </option>
-        {% endfor %}
-    </select>
-</li>
+            {% for choice in button.get_choices %}
+                <option value="{{ choice.url }}"{% if choice.selected %} selected="selected"{% endif %}>
+                    {{ choice.label }}
+                </option>
+            {% endfor %}
+        </select>
+    </li>
 {% endspaceless %}

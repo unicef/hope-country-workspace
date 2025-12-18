@@ -1,12 +1,19 @@
 {% extends "workspace/_base.html" %}
-
 {% block page-top %}
     <div class="title-top">
-        <h2>{% block page-title %}{{ title|default_if_none:"" }}{% endblock %}</h2>
-    {% if program %}
-        <p class="flex w-full px-4">At the moment you are in {{ program }}.</p>
-    {% else %}
-        <p class="flex w-full px-4">Please go ahead and select the Programme in the menu</p>
-    {% endif %}
+        <h2>
+            {% block page-title %}
+                {{ title|default_if_none:"" }}
+            {% endblock %}
+        </h2>
+        {% if program %}
+            <p class="flex w-full px-4">
+                At the moment you are in {{ program }}.
+            </p>
+        {% else %}
+            <p class="flex w-full px-4">
+                Please go ahead and select the Programme in the menu
+            </p>
+        {% endif %}
     </div>
 {% endblock page-top %}

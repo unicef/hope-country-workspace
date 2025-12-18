@@ -66,7 +66,7 @@ def test_invalid_phone_number_format():
     ]
 
     for number in invalid_format_numbers:
-        with pytest.raises(ValidationError, match="Invalid phone number format."):
+        with pytest.raises(ValidationError, match=r"Invalid phone number format."):
             field.clean(number)
 
 
@@ -79,7 +79,7 @@ def test_invalid_phone_number_validity():
     ]
 
     for number in invalid_validity_numbers:
-        with pytest.raises(ValidationError, match="Invalid phone number."):
+        with pytest.raises(ValidationError, match=r"Invalid phone number."):
             field.clean(number)
 
 
@@ -87,13 +87,13 @@ def test_edge_cases():
     field = PhoneNumberField()
 
     # These should fail format validation
-    with pytest.raises(ValidationError, match="Invalid phone number format."):
+    with pytest.raises(ValidationError, match=r"Invalid phone number format."):
         field.clean("1")
 
-    with pytest.raises(ValidationError, match="Invalid phone number format."):
+    with pytest.raises(ValidationError, match=r"Invalid phone number format."):
         field.clean("0000000000")
 
-    with pytest.raises(ValidationError, match="Invalid phone number format."):
+    with pytest.raises(ValidationError, match=r"Invalid phone number format."):
         field.clean("123abc456")
 
 
