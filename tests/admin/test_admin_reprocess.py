@@ -62,7 +62,7 @@ def test_reprocess_household_action(app, household, mapping_importer):
     # 1. Select the action
     form = app.get(base_url).forms["changelist-form"]
     form["action"] = "reprocess_records"
-    form.get("action_checkbox", index=0).checked = True
+    form.set("_selected_action", True)
 
     # 2. Submit to get confirmation page
     res = form.submit()
@@ -88,7 +88,7 @@ def test_reprocess_individual_action(app, individual, mapping_importer):
 
     form = app.get(base_url).forms["changelist-form"]
     form["action"] = "reprocess_records"
-    form.get("action_checkbox", index=0).checked = True
+    form.set("_selected_action", True)
 
     res = form.submit()
     assert res.status_code == 200
