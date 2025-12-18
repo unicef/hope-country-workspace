@@ -1,8 +1,10 @@
-{% extends "workspace/actions/base.html" %}{% load i18n %}
+{% extends "workspace/actions/base.html" %}
+{% load i18n %}
 {% block action-content %}
     <div class="min-w-full py-5">
         All selected {{ opts.verbose_name_plural }} will be updated based on the following Regular
-        Expression.<br/>
+        Expression.
+        <br />
         See <b> <a href="https://regex101.com/" target="_blank">https://regex101.com/</a></b> for help.
     </div>
     <div class="m-2 bg-white">
@@ -12,30 +14,43 @@
             <table class="min-w-full">
                 {{ form.as_table }}
             </table>
-            <div></div>
+            <div>
+            </div>
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Preview' %}" class="default" name="_preview">
+                <input type="submit" value="{% translate 'Preview' %}" class="default" name="_preview" />
             </div>
             {% if changes %}
                 <table>
                     <tr>
-                        <th>pk</th>
-                        <th>old</th>
-                        <th>new</th>
+                        <th>
+                            pk
+                        </th>
+                        <th>
+                            old
+                        </th>
+                        <th>
+                            new
+                        </th>
                     </tr>
                     {% for pk, old, new in changes %}
                         <tr>
-                            <td>{{ pk }}</td>
-                            <td>{{ old }}</td>
-                            <td>{{ new }}</td>
+                            <td>
+                                {{ pk }}
+                            </td>
+                            <td>
+                                {{ old }}
+                            </td>
+                            <td>
+                                {{ new }}
+                            </td>
                         </tr>
                     {% endfor %}
                 </table>
                 <div class="submit-row">
-                    <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply">
+                    <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply" />
                 </div>
             {% endif %}
         </form>
     </div>
-    </div>
+</div>
 {% endblock action-content %}

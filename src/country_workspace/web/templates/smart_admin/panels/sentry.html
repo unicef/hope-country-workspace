@@ -1,10 +1,15 @@
-{% extends "smart_admin/console.html" %}{% load i18n static %}
+{% extends "smart_admin/console.html" %}
+{% load i18n static %}
 {% block left %}
     <table>
         {% for k,v in info.items %}
             <tr>
-                <th>{{ k }}</th>
-                <td>{{ v }}</td>
+                <th>
+                    {{ k }}
+                </th>
+                <td>
+                    {{ v }}
+                </td>
             </tr>
         {% endfor %}
     </table>
@@ -14,9 +19,8 @@
             <table>
                 {{ form }}
             </table>
-
             <div class="submit-row">
-                <input type="submit" value="Execute">
+                <input type="submit" value="Execute" />
             </div>
         </form>
     </table>

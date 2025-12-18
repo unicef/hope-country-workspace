@@ -1,4 +1,5 @@
-{% extends "smart_admin/console.html" %}{% load i18n static %}
+{% extends "smart_admin/console.html" %}
+{% load i18n static %}
 {% block left %}
     <div class="console">
         <div>
@@ -11,21 +12,23 @@
                 </div>
                 <div class="submit-row module">
                     {% if active %}
-                        <input type="submit" style="background-color: #229515" name="_disable" value="Cache is Enabled">
+                        <input type="submit" style="background-color: #229515" name="_disable" value="Cache is Enabled" />
                     {% else %}
-                        <input type="submit" style="background-color: #c12727" name="_enable" value="Cache is Disabled">
+                        <input type="submit" style="background-color: #c12727" name="_enable" value="Cache is Disabled" />
                     {% endif %}
                     <div style="float: right;">
-                        <input type="submit" value="Get keys">&nbsp;
-                        <input type="submit" style="background-color: #951515" name="_delete"
-                               value="Delete selected">
+                        <input type="submit" value="Get keys" />
+                        &nbsp;
+                        <input type="submit" style="background-color: #951515" name="_delete" value="Delete selected" />
                     </div>
                 </div>
             </form>
         </div>
         <div class="changelist-form-container">
             {% for e in cache_data %}
-                <div>{{ e }}</div>
+                <div>
+                    {{ e }}
+                </div>
             {% endfor %}
         </div>
     </div>

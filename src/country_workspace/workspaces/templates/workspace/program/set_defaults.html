@@ -1,67 +1,67 @@
 {% extends "workspace/change_form.html" %}
 {% load i18n workspace_urls %}
-
 {% block page-title %}
     &rsaquo; {{ original }}{% admin_url original %}
     &rsaquo; {% translate "Set default field values" %}
 {% endblock page-title %}
-
 {% block content %}
-<div id="content">
-    <div id="content-main">
-        <div class="block px-5">
-            <h1 class="block text-2xl mb-5">{{ checker }}</h1>
-            <form method="post" id="set-defaults-form" novalidate>
-                {% csrf_token %}
-                <table>
-                    <thead>
-                    <tr>
-                        <th></th>
-                        <th>{% translate "Field" %}</th>
-                        <th>{% translate "Default value" %}</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for field in form %}
-                        <tr>
-                            <td class="action-checkbox">
-                                <input type="checkbox"
-                                       name="fields"
-                                       value="{{ field.name }}"
-                                       id="id_fields_{{ field.name }}"
-                                       {% if selected_fields and field.name in selected_fields %}
-                                           checked="checked"
-                                       {% endif %}>
-                            </td>
-                            <td>
-                                <label for="{{ field.id_for_label }}"
-                                       class="min-w-full cursor-pointer">
-                                    {{ field.label }}
-                                </label>
-                            </td>
-                            <td>
-                                {{ field }}
-                                {% if field.errors %}
-                                    <div class="errors">
-                                        {{ field.errors }}
-                                    </div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-
-                <div class="submit-row">
-                    <input type="submit" value="{% translate 'Save' %}" class="default" name="_save">
-                    {% url opts|workspace_urlname:'change' original.pk as change_url %}
-                    <a href="{% add_preserved_filters change_url %}"
-                       class="closelink">
-                        {% translate 'Close' %}
-                    </a>
-                </div>
-            </form>
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    {{ checker }}
+                </h1>
+                <form method="post" id="set-defaults-form" novalidate>
+                    {% csrf_token %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>
+                                </th>
+                                <th>
+                                    {% translate "Field" %}
+                                </th>
+                                <th>
+                                    {% translate "Default value" %}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field in form %}
+                                <tr>
+                                    <td class="action-checkbox">
+                                        <input type="checkbox"
+                                               name="fields"
+                                               value="{{ field.name }}"
+                                               id="id_fields_{{ field.name }}"
+                                               {% if selected_fields and field.name in selected_fields %} checked="checked" {% endif %} />
+                                    </td>
+                                    <td>
+                                        <label for="{{ field.id_for_label }}" class="min-w-full cursor-pointer">
+                                            {{ field.label }}
+                                        </label>
+                                    </td>
+                                    <td>
+                                        {{ field }}
+                                        {% if field.errors %}
+                                            <div class="errors">
+                                                {{ field.errors }}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="submit-row">
+                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save" />
+                        {% url opts|workspace_urlname:'change' original.pk as change_url %}
+                        <a href="{% add_preserved_filters change_url %}" class="closelink">
+                            {% translate 'Close' %}
+                        </a>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
-</div>
 {% endblock content %}

@@ -1,7 +1,9 @@
 [build-system]
 build-backend = "hatchling.build"
-
-requires = [ "hatchling" ]
+requires = [
+  "hatch-vcs>=0.4",
+  "hatchling>=1.25",
+]
 
 [project]
 name = "hope-country-workspace"
@@ -14,7 +16,10 @@ authors = [
   { name = "sax", email = "s.apostolico@gmail.com" },
 ]
 requires-python = "==3.13.*"
-classifiers = [ "Programming Language :: Python :: 3 :: Only", "Programming Language :: Python :: 3.13" ]
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = [
   "bitcaster-sdk>=0.1",
   "celery>=5.4",
@@ -68,6 +73,10 @@ dependencies = [
   "torch>=2.7.1",
   "unicef-security>=1.5.1",
 ]
+urls.Documentation = "https://unicef.github.io/hope-country-workspace/"
+urls.Homepage = "https://github.com/unicef/hope-country-workspace"
+urls.Issues = "https://github.com/unicef/hope-country-workspace/issues"
+urls.Repository = "https://github.com/unicef/hope-country-workspace"
 scripts.celery-monitor = "country_workspace.__monitor__:run"
 
 [dependency-groups]
@@ -78,6 +87,7 @@ dev = [
   "django-webtest",
   "factory-boy",
   "freezegun",
+  "glom",
   "ipython",
   "mypy",
   "pdbpp",

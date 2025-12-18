@@ -1,82 +1,89 @@
-{% extends "workspace/adminfilters/_wrapper.html" %}{% load i18n %}
+{% extends "workspace/adminfilters/_wrapper.html" %}
+{% load i18n %}
 {% block content %}
-<ul class="adminfilter" id="{{ spec.field_path }}"
-    data-action="{% if spec.value.0 %}clear{% else %}filter{% endif %}"
-    data-op="{{ spec.operator }}"
-    data-qs="{{ spec.query_string }}">
-    {% if spec.can_negate or spec.options %}
-    <li class="filter-options-row">
-        {% if spec.can_negate %}
-        <label class="exclude-checkbox">
-            <input type="checkbox"
-                   data-group="{{ spec.field_path }}"
-                   data-lk="{{ spec.lookup_kwarg_negated }}"
-                   data-original="{{ spec.lookup_negated_val|lower }}"
-                   class="filter-jsonfield negate {{ spec.field_path }}"
-                   {% if spec.lookup_negated_val == "true" %}checked="checked"{% endif %}>
-            <small>{% translate "Exclude" %}</small>
-        </label>
+    <ul class="adminfilter"
+        id="{{ spec.field_path }}"
+        data-action="{% if spec.value.0 %}clear{% else %}filter{% endif %}"
+        data-op="{{ spec.operator }}"
+        data-qs="{{ spec.query_string }}">
+        {% if spec.can_negate or spec.options %}
+            <li class="filter-options-row">
+                {% if spec.can_negate %}
+                    <label class="exclude-checkbox">
+                        <input type="checkbox"
+                               data-group="{{ spec.field_path }}"
+                               data-lk="{{ spec.lookup_kwarg_negated }}"
+                               data-original="{{ spec.lookup_negated_val|lower }}"
+                               class="filter-jsonfield negate {{ spec.field_path }}"
+                               {% if spec.lookup_negated_val == "true" %}checked="checked"{% endif %} />
+                        <small>{% translate "Exclude" %}</small>
+                    </label>
+                {% endif %}
+                {% if spec.options %}
+                    <select name="options"
+                            data-lk="{{ spec.lookup_kwarg_options }}"
+                            data-original="{{ spec.lookup_options_val }}"
+                            class="filter-jsonfield missing-options {{ spec.id }}">
+                        <option value="e" {% if spec.lookup_options_val == "e" %}selected="selected"{% endif %}>
+                            <small>remove missing</small>
+                        </option>
+                        <option value="i" {% if spec.lookup_options_val == "i" %}selected="selected"{% endif %}>
+                            <small>add missing</small>
+                        </option>
+                    </select>
+                {% endif %}
+            </li>
         {% endif %}
-        {% if spec.options %}
-        <select name="options"
-                data-lk="{{ spec.lookup_kwarg_options }}"
-                data-original="{{ spec.lookup_options_val }}"
-                class="filter-jsonfield missing-options {{ spec.id }}">
-            <option value="e" {% if spec.lookup_options_val == "e" %}selected="selected"{% endif %}>
-                <small>remove missing</small>
-            </option>
-            <option value="i" {% if spec.lookup_options_val == "i" %}selected="selected"{% endif %}>
-                <small>add missing</small>
-            </option>
-        </select>
-        {% endif %}
-    </li>
-    {% endif %}
-    <li>
-        <input type="text"
-               name="key"
-               data-lk="{{ spec.lookup_kwarg_key }}"
-               data-original="{{ spec.lookup_key_val }}"
-               data-group="{{ spec.field_path }}"
-               placeholder="{{ spec.key_placeholder }}"
-               class="filter-jsonfield {{ spec.field_path }}"
-               value="{{ spec.lookup_key_val }}">
-    </li>
-    <li>
-        <div class="json-value-row">
+        <li>
             <input type="text"
-                   name="value"
+                   name="key"
+                   data-lk="{{ spec.lookup_kwarg_key }}"
+                   data-original="{{ spec.lookup_key_val }}"
                    data-group="{{ spec.field_path }}"
-                   data-lk="{{ spec.lookup_kwarg_value }}"
-                   placeholder="{{ spec.placeholder }}"
-                   class="filter-jsonfield json-value-input {{ spec.field_path }}"
-                   value="{{ spec.lookup_value_val }}"
-                   data-original="{{ spec.lookup_value_val }}">
-            <select name="type"
-                    data-lk="{{ spec.lookup_kwarg_type }}"
-                    data-original="{{ spec.lookup_type_val }}"
-                    class="filter-jsonfield-type">
-                <option value="any" {% if spec.lookup_type_val == "any" %}selected="selected"{% endif %}>
-                    <small>any</small>
-                </option>
-                <option value="str" {% if spec.lookup_type_val == "str" %}selected="selected"{% endif %}>
-                    <small>str</small>
-                </option>
-                <option value="num" {% if spec.lookup_type_val == "num" %}selected="selected"{% endif %}>
-                    <small>num</small>
-                </option>
-            </select>
-        </div>
-    </li>
-    <li>
-        <a class="filter-jsonfield adminfilters button {{ spec.field_path }} {% if spec.value.0 %}clear{% else %}filter{% endif %}"
-           href="#">{% if spec.value.0 %}{% translate "clear" %}{% else %}{% translate "activate" %}{% endif %}</a>
-    </li>
-</ul>
+                   placeholder="{{ spec.key_placeholder }}"
+                   class="filter-jsonfield {{ spec.field_path }}"
+                   value="{{ spec.lookup_key_val }}" />
+        </li>
+        <li>
+            <div class="json-value-row">
+                <input type="text"
+                       name="value"
+                       data-group="{{ spec.field_path }}"
+                       data-lk="{{ spec.lookup_kwarg_value }}"
+                       placeholder="{{ spec.placeholder }}"
+                       class="filter-jsonfield json-value-input {{ spec.field_path }}"
+                       value="{{ spec.lookup_value_val }}"
+                       data-original="{{ spec.lookup_value_val }}" />
+                <select name="type"
+                        data-lk="{{ spec.lookup_kwarg_type }}"
+                        data-original="{{ spec.lookup_type_val }}"
+                        class="filter-jsonfield-type">
+                    <option value="any" {% if spec.lookup_type_val == "any" %}selected="selected"{% endif %}>
+                        <small>any</small>
+                    </option>
+                    <option value="str" {% if spec.lookup_type_val == "str" %}selected="selected"{% endif %}>
+                        <small>str</small>
+                    </option>
+                    <option value="num" {% if spec.lookup_type_val == "num" %}selected="selected"{% endif %}>
+                        <small>num</small>
+                    </option>
+                </select>
+            </div>
+        </li>
+        <li>
+            <a class="filter-jsonfield adminfilters button {{ spec.field_path }} {% if spec.value.0 %}clear{% else %}filter{% endif %}"
+               href="#">
+                {% if spec.value.0 %}
+                    {% translate "clear" %}
+                {% else %}
+                    {% translate "activate" %}
+                {% endif %}
+            </a>
+        </li>
+    </ul>
 {% endblock content %}
-
 {% block script %}
-<style>
+    <style>
     /* Force specific sizing for all dropdowns */
     .adminfilter select.missing-options,
     .adminfilter select.filter-jsonfield-type,
@@ -155,14 +162,13 @@
         font-size: 13px;
         line-height: 1.2;
     }
-</style>
-
-<script type="text/javascript">
+    </style>
+    <script type="text/javascript">
     ;(function ($) {
         $(document).ready(function () {
             $("#{{ spec.field_path }}").find("a.button").click(new JsonFilterHandler("{{ spec.field_path }}",
                 {negated: {{ spec.negated|lower }}, can_negate:{{ spec.can_negate|lower }}, options:{{ spec.options|lower }} }).click);
         });
     })(django.jQuery);
-</script>
+    </script>
 {% endblock script %}

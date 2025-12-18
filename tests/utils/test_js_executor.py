@@ -26,7 +26,7 @@ def test_execute_with_no_function_name():
     data = [{"name": "John"}]
     code = "console.log('hello');"
     executor = JavaScriptExecutor(data=data, code=code)
-    with pytest.raises(JsValidationError, match="JavaScript function name not found"):
+    with pytest.raises(JsValidationError, match=r"JavaScript function name not found"):
         executor.execute()
 
 
@@ -34,7 +34,7 @@ def test_execute_with_js_runtime_error():
     data = [{"name": "John"}]
     code = "function process(data) { return undefined.property; }"
     executor = JavaScriptExecutor(data=data, code=code)
-    with pytest.raises(JsValidationError, match="JavaScript error:"):
+    with pytest.raises(JsValidationError, match=r"JavaScript error:"):
         executor.execute()
 
 
@@ -112,7 +112,7 @@ def test_eval_js_runtime_error(mock_evaljs):
     from dukpy._dukpy import JSRuntimeError
 
     mock_evaljs.side_effect = JSRuntimeError("ReferenceError: x is not defined")
-    with pytest.raises(JsValidationError, match="JavaScript error: ReferenceError: x is not defined"):
+    with pytest.raises(JsValidationError, match=r"JavaScript error: ReferenceError: x is not defined"):
         JavaScriptExecutor._eval_js("x + y;")
 
 

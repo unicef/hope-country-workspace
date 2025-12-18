@@ -1,21 +1,35 @@
 {% extends "workspace/change_form.html" %}
 {% load admin_modify i18n static workspace_modify workspace_urls %}
-{% block content_title %}{% endblock %}
+{% block content_title %}
+{% endblock %}
 {# {% block coltype %}colMX{% endblock %} #}
-
-
 {% block content %}
     {% block object-tools %}
         {{ block.super }}
     {% endblock object-tools %}
     <div id="content">
         <div id="content-main">
-            <form  class="min-w-full beneficiary-form" {% if has_file_field %}enctype="multipart/form-data" {% endif %}{% if form_url %}action="{{ form_url }}" {% endif %}method="post"
-                  id="{{ opts.model_name }}_form" novalidate>{% csrf_token %}{% block form_top %}{% endblock %}
-                <div  class="min-w-full">
-                    {% if is_popup %}<input type="hidden" name="{{ is_popup_var }}" value="1">{% endif %}
-                    {% if to_field %}<input type="hidden" name="{{ to_field_var }}" value="{{ to_field }}">{% endif %}
-                    {% if save_on_top %}{% block submit_buttons_top %}{% submit_row %}{% endblock %}{% endif %}
+            <form class="min-w-full beneficiary-form"
+                  {% if has_file_field %}enctype="multipart/form-data" {% endif %}
+                  {% if form_url %}action="{{ form_url }}" {% endif %}
+                  method="post"
+                  id="{{ opts.model_name }}_form"
+                  novalidate>
+                {% csrf_token %}
+                {% block form_top %}
+                {% endblock %}
+                <div class="min-w-full">
+                    {% if is_popup %}
+                        <input type="hidden" name="{{ is_popup_var }}" value="1" />
+                    {% endif %}
+                    {% if to_field %}
+                        <input type="hidden" name="{{ to_field_var }}" value="{{ to_field }}" />
+                    {% endif %}
+                    {% if save_on_top %}
+                        {% block submit_buttons_top %}
+                            {% submit_row %}
+                        {% endblock %}
+                    {% endif %}
                     {% if errors %}
                         <p class="errornote">
                             {% blocktranslate count counter=errors|length %}Please correct the error below.{% plural %}
@@ -24,28 +38,31 @@
                         {{ adminform.form.non_field_errors }}
                     {% endif %}
                     {% if original.errors %}
-                        <div class="errors"> Record does not validate and cannot be sent to HOPE</div>
+                        <div class="errors">
+                            Record does not validate and cannot be sent to HOPE
+                        </div>
                         <ul>
-                        {% for e in original.errors.dct %}
-                        <li class="errors">{{ e }}</li>
-                        {% endfor %}
+                            {% for e in original.errors.dct %}
+                                <li class="errors">
+                                    {{ e }}
+                                </li>
+                            {% endfor %}
                         </ul>
                     {% endif %}
                     {% block field_sets %}
-                        <table  class="min-w-full">
-                            {% block pre_checker_form %}{% endblock %}
+                        <table class="min-w-full">
+                            {% block pre_checker_form %}
+                            {% endblock %}
                             {% include "workspace/includes/flex_field_form.html" with form=checker_form fields=original.flex_fields %}
                         </table>
                     {% endblock field_sets %}
-                    {% block after_related_objects %}{% endblock %}
-                    {% block submit_buttons_bottom %}{% submit_row %}{% endblock %}
+                    {% block after_related_objects %}
+                    {% endblock %}
+                    {% block submit_buttons_bottom %}
+                        {% submit_row %}
+                    {% endblock %}
                     {% block admin_change_form_document_ready %}
-                        <script id="django-admin-form-add-constants"
-                                src="{% static 'workspace/js/change_form.js' %}"
-                                {% if adminform and add %}
-                                data-model-name="{{ opts.model_name }}"
-                                {% endif %}
-                                async>
+                        <script id="django-admin-form-add-constants" src="{% static 'workspace/js/change_form.js' %}" {% if adminform and add %} data-model-name="{{ opts.model_name }}" {% endif %} async>
                         </script>
                     {% endblock admin_change_form_document_ready %}
                     {% prepopulated_fields_js %}

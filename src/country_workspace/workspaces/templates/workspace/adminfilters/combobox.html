@@ -1,10 +1,12 @@
-{% extends "workspace/adminfilters/_wrapper.html" %}{% load i18n %}
+{% extends "workspace/adminfilters/_wrapper.html" %}
+{% load i18n %}
 {% block content %}
     <ul>
         <select id="filter-{{ spec.field.name }}" onchange="location.href=this.options[selectedIndex].value">
             {% for choice in choices %}
-                <option{% if choice.selected %} selected="selected"{% endif %}
-                                                value="{{ choice.query_string|iriencode }}">{{ choice.display }}</option>
+                <option {% if choice.selected %} selected="selected"{% endif %} value="{{ choice.query_string|iriencode }}">
+                    {{ choice.display }}
+                </option>
             {% endfor %}
         </select>
     </ul>

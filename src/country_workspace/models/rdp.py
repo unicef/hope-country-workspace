@@ -12,6 +12,7 @@ class Rdp(BaseModel):
         PENDING = "PENDING", _("Pending")
         SUCCESS = "SUCCESS", _("Success")
         FAILURE = "FAILURE", _("Failure")
+        CANCELLED = "CANCELLED", _("Cancelled")
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")

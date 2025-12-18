@@ -1,4 +1,5 @@
-{% extends "workspace/action_page.html" %}{% load i18n workspace_modify workspace_urls %}
+{% extends "workspace/action_page.html" %}
+{% load i18n workspace_modify workspace_urls %}
 {% block content %}
     {% block object-tools %}
         {# {% if change and not is_popup %} #}
@@ -15,32 +16,22 @@
                 <div id="tabs">
                     <ul id="default-styled-tab">
                         <li class="me-2" role="presentation">
-                            <button class="selected"
-                                    data-tabs-target="#tab-rdi"
-                                    data-input-value="rdi"
-                                    type="button" role="tab"
-                                    aria-selected="false">RDI
+                            <button class="selected" data-tabs-target="#tab-rdi" data-input-value="rdi" type="button" role="tab" aria-selected="false">
+                                RDI
                             </button>
                         </li>
                         <li class="me-2" role="presentation">
-                            <button
-                                    data-tabs-target="#tab-aurora"
-                                    data-input-value="aurora"
-                                    type="button" role="tab"
-                                    aria-selected="false">Aurora
+                            <button data-tabs-target="#tab-aurora" data-input-value="aurora" type="button" role="tab" aria-selected="false">
+                                Aurora
                             </button>
                         </li>
                         <li class="me-2" role="presentation">
-                            <button
-                                    data-tabs-target="#tab-kobo"
-                                    data-input-value="kobo"
-                                    type="button" role="tab"
-                                    aria-selected="false">Kobo
+                            <button data-tabs-target="#tab-kobo" data-input-value="kobo" type="button" role="tab" aria-selected="false">
+                                Kobo
                             </button>
                         </li>
                     </ul>
                 </div>
-
                 <div id="tab-content">
                     <div class="content" id="tab-rdi">
                         {% include "workspace/program/_import_rdi.html" %}
@@ -53,7 +44,6 @@
                     </div>
                 </div>
             </div>
-
             {# <div class="block min-w-full"> #}
             {# <fieldset class="block border  min-w-full p-5"> #}
             {# <legend>RDI</legend> #}
@@ -79,7 +69,7 @@
             {# </table> #}
             {#  #}
             {# <div class="submit-row"> #}
-            {# <input type="submit" value="{% translate 'Import' %}" class="default" name="_save"> #}
+            {# <input type="submit" value="{% translate 'Import' %}" class="default" name="_save" /> #}
             {# {% url opts|workspace_urlname:'change' original.pk as changelist_url %} #}
             {# <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a> #}
             {# </div> #}

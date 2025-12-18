@@ -1,12 +1,12 @@
-{% extends "admin/base_site.html" %}{% load i18n static %}
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
 {% block extrastyle %}
     {{ block.super }}
-    <link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">
-    <link rel="stylesheet" type="text/css" href="{% static "smart_admin/smart_admin.css" %}">
-    <link rel="stylesheet" type="text/css" href="{% static "smart_admin/console.css" %}">
+    <link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}" />
+    <link rel="stylesheet" type="text/css" href="{% static "smart_admin/smart_admin.css" %}" />
+    <link rel="stylesheet" type="text/css" href="{% static "smart_admin/console.css" %}" />
     <script type="text/javascript" src="{% static "admin/js/vendor/jquery/jquery.js" %}"></script>
 {% endblock extrastyle %}
-
 {% block breadcrumbs %}
     <div class="breadcrumbs">
         <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a> &rsaquo;
@@ -14,7 +14,6 @@
         <a href=".">{{ title }}</a>
     </div>
 {% endblock breadcrumbs %}
-
 {% block content %}
     <div class="console module{% if cl.has_filters %} filtered{% endif %}" id="changelist">
         <div class="changelist-form-container {% block left-class %}{% endblock %}">
@@ -27,7 +26,9 @@
                     <ul class="submit-row">
                         {% for panel in panels %}
                             {% with href="admin:console-"|add:panel.name %}
-                            <li><a class="button" href="{% url href %}{{ panel.url }}">{{ panel.label }}</a></li>
+                                <li>
+                                    <a class="button" href="{% url href %}{{ panel.url }}">{{ panel.label }}</a>
+                                </li>
                             {% endwith %}
                         {% endfor %}
                     </ul>

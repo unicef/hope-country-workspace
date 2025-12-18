@@ -1,42 +1,51 @@
-{% extends "workspace/change_form.html" %}{% load i18n workspace_urls %}
+{% extends "workspace/change_form.html" %}
+{% load i18n workspace_urls %}
 {% block page-title %}
     &rsaquo; {{ original }}{% admin_url original %}
     &rsaquo; Configure Columns
 {% endblock page-title %}
-
 {% block content %}
     <div id="content">
         <div id="content-main">
             <div class="block px-5">
-            <h1 class="block text-2xl mb-5">{{ checker }}</h1>
+                <h1 class="block text-2xl mb-5">
+                    {{ checker }}
+                </h1>
                 <form method="post" id="configure-columns">
                     {% csrf_token %}
                     <table>
                         <thead>
-                        <tr>
-                            <th></th>
-                            <th>Label</th>
-                        </tr>
+                            <tr>
+                                <th>
+                                </th>
+                                <th>
+                                    Label
+                                </th>
+                            </tr>
                         </thead>
                         <tbody>
-                        {% for col_key, col_label in form.fields.columns.choices %}
-                            <tr>
-                                <td><input type="checkbox"
-                                           name="columns"
-                                           {% if col_key in form.initial.columns %}checked="checked"{% endif %}value="{{ col_key }}"
-                                           id="id_columns_{{ col_key }}"></td>
-                                <td><label for="id_columns_{{ col_key }}"
-                                           class="min-w-full cursor-pointer">{{ col_label }}</label>
-                                </td>
-                            </tr>
-                        {% endfor %}
+                            {% for col_key, col_label in form.fields.columns.choices %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox"
+                                               name="columns"
+                                               {% if col_key in form.initial.columns %}checked="checked"{% endif %}
+                                               value="{{ col_key }}"
+                                               id="id_columns_{{ col_key }}" />
+                                    </td>
+                                    <td>
+                                        <label for="id_columns_{{ col_key }}" class="min-w-full cursor-pointer">
+                                            {{ col_label }}
+                                        </label>
+                                    </td>
+                                </tr>
+                            {% endfor %}
                         </tbody>
                     </table>
                     <div class="submit-row">
-                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save">
+                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save" />
                         {% url opts|workspace_urlname:'change' original.pk as changelist_url %}
-                        <a href="{% add_preserved_filters changelist_url %}"
-                           class="closelink">{% translate 'Close' %}</a>
+                        <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
                     </div>
                 </form>
             </div>
