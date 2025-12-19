@@ -1,11 +1,9 @@
 from typing import Self
 from dataclasses import dataclass
-from contextlib import suppress
 from packaging.version import Version
 from django.db import transaction
 
-from hope_flex_fields.models import FieldDefinition, FlexField, DataChecker
-from country_workspace.models import MappingImporter
+from hope_flex_fields.models import FieldDefinition, FlexField
 from country_workspace.contrib.hope.constants import INDIVIDUAL_CHECKER_NAME, PEOPLE_CHECKER_NAME
 
 _script_for_version = Version("0.1.0")
@@ -35,20 +33,11 @@ def _rename_field(rename: FieldRename) -> None:
 
 
 def _create_mapping_rules(rename: FieldRename) -> None:
-    for checker_name in CHECKERS:
-        with suppress(DataChecker.DoesNotExist):
-            dc = DataChecker.objects.get(name=checker_name)
-            MappingImporter.objects.get_or_create(
-                name=MI_NAME,
-                data_checker=dc,
-                defaults={
-                    "rules": f"{rename.old_field}={rename.new_field}",
-                },
-            )
+    pass
 
 
 def _remove_mapping_rules(rename: FieldRename) -> None:
-    MappingImporter.objects.filter(name=MI_NAME).delete()
+    pass
 
 
 def forward() -> None:
