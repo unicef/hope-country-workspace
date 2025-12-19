@@ -271,8 +271,8 @@ def test_apply_mapping_importer_from_checker(program: Program):
     importer1 = MappingImporterFactory(office=office)
     importer1.apply = MagicMock()
 
-    # Importer with no office (global) - should be used
-    importer2 = MappingImporterFactory(office=None)
+    # Second importer for the correct office - should be used
+    importer2 = MappingImporterFactory(office=office)
     importer2.apply = MagicMock()
 
     # Importer for another office - should NOT be used
@@ -286,7 +286,7 @@ def test_apply_mapping_importer_from_checker(program: Program):
         result = program.apply_mapping_importer(Household, data)
 
         mock_get_checker_for.assert_called_once_with(Household)
-        assert mock_checker.mapping_importers.filter.call_count == 1
+        mock_checker.mapping_importers.filter.assert_called_once_with(office=office)
         importer1.apply.assert_called_once_with(data)
         importer2.apply.assert_called_once_with(data)
         importer3.apply.assert_not_called()
