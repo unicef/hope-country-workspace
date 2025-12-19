@@ -291,3 +291,18 @@ def test_apply_mapping_importer_from_checker(program: Program):
         importer2.apply.assert_called_once_with(data)
         importer3.apply.assert_not_called()
         assert result == data
+
+
+def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Program) -> None:
+    data: dict[str, Any] = {"name": "Test"}
+
+    with (
+        patch.object(program, "get_checker_for", return_value=None) as mock_get_checker_for,
+        patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter,
+    ):
+        result = program.apply_mapping_importer(Household, data)
+
+    mock_get_checker_for.assert_called_once_with(Household)
+    mock_filter.assert_not_called()
+    assert result is data
+    assert result == data

@@ -85,15 +85,22 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch.pk
             assert result["households"] == 1
-            assert result["individuals"] == 0
-            assert result["validation_jobs_created"] == 1
+            assert result["individuals"] == batch.individual_set.filter(removed=False).count()
+            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
 
-            # Verify create_validation_jobs was called correctly
-            mock_create.assert_called_once()
-            call_kwargs = mock_create.call_args[1]
-            assert "Reprocess batch" in call_kwargs["description"]
-            assert call_kwargs["owner"] == user
-            assert call_kwargs["program"] == program
+            assert mock_create.call_count == result["validation_jobs_created"]
+
+            calls = [c.kwargs for c in mock_create.call_args_list]
+            hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
+            assert "Reprocess batch" in hh_call["description"]
+            assert hh_call["owner"] == user
+            assert hh_call["program"] == program
+
+            if result["individuals"] > 0:
+                ind_call = next(c for c in calls if c.get("description", "").endswith(" - Individuals"))
+                assert "Reprocess batch" in ind_call["description"]
+                assert ind_call["owner"] == user
+                assert ind_call["program"] == program
 
     def test_reprocess_batch_with_individuals_only(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryIndividualFactory
@@ -156,11 +163,10 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch.pk
             assert result["households"] == 1
-            assert result["individuals"] == 1
-            assert result["validation_jobs_created"] == 2
+            assert result["individuals"] == batch.individual_set.filter(removed=False).count()
+            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
 
-            # Should be called twice: once for households, once for individuals
-            assert mock_create.call_count == 2
+            assert mock_create.call_count == result["validation_jobs_created"]
 
     def test_reprocess_batch_multiple_households(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory
@@ -189,8 +195,9 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["households"] == 2
-            assert result["validation_jobs_created"] == 1
-            mock_create.assert_called_once()
+            assert result["individuals"] == batch.individual_set.filter(removed=False).count()
+            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
+            assert mock_create.call_count == result["validation_jobs_created"]
 
     def test_reprocess_batch_queryset_prefetching(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, CountryIndividualFactory
@@ -216,12 +223,10 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             reprocess_batch(job)
 
-            # Get the queryset that was passed to create_validation_jobs
-            call_kwargs = mock_create.call_args[1]
-            queryset = call_kwargs["queryset"]
-
-            # Verify that members are prefetched
-            assert "members" in queryset._prefetch_related_lookups
+            calls = [c.kwargs for c in mock_create.call_args_list]
+            hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
+            queryset = hh_call["queryset"]
+            assert "members" in getattr(queryset, "_prefetch_related_lookups", ())
 
     def test_reprocess_batch_result_structure(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory

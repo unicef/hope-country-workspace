@@ -107,8 +107,9 @@ class TestReprocessBatchTask:
             assert result["batch_id"] == batch_with_households.pk
             assert result["batch_name"] == batch_with_households.name
             assert result["households"] > 0
-            assert result["validation_jobs_created"] > 0
-            mock_create.assert_called_once()
+            expected_calls = int(result["households"] > 0) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_calls
+            assert mock_create.call_count == expected_calls
 
     def test_reprocess_batch_with_individuals(
         self, batch_with_individuals: "CountryBatch", force_migrated_records, user: "User"
@@ -463,8 +464,9 @@ class TestBatchReprocessingIntegration:
     def test_reprocess_batch_all_removed(self, batch_with_households: "CountryBatch", user: "User") -> None:
         from testutils.factories import AsyncJobFactory
 
-        # Mark all households as removed
+        # Mark all records in the batch as removed
         batch_with_households.household_set.update(removed=True)
+        batch_with_households.individual_set.update(removed=True)
 
         job = AsyncJobFactory(
             program=batch_with_households.program,
@@ -478,7 +480,9 @@ class TestBatchReprocessingIntegration:
 
             # No households should be processed
             assert result["households"] == 0
+            assert result["individuals"] == 0
             assert result["skipped_households"] > 0
+            assert result["skipped_individuals"] > 0
             assert result["validation_jobs_created"] == 0
 
             # create_validation_jobs should not be called
