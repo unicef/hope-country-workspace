@@ -3,7 +3,6 @@ from collections.abc import Iterable
 from enum import StrEnum
 
 from django.db import models
-from django.db.models import Q
 from django.utils.translation import gettext as _
 from hope_flex_fields.models import DataChecker
 from strategy_field.fields import StrategyField
@@ -165,22 +164,17 @@ class Program(BaseModel):
         data: dict[str, str | int | bool],
         mapping_id: int | None = None,
     ) -> dict[str, str | int | bool]:
-        """Apply mapping importer from the checker's mappingimporter, if any."""
+        """Apply mapping importer(s) either by explicit id or by the checker."""
         from country_workspace.models import MappingImporter
 
-        mapping_importers = []
-        if mapping_id:
-            mapping_importer = MappingImporter.objects.filter(id=mapping_id).first()
-            if mapping_importer:
-                mapping_importers = [mapping_importer]
-
-        elif (checker := self.get_checker_for(m)) is not None:
-            mapping_importers = list(
-                checker.mapping_importers.filter(Q(office=self.country_office) | Q(office__isnull=True))
-            )
-
-        for mapping_importer in mapping_importers:
-            mapping_importer.apply(data)
+        if mapping_id is not None:
+            if importer := MappingImporter.objects.filter(id=mapping_id).first():
+                importer.apply(data)
+            return data
+        if (checker := self.get_checker_for(m)) is None:
+            return data
+        for importer in checker.mapping_importers.filter(office=self.country_office):
+            importer.apply(data)
 
         return data
 

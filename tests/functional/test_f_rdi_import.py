@@ -49,7 +49,7 @@ def test_rdi_import_household(browser, program):
     browser.click_link("Programme")
     browser.click("#btn-import_data")
     browser.fill('input[name="rdi-batch_name"]', "Test Batch")
-    browser.click('input[type="checkbox"][name="rdi-validate_after_import"]')
+    browser.click('input[type="checkbox"][name="rdi-fail_if_alien"]')
     test_file_path = Path(__file__).parent.parent / "data/rdi_correct.xlsx"
     browser.choose_file('input[type="file"]', str(test_file_path))
     browser.click('input[type="submit"][value="Import"]')

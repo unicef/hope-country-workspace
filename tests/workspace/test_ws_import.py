@@ -150,13 +150,23 @@ def program(
     RegistrationFactory.create_batch(3, project=project, active=True)
 
     MappingImporterFactory(
+        office=program.country_office,
         data_checker=program.get_checker_for(Individual),
         rules="gender=sex\nage=birth_year",
     )
     if request.param:
         MappingImporterFactory(
+            office=program.country_office,
             data_checker=program.get_checker_for(Household),
-            rules="members_count=count\n",
+            rules="\n".join(  # noqa: FLY002
+                [
+                    "members_count=count",
+                    "head_of_household_id=head_of_household",
+                    "primary_collector_id=primary_collector",
+                    "alternate_collector_id=alternate_collector",
+                    "",
+                ]
+            ),
         )
 
     return program
