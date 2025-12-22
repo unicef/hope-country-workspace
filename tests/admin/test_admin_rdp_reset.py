@@ -63,8 +63,12 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
 def test_rdp_reset_success(app, rdp, household, individual, admin_user):
     # Grant permission
     from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
 
-    perm = Permission.objects.get(codename="reset_rdp")
+    content_type = ContentType.objects.get_for_model(Rdp)
+    perm, _ = Permission.objects.get_or_create(
+        codename="reset_rdp", content_type=content_type, defaults={"name": "Can reset RDP"}
+    )
     admin_user.user_permissions.add(perm)
 
     url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
@@ -94,8 +98,12 @@ def test_rdp_reset_success(app, rdp, household, individual, admin_user):
 def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, admin_user):
     # Grant permission
     from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
 
-    perm = Permission.objects.get(codename="reset_rdp")
+    content_type = ContentType.objects.get_for_model(Rdp)
+    perm, _ = Permission.objects.get_or_create(
+        codename="reset_rdp", content_type=content_type, defaults={"name": "Can reset RDP"}
+    )
     admin_user.user_permissions.add(perm)
 
     # Set status to something other than SUCCESS
