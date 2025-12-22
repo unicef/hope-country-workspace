@@ -99,6 +99,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         obj = btn.context["original"]
         btn.href = f"{base}?batch__exact={obj.pk}"
 
+    @link(change_list=False, html_attrs={"title": "Shows related Individual records."})
+    def imported_individuals(self, btn: LinkButton) -> None:
+        base = reverse("workspace:workspaces_countryindividual_changelist")
+        obj = btn.context["original"]
+        btn.href = f"{base}?batch__exact={obj.pk}"
+
     @button(
         change_list=False,
         permission=can_reprocess_batch,

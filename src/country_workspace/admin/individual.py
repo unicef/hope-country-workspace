@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from admin_extra_buttons.decorators import link
-from adminfilters.autocomplete import LinkedAutoCompleteFilter
+from adminfilters.autocomplete import LinkedAutoCompleteFilter, AutoCompleteFilter
 from django.contrib import admin
 from django.urls import reverse
 
@@ -23,6 +23,7 @@ class IndividualAdmin(BaseModelAdmin):
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+        ("batch", AutoCompleteFilter),
         IsValidFilter,
         "removed",
     )
