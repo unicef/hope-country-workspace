@@ -1,9 +1,10 @@
 from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.decorators import link
+from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
+from django.db import transaction
 from django.db.models import QuerySet
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
@@ -52,3 +53,27 @@ class RdpAdmin(BaseModelAdmin):
             req = btn.context["request"]
             base = reverse("workspace:workspaces_countryrdp_changelist")
             btn.href = f"{base}?%s" % req.META["QUERY_STRING"]
+
+    @button(
+        permission="country_workspace.reset_rdp",
+        change_form=True,
+        change_list=False,
+        label="Reset",
+        html_attrs={"class": "btn-warning"},
+        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
+    )
+    def reset(self, request: HttpRequest, pk: int) -> HttpResponseRedirect:
+        obj: Rdp | None = self.get_object(request, pk)
+        if not obj:
+            self.message_user(request, "RDP object not found.", level="error")
+            return HttpResponseRedirect(request.path)
+
+        if obj.status != Rdp.PushStatus.SUCCESS:
+            self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
+        else:
+            with transaction.atomic():
+                obj.households.all().update(removed=False)
+                obj.individuals.all().update(removed=False)
+            self.message_user(request, "RDP reset successfully. Related beneficiaries marked as not removed.")
+
+        return HttpResponseRedirect(request.path)

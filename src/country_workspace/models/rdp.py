@@ -28,6 +28,7 @@ class Rdp(BaseModel):
         unique_together = (("push_date", "name"),)
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")
+        permissions = [("reset_rdp", _("Can reset RDP"))]
 
     def __str__(self) -> str:
         return self.name or f"RDP {self.pk} ({self.country_office})"
