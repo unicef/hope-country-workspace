@@ -6,16 +6,12 @@ from pytest_mock import MockerFixture
 
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.utils.fields import (
-    clean_field_name,
-    TO_REMOVE_VALUES,
-    clean_field_names,
-)
+from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names
 from country_workspace.utils.flex_fields import (
     Base64ImageInput,
     Base64ImageField,
     ConsentSharingChoice,
-    split_consent_sharing_options,
+    split_options,
 )
 
 
@@ -52,7 +48,7 @@ def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
     instance = Mock(spec=Base64ImageField)
     initial_data = None
 
-    assert Base64ImageField.clean(instance, False, initial_data) is None
+    assert Base64ImageField.clean(instance, False, initial_data) == ""
     super_clean_mock.assert_called_once_with(False, initial_data)
 
 
@@ -93,8 +89,8 @@ def test_base64_image_field_content_is_unchanged(mocker: MockerFixture) -> None:
         pytest.param("a", ["a"], id="single"),
     ],
 )
-def test_split_consent_sharing_options(value: str, expected: list[str]) -> None:
-    assert split_consent_sharing_options(value) == expected
+def test_split_options(value: str, expected: list[str]) -> None:
+    assert split_options(value) == expected
 
 
 @pytest.mark.parametrize(
@@ -120,16 +116,14 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_super_method(
     super_prepare_value_mock.assert_called_once_with(value)
 
 
-def test_consent_sharing_choice_to_python_and_prepare_value_call_split_consent_sharing_options(
+def test_consent_sharing_choice_to_python_and_prepare_value_call_split_options(
     mocker: MockerFixture,
 ) -> None:
     value = "test"
-    split_consent_sharing_options_mock = mocker.patch(
-        "country_workspace.utils.flex_fields.split_consent_sharing_options"
-    )
+    split_options_mock = mocker.patch("country_workspace.utils.flex_fields.split_options")
     instance = Mock(spec=ConsentSharingChoice)
 
     ConsentSharingChoice.to_python(instance, value)
     ConsentSharingChoice.prepare_value(instance, value)
 
-    split_consent_sharing_options_mock.assert_has_calls([c := call(value), c])
+    split_options_mock.assert_has_calls([c := call(value), c])
