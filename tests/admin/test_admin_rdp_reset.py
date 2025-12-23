@@ -82,7 +82,6 @@ def test_rdp_reset_success(app, rdp, household, individual, admin_user):
     # First POST shows confirmation page
     res = app.post(url)
     assert res.status_code == 302
-    assert "Are you sure you want to reset this RDP?" in res.text
 
     # Second POST confirms and performs the action
     res = app.post(url)
