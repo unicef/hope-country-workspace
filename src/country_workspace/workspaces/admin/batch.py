@@ -98,12 +98,18 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         base = reverse("workspace:workspaces_countryhousehold_changelist")
         obj = btn.context["original"]
         btn.href = f"{base}?batch__exact={obj.pk}"
+        if obj.program.beneficiary_group:
+            btn.label = obj.program.beneficiary_group.group_label
+            if not obj.program.beneficiary_group.master_detail:
+                btn.visible = False
 
     @link(change_list=False, html_attrs={"title": "Shows related Individual records."})
     def imported_individuals(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryindividual_changelist")
         obj = btn.context["original"]
         btn.href = f"{base}?batch__exact={obj.pk}"
+        if obj.program.beneficiary_group:
+            btn.label = obj.program.beneficiary_group.member_label
 
     @button(
         change_list=False,
