@@ -85,7 +85,10 @@ def test_rdp_reset_success(app, rdp, household, individual, admin_user):
 
     # Follow redirect to see messages
     res = res.follow()
-    assert "RDP reset successfully" in res.text
+
+    messages = list(res.context["messages"])
+    assert len(messages) >= 1
+    assert any("RDP reset successfully" in str(m) for m in messages)
 
     # Verify final state
     household.refresh_from_db()
@@ -117,7 +120,10 @@ def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, admin_user
     assert res.status_code == 302
 
     res = res.follow()
-    assert "Reset is only allowed for SUCCESS status" in res.text
+
+    messages = list(res.context["messages"])
+    assert len(messages) >= 1
+    assert any("Reset is only allowed for SUCCESS status" in str(m) for m in messages)
 
     # Verify state was NOT changed
     household.refresh_from_db()
@@ -132,11 +138,17 @@ def test_rdp_reset_no_permission(app, rdp, admin_user):
     admin_user.save()
     # Ensure they have access to admin panel at least
     from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
 
-    view_perm = Permission.objects.get(codename="view_rdp")
+    # Add view permission for Rdp
+    content_type = ContentType.objects.get_for_model(Rdp)
+    view_perm, _ = Permission.objects.get_or_create(
+        codename="view_rdp", content_type=content_type, defaults={"name": "Can view RDP"}
+    )
     admin_user.user_permissions.add(view_perm)
 
     url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
 
+    # Perform reset - should be 403 Forbidden
     res = app.post(url, expect_errors=True)
     assert res.status_code == 403

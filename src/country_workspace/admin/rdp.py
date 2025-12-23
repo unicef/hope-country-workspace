@@ -74,6 +74,9 @@ class RdpAdmin(BaseModelAdmin):
             with transaction.atomic():
                 obj.households.all().update(removed=False)
                 obj.individuals.all().update(removed=False)
+                obj.status = Rdp.PushStatus.CANCELLED
+                obj.save()
+
             self.message_user(request, "RDP reset successfully. Related beneficiaries marked as not removed.")
 
-        return HttpResponseRedirect(request.path)
+        return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
