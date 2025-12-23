@@ -14,27 +14,27 @@ class TestJobErrorDisplayMixin:
     def mixin(self):
         return JobErrorDisplayMixin()
 
-    def test_formatted_error_no_obj(self, mixin):
-        assert mixin.formatted_error(None) == ""
+    def test_formatted_error_no_obj(self, mixin: JobErrorDisplayMixin):
+        assert mixin.result(None) == ""
 
     def test_formatted_error_no_result_id(self, mixin):
         obj = MockJob(None)
-        assert mixin.formatted_error(obj) == ""
+        assert mixin.result(obj) == ""
 
     def test_formatted_error_no_task_result(self, mixin, db):
         obj = MockJob("missing-id")
-        assert mixin.formatted_error(obj) == ""
+        assert mixin.result(obj) == ""
 
     def test_formatted_error_empty_result(self, mixin, db):
         TaskResult.objects.create(task_id="empty-id", result=None)
         obj = MockJob("empty-id")
-        assert mixin.formatted_error(obj) == ""
+        assert mixin.result(obj) == ""
 
     def test_formatted_error_json_string(self, mixin, db):
         data = {"error": "test error"}
         TaskResult.objects.create(task_id="json-id", result=json.dumps(data))
         obj = MockJob("json-id")
-        result = mixin.formatted_error(obj)
+        result = mixin.result(obj)
         assert "<pre>" in result
         assert "test error" in result
 
@@ -42,13 +42,13 @@ class TestJobErrorDisplayMixin:
         data = {"error": "test error"}
         TaskResult.objects.create(task_id="dict-id", result=data)
         obj = MockJob("dict-id")
-        result = mixin.formatted_error(obj)
+        result = mixin.result(obj)
         assert "<pre>" in result
         assert "test error" in result
 
     def test_formatted_error_invalid_json(self, mixin, db):
         TaskResult.objects.create(task_id="invalid-id", result="invalid json")
         obj = MockJob("invalid-id")
-        result = mixin.formatted_error(obj)
+        result = mixin.result(obj)
         assert "<pre>" in result
         assert "invalid json" in result
