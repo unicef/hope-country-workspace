@@ -1,8 +1,9 @@
+from admin_extra_buttons.api import button, choice
 from admin_extra_buttons.buttons import ChoiceButton, LinkButton
-from admin_extra_buttons.decorators import button, link
+from admin_extra_buttons.decorators import link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
@@ -42,18 +43,28 @@ class BatchAdmin(BaseModelAdmin):
         }
         return render(request, "admin/country_workspace/batch_beneficiaries.html", context)
 
-    @button(change_list=False, label="Related Records", button_class=ChoiceButton)
-    def related_records(self, btn: ChoiceButton) -> None:
-        obj = btn.context["original"]
+    @button(change_list=False, label="All Beneficiaries", visible=False)
+    def _beneficiaries_choice(self, request: HttpRequest, pk: str) -> HttpResponseRedirect:
         opts = self.model._meta
-        beneficiaries_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_beneficiaries", args=[obj.pk])
-        base_hh = reverse("admin:country_workspace_household_changelist")
-        base_ind = reverse("admin:country_workspace_individual_changelist")
+        url = reverse(f"admin:{opts.app_label}_{opts.model_name}_beneficiaries", args=[pk])
+        return HttpResponseRedirect(url)
 
-        btn.choices = [
-            {"label": "All Beneficiaries", "url": beneficiaries_url},
-            {"label": "Members (HH)", "url": f"{base_hh}?batch__exact={obj.pk}"},
-            {"label": "Members (Ind)", "url": f"{base_ind}?batch__exact={obj.pk}"},
+    @button(change_list=False, visible=False)
+    def _households_choice(self, request: HttpRequest, pk: str) -> HttpResponseRedirect:
+        url = reverse("admin:country_workspace_household_changelist")
+        return HttpResponseRedirect(f"{url}?batch__exact={pk}")
+
+    @button(change_list=False, visible=False)
+    def _individuals_choice(self, request: HttpRequest, pk: str) -> HttpResponseRedirect:
+        url = reverse("admin:country_workspace_individual_changelist")
+        return HttpResponseRedirect(f"{url}?batch__exact={pk}")
+
+    @choice(change_list=False, label="Related Records")
+    def related_records(self, button: ChoiceButton) -> None:
+        button.choices = [
+            self._beneficiaries_choice,
+            self._households_choice,
+            self._individuals_choice,
         ]
 
     @link(change_list=True, change_form=False)
