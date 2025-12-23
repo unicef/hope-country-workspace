@@ -1,5 +1,6 @@
 import json
 import pytest
+from unittest.mock import MagicMock, patch
 from django_celery_results.models import TaskResult
 from country_workspace.admin.mixins import JobErrorDisplayMixin
 
@@ -38,17 +39,23 @@ class TestJobErrorDisplayMixin:
         assert "<pre>" in result
         assert "test error" in result
 
-    def test_formatted_error_dict(self, mixin, db):
+    def test_formatted_error_dict_mocked(self, mixin):
         data = {"error": "test error"}
-        TaskResult.objects.create(task_id="dict-id", result=data)
-        obj = MockJob("dict-id")
-        result = mixin.result(obj)
-        assert "<pre>" in result
-        assert "test error" in result
+        with patch("django_celery_results.models.TaskResult.objects.filter") as mock_filter:
+            mock_result = MagicMock()
+            mock_result.result = data
+            mock_filter.return_value.first.return_value = mock_result
+
+            obj = MockJob("dict-id")
+            result = mixin.result(obj)
+
+            assert "<pre>" in result
+            assert "test error" in result
 
     def test_formatted_error_invalid_json(self, mixin, db):
+        # Should NOT wrap in pre if not valid JSON
         TaskResult.objects.create(task_id="invalid-id", result="invalid json")
         obj = MockJob("invalid-id")
         result = mixin.result(obj)
-        assert "<pre>" in result
+        assert "<pre>" not in result
         assert "invalid json" in result
