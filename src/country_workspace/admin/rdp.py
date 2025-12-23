@@ -63,10 +63,7 @@ class RdpAdmin(BaseModelAdmin):
         enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponseRedirect:
-        obj: Rdp | None = self.get_object(request, pk)
-        if not obj:
-            self.message_user(request, "RDP object not found.", level="error")
-            return HttpResponseRedirect(request.path)
+        obj: Rdp = self.get_object(request, pk)
 
         if obj.status != Rdp.PushStatus.SUCCESS:
             self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
