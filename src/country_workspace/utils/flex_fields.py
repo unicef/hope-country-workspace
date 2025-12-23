@@ -53,11 +53,10 @@ class Base64ImageField(forms.ImageField):
                 return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
             return cleaned_data
 
-        # if we return cleaned_data here, False will be stored, so we return None explicitly
-        return None
+        return ""
 
 
-def split_consent_sharing_options(value: str) -> list[str]:
+def split_options(value: str) -> list[str]:
     stripped = value.strip()
 
     if not stripped:
@@ -71,15 +70,23 @@ def split_consent_sharing_options(value: str) -> list[str]:
     return [stripped]
 
 
-class ConsentSharingChoice(forms.MultipleChoiceField):
+class CustomMultipleChoiceField(forms.MultipleChoiceField):
     def to_python(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
-            return split_consent_sharing_options(value)
+            return split_options(value)
 
         return super().to_python(value)
 
     def prepare_value(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
-            return split_consent_sharing_options(value)
+            return split_options(value)
 
         return super().prepare_value(value)
+
+
+class ConsentSharingChoice(CustomMultipleChoiceField):
+    """Consent sharing multiple choice field."""
+
+
+class ObservedDisabilityChoice(CustomMultipleChoiceField):
+    """Observed Disability multiple choice field."""
