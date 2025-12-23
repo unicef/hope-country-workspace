@@ -4,10 +4,11 @@ from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilt
 from django.contrib import admin
 from django.db import transaction
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
+from ..compat.admin_extra_buttons import confirm_action
 from ..models import Rdp
 from .base import BaseModelAdmin
 
@@ -62,18 +63,33 @@ class RdpAdmin(BaseModelAdmin):
         html_attrs={"class": "btn-warning"},
         enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
     )
-    def reset(self, request: HttpRequest, pk: int) -> HttpResponseRedirect:
-        obj: Rdp = self.get_object(request, pk)
+    def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
+        obj = self.get_object(request, str(pk))
+        if not obj or not isinstance(obj, Rdp):
+            self.message_user(request, "RDP object not found.", level="error")
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         if obj.status != Rdp.PushStatus.SUCCESS:
             self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
-        else:
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
+
+        def _action(_: HttpRequest) -> HttpResponseRedirect:
             with transaction.atomic():
                 obj.households.all().update(removed=False)
                 obj.individuals.all().update(removed=False)
                 obj.status = Rdp.PushStatus.CANCELLED
                 obj.save()
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
-            self.message_user(request, "RDP reset successfully. Related beneficiaries marked as not removed.")
-
-        return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Are you sure you want to reset this RDP?",
+            description=(
+                "This will set all related households and individuals to removed=False "
+                "and mark the RDP status as CANCELLED. This action cannot be undone."
+            ),
+            success_message="RDP reset successfully. Related beneficiaries marked as not removed.",
+            pk=str(pk),
+        )

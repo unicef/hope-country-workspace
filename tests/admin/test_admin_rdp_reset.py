@@ -79,7 +79,12 @@ def test_rdp_reset_success(app, rdp, household, individual, admin_user):
     assert household.removed is True
     assert individual.removed is True
 
-    # Perform reset
+    # First POST shows confirmation page
+    res = app.post(url)
+    assert res.status_code == 200
+    assert "Are you sure you want to reset this RDP?" in res.text
+
+    # Second POST confirms and performs the action
     res = app.post(url)
     assert res.status_code == 302  # Redirects back
 
@@ -93,8 +98,10 @@ def test_rdp_reset_success(app, rdp, household, individual, admin_user):
     # Verify final state
     household.refresh_from_db()
     individual.refresh_from_db()
+    rdp.refresh_from_db()
     assert household.removed is False
     assert individual.removed is False
+    assert rdp.status == Rdp.PushStatus.CANCELLED
 
 
 @pytest.mark.django_db
