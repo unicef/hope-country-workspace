@@ -41,5 +41,5 @@ class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin, JobErrorDisplayMixin):
 
     def get_readonly_fields(self, request: "HttpRequest", obj: "AsyncJob | None" = None) -> Sequence[str]:
         if obj:
-            return "program", "batch", "owner", "local_status", "type", "action", "sentry_id", "formatted_error"
+            return "program", "batch", "owner", "local_status", "type", "action", "sentry_id", "result"
         return super().get_readonly_fields(request, obj)

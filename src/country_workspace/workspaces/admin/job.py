@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button
 from django.contrib.admin import register
@@ -34,8 +34,14 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin, JobErrorDisplay
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
     search_fields = ("description",)
-    fields = ("description", "formatted_error")
-    readonly_fields = ("formatted_error",)
+    fields = ("description", "result")
+    readonly_fields = ("result",)
+
+    def get_form(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None, **kwargs: Any) -> Any:
+        form = super().get_form(request, obj, **kwargs)
+        if "description" in form.base_fields:
+            form.base_fields["description"].widget.attrs["style"] = "width: 800px;"
+        return form
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
         return False
