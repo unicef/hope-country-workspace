@@ -59,6 +59,24 @@ class SelectColumnsForm(forms.Form):
         self.fields["columns"].choices = self.model_core_fields + columns
 
 
+class AlienColumnsForm(forms.Form):
+    new_columns = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.SelectMultiple(),
+    )
+
+    def __init__(self, data: list[str] | None=None, existing_columns: list | None=None, **kwargs: Any) -> None:
+        super().__init__(data=data, **kwargs)
+
+        if data and "new_columns" in data:
+            choices = [(v, v) for v in data.get("new_columns")]
+            self.fields["new_columns"].choices = choices
+        elif existing_columns:
+            choices = [(v, v) for v in existing_columns]
+            self.fields["new_columns"].choices = choices
+            self.initial["new_columns"] = existing_columns
+
+
 class SelectIndividualColumnsForm(SelectColumnsForm):
     model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
 
@@ -100,6 +118,8 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     readonly_fields = (
         "individual_columns",
         "household_columns",
+        "hh_alien_columns_to_ignore",
+        "ind_alien_columns_to_ignore",
         "code",
         "status",
         "sector",
@@ -129,7 +149,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return False
 
     def get_fieldsets(
-        self, request: HttpRequest, obj: CountryProgram | None = None
+            self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
         fieldsets = (
             (
@@ -148,6 +168,15 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     "fields": (
                         "household_columns",
                         "individual_columns",
+                    ),
+                },
+            ),
+            (
+                _("Alien Columns to Ignore"),
+                {
+                    "fields": (
+                        "hh_alien_columns_to_ignore",
+                        "ind_alien_columns_to_ignore",
                     ),
                 },
             ),
@@ -188,7 +217,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return field
 
     def change_view(
-        self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
+            self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
     ) -> HttpResponse:
         extra_context = {
             **(extra_context or {}),
@@ -202,11 +231,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return HttpResponseRedirect(url)
 
     def changeform_view(
-        self,
-        request: "HttpRequest",
-        object_id: str | None = None,
-        form_url: str = "",
-        extra_context: dict[str, Any] | None = None,
+            self,
+            request: "HttpRequest",
+            object_id: str | None = None,
+            form_url: str = "",
+            extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
         extra_context = extra_context or {}
         if (obj := self.get_object(request, object_id)) and obj.beneficiary_group:
@@ -268,11 +297,47 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         return render(request, "workspace/program/configure_columns.html", context)
 
+    def _configure_alien_fields(
+            self,
+            request: HttpRequest,
+            form_class: type[AlienColumnsForm],
+            context: dict[str, Any],
+    ) -> "HttpResponse":
+        program: "CountryProgram" = context["original"]
+        storage_field: str = context["storage_field"]
+
+        if request.method == "POST":
+            existing = []
+            if getattr(program, storage_field):
+                existing = [c.strip() for c in getattr(program, storage_field).split("\n") if c.strip()]
+
+            remove_columns = request.POST.getlist("remove_columns")
+            new_columns = [c.strip() for c in request.POST.getlist("new_columns") if c.strip()]
+            existing = [c for c in existing if c not in remove_columns]
+
+            for col in new_columns:
+                if col not in existing:
+                    existing.append(col)
+
+            setattr(program, storage_field, "\n".join(existing) if existing else None)
+            program.save(update_fields=[storage_field])
+
+            return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+
+        existing_columns = []
+        if getattr(program, storage_field):
+            existing_columns = [c.strip() for c in getattr(program, storage_field).split("\n") if c.strip()]
+
+        form = form_class(existing_columns=existing_columns)
+        context["form"] = form
+
+        return render(request, "workspace/program/alien_fields.html", context)
+
     def _set_defaults(
-        self,
-        request: HttpRequest,
-        form_class: type[MassDefaultsForm],
-        context: dict[str, Any],
+            self,
+            request: HttpRequest,
+            form_class: type[MassDefaultsForm],
+            context: dict[str, Any],
     ) -> HttpResponse:
         program: CountryProgram = context["original"]
         checker: "DataChecker" = context["checker"]
@@ -320,6 +385,38 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return self._configure_columns(request, SelectColumnsForm, context)
 
     @view(
+        label=_("Configure Alien Fields to Ignore"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_alien_fields_to_ignore(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure Alien Fields to Ignore"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["storage_field"] = "hh_alien_columns_to_ignore"
+        return self._configure_alien_fields(request, AlienColumnsForm, context)
+
+    @view(
+        label=_("Configure Alien Fields to Ignore"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual, require_master_detail=True),
+    )
+    def individual_alien_fields_to_ignore(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(
+            request,
+            pk,
+            title=_("Configure Alien Fields to Ignore"),
+        )
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["storage_field"] = "ind_alien_columns_to_ignore"
+        return self._configure_alien_fields(request, AlienColumnsForm, context)
+
+    @view(
         label=_("Set Defaults"),
         permission=can_change_country_program,
         visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
@@ -343,6 +440,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         button.choices = [
             self.household_columns,
             self.household_defaults,
+            self.household_alien_fields_to_ignore,
         ]
 
     @view(
@@ -386,6 +484,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         button.choices = [
             self.individual_columns,
             self.individual_defaults,
+            self.individual_alien_fields_to_ignore,
         ]
 
     @button(
