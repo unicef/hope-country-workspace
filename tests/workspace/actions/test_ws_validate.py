@@ -103,7 +103,6 @@ def test_validate_queryset_individuals(program, force_migrated_records):
         flex_fields={
             "birth_date": "1990-01-01",
             "full_name": "John Doe",
-            "gender": "MALE",
         },
     )
     ind2: "CountryIndividual" = IndividualFactory(
@@ -113,7 +112,6 @@ def test_validate_queryset_individuals(program, force_migrated_records):
         flex_fields={
             "birth_date": "1985-05-15",
             "full_name": "Jane Smith",
-            "gender": "FEMALE",
         },
     )
 
