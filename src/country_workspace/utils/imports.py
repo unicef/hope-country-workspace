@@ -1,6 +1,7 @@
 from country_workspace.models import Household
 from country_workspace.models import Individual
 
+
 def validate_alien_fields(instance: Household | Individual) -> None:
     if isinstance(instance, Household):
         dc = instance.batch.program.household_checker
@@ -9,7 +10,7 @@ def validate_alien_fields(instance: Household | Individual) -> None:
         dc = instance.batch.program.individual_checker
         fields_to_ignore = instance.batch.program.ind_alien_columns_to_ignore
     else:
-        dc = fields_to_ignore =None
+        dc = fields_to_ignore = None
 
     if dc is None:
         return

@@ -24,6 +24,7 @@ def test_validate_alien_fields_no_mapping_no_errors() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)
@@ -53,6 +54,7 @@ def test_validate_alien_fields_with_mapping_no_errors() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)
@@ -75,6 +77,7 @@ def test_validate_alien_fields_with_prefix() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)
@@ -97,6 +100,7 @@ def test_validate_alien_fields_raises_error_for_alien_fields() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     with pytest.raises(ValueError, match=r"Alien values found for: \{'alien_field'\}"):
@@ -124,6 +128,7 @@ def test_validate_alien_fields_with_mapping_unmapped_field() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)
@@ -137,6 +142,7 @@ def test_validate_alien_fields_without_dc() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = None
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     assert validate_alien_fields(instance) is None
@@ -161,6 +167,7 @@ def test_validate_alien_fields_individual() -> None:
     instance.batch.program.ind_alien_columns_to_ignore = None
 
     from country_workspace.models import Individual
+
     instance.__class__ = Individual
 
     validate_alien_fields(instance)
@@ -183,6 +190,7 @@ def test_validate_alien_fields_with_ignored_columns() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = "alien_field\nanother_alien"
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)
@@ -205,6 +213,7 @@ def test_validate_alien_fields_with_partial_ignored_columns() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = "alien_field"
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     with pytest.raises(ValueError, match=r"Alien values found for: \{'not_ignored_alien'\}"):
@@ -228,6 +237,7 @@ def test_validate_alien_fields_ignored_columns_with_whitespace() -> None:
     instance.batch.program.hh_alien_columns_to_ignore = "  alien_field  \n\n"
 
     from country_workspace.models import Household
+
     instance.__class__ = Household
 
     validate_alien_fields(instance)

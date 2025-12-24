@@ -97,16 +97,10 @@ class Program(BaseModel):
     household_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     individual_columns = models.TextField(default="name\nid", help_text="Columns to display in the Admin table")
     hh_alien_columns_to_ignore = models.TextField(
-        blank=True,
-        null=True,
-        default=None,
-        help_text="Alien fields to ignore"
+        blank=True, null=True, default=None, help_text="Alien fields to ignore"
     )
     ind_alien_columns_to_ignore = models.TextField(
-        blank=True,
-        null=True,
-        default=None,
-        help_text="Alien fields to ignore"
+        blank=True, null=True, default=None, help_text="Alien fields to ignore"
     )
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")

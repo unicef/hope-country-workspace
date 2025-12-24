@@ -27,6 +27,7 @@ def beneficiary_group():
         master_detail=True,
     )
 
+
 @pytest.fixture
 def household_checker():
     from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory

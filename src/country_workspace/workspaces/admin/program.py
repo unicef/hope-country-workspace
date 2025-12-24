@@ -65,7 +65,7 @@ class AlienColumnsForm(forms.Form):
         widget=forms.SelectMultiple(),
     )
 
-    def __init__(self, data: list[str] | None=None, existing_columns: list | None=None, **kwargs: Any) -> None:
+    def __init__(self, data: list[str] | None = None, existing_columns: list | None = None, **kwargs: Any) -> None:
         super().__init__(data=data, **kwargs)
 
         if data and "new_columns" in data:
@@ -149,7 +149,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return False
 
     def get_fieldsets(
-            self, request: HttpRequest, obj: CountryProgram | None = None
+        self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
         fieldsets = (
             (
@@ -217,7 +217,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return field
 
     def change_view(
-            self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
+        self, request: HttpRequest, object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
     ) -> HttpResponse:
         extra_context = {
             **(extra_context or {}),
@@ -231,11 +231,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return HttpResponseRedirect(url)
 
     def changeform_view(
-            self,
-            request: "HttpRequest",
-            object_id: str | None = None,
-            form_url: str = "",
-            extra_context: dict[str, Any] | None = None,
+        self,
+        request: "HttpRequest",
+        object_id: str | None = None,
+        form_url: str = "",
+        extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
         extra_context = extra_context or {}
         if (obj := self.get_object(request, object_id)) and obj.beneficiary_group:
@@ -298,10 +298,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/configure_columns.html", context)
 
     def _configure_alien_fields(
-            self,
-            request: HttpRequest,
-            form_class: type[AlienColumnsForm],
-            context: dict[str, Any],
+        self,
+        request: HttpRequest,
+        form_class: type[AlienColumnsForm],
+        context: dict[str, Any],
     ) -> "HttpResponse":
         program: "CountryProgram" = context["original"]
         storage_field: str = context["storage_field"]
@@ -334,10 +334,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/program/alien_fields.html", context)
 
     def _set_defaults(
-            self,
-            request: HttpRequest,
-            form_class: type[MassDefaultsForm],
-            context: dict[str, Any],
+        self,
+        request: HttpRequest,
+        form_class: type[MassDefaultsForm],
+        context: dict[str, Any],
     ) -> HttpResponse:
         program: CountryProgram = context["original"]
         checker: "DataChecker" = context["checker"]

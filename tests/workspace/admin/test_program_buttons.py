@@ -108,10 +108,10 @@ def test_import_file_updates_permissions(user, country_program_admin_instance, c
 )
 def test_group_choice_buttons_choices(
     country_program_admin_instance: CountryProgramAdmin,
-        group_method: str,
-        columns_method: str,
-        defaults_method: str,
-        ignore_method: str,
+    group_method: str,
+    columns_method: str,
+    defaults_method: str,
+    ignore_method: str,
 ) -> None:
     admin = country_program_admin_instance
     handler = getattr(CountryProgramAdmin, group_method)

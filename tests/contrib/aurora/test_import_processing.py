@@ -71,7 +71,6 @@ def test_import_data_calls_client_and_aggregates(mocker: MockerFixture, config: 
     import_result_mock.assert_any_call(batch, {"pk": "6"}, config)
 
 
-
 # --- import_result ----------------------------------------------------------------
 
 
