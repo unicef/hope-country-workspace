@@ -13,7 +13,7 @@ jobs:
       docker_image_tag: ${{ steps.sanitize-branch.outputs.docker_image_tag }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Get current branch name
         id: get-branch
@@ -37,7 +37,7 @@ jobs:
     needs: [prepare-docker]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
