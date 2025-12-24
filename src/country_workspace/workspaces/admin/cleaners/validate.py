@@ -11,7 +11,7 @@ from django.db.models.query import prefetch_related_objects
 from country_workspace.context import batch_ctx
 from country_workspace.models import AsyncJob, Household, Individual, Program
 from country_workspace.state import state
-
+from country_workspace.utils.imports import validate_alien_fields
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +55,19 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
 
 def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
     valid = invalid = 0
+    aliens_checked = False
+
     for obj in objs:
+        if not aliens_checked:
+            validate_alien_fields(obj)
+            aliens_checked = True
+
         with batch_ctx(obj.batch_id):
             if obj.validate_with_checker():
                 valid += 1
             else:
                 invalid += 1
+
     return valid, invalid
 
 
