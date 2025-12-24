@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0036_alter_individual_options_alter_office_options_and_more"),
+        ("country_workspace", "0037_alter_synclog_unique_together_add_constraints"),
     ]
 
     operations = [
