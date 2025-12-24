@@ -10,6 +10,7 @@ from country_workspace.models import AsyncJob, Batch
 from country_workspace.workspaces.admin import CountryBatchAdmin
 from country_workspace.workspaces.admin.batch_reprocessing import reprocess_batch
 from country_workspace.workspaces.models import CountryBatch
+from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.perms import user_grant_permissions
 
 if TYPE_CHECKING:
@@ -533,3 +534,82 @@ class TestBatchReprocessingIntegration:
             # Validation jobs should be created for non-removed records
             if result["households"] > 0 or result["individuals"] > 0:
                 assert result["validation_jobs_created"] > 0
+
+
+class TestBatchAdminButtons:
+    """Test workspace batch admin button labels and visibility."""
+
+    def test_imported_records_with_beneficiary_group_master_detail_true(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button sets group_label when beneficiary_group exists and master_detail is True."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is True
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_with_beneficiary_group_master_detail_false(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button is hidden when beneficiary_group exists and master_detail is False."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", master_detail=False)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is False
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_without_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button uses default behavior when no beneficiary_group exists."""
+        batch_with_households.program.beneficiary_group = None
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        # Should still work, just without custom label
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_individuals_with_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button sets member_label when beneficiary_group exists."""
+        bg = BeneficiaryGroupFactory(member_label="Custom Member")
+        batch_with_individuals.program.beneficiary_group = bg
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Member"
+        assert "countryindividual" in btn.href
+        assert f"batch__exact={batch_with_individuals.pk}" in btn.href
+
+    def test_imported_individuals_without_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button uses default behavior when no beneficiary_group exists."""
+        batch_with_individuals.program.beneficiary_group = None
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        # Should still work, just without custom label
+        assert "countryindividual" in btn.href
+        assert f"batch__exact={batch_with_individuals.pk}" in btn.href
