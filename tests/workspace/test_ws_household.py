@@ -46,6 +46,7 @@ def individual_checker():
 
     return dc
 
+
 @pytest.fixture
 def household_checker(request, active_marks):
     from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory
@@ -80,13 +81,14 @@ def household(program):
     from testutils.factories import CountryHouseholdFactory
 
     return CountryHouseholdFactory(
-        batch__program=program, batch__country_office=program.country_office,
+        batch__program=program,
+        batch__country_office=program.country_office,
         flex_fields={
             "address": "Cool address",
             "admin1": "",
             "consent": False,
             "country_origin": "",
-        }
+        },
     )
 
 
@@ -104,7 +106,7 @@ def individual(household: "CountryHousehold") -> "CountryIndividual":
             "admin1": "",
             "consent": "",
             "zip_code": "",
-        }
+        },
     )
 
 
