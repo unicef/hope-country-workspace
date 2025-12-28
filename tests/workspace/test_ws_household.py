@@ -140,7 +140,7 @@ def test_hh_change(app: "CWTestApp", household: "CountryHousehold") -> None:
         res = app.get(url)
         assert res.status_code == 200, res.location
         res = res.forms["countryhousehold_form"].submit()
-        assert res.status_code == 200, res.location
+        assert res.status_code == 302, res.location
 
 
 def test_hh_validate_single(app: "CWTestApp", household: "CountryHousehold") -> None:
