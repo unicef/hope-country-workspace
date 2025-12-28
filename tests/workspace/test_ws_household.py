@@ -31,6 +31,23 @@ def office():
 
 
 @pytest.fixture
+def individual_checker():
+    from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory
+
+    from country_workspace.contrib.hope.constants import INDIVIDUAL_CHECKER_NAME
+
+    dc = DataCheckerFactory(name=INDIVIDUAL_CHECKER_NAME)
+    fs = FieldsetFactory()
+
+    for field in ["address", "consent", "admin1", "zip_code"]:
+        FlexFieldFactory(fieldset=fs, name=field)
+
+    dc.fieldsets.add(fs)
+
+    return dc
+
+
+@pytest.fixture
 def program(office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
@@ -116,6 +133,77 @@ def test_hh_validate_program(app: "CWTestApp", individual: "CountryIndividual"):
     program: "CountryProgram" = individual.program
     assert not individual.last_checked
 
+    alien_household_fields = [
+        "male_age_group_60_disabled_count",
+        "residence_status",
+        "male_age_group_0_5_count",
+        "male_age_group_60_count",
+        "male_age_group_18_59_disabled_count",
+        "admin4",
+        "zip_code",
+        "consent",
+        "size",
+        "name_enumerator",
+        "pregnant_count",
+        "female_age_group_0_5_count",
+        "admin3",
+        "registration_method",
+        "household_id",
+        "first_registration_date",
+        "female_age_group_12_17_count",
+        "male_age_group_12_17_count",
+        "male_age_group_6_11_disabled_count",
+        "male_age_group_0_5_disabled_count",
+        "male_age_group_12_17_disabled_count",
+        "female_age_group_18_59_disabled_count",
+        "female_age_group_6_11_disabled_count",
+        "male_age_group_6_11_count",
+        "male_age_group_18_59_count",
+        "female_age_group_6_11_count",
+        "admin2",
+        "org_enumerator",
+        "country",
+        "female_age_group_18_59_count",
+        "address",
+        "female_age_group_60_disabled_count",
+        "female_age_group_0_5_disabled_count",
+        "registration_id",
+        "admin1",
+        "female_age_group_60_count",
+        "country_origin",
+        "female_age_group_12_17_disabled_count",
+        "consent_sharing",
+    ]
+    alien_individual_fields = [
+        "birth_date",
+        "disability",
+        "estimated_birth_date",
+        "family_name",
+        "full_name",
+        "gender",
+        "given_name",
+        "household_id",
+        "middle_name",
+        "photo",
+        "relationship",
+        "national_id_document_number",
+        "national_id_photo",
+        "national_id_issuance_date",
+        "national_id_expiry_date",
+        "national_id_country",
+        "national_passport_document_number",
+        "national_passport_photo",
+        "national_passport_issuance_date",
+        "national_passport_expiry_date",
+        "national_passport_country",
+        "phone_number",
+        "bank_number",
+        "bank_financial_institution",
+    ]
+    program.hh_alien_columns_to_ignore = "\n".join(alien_household_fields)
+    program.ind_alien_columns_to_ignore = "\n".join(alien_individual_fields)
+    program.save()
+
     with select_office(app, program.country_office, program):
         url = reverse("workspace:workspaces_countryhousehold_changelist")
         res = app.get(url)
@@ -134,6 +222,7 @@ def hh_with_address(household) -> "CountryHousehold":
     fld.attrs["required"] = True
     fld.save()
     household.flex_fields["address"] = None
+    household.members.all().delete()
     household.save()
 
     household.program.household_checker = dc
