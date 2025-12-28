@@ -176,3 +176,210 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
         res = app.get(ind_list)
         assert "gender" in res.text
         assert "national_passport_document_number" in res.text
+
+
+def test_household_alien_fields_to_ignore_in_choice_dropdown(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+        doc = res.pyquery
+
+        select_el = doc("select[name='household_group']")
+        assert select_el
+
+        option_values = {opt.attr("value") for opt in select_el.find("option").items() if opt.attr("value")}
+        expected_url = reverse(
+            "workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk]
+        )
+        assert expected_url in option_values
+
+
+def test_individual_alien_fields_to_ignore_in_choice_dropdown(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+        doc = res.pyquery
+
+        select_el = doc("select[name='individual_group']")
+        assert select_el
+
+        option_values = {opt.attr("value") for opt in select_el.find("option").items() if opt.attr("value")}
+        expected_url = reverse(
+            "workspace:workspaces_countryprogram_individual_alien_fields_to_ignore", args=[program.pk]
+        )
+        assert expected_url in option_values
+
+
+def test_configure_household_alien_fields_to_ignore_add_columns(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.hh_alien_columns_to_ignore = None
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk])
+        res = app.get(url)
+        assert res.status_code == 200
+
+        res = app.post(url, {"new_columns": ["alien_field_1", "alien_field_2"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        assert program.hh_alien_columns_to_ignore is not None
+        columns = program.hh_alien_columns_to_ignore.splitlines()
+        assert set(columns) == {"alien_field_1", "alien_field_2"}
+
+
+def test_configure_household_alien_fields_to_ignore_remove_columns(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.hh_alien_columns_to_ignore = "existing_field_1\nexisting_field_2\nexisting_field_3"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk])
+        res = app.get(url)
+        assert res.status_code == 200
+
+        res = app.post(url, {"remove_columns": ["existing_field_2"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        columns = program.hh_alien_columns_to_ignore.splitlines()
+        assert set(columns) == {"existing_field_1", "existing_field_3"}
+
+
+def test_configure_household_alien_fields_to_ignore_add_and_remove(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.hh_alien_columns_to_ignore = "keep_this\nremove_this"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk])
+
+        res = app.post(
+            url,
+            {
+                "remove_columns": ["remove_this"],
+                "new_columns": ["new_field"],
+            },
+        )
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        columns = program.hh_alien_columns_to_ignore.splitlines()
+        assert set(columns) == {"keep_this", "new_field"}
+
+
+def test_configure_individual_alien_fields_to_ignore_add_columns(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.ind_alien_columns_to_ignore = None
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_individual_alien_fields_to_ignore", args=[program.pk])
+        res = app.get(url)
+        assert res.status_code == 200
+
+        res = app.post(url, {"new_columns": ["ind_alien_1", "ind_alien_2"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        assert program.ind_alien_columns_to_ignore is not None
+        columns = program.ind_alien_columns_to_ignore.splitlines()
+        assert set(columns) == {"ind_alien_1", "ind_alien_2"}
+
+
+def test_configure_individual_alien_fields_to_ignore_remove_columns(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.ind_alien_columns_to_ignore = "ind_existing_1\nind_existing_2\nind_existing_3"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_individual_alien_fields_to_ignore", args=[program.pk])
+
+        res = app.post(url, {"remove_columns": ["ind_existing_1", "ind_existing_3"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        columns = program.ind_alien_columns_to_ignore.splitlines()
+        assert columns == ["ind_existing_2"]
+
+
+def test_configure_individual_alien_fields_to_ignore_add_and_remove(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.ind_alien_columns_to_ignore = "keep_ind\nremove_ind"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_individual_alien_fields_to_ignore", args=[program.pk])
+
+        res = app.post(
+            url,
+            {
+                "remove_columns": ["remove_ind"],
+                "new_columns": ["new_ind_field"],
+            },
+        )
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        columns = program.ind_alien_columns_to_ignore.splitlines()
+        assert set(columns) == {"keep_ind", "new_ind_field"}
+
+
+def test_configure_alien_fields_removes_all_columns(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.hh_alien_columns_to_ignore = "only_field"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk])
+
+        res = app.post(url, {"remove_columns": ["only_field"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        assert program.hh_alien_columns_to_ignore is None
+
+
+def test_configure_alien_fields_no_duplicates(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.hh_alien_columns_to_ignore = "existing_field"
+    program.save()
+
+    with select_office(app, program.country_office, program):
+        url = reverse("workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk])
+
+        res = app.post(url, {"new_columns": ["existing_field", "new_field"]})
+        assert res.status_code == 302
+
+        program.refresh_from_db()
+        columns = program.hh_alien_columns_to_ignore.splitlines()
+        assert len(columns) == 2
+        assert set(columns) == {"existing_field", "new_field"}
+
+
+def test_household_alien_fields_not_visible_when_master_detail_false(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+    program.beneficiary_group.master_detail = False
+    program.beneficiary_group.save()
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+        doc = res.pyquery
+
+        select_el = doc("select[name='household_group']")
+        assert not select_el

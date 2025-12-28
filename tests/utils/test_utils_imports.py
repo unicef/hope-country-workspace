@@ -30,6 +30,12 @@ def test_validate_alien_fields_no_mapping_no_errors() -> None:
     validate_alien_fields(instance)
 
 
+def test_validate_alien_fields_with_invalid_instance_type() -> None:
+    instance = Mock()
+
+    assert validate_alien_fields(instance) is None
+
+
 def test_validate_alien_fields_with_mapping_no_errors() -> None:
     instance = Mock()
     instance.flex_fields = {"source_field1": "value1", "source_field2": "value2"}
