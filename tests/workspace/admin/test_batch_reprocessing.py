@@ -581,9 +581,23 @@ class TestBatchAdminButtons:
         btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
         batch_admin_instance.imported_records.func(batch_admin_instance, btn)
 
-        # Should still work, just without custom label
+        assert btn.visible is True
         assert "countryhousehold" in btn.href
         assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_with_beneficiary_group_uses_group_label(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button uses group_label (singular) from beneficiary_group."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", group_label_plural="Custom Groups", master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is True
 
     def test_imported_individuals_with_beneficiary_group(
         self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
@@ -597,6 +611,7 @@ class TestBatchAdminButtons:
         batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
 
         assert btn.label == "Custom Member"
+        assert btn.visible is True
         assert "countryindividual" in btn.href
         assert f"batch__exact={batch_with_individuals.pk}" in btn.href
 
@@ -610,6 +625,20 @@ class TestBatchAdminButtons:
         btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
         batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
 
-        # Should still work, just without custom label
+        assert btn.visible is True
         assert "countryindividual" in btn.href
         assert f"batch__exact={batch_with_individuals.pk}" in btn.href
+
+    def test_imported_individuals_with_beneficiary_group_uses_member_label(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button uses member_label (singular) from beneficiary_group."""
+        bg = BeneficiaryGroupFactory(member_label="Custom Member", member_label_plural="Custom Members")
+        batch_with_individuals.program.beneficiary_group = bg
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Member"
+        assert btn.visible is True

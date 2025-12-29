@@ -1,10 +1,24 @@
 import logging
 from typing import Any
 
-from country_workspace.models import AsyncJob, Batch, MappingImporter
+from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_mapping(record: Household | Individual, mapping: MappingImporter) -> bool:
+    if not record.raw_data:
+        logger.warning("Record %s has no raw data, skipping mapping", record)
+        return False
+
+    data = record.raw_data.copy()
+    mapping.apply(data)
+    record.flex_fields = data
+    record.last_checked = None
+    record.errors = {}
+    record.save(update_fields=["flex_fields", "last_checked", "errors"])
+    return True
 
 
 def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
@@ -64,27 +78,17 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     if household_mapping and household_count > 0:
         logger.info("Applying household mapping to %d households", household_count)
         for household in households_to_process:
-            if household.raw_data:
-                data = household.raw_data.copy()
-                household_mapping.apply(data)
-                household.flex_fields = data
-                household.last_checked = None
-                household.errors = {}
-                household.save(update_fields=["flex_fields", "last_checked", "errors"])
-                mapped_households += 1
+            is_applied = _apply_mapping(household, household_mapping)
+            mapped_households += int(is_applied)
+
         logger.info("Applied mapping to %d households", mapped_households)
 
     if individual_mapping and individual_count > 0:
         logger.info("Applying individual mapping to %d individuals", individual_count)
         for individual in individuals_to_process:
-            if individual.raw_data:
-                data = individual.raw_data.copy()
-                individual_mapping.apply(data)
-                individual.flex_fields = data
-                individual.last_checked = None
-                individual.errors = {}
-                individual.save(update_fields=["flex_fields", "last_checked", "errors"])
-                mapped_individuals += 1
+            is_applied = _apply_mapping(individual, individual_mapping)
+            mapped_individuals += int(is_applied)
+
         logger.info("Applied mapping to %d individuals", mapped_individuals)
 
     validation_jobs_created = 0
@@ -99,7 +103,6 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         )
         validation_jobs_created += 1
 
-    # If batch has individuals without households, validate them
     if individual_count > 0:
         create_validation_jobs(
             description=f"Reprocess batch {batch.name} - Individuals",
@@ -109,17 +112,23 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         )
         validation_jobs_created += 1
 
-    result = {
+    response = {
         "batch_id": batch_id,
         "batch_name": batch.name,
-        "households": household_count,
         "individuals": individual_count,
-        "skipped_households": skipped_households,
         "skipped_individuals": skipped_individuals,
-        "mapped_households": mapped_households,
         "mapped_individuals": mapped_individuals,
         "validation_jobs_created": validation_jobs_created,
     }
 
-    logger.info("Batch reprocessing initiated: %s", result)
-    return result
+    if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+        response.update(
+            {
+                "households": household_count,
+                "skipped_households": skipped_households,
+                "mapped_households": mapped_households,
+            }
+        )
+
+    logger.info("Batch reprocessing initiated: %s", response)
+    return response
