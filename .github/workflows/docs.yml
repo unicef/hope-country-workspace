@@ -28,7 +28,7 @@ jobs:
       docs: ${{ steps.changed_files.outputs.docs }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - id: changed_files
         name: Check for file changes
         uses: dorny/paths-filter@v3
@@ -44,10 +44,10 @@ jobs:
     env:
       PYTHONPATH: src/
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: yezz123/setup-uv@v4
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         id: restore-cache
         with:
           path: .venv
@@ -59,7 +59,7 @@ jobs:
       - name: Build Doc
         run: .venv/bin/mkdocs build -d ./docs-output
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v5
         id: cache
         if: always() && steps.restore-cache.outputs.cache-hit != 'true'
         with:

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import datetime, UTC
 from unittest.mock import Mock
 import pytest
 from django.db import DatabaseError
@@ -13,6 +14,7 @@ from country_workspace.contrib.hope.sync.base import (
     safe_get,
     log_to,
     validated_reference_id,
+    _get_last_updated_date,
 )
 from country_workspace.exceptions import RemoteError
 from testutils.utils import assert_stdout_contains
@@ -61,6 +63,28 @@ def test_validated_reference_id(record: dict, expected_id: str | None, stdout_co
         assert_stdout_contains(out, stdout_contains)
     else:
         assert validated_reference_id(record) == expected_id
+
+
+@pytest.mark.parametrize(
+    ("last_update_date", "expected"),
+    [(datetime(2025, 12, 22, 5, 33, 0, tzinfo=UTC), "2025-12-22"), (None, None)],
+    ids=["has_date", "none"],
+)
+def test_get_last_updated_date(mocker: MockerFixture, mock_model: Mock, last_update_date, expected) -> None:
+    ct = Mock()
+    mocker.patch("country_workspace.contrib.hope.sync.base.ContentType.objects.get_for_model", return_value=ct)
+
+    qs = mocker.Mock()
+    qs.order_by.return_value.first.return_value = Mock(last_update_date=last_update_date) if last_update_date else None
+    flt = mocker.patch("country_workspace.contrib.hope.sync.base.SyncLog.objects.filter", return_value=qs)
+
+    assert _get_last_updated_date(mock_model) == expected
+    flt.assert_called_once_with(
+        content_type=ct,
+        name__isnull=True,
+        object_id__isnull=True,
+        last_update_date__isnull=False,
+    )
 
 
 def test_sync_entity_success(

@@ -42,7 +42,7 @@ jobs:
       run_tests: ${{ steps.changes.outputs.run_tests }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - id: changes
         name: Check for file changes
         uses: dorny/paths-filter@v3
@@ -87,7 +87,7 @@ jobs:
       DOCKER_BUILDKIT: 1
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Hack container for local development
         if: ${{ env.ACT }}
         run: |
