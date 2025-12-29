@@ -192,7 +192,16 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
 
 def _get_last_updated_date(model: type[Model]) -> str | None:
     ct = ContentType.objects.get_for_model(model)
-    last_sync = SyncLog.objects.filter(content_type=ct).order_by("-last_update_date").first()
+    last_sync = (
+        SyncLog.objects.filter(
+            content_type=ct,
+            name__isnull=True,
+            object_id__isnull=True,
+            last_update_date__isnull=False,
+        )
+        .order_by("-last_update_date")
+        .first()
+    )
     return last_sync.last_update_date.date().isoformat() if last_sync else None
 
 
