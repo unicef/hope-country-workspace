@@ -39,8 +39,7 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin, JobErrorDisplay
 
     def get_form(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None, **kwargs: Any) -> Any:
         form = super().get_form(request, obj, **kwargs)
-        if "description" in form.base_fields:
-            form.base_fields["description"].widget.attrs["style"] = "width: 800px;"
+        form.base_fields["description"].widget.attrs["style"] = "width: 800px;"
         return form
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
