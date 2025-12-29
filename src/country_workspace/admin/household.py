@@ -15,7 +15,7 @@ from .filters import IsValidFilter
 @admin.register(Household)
 class HouseholdAdmin(BaseModelAdmin):
     actions = [reprocess_records]
-    list_display = ("name", "country_office", "program", "batch", "removed")
+    list_display = ("name", "country_office", "program", "batch", "originating_id", "removed")
     list_filter = (
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
@@ -24,7 +24,7 @@ class HouseholdAdmin(BaseModelAdmin):
         "removed",
     )
     readonly_fields = ("errors",)
-    search_fields = ("name",)
+    search_fields = ("name", "originating_id")
     autocomplete_fields = ("batch",)
 
     @link(change_list=False)
