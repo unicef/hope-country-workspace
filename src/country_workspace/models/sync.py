@@ -38,9 +38,9 @@ class SyncManager(BaseManager):
         ct = ContentType.objects.get_for_model(model)
         SyncLog.objects.update_or_create(
             content_type=ct,
-            defaults={
-                "last_update_date": timezone.now(),
-            },
+            name=None,
+            object_id=None,
+            defaults={"last_update_date": timezone.now()},
         )
 
 
@@ -56,7 +56,17 @@ class SyncLog(BaseModel):
     objects = SyncManager()
 
     class Meta:
-        unique_together = [("name", "content_type", "object_id")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "content_type", "object_id"],
+                name="unique_synclog_per_object",
+            ),
+            models.UniqueConstraint(
+                fields=["content_type"],
+                condition=models.Q(name__isnull=True, object_id__isnull=True),
+                name="unique_synclog_global_per_content_type",
+            ),
+        ]
 
     def refresh(self) -> None:
         if not (fd := self.content_object) or "remote_url" not in self.data:

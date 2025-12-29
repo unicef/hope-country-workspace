@@ -1,0 +1,71 @@
+{% extends 'workspace/_base.html' %}
+{% load i18n %}
+{% block breadcrumbs %}
+{% endblock breadcrumbs %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block">
+                <h1 class="text-2xl">
+                    {% translate 'Reprocess Batch' %}
+                </h1>
+                <div class="block p-5">
+                    <h2>
+                        {% blocktranslate with batch_name=batch.name %}
+                            Reprocess batch: {{ batch_name }}
+                        {% endblocktranslate %}
+                    </h2>
+                    <p class="mt-2">
+                        {% translate "This will re-validate all households and individuals in this batch. Records already pushed to HOPE Core will be automatically excluded." %}
+                    </p>
+                    {% if form.household_mapping or form.individual_mapping %}
+                        <p class="mt-2">
+                            {% translate "You can optionally select mapping importers to apply transformations before validation." %}
+                        </p>
+                    {% endif %}
+                    <form method="post" class="mt-5">
+                        {% csrf_token %}
+                        {% if form.errors %}
+                            <div class="error">
+                                <p class="errornote">
+                                    {% translate "Please correct the errors below." %}
+                                </p>
+                            </div>
+                        {% endif %}
+                        <fieldset class="module aligned">
+                            {% for field in form %}
+                                <div class="form-row {% if field.errors %}errors{% endif %}">
+                                    <div>
+                                        <label for="{{ field.id_for_label }}" class="required">
+                                            {{ field.label }}:
+                                        </label>
+                                        {{ field }}
+                                        {% if field.help_text %}
+                                            <p class="help">
+                                                {{ field.help_text }}
+                                            </p>
+                                        {% endif %}
+                                        {% if field.errors %}
+                                            <ul class="errorlist">
+                                                {% for error in field.errors %}
+                                                    <li>
+                                                        {{ error }}
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </fieldset>
+                        <div class="mt-10">
+                            <input type="hidden" name="apply" value="yes" />
+                            <input type="submit" class="button" value="{% translate 'Confirm' %}" />
+                            <input type="button" class="button closelink" onclick="javascript:history.back()" value="{% translate 'Go Back' %}" />
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}
