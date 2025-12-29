@@ -33,7 +33,7 @@ def validate_alien_fields(instance: Household | Individual) -> None:
 
 
 def get_originating_id(*args: str) -> str:
-    return "#".join(args)
+    return "#".join([str(arg) for arg in args])
 
 
 get_kobo_originating_id = partial(get_originating_id, "KOB")
