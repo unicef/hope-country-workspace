@@ -62,7 +62,7 @@ def test_reprocess_household_action(app, household, mapping_importer):
     # 1. Select the action
     form = app.get(base_url).forms["changelist-form"]
     form["action"] = "reprocess_records"
-    form.set("_selected_action", True)
+    form.set("_selected_action", True, index=0)
 
     # 2. Submit to get confirmation page
     res = form.submit()
@@ -70,7 +70,7 @@ def test_reprocess_household_action(app, household, mapping_importer):
     assert "Reprocess Records" in res.text
 
     # 3. Select mapping and confirm
-    confirm_form = res.form
+    confirm_form = res.forms["reprocess-form"]
     confirm_form["mapping_importer"] = mapping_importer.pk
     res = confirm_form.submit(name="apply")
 
@@ -88,12 +88,12 @@ def test_reprocess_individual_action(app, individual, mapping_importer):
 
     form = app.get(base_url).forms["changelist-form"]
     form["action"] = "reprocess_records"
-    form.set("_selected_action", True)
+    form.set("_selected_action", True, index=0)
 
     res = form.submit()
     assert res.status_code == 200
 
-    confirm_form = res.form
+    confirm_form = res.forms["reprocess-form"]
     confirm_form["mapping_importer"] = mapping_importer.pk
     res = confirm_form.submit()
 
