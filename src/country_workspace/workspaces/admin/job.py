@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button
 from django.contrib.admin import register
@@ -11,6 +11,7 @@ from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .filters import ChoiceFilter, UserAutoCompleteFilter, WFailedFilter
 from ...state import state
+from ...admin.mixins import JobErrorDisplayMixin
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 
 @register(CountryAsyncJob, site=workspace)
-class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
+class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin, JobErrorDisplayMixin):
     queue_template = "workspace/celery_boost/queue.html"
 
     list_display = (
@@ -33,7 +34,13 @@ class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin):
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
     search_fields = ("description",)
-    fields = ("description",)
+    fields = ("description", "result")
+    readonly_fields = ("result",)
+
+    def get_form(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None, **kwargs: Any) -> Any:
+        form = super().get_form(request, obj, **kwargs)
+        form.base_fields["description"].widget.attrs["style"] = "width: 800px;"
+        return form
 
     def has_add_permission(self, request: "HttpRequest") -> bool:
         return False
