@@ -18,7 +18,17 @@ class CountryMappingImporterAdmin(WorkspaceModelAdmin):
     list_filter = ("data_checker",)
     search_fields = ("name", "description")
     readonly_fields = ("office", "created_at", "last_modified", "created_by")
-    fields = ("name", "description", "office", "data_checker", "rules", "created_by", "created_at", "last_modified")
+    fields = (
+        "name",
+        "description",
+        "office",
+        "data_checker",
+        "rules",
+        "value_transformations",
+        "created_by",
+        "created_at",
+        "last_modified",
+    )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryMappingImporter]:
         """Filter mappings by current office/business area."""

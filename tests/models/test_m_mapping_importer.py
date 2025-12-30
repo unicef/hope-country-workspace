@@ -1,7 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 
-from country_workspace.validators.mapping import FieldMappingRulesValidator
+from country_workspace.validators.mapping import FieldMappingRulesValidator, ValueTransformationRulesValidator
 
 
 @pytest.fixture
@@ -66,3 +66,78 @@ def test_apply_successful(mapping_importer, rules, data, expected):
 def test_rules_as_dict(mapping_importer, rules, expected):
     mi = mapping_importer(rules=rules)
     assert mi.rules_as_dict == expected
+
+
+def test_value_transformation_validator_valid_rules():
+    validator = ValueTransformationRulesValidator()
+    validator("sex:M=MALE\nsex:F=FEMALE")
+
+
+@pytest.mark.parametrize(
+    ("rules", "expected_error"),
+    [
+        ("invalid_rule", "Expected ':' character"),
+        ("field:", "Expected one '=' character"),
+        ("field:old=new", "Old value and new value must be different"),
+        (":old=new", "Field name cannot be empty"),
+        ("field:old=old", "Old value and new value must be different"),
+    ],
+    ids=["invalid_format", "missing_equals", "same_values", "empty_fieldname", "same_old_new"],
+)
+def test_value_transformation_validator_invalid_rules(rules, expected_error):
+    validator = ValueTransformationRulesValidator()
+    with pytest.raises(ValidationError, match=expected_error):
+        validator(rules)
+
+
+@pytest.mark.parametrize(
+    ("value_transformations", "expected"),
+    [
+        ("", {}),
+        ("sex:M=MALE", {"sex": {"M": "MALE"}}),
+        ("sex:M=MALE\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        (
+            "status:1=ACTIVE\nstatus:0=INACTIVE\ngender:M=MALE",
+            {"status": {"1": "ACTIVE", "0": "INACTIVE"}, "gender": {"M": "MALE"}},
+        ),
+    ],
+    ids=["empty", "single_rule", "multiple_same_field", "multiple_fields"],
+)
+def test_value_transformations_as_dict(mapping_importer, value_transformations, expected):
+    mi = mapping_importer(value_transformations=value_transformations)
+    assert mi.value_transformations_as_dict == expected
+
+
+@pytest.mark.parametrize(
+    ("rules", "value_transformations", "data", "expected"),
+    [
+        # No transformations
+        ("", "", {"gender": "M"}, {"gender": "M"}),
+        # Only field mapping
+        ("gender=sex", "", {"gender": "M"}, {"sex": "M"}),
+        # Only value transformation
+        ("", "gender:M=MALE", {"gender": "M"}, {"gender": "MALE"}),
+        # Field mapping then value transformation
+        ("gender=sex", "sex:M=MALE", {"gender": "M"}, {"sex": "MALE"}),
+        # Multiple value transformations
+        ("gender=sex", "sex:M=MALE\nsex:F=FEMALE", {"gender": "F"}, {"sex": "FEMALE"}),
+        # Value transformation on non-mapped field
+        ("gender=sex", "status:1=ACTIVE", {"gender": "M", "status": "1"}, {"sex": "M", "status": "ACTIVE"}),
+        # Value that doesn't match transformation
+        ("gender=sex", "sex:M=MALE", {"gender": "X"}, {"sex": "X"}),
+    ],
+    ids=[
+        "no_transformations",
+        "only_field_mapping",
+        "only_value_transformation",
+        "field_mapping_then_value",
+        "multiple_value_transformations",
+        "transformation_on_different_field",
+        "value_no_match",
+    ],
+)
+def test_apply_with_value_transformations(mapping_importer, rules, value_transformations, data, expected):
+    mi = mapping_importer(rules=rules, value_transformations=value_transformations)
+    result = mi.apply(data)
+    assert result == expected
+    assert result is data
