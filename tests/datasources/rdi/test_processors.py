@@ -235,8 +235,9 @@ def test_process_households(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
-
-    result = process_households(household_sheet, job := Mock(), batch := Mock(), config)
+    job = Mock()
+    job.file.name = "uploads/rdi.xlsx"
+    result = process_households(household_sheet, job := job, batch := Mock(), config)
 
     assert result == {row[config["household_id_column"]]: mock_create.return_value for row in household_sheet}
 
@@ -258,6 +259,7 @@ def test_process_households(
                 name=str(row[config["household_label"]]),
                 flex_fields=job.program.apply_default_fields.return_value,
                 raw_data=row,
+                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
             )
             for row in household_sheet
         ]
