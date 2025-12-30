@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from country_workspace.utils.imports import validate_alien_fields
+from country_workspace.utils.imports import validate_alien_fields, get_originating_id, normalize_file_name
 
 
 def test_validate_alien_fields_no_mapping_no_errors() -> None:
@@ -247,3 +247,17 @@ def test_validate_alien_fields_ignored_columns_with_whitespace() -> None:
     instance.__class__ = Household
 
     validate_alien_fields(instance)
+
+
+def test_get_originating_id() -> None:
+    args = ["arg1", "arg2", "arg3"]
+    expected_output = "arg1#arg2#arg3"
+    output = get_originating_id(*args)
+    assert output == expected_output
+
+
+def test_normalize_file_name() -> None:
+    file_name = "rdi (a).xlsx"
+    expected_output = "rdi-axlsx"
+    output = normalize_file_name(file_name)
+    assert output == expected_output
