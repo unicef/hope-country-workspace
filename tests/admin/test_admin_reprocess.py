@@ -72,7 +72,7 @@ def test_reprocess_household_action(app, household, mapping_importer):
     # 3. Select mapping and confirm
     confirm_form = res.forms["reprocess-form"]
     confirm_form["mapping_importer"] = mapping_importer.pk
-    res = confirm_form.submit(name="apply")
+    res = confirm_form.submit()
 
     assert res.status_code == 302  # Redirect back to changelist
 
