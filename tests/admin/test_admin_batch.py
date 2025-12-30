@@ -91,7 +91,7 @@ class TestBatchAdminHouseholdsButton:
 
         assert btn.visible is True
         assert btn.label == "Custom Groups"  # Uses plural
-        assert "country_workspace_household_changelist" in btn.href
+        assert "/admin/country_workspace/household/" in btn.href
         assert f"batch__exact={batch_with_households.pk}" in btn.href
 
     def test_households_button_master_detail_true_with_singular_label(
@@ -113,7 +113,7 @@ class TestBatchAdminHouseholdsButton:
 
         assert btn.visible is True
         assert btn.label == "Custom Group"  # Uses singular when plural is empty
-        assert "country_workspace_household_changelist" in btn.href
+        assert "/admin/country_workspace/household/" in btn.href
 
     def test_households_button_master_detail_true_no_labels(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
@@ -134,7 +134,7 @@ class TestBatchAdminHouseholdsButton:
 
         assert btn.visible is True
         assert btn.label == _("Household")  # Default fallback
-        assert "country_workspace_household_changelist" in btn.href
+        assert "/admin/country_workspace/household/" in btn.href
 
     def test_households_button_no_beneficiary_group(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
@@ -147,7 +147,7 @@ class TestBatchAdminHouseholdsButton:
         batch_admin_instance.households.func(batch_admin_instance, btn)
 
         assert btn.visible is True
-        assert "country_workspace_household_changelist" in btn.href
+        assert "/admin/country_workspace/household/" in btn.href
         assert f"batch__exact={batch_with_households.pk}" in btn.href
 
 
@@ -222,16 +222,6 @@ class TestBatchAdminGetBeneficiaryLabels:
         batch_with_households.program.save()
 
         group_label, member_label = batch_admin_instance._get_beneficiary_labels(batch_with_households)
-
-        assert group_label == _("Household")
-        assert member_label == _("Individual")
-
-    def test_get_beneficiary_labels_no_program(self, batch_admin_instance: BatchAdmin, empty_batch: "Batch") -> None:
-        """Test _get_beneficiary_labels returns defaults when batch has no program."""
-        empty_batch.program = None
-        empty_batch.save()
-
-        group_label, member_label = batch_admin_instance._get_beneficiary_labels(empty_batch)
 
         assert group_label == _("Household")
         assert member_label == _("Individual")

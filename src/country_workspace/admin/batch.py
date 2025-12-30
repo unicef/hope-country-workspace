@@ -34,7 +34,7 @@ class BatchAdmin(BaseModelAdmin):
         return False
 
     def _get_beneficiary_labels(self, batch: Batch) -> tuple[str, str]:
-        if batch.program and batch.program.beneficiary_group:
+        if batch.program.beneficiary_group:
             beneficiary_group = batch.program.beneficiary_group
             group_label = beneficiary_group.group_label_plural or beneficiary_group.group_label or _("Household")
             member_label = beneficiary_group.member_label_plural or beneficiary_group.member_label or _("Individual")

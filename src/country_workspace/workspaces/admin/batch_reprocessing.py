@@ -74,9 +74,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     # Apply mappings if provided
     mapped_households = 0
     mapped_individuals = 0
-    is_master_detail = (
-        batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
-    )
+    is_master_detail = batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
 
     if household_mapping and household_count > 0 and is_master_detail:
         logger.info("Applying household mapping to %d households", household_count)
