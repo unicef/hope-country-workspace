@@ -163,7 +163,7 @@ class TestReprocessBatchTask:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == empty_batch.pk
-        assert result["households"] == 0
+        assert result.get("households", 0) == 0
         assert result["individuals"] == 0
         assert result["validation_jobs_created"] == 0
 
@@ -540,9 +540,9 @@ class TestBatchReprocessingIntegration:
             result = reprocess_batch(job)
 
             # Check that removed records are excluded
-            assert result["skipped_households"] == 1
+            assert result.get("skipped_households", 0) == 1
             assert result["skipped_individuals"] == 1
-            assert result["households"] >= 0
+            assert result.get("households", 0) >= 0
             assert result["individuals"] >= 1
 
             # Validation jobs should be created for non-removed records

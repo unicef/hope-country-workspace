@@ -74,8 +74,11 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     # Apply mappings if provided
     mapped_households = 0
     mapped_individuals = 0
+    is_master_detail = (
+        batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
+    )
 
-    if household_mapping and household_count > 0:
+    if household_mapping and household_count > 0 and is_master_detail:
         logger.info("Applying household mapping to %d households", household_count)
         for household in households_to_process:
             is_applied = _apply_mapping(household, household_mapping)
@@ -92,8 +95,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         logger.info("Applied mapping to %d individuals", mapped_individuals)
 
     validation_jobs_created = 0
-
-    if household_count > 0:
+    if household_count > 0 and is_master_detail:
         queryset = households_to_process.prefetch_related("members")
         create_validation_jobs(
             description=f"Reprocess batch {batch.name} - Households",
@@ -121,7 +123,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         "validation_jobs_created": validation_jobs_created,
     }
 
-    if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+    if is_master_detail:
         response.update(
             {
                 "households": household_count,

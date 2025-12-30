@@ -59,7 +59,7 @@ class TestReprocessBatchTask:
 
         assert result["batch_id"] == empty_batch.pk
         assert result["batch_name"] == empty_batch.name
-        assert result["households"] == 0
+        assert result.get("households", 0) == 0
         assert result["individuals"] == 0
         assert result["validation_jobs_created"] == 0
 
@@ -85,10 +85,14 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch.pk
             households_count = result.get("households", 0)
-            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+            is_master_detail = (
+                batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
                 assert households_count == 1
             assert result["individuals"] == batch.individual_set.filter(removed=False).count()
-            assert result["validation_jobs_created"] == int(households_count > 0) + int(result["individuals"] > 0)
+            expected_jobs = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_jobs
 
             assert mock_create.call_count == result["validation_jobs_created"]
 
@@ -167,10 +171,14 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch.pk
             households_count = result.get("households", 0)
-            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+            is_master_detail = (
+                batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
                 assert households_count == 1
             assert result["individuals"] == batch.individual_set.filter(removed=False).count()
-            assert result["validation_jobs_created"] == int(households_count > 0) + int(result["individuals"] > 0)
+            expected_jobs = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_jobs
 
             assert mock_create.call_count == result["validation_jobs_created"]
 
