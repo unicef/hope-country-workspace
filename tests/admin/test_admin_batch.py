@@ -16,7 +16,10 @@ def admin_site():
 
 @pytest.fixture
 def batch_admin_instance(admin_site) -> BatchAdmin:
-    return BatchAdmin(Batch, admin_site)
+    admin = BatchAdmin(Batch, admin_site)
+    admin.households.model_admin = admin
+    admin.individuals.model_admin = admin
+    return admin
 
 
 @pytest.fixture
@@ -94,12 +97,12 @@ class TestBatchAdminHouseholdsButton:
     def test_households_button_master_detail_true_with_singular_label(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
     ) -> None:
-        """Test households button uses singular label when plural is not set."""
+        """Test households button uses singular label when plural is empty."""
         from testutils.factories.program import BeneficiaryGroupFactory
 
         bg = BeneficiaryGroupFactory(
             group_label="Custom Group",
-            group_label_plural=None,
+            group_label_plural="",  # Empty string to test fallback
             master_detail=True,
         )
         batch_with_households.program.beneficiary_group = bg
@@ -109,18 +112,18 @@ class TestBatchAdminHouseholdsButton:
         batch_admin_instance.households.func(batch_admin_instance, btn)
 
         assert btn.visible is True
-        assert btn.label == "Custom Group"  # Uses singular when plural is None
+        assert btn.label == "Custom Group"  # Uses singular when plural is empty
         assert "country_workspace_household_changelist" in btn.href
 
     def test_households_button_master_detail_true_no_labels(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
     ) -> None:
-        """Test households button uses default label when no custom labels are set."""
+        """Test households button uses default label when labels are empty."""
         from testutils.factories.program import BeneficiaryGroupFactory
 
         bg = BeneficiaryGroupFactory(
-            group_label=None,
-            group_label_plural=None,
+            group_label="",
+            group_label_plural="",
             master_detail=True,
         )
         batch_with_households.program.beneficiary_group = bg
@@ -174,14 +177,14 @@ class TestBatchAdminGetBeneficiaryLabels:
     def test_get_beneficiary_labels_with_singular_labels_only(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
     ) -> None:
-        """Test _get_beneficiary_labels falls back to singular when plural is not set."""
+        """Test _get_beneficiary_labels falls back to singular when plural is empty."""
         from testutils.factories.program import BeneficiaryGroupFactory
 
         bg = BeneficiaryGroupFactory(
             group_label="Custom Group",
-            group_label_plural=None,
+            group_label_plural="",  # Empty string to test fallback
             member_label="Custom Member",
-            member_label_plural=None,
+            member_label_plural="",  # Empty string to test fallback
         )
         batch_with_households.program.beneficiary_group = bg
         batch_with_households.program.save()
@@ -194,14 +197,14 @@ class TestBatchAdminGetBeneficiaryLabels:
     def test_get_beneficiary_labels_with_no_labels(
         self, batch_admin_instance: BatchAdmin, batch_with_households: "Batch"
     ) -> None:
-        """Test _get_beneficiary_labels uses defaults when no labels are set."""
+        """Test _get_beneficiary_labels uses defaults when labels are empty."""
         from testutils.factories.program import BeneficiaryGroupFactory
 
         bg = BeneficiaryGroupFactory(
-            group_label=None,
-            group_label_plural=None,
-            member_label=None,
-            member_label_plural=None,
+            group_label="",
+            group_label_plural="",
+            member_label="",
+            member_label_plural="",
         )
         batch_with_households.program.beneficiary_group = bg
         batch_with_households.program.save()
