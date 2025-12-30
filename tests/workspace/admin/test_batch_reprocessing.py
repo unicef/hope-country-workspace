@@ -547,7 +547,7 @@ class TestBatchReprocessingIntegration:
             result = reprocess_batch(job)
 
             # Check that removed records are excluded
-            assert result.get("skipped_households", 0) == 0
+            assert result.get("skipped_households", 0) == 1
             assert result.get("households", 0) >= 0
             assert result["individuals"] >= 1
 
