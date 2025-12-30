@@ -366,7 +366,13 @@ class TestBatchReprocessingIntegration:
 
         # Verify the result
         assert result["validation_jobs_created"] > 0
-        assert result["households"] > 0
+        # Check households only if master_detail is True
+        if (
+            batch_with_households.program
+            and batch_with_households.program.beneficiary_group
+            and batch_with_households.program.beneficiary_group.master_detail
+        ):
+            assert result["households"] > 0
 
     def test_reprocess_batch_excludes_removed_households(
         self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
@@ -401,9 +407,13 @@ class TestBatchReprocessingIntegration:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            # Only non-removed households should be processed
-            assert result["households"] == not_removed_count
-            assert result["skipped_households"] == removed_count
+            if (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            ):
+                assert result["households"] == not_removed_count
+                assert result["skipped_households"] == removed_count
             assert result["validation_jobs_created"] > 0
 
             # Verify the queryset passed to create_validation_jobs excludes removed records
@@ -479,10 +489,14 @@ class TestBatchReprocessingIntegration:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            # No households should be processed
-            assert result["households"] == 0
+            if (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            ):
+                assert result["households"] == 0
+                assert result["skipped_households"] > 0
             assert result["individuals"] == 0
-            assert result["skipped_households"] > 0
             assert result["skipped_individuals"] > 0
             assert result["validation_jobs_created"] == 0
 

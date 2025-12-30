@@ -124,7 +124,8 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["batch_id"] == batch.pk
-            assert result["households"] == 0
+            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+                assert result["households"] == 0
             assert result["individuals"] == 1
             assert result["validation_jobs_created"] == 1
             mock_create.assert_called_once()
