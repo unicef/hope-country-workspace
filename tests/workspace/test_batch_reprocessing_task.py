@@ -84,17 +84,20 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["batch_id"] == batch.pk
-            assert result["households"] == 1
+            households_count = result.get("households", 0)
+            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+                assert households_count == 1
             assert result["individuals"] == batch.individual_set.filter(removed=False).count()
-            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == int(households_count > 0) + int(result["individuals"] > 0)
 
             assert mock_create.call_count == result["validation_jobs_created"]
 
             calls = [c.kwargs for c in mock_create.call_args_list]
-            hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
-            assert "Reprocess batch" in hh_call["description"]
-            assert hh_call["owner"] == user
-            assert hh_call["program"] == program
+            if households_count > 0:
+                hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
+                assert "Reprocess batch" in hh_call["description"]
+                assert hh_call["owner"] == user
+                assert hh_call["program"] == program
 
             if result["individuals"] > 0:
                 ind_call = next(c for c in calls if c.get("description", "").endswith(" - Individuals"))
@@ -163,9 +166,11 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["batch_id"] == batch.pk
-            assert result["households"] == 1
+            households_count = result.get("households", 0)
+            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+                assert households_count == 1
             assert result["individuals"] == batch.individual_set.filter(removed=False).count()
-            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == int(households_count > 0) + int(result["individuals"] > 0)
 
             assert mock_create.call_count == result["validation_jobs_created"]
 
@@ -251,13 +256,16 @@ class TestReprocessBatchTask:
             # Verify result has all expected keys
             assert "batch_id" in result
             assert "batch_name" in result
-            assert "households" in result
             assert "individuals" in result
             assert "validation_jobs_created" in result
 
             # Verify types
             assert isinstance(result["batch_id"], int)
             assert isinstance(result["batch_name"], str)
-            assert isinstance(result["households"], int)
             assert isinstance(result["individuals"], int)
             assert isinstance(result["validation_jobs_created"], int)
+
+            # Households key is only present when master_detail is True
+            if batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail:
+                assert "households" in result
+                assert isinstance(result["households"], int)
