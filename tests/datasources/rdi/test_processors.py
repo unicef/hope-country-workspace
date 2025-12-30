@@ -259,7 +259,7 @@ def test_process_households(
                 name=str(row[config["household_label"]]),
                 flex_fields=job.program.apply_default_fields.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
+                originating_id=f"XLS#rdixlsx#{row[config['household_id_column']]}",
             )
             for row in household_sheet
         ]
@@ -272,6 +272,7 @@ def test_process_households_failed_to_save_household(
     config: Config, household_sheet: Sheet, skip_if_not_master_detail: None
 ) -> None:
     job = Mock()
+    job.file.name = "uploads/rdi.xlsx"
     batch = Mock()
 
     job.program.households.create.side_effect = Exception("Something went wrong")
@@ -291,12 +292,13 @@ def test_process_beneficiaries_with_households(
 ) -> None:
     mock_create = mock_individual_objects.create
     mock_create.return_value = Mock()
-
+    job_mock = Mock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
 
     result = process_beneficiaries(
         individual_sheet,
-        job_mock := Mock(name="job"),
+        job_mock,
         batch_mock := Mock(name="batch"),
         config,
         household_mapping,
@@ -322,6 +324,7 @@ def test_process_beneficiaries_with_households(
                 household=household_mapping[row[config["household_id_column"]]],
                 flex_fields=job_mock.program.apply_default_fields.return_value,
                 raw_data=row,
+                originating_id=f"XLS#rdixlsx#{row[config['household_id_column']]}",
             )
             for row in individual_sheet
         ]
@@ -338,10 +341,11 @@ def test_process_beneficiaries_people_only(
     mock_create.return_value = Mock()
 
     clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
-
+    job_mock = Mock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
     result = process_beneficiaries(
         people_sheet,
-        job_mock := Mock(name="job"),
+        job_mock,
         batch_mock := Mock(name="batch"),
         config,
         None,
@@ -364,6 +368,7 @@ def test_process_beneficiaries_people_only(
                 household=None,
                 flex_fields=job_mock.program.apply_default_fields.return_value,
                 raw_data=row,
+                originating_id=f"XLS#rdixlsx#{row[config['beneficiary_id_column']]}",
             )
         )
 
@@ -376,6 +381,7 @@ def test_process_beneficiaries_failed_to_create(
     config: Config, individual_sheet: Sheet, people_sheet: Sheet, household_mapping: Mapping[int, Mock]
 ) -> None:
     job = Mock()
+    job.file.name = "uploads/rdi.xlsx"
     batch = Mock()
     job.program.individuals.create.side_effect = Exception("Something went wrong")
     sheet = individual_sheet if config["master_detail"] else people_sheet
@@ -613,19 +619,20 @@ def test_duplicate_keys(
     mocker.patch("country_workspace.datasources.rdi.processors.Household.objects.create", return_value=Mock())
     mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create", return_value=Mock())
     mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
-
+    job_mock = Mock()
+    job_mock.file.name = "uploads/rdi.xlsx"
     if config["master_detail"]:
         with pytest.raises(SheetProcessingError) as exc_info:
-            process_households(duplicate_household_sheet, Mock(), Mock(), config)
+            process_households(duplicate_household_sheet, job_mock, Mock(), config)
         assert exc_info.value.sheet_name == SheetName.HOUSEHOLDS
         assert exc_info.value.object_id == HOUSEHOLD_1_PK
 
         with pytest.raises(SheetProcessingError) as exc_info:
-            process_beneficiaries(duplicate_individual_sheet, Mock(), Mock(), config, household_mapping)
+            process_beneficiaries(duplicate_individual_sheet, job_mock, Mock(), config, household_mapping)
         assert exc_info.value.sheet_name == SheetName.INDIVIDUALS
         assert exc_info.value.object_id == INDIVIDUAL_1_PK
     else:
         with pytest.raises(SheetProcessingError) as exc_info:
-            process_beneficiaries(duplicate_people_sheet, Mock(), Mock(), config, None)
+            process_beneficiaries(duplicate_people_sheet, job_mock, Mock(), config, None)
         assert exc_info.value.sheet_name == SheetName.PEOPLE
         assert exc_info.value.object_id == INDIVIDUAL_1_PK

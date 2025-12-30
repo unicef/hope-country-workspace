@@ -1,6 +1,11 @@
 from country_workspace.models import Household
 from country_workspace.models import Individual
 from functools import partial
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from django.utils.text import slugify
+from hope_flex_fields.models import DataChecker
 
 
 def validate_alien_fields(instance: Household | Individual) -> None:
@@ -39,3 +44,8 @@ def get_originating_id(*args: str) -> str:
 get_kobo_originating_id = partial(get_originating_id, "KOB")
 get_aurora_originating_id = partial(get_originating_id, "AUR")
 get_xlsx_originating_id = partial(get_originating_id, "XLS")
+
+
+def normalize_file_name(file_name: str) -> str:
+    name = Path(file_name).name
+    return slugify(name)

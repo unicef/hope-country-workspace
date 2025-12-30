@@ -2,7 +2,6 @@ from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
 from functools import partial
-from pathlib import Path
 from typing import Any, cast, Mapping
 
 from PIL import Image
@@ -15,7 +14,7 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
-from country_workspace.utils.imports import validate_alien_fields, get_xlsx_originating_id
+from country_workspace.utils.imports import validate_alien_fields, get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
@@ -119,7 +118,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     for row in sheet:
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
-        originating_id = get_xlsx_originating_id(Path(job.file.name).name, household_key)
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), household_key)
         try:
             mapping[household_key] = cast(
                 "Household",
@@ -155,7 +154,7 @@ def process_beneficiaries(
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
-        originating_id = get_xlsx_originating_id(Path(job.file.name).name, beneficiary_key)
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), beneficiary_key)
 
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
