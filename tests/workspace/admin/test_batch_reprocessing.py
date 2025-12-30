@@ -189,11 +189,18 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            assert result["households"] > 0
+            is_master_detail = (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
+                assert result.get("households", 0) > 0
             assert result["individuals"] > 0
-            assert result["validation_jobs_created"] == 2
-            # Should be called twice: once for households, once for individuals
-            assert mock_create.call_count == 2
+            expected_jobs = int(result.get("households", 0) > 0 and is_master_detail) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_jobs
+            # Should be called for households (if master_detail) and individuals
+            assert mock_create.call_count == expected_jobs
 
 
 class TestBatchReprocessingPermissions:

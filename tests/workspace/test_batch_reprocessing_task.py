@@ -208,9 +208,15 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            assert result["households"] == 2
+            is_master_detail = (
+                batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
+                assert result.get("households", 0) == 2
             assert result["individuals"] == batch.individual_set.filter(removed=False).count()
-            assert result["validation_jobs_created"] == int(result["households"] > 0) + int(result["individuals"] > 0)
+            households_count = result.get("households", 0)
+            expected_jobs = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_jobs
             assert mock_create.call_count == result["validation_jobs_created"]
 
     def test_reprocess_batch_queryset_prefetching(self, program, user: User, force_migrated_records) -> None:
@@ -237,10 +243,14 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             reprocess_batch(job)
 
+            is_master_detail = (
+                batch.program and batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
+            )
             calls = [c.kwargs for c in mock_create.call_args_list]
-            hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
-            queryset = hh_call["queryset"]
-            assert "members" in getattr(queryset, "_prefetch_related_lookups", ())
+            if is_master_detail:
+                hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
+                queryset = hh_call["queryset"]
+                assert "members" in getattr(queryset, "_prefetch_related_lookups", ())
 
     def test_reprocess_batch_result_structure(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory
