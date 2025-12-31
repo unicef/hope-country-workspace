@@ -1,0 +1,132 @@
+{% extends "workspace/change_form.html" %}
+{% load i18n workspace_urls %}
+{% block page-title %}
+    &rsaquo; {{ original }}{% admin_url original %}
+    &rsaquo; Configure Alien Columns to Ignore
+{% endblock page-title %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    Alien Columns to Ignore
+                </h1>
+                <form method="post" id="configure-alien-columns">
+                    {% csrf_token %}
+                    <!-- Display existing columns with remove option -->
+                    {% if form.fields.new_columns.choices %}
+                        <h3 style="font-size: 1.125rem; font-weight: 500; margin-bottom: 12px;">
+                            Existing Columns
+                        </h3>
+                        <table style="border-collapse: collapse; margin-bottom: 20px; width: 100%; max-width: 400px;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left; padding: 8px; border-bottom: 2px solid #ccc;">
+                                        Column Name
+                                    </th>
+                                    <th style="text-align: center; padding: 8px; border-bottom: 2px solid #ccc; width: 80px;">
+                                        Remove
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for value, label in form.fields.new_columns.choices %}
+                                    <tr>
+                                        <td style="padding: 8px; border-bottom: 1px solid #eee;">
+                                            <label for="id_remove_{{ forloop.counter }}" style="cursor: pointer;">
+                                                {{ label }}
+                                            </label>
+                                        </td>
+                                        <td style="text-align: center; padding: 8px; border-bottom: 1px solid #eee;">
+                                            <input type="checkbox" name="remove_columns" value="{{ value }}" id="id_remove_{{ forloop.counter }}" />
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p style="margin-bottom: 20px; color: #6b7280;">
+                            No columns configured yet.
+                        </p>
+                    {% endif %}
+                    <!-- Add new columns -->
+                    <h3 style="font-size: 1.125rem; font-weight: 500; margin-bottom: 12px;">
+                        Add New Columns
+                    </h3>
+                    <div id="new-columns-container">
+                        <div class="column-row" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                            <input type="text"
+                                   name="new_columns"
+                                   placeholder="Enter column name"
+                                   style="border: 1px solid #ccc;
+                                          border-radius: 4px;
+                                          padding: 8px 12px;
+                                          width: 250px" />
+                            <button type="button"
+                                    class="remove-row"
+                                    style="color: red;
+                                           font-size: 20px;
+                                           border: none;
+                                           background: none;
+                                           cursor: pointer"
+                                    title="Remove">
+                                &times;
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button"
+                            id="add-column-btn"
+                            style="margin-bottom: 20px;
+                                   padding: 8px 16px;
+                                   border: 1px solid #ccc;
+                                   border-radius: 4px;
+                                   background: #f0f0f0;
+                                   cursor: pointer">
+                        + Add Another Column
+                    </button>
+                    <div class="submit-row">
+                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save" />
+                        {% url opts|workspace_urlname:'change' original.pk as changelist_url %}
+                        <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function() {
+            const container = document.getElementById('new-columns-container');
+            const addBtn = document.getElementById('add-column-btn');
+
+            if (!addBtn || !container) {
+                console.error('Could not find container or button');
+                return;
+            }
+
+            function createRow() {
+                const row = document.createElement('div');
+                row.className = 'column-row';
+                row.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 10px;';
+                row.innerHTML =
+                    '<input type="text" name="new_columns" placeholder="Enter column name" ' + 'style="border: 1px solid #ccc; border-radius: 4px; padding: 8px 12px; width: 250px;" />' +
+                    '<button type="button" class="remove-row" ' + 'style="color: red; font-size: 20px; border: none; background: none; cursor: pointer;" ' + 'title="Remove">&times;</button>';
+                return row;
+            }
+
+            addBtn.onclick = function() {
+                container.appendChild(createRow());
+            };
+
+            container.onclick = function(e) {
+                if (e.target.classList.contains('remove-row')) {
+                    const rows = container.querySelectorAll('.column-row');
+                    if (rows.length > 1) {
+                        e.target.closest('.column-row').remove();
+                    } else {
+                        e.target.closest('.column-row').querySelector('input').value = '';
+                    }
+                }
+            };
+        })();
+    </script>
+{% endblock content %}

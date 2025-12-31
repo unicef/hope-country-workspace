@@ -229,7 +229,6 @@ def check_for_alien_fields(
 
 def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
     from django.db import transaction
-    from itertools import chain
 
     household_counter = 0
     individual_counter = 0
@@ -245,14 +244,6 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     submissions_iterator = asset.submissions(min_id=last_id)
 
     try:
-        if config.get("fail_if_alien"):
-            try:
-                first_submission = next(submissions_iterator)
-            except StopIteration:
-                return ImportResult(households=0, individuals=0)
-            check_for_alien_fields(batch, first_submission, config, batch.program.apply_mapping_importer)
-            submissions_iterator = chain([first_submission], submissions_iterator)
-
         for submission in submissions_iterator:
             current_submission = submission
 

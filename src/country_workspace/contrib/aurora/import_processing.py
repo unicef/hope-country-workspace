@@ -44,9 +44,7 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     total_people = 0
     client = AuroraClient()
-    for i, result in enumerate(client.get(f"registration/{config['registration_reference_pk']}/records/")):
-        if i == 0 and config.get("fail_if_alien", False):
-            check_alien_fields(result.get("fields"), job.program)
+    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
         imported = import_result(batch, result, config)
         total_people += imported.people
     return ImportResult(people=total_people)

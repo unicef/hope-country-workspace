@@ -29,6 +29,23 @@ def beneficiary_group():
 
 
 @pytest.fixture
+def household_checker():
+    from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory
+
+    from country_workspace.contrib.hope.constants import HOUSEHOLD_CHECKER_NAME
+
+    dc = DataCheckerFactory(name=HOUSEHOLD_CHECKER_NAME)
+    fs = FieldsetFactory()
+
+    for field in ["head_of_household_id", "primary_collector_id", "alternate_collector_id"]:
+        FlexFieldFactory(fieldset=fs, name=field)
+
+    dc.fieldsets.add(fs)
+
+    return dc
+
+
+@pytest.fixture
 def program(office, household_checker, individual_checker, beneficiary_group):
     return CountryProgramFactory(
         country_office=office,
@@ -49,7 +66,6 @@ def test_rdi_import_household(browser, program):
     browser.click_link("Programme")
     browser.click("#btn-import_data")
     browser.fill('input[name="rdi-batch_name"]', "Test Batch")
-    browser.click('input[type="checkbox"][name="rdi-fail_if_alien"]')
     test_file_path = Path(__file__).parent.parent / "data/rdi_correct.xlsx"
     browser.choose_file('input[type="file"]', str(test_file_path))
     browser.click('input[type="submit"][value="Import"]')

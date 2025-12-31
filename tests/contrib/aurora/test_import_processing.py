@@ -71,56 +71,6 @@ def test_import_data_calls_client_and_aggregates(mocker: MockerFixture, config: 
     import_result_mock.assert_any_call(batch, {"pk": "6"}, config)
 
 
-def test_import_data_calls_check_alien_fields_when_fail_if_alien_true(mocker: MockerFixture, config: Config) -> None:
-    job = Mock()
-    job.config = {**config, "fail_if_alien": True}
-    job.program = Mock()
-    job.program.country_office = Mock()
-    job.owner = Mock()
-
-    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
-
-    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
-    client = client_cls.return_value
-    client.get.return_value = [{"pk": "5", "fields": {"field1": "value1"}}, {"pk": "6"}]
-
-    check_alien_fields_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.check_alien_fields")
-    import_result_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.import_result")
-    import_result_mock.side_effect = [ImportResult(people=1), ImportResult(people=2)]
-
-    res = import_data(job)
-
-    assert res == ImportResult(people=3)
-    check_alien_fields_mock.assert_called_once_with({"field1": "value1"}, job.program)
-    assert import_result_mock.call_count == 2
-
-
-def test_import_data_does_not_call_check_alien_fields_when_fail_if_alien_false(
-    mocker: MockerFixture, config: Config
-) -> None:
-    job = Mock()
-    job.config = {**config, "fail_if_alien": False}
-    job.program = Mock()
-    job.program.country_office = Mock()
-    job.owner = Mock()
-
-    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
-
-    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
-    client = client_cls.return_value
-    client.get.return_value = [{"pk": "5", "fields": {"field1": "value1"}}, {"pk": "6"}]
-
-    check_alien_fields_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.check_alien_fields")
-    import_result_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.import_result")
-    import_result_mock.side_effect = [ImportResult(people=1), ImportResult(people=2)]
-
-    res = import_data(job)
-
-    assert res == ImportResult(people=3)
-    check_alien_fields_mock.assert_not_called()
-    assert import_result_mock.call_count == 2
-
-
 # --- import_result ----------------------------------------------------------------
 
 
