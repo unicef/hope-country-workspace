@@ -14,7 +14,7 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
-from country_workspace.utils.imports import validate_alien_fields, get_xlsx_originating_id, normalize_file_name
+from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 

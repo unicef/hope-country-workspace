@@ -2,10 +2,8 @@ from country_workspace.models import Household
 from country_workspace.models import Individual
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from django.utils.text import slugify
-from hope_flex_fields.models import DataChecker
 
 
 def validate_alien_fields(instance: Household | Individual) -> None:
