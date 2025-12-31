@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0036_alter_individual_options_alter_office_options_and_more"),
+        ("country_workspace", "0039_add_originating_id_to_validable"),
     ]
 
     operations = [
