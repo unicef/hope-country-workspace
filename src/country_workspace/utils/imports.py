@@ -47,5 +47,5 @@ get_xlsx_originating_id = partial(get_originating_id, "XLS")
 
 
 def normalize_file_name(file_name: str) -> str:
-    name = Path(file_name).name
-    return slugify(name)
+    path = Path(file_name)
+    return f"{slugify(path.stem)}{path.suffix}"

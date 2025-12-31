@@ -258,6 +258,6 @@ def test_get_originating_id() -> None:
 
 def test_normalize_file_name() -> None:
     file_name = "rdi (a).xlsx"
-    expected_output = "rdi-axlsx"
+    expected_output = "rdi-a.xlsx"
     output = normalize_file_name(file_name)
     assert output == expected_output

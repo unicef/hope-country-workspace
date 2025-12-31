@@ -259,7 +259,7 @@ def test_process_households(
                 name=str(row[config["household_label"]]),
                 flex_fields=job.program.apply_default_fields.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdixlsx#{row[config['household_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
             )
             for row in household_sheet
         ]
@@ -324,7 +324,7 @@ def test_process_beneficiaries_with_households(
                 household=household_mapping[row[config["household_id_column"]]],
                 flex_fields=job_mock.program.apply_default_fields.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdixlsx#{row[config['household_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
             )
             for row in individual_sheet
         ]
@@ -368,7 +368,7 @@ def test_process_beneficiaries_people_only(
                 household=None,
                 flex_fields=job_mock.program.apply_default_fields.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdixlsx#{row[config['beneficiary_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}",
             )
         )
 
