@@ -23,7 +23,7 @@ class HouseholdAdmin(BaseModelAdmin):
         IsValidFilter,
         "removed",
     )
-    readonly_fields = ("errors",)
+    readonly_fields = ("errors", "originating_id")
     search_fields = ("name", "originating_id")
     autocomplete_fields = ("batch",)
 

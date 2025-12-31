@@ -30,6 +30,7 @@ class IndividualAdmin(BaseModelAdmin):
         "batch",
         "household",
     )
+    readonly_fields = ("originating_id",)
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: "LinkButton") -> None:
