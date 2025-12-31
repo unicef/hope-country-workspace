@@ -362,6 +362,12 @@ class TestReprocessBatchTask:
     def test_reprocess_batch_logs_skipped_records(self, program, user: User, force_migrated_records) -> None:
         """Test reprocess_batch logs when records are skipped (removed=True)."""
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, CountryIndividualFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        # Ensure master_detail is True so skipped_households is included in result
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
 
         hh = CountryHouseholdFactory(
             batch__program=program,

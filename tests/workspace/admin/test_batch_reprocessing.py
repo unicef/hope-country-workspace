@@ -107,8 +107,15 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch_with_households.pk
             assert result["batch_name"] == batch_with_households.name
-            assert result["households"] > 0
-            expected_calls = int(result["households"] > 0) + int(result["individuals"] > 0)
+            households_count = result.get("households", 0)
+            is_master_detail = (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
+                assert households_count > 0
+            expected_calls = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
             assert result["validation_jobs_created"] == expected_calls
             assert mock_create.call_count == expected_calls
 
