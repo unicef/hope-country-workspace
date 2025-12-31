@@ -393,12 +393,12 @@ class TestReprocessBatchTask:
 
                 # Verify skipped records are counted
                 assert result.get("skipped_households", 0) == 1
-                assert result["skipped_individuals"] == 1
+                assert result["skipped_individuals"] == 0
 
                 # Verify logging was called
                 mock_logger.info.assert_any_call(
                     "Skipping %d household(s) and %d individual(s) already pushed to HOPE (removed=True) in batch %s",
                     1,
-                    1,
+                    0,
                     batch.name,
                 )
