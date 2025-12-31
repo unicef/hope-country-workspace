@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0037_alter_synclog_unique_together_add_constraints"),
+        ("country_workspace", "0038_alter_rdp_options"),
     ]
 
     operations = [
