@@ -99,15 +99,19 @@ def test_import_file_updates_permissions(user, country_program_admin_instance, c
 
 
 @pytest.mark.parametrize(
-    ("group_method", "columns_method", "defaults_method"),
+    ("group_method", "columns_method", "defaults_method", "ignore_method"),
     [
-        ("household_group", "household_columns", "household_defaults"),
-        ("individual_group", "individual_columns", "individual_defaults"),
+        ("household_group", "household_columns", "household_defaults", "household_alien_fields_to_ignore"),
+        ("individual_group", "individual_columns", "individual_defaults", "individual_alien_fields_to_ignore"),
     ],
     ids=["household_group", "individual_group"],
 )
 def test_group_choice_buttons_choices(
-    country_program_admin_instance: CountryProgramAdmin, group_method: str, columns_method: str, defaults_method: str
+    country_program_admin_instance: CountryProgramAdmin,
+    group_method: str,
+    columns_method: str,
+    defaults_method: str,
+    ignore_method: str,
 ) -> None:
     admin = country_program_admin_instance
     handler = getattr(CountryProgramAdmin, group_method)
@@ -120,4 +124,5 @@ def test_group_choice_buttons_choices(
     assert button.choices == [
         getattr(admin, columns_method),
         getattr(admin, defaults_method),
+        getattr(admin, ignore_method),
     ]

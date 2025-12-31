@@ -54,6 +54,7 @@ def get_people_checker() -> "DataCheckerFactory":
         name=PEOPLE_CHECKER_NAME,
         fields=[
             ("index_id", fqn(django_forms.CharField)),
+            ("gender", fqn(django_forms.CharField)),
         ],
     )
 
@@ -203,7 +204,6 @@ def form_import_rdi(app: "DjangoTestApp", program: "CountryProgram") -> forms.Fo
     data = (Path(__file__).parent.parent / "data/rdi_correct.xlsx").read_bytes()
     res = app.get(url)
 
-    res.forms["import-file"]["rdi-fail_if_alien"] = False
     res.forms["import-file"]["_selected_tab"] = "rdi"
     res.forms["import-file"]["rdi-file"] = Upload("rdi_correct.xlsx", data)
 
@@ -258,21 +258,6 @@ def test_import_rdi_hh_and_individuals_no_validation(
         _test_import_rdi_hh_and_individuals(form_import_rdi, program, reference_field_names)
 
 
-@pytest.mark.django_db
-def test_import_rdi_hh_and_individuals_check_and_fail_if_alien(
-    force_migrated_records,
-    app,
-    program,
-    ff_relationship,
-    ff_sex,
-    form_import_rdi,
-    reference_field_names,
-):
-    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
-        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_hh_and_individuals(form_import_rdi, program, reference_field_names)
-
-
 def _test_import_rdi_people_only(
     program: "CountryProgram",
     form_import_rdi: forms.Form,
@@ -292,7 +277,6 @@ def _test_import_rdi_people_only(
     assert individual.name == "Collector ForJanIndex_3"
     assert "age" not in individual.flex_fields
     assert "birth_year" not in individual.flex_fields
-    assert "gender" not in individual.flex_fields
     assert "sex" in individual.flex_fields
 
 
@@ -302,24 +286,6 @@ def test_import_rdi_people_only_with_no_validation(
     program: "CountryProgram",
     ff_sex: None,
     form_import_rdi: forms.Form,
-) -> None:
-    program.individual_checker = get_people_checker()
-    program.save()
-
-    with patch("country_workspace.contrib.hope.beneficiary_reference._resolve_hh_batch_pks") as mock_resolve:
-        mock_resolve.side_effect = lambda: (None, Batch.objects.last().pk)
-        _test_import_rdi_people_only(program=program, form_import_rdi=form_import_rdi)
-
-
-def test_import_rdi_people_only_with_fail_if_alien(
-    force_migrated_records: None,
-    app: "DjangoTestApp",
-    program: "CountryProgram",
-    form_import_rdi: forms.Form,
-    individual_checker: "DataChecker",
-    ff_sex: None,
-    ff_relationship_not_required: None,
-    ff_residence_status: None,
 ) -> None:
     program.individual_checker = get_people_checker()
     program.save()
@@ -349,7 +315,6 @@ def form_aurora(
     res = app.get(url)
     res.forms["import-aurora"]["_selected_tab"] = "aurora"
     res.forms["import-aurora"]["aurora-validate_after_import"] = False  # Or True
-    res.forms["import-aurora"]["aurora-fail_if_alien"] = False
     res.forms["import-aurora"]["aurora-registration"] = program.projects.registrations.first().pk
 
     return res.forms["import-aurora"]

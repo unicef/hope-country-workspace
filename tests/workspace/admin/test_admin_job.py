@@ -98,3 +98,32 @@ def test_has_delete_permission(rf, async_job, admin_site):
     assert not admin.has_delete_permission(request), "Should not have delete permission without object"
 
     assert not admin.has_delete_permission(request, async_job), "Should not have delete permission with object"
+
+
+@pytest.mark.django_db
+def test_get_form_sets_description_width(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock()
+
+    form = admin.get_form(request, async_job)
+
+    assert "description" in form.base_fields
+    assert form.base_fields["description"].widget.attrs.get("style") == "width: 800px;"
+
+
+@pytest.mark.django_db
+def test_get_form_sets_description_width_without_obj(rf, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+    from country_workspace.workspaces.models import CountryAsyncJob
+
+    admin = CountryJobAdmin(model=CountryAsyncJob, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock()
+
+    form = admin.get_form(request, None)
+
+    assert "description" in form.base_fields
+    assert form.base_fields["description"].widget.attrs.get("style") == "width: 800px;"

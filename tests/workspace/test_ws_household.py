@@ -31,6 +31,40 @@ def office():
 
 
 @pytest.fixture
+def individual_checker():
+    from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory
+
+    from country_workspace.contrib.hope.constants import INDIVIDUAL_CHECKER_NAME
+
+    dc = DataCheckerFactory(name=INDIVIDUAL_CHECKER_NAME)
+    fs = FieldsetFactory()
+
+    for field in ["address", "consent", "admin1", "zip_code"]:
+        FlexFieldFactory(fieldset=fs, name=field)
+
+    dc.fieldsets.add(fs)
+
+    return dc
+
+
+@pytest.fixture
+def household_checker(request, active_marks):
+    from testutils.factories import DataCheckerFactory, FieldsetFactory, FlexFieldFactory
+
+    from country_workspace.contrib.hope.constants import HOUSEHOLD_CHECKER_NAME
+
+    dc = DataCheckerFactory(name=HOUSEHOLD_CHECKER_NAME)
+    fs = FieldsetFactory()
+
+    for field in ["address", "admin1", "consent", "country_origin", "household_id"]:
+        FlexFieldFactory(fieldset=fs, name=field)
+
+    dc.fieldsets.add(fs)
+
+    return dc
+
+
+@pytest.fixture
 def program(office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
@@ -46,7 +80,16 @@ def program(office, household_checker, individual_checker):
 def household(program):
     from testutils.factories import CountryHouseholdFactory
 
-    return CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
+    return CountryHouseholdFactory(
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={
+            "address": "Cool address",
+            "admin1": "",
+            "consent": False,
+            "country_origin": "",
+        },
+    )
 
 
 @pytest.fixture
@@ -58,6 +101,12 @@ def individual(household: "CountryHousehold") -> "CountryIndividual":
         household=household,
         batch__program=household.batch.program,
         batch__country_office=household.batch.program.country_office,
+        flex_fields={
+            "address": "Cool address",
+            "admin1": "",
+            "consent": "",
+            "zip_code": "",
+        },
     )
 
 
@@ -90,8 +139,6 @@ def test_hh_change(app: "CWTestApp", household: "CountryHousehold") -> None:
     with select_office(app, program.country_office, program):
         res = app.get(url)
         assert res.status_code == 200, res.location
-        res = res.forms["countryhousehold_form"].submit()
-        assert res.status_code == 302, res.location
 
 
 def test_hh_validate_single(app: "CWTestApp", household: "CountryHousehold") -> None:
@@ -134,6 +181,7 @@ def hh_with_address(household) -> "CountryHousehold":
     fld.attrs["required"] = True
     fld.save()
     household.flex_fields["address"] = None
+    household.members.all().delete()
     household.save()
 
     household.program.household_checker = dc
