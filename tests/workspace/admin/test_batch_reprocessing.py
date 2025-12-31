@@ -514,6 +514,12 @@ class TestBatchReprocessingIntegration:
         self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
     ) -> None:
         from testutils.factories import AsyncJobFactory, CountryIndividualFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        # Ensure master_detail is True so skipped_households is included in result
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
 
         # Add standalone individuals
         CountryIndividualFactory(

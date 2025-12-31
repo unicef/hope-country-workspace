@@ -346,8 +346,9 @@ class TestReprocessBatchTask:
         hh = CountryHouseholdFactory(
             batch__program=program,
             batch__country_office=program.country_office,
-            raw_data=None,  # No raw_data
         )
+        hh.raw_data = {}
+        hh.save(update_fields=["raw_data"])
 
         mapping = MappingImporterFactory(rules="col1=field1")
 
