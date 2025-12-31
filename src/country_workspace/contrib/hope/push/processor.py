@@ -131,19 +131,20 @@ class PushProcessor:
                 [m.id for m in prefetched] if prefetched is not None else list(hh.members.values_list("id", flat=True))
             )
             flex_fields["members"] = map_members(self.ind_id_map, self._err, hh.pk, member_ids)
+            flex_fields["originating_id"] = hh.originating_id
             rows.append({k: v for k, v in flex_fields.items() if v is not None})
         return ids, self.serializer(rows)
 
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'individual_id' per row."""
-        rows = [ind.apply_grouping() | {"individual_id": ind.id} for ind in batch]
+        rows = [ind.apply_grouping() | {"individual_id": ind.id, "originating_id": ind.originating_id} for ind in batch]
         ids = [row["individual_id"] for row in rows]
         return ids, self.serializer(rows)
 
     def _prepare_people_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a people batch."""
         ids = [ind.id for ind in batch]
-        rows = [ind.apply_grouping() for ind in batch]
+        rows = [ind.apply_grouping() | {"originating_id": ind.originating_id} for ind in batch]
         return ids, self.serializer(rows)
 
     def _process_households_response(self, response: dict | None, batch_ids: list[int]) -> None:

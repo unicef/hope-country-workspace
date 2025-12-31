@@ -189,6 +189,7 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
             "head_of_household": "IND-1.X",
             "members": ["IND-1.X", "IND-2.X"],
             "keep": "x",
+            "originating_id": hh.originating_id,
         }
     ]
 
@@ -200,8 +201,8 @@ def test_prepare_individuals_batch_injects_id(
 
     ids, rows = processor._prepare_individuals_batch([i1, i2])
     assert ids == [10, 11]
-    assert {"a": 1, "individual_id": 10} in rows
-    assert {"b": 2, "individual_id": 11} in rows
+    assert {"a": 1, "individual_id": 10, "originating_id": 10} in rows
+    assert {"b": 2, "individual_id": 11, "originating_id": 11} in rows
 
 
 def test_prepare_people_batch_plain(
@@ -210,7 +211,7 @@ def test_prepare_people_batch_plain(
     i1, i2 = beneficiary_stub(id=10, _group={"a": 1}), beneficiary_stub(id=11, _group={"b": 2})
     ids, rows = processor._prepare_people_batch([i1, i2])
     assert ids == [10, 11]
-    assert rows == [{"a": 1}, {"b": 2}]
+    assert rows == [{"a": 1, "originating_id": 10}, {"b": 2, "originating_id": 11}]
 
 
 # ------------------------- response handlers ---------------------------
