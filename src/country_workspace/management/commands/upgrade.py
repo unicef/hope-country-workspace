@@ -2,9 +2,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
+from typing import TYPE_CHECKING, Any, Final
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand, call_command
 from django.core.validators import validate_email
@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from argparse import ArgumentParser
 
 logger = logging.getLogger(__name__)
+
+
+FALLBACK_EMAIL_DOMAIN: Final[str] = "example.org"
 
 
 class Command(BaseCommand):
@@ -83,6 +86,13 @@ class Command(BaseCommand):
             default="",
             help="Admin password",
         )
+        parser.add_argument(
+            "--superusers",
+            nargs="+",
+            dest="superusers",
+            default=None,
+            help="Emails/usernames to grant superuser privileges (space-separated)",
+        )
 
     def get_options(self, options: dict[str, Any]) -> None:
         self.verbosity = options["verbosity"]
@@ -95,6 +105,7 @@ class Command(BaseCommand):
 
         self.admin_email = str(options["admin_email"] or env("ADMIN_EMAIL", ""))
         self.admin_password = str(options["admin_password"] or env("ADMIN_PASSWORD", ""))
+        self.superusers = options["superusers"] if options["superusers"] is not None else env("SUPERUSERS", [])
 
     def halt(self, e: Exception) -> None:  # pragma: no cover
         self.stdout.write(str(e), style_func=self.style.ERROR)
@@ -106,8 +117,62 @@ class Command(BaseCommand):
 
         sys.exit(1)
 
-    def handle(self, *args: Any, **options: Any) -> None:  # noqa: C901
-        from country_workspace.models import Office, User
+    def _ensure_superuser(self, user: Any) -> bool:
+        if user.is_staff and user.is_superuser:
+            return False
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(update_fields=["is_staff", "is_superuser"])
+        return True
+
+    def _run_createsuperuser(self, username: str, email: str) -> bool:
+        os.environ["DJANGO_SUPERUSER_USERNAME"] = username
+        os.environ["DJANGO_SUPERUSER_EMAIL"] = email
+
+        if password := self.admin_password if username == self.admin_email else "":
+            os.environ["DJANGO_SUPERUSER_PASSWORD"] = password
+        else:
+            os.environ.pop("DJANGO_SUPERUSER_PASSWORD", None)
+
+        call_command(
+            "createsuperuser",
+            email=email,
+            username=username,
+            verbosity=max(self.verbosity - 1, 0),
+            interactive=False,
+        )
+        return bool(password)
+
+    def _superuser_logins(self) -> list[str]:
+        raw = [self.admin_email, *self.superusers]
+        return list(dict.fromkeys(s.strip() for s in raw if s))
+
+    def _create_superusers(self, echo: Any) -> None:
+        users = get_user_model().objects
+
+        for login in self._superuser_logins():
+            email = login if "@" in login else f"{login}@{FALLBACK_EMAIL_DOMAIN}"
+
+            if user := (
+                (users.filter(email=email).first() if "@" in login else None) or users.filter(username=login).first()
+            ):
+                changed = self._ensure_superuser(user)
+                echo(
+                    f"{'Granted superuser privileges' if changed else 'User found, skip'}: {login}",
+                    style_func=self.style.WARNING,
+                )
+                continue
+
+            validate_email(email)
+            password_provided = self._run_createsuperuser(login, email)
+
+            echo(
+                f"Created superuser: {email}{'' if password_provided else ' with unusable password'}",
+                style_func=self.style.WARNING,
+            )
+
+    def handle(self, *args: Any, **options: Any) -> None:
+        from country_workspace.models import Office
 
         self.get_options(options)
         if self.verbosity >= 1:
@@ -143,25 +208,7 @@ class Command(BaseCommand):
                 echo("Run HOPE synchronisation")
                 call_command("sync", **extra)
 
-            if self.admin_email:
-                if User.objects.filter(email=self.admin_email).exists():
-                    echo(
-                        f"User {self.admin_email} found, skip creation",
-                        style_func=self.style.WARNING,
-                    )
-                else:
-                    echo("Creating superuser")
-                    validate_email(self.admin_email)
-                    os.environ["DJANGO_SUPERUSER_USERNAME"] = self.admin_email
-                    os.environ["DJANGO_SUPERUSER_EMAIL"] = self.admin_email
-                    os.environ["DJANGO_SUPERUSER_PASSWORD"] = self.admin_password
-                    call_command(
-                        "createsuperuser",
-                        email=self.admin_email,
-                        username=self.admin_email,
-                        verbosity=self.verbosity - 1,
-                        interactive=False,
-                    )
+            self._create_superusers(echo)
 
             echo("Setup base security")
             setup_workspace_group()

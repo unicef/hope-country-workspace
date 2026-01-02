@@ -14,6 +14,9 @@ from responses import RequestsMock
 from country_workspace.management.commands.sync import Command as SyncCommand, run_program_sync, run_geo_sync
 import country_workspace.management.commands.gen_rdi as gen_rdi_cmd
 from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
+import country_workspace.management.commands.upgrade as upgrade_cmd
+
+from testutils.factories import SuperUserFactory, UserFactory
 
 
 if TYPE_CHECKING:
@@ -87,8 +90,6 @@ def test_upgrade_init(
 @pytest.mark.parametrize("migrate", [1, 0], ids=["migrate", ""])
 @override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade(verbosity: int, migrate: int, mocker: MockerFixture, environment: dict[str, str]) -> None:
-    from testutils.factories import SuperUserFactory
-
     out = StringIO()
     SuperUserFactory()
     mocker.patch.dict(os.environ, environment, clear=True)
@@ -98,8 +99,6 @@ def test_upgrade(verbosity: int, migrate: int, mocker: MockerFixture, environmen
 
 @override_config(HOPE_API_URL="https://dev-hope.unitst.org/api/rest/")
 def test_upgrade_next(mocked_responses: RequestsMock) -> None:
-    from testutils.factories import SuperUserFactory
-
     SuperUserFactory()
     out = StringIO()
     call_command("upgrade", stdout=out, checks=False, sync_with_hope=False)
@@ -120,8 +119,6 @@ def test_upgrade_check(
 def test_upgrade_admin(
     mocker: MockerFixture, mocked_responses: RequestsMock, environment: dict[str, str], admin: str
 ) -> None:
-    from testutils.factories import SuperUserFactory
-
     if admin:
         email = SuperUserFactory().email
     else:
@@ -287,3 +284,52 @@ def test_gen_rdi_validation_errors(cli_args: list[str], err: str) -> None:
 
     with pytest.raises(CommandError, match=re.escape(err)):
         call_command("gen_rdi", *cli_args)
+
+
+@pytest.mark.parametrize(
+    ("factory_key", "kwargs", "expect_changed"),
+    [
+        ("user", {"is_staff": False, "is_superuser": False}, True),
+        ("superuser", {}, False),
+    ],
+    ids=["promotes", "noop"],
+)
+def test_upgrade_ensure_superuser(
+    mocker: MockerFixture,
+    factory_key: str,
+    kwargs: dict[str, object],
+    expect_changed: bool,
+) -> None:
+    factory = {"user": UserFactory, "superuser": SuperUserFactory}[factory_key]
+    user = factory(**kwargs)
+    save_spy = mocker.spy(user, "save")
+
+    assert upgrade_cmd.Command()._ensure_superuser(user) is expect_changed
+
+    if expect_changed:
+        assert user.is_staff is True
+        assert user.is_superuser is True
+        save_spy.assert_called_once_with(update_fields=["is_staff", "is_superuser"])
+    else:
+        save_spy.assert_not_called()
+
+
+def test_upgrade_run_createsuperuser_pops_password_env_when_missing(mocker: MockerFixture) -> None:
+    cmd = upgrade_cmd.Command()
+    cmd.admin_email = "admin@example.com"
+    cmd.admin_password = ""
+    cmd.verbosity = 1
+
+    call = mocker.patch.object(upgrade_cmd, "call_command")
+    mocker.patch.dict(os.environ, {"DJANGO_SUPERUSER_PASSWORD": "stale"}, clear=True)
+
+    assert cmd._run_createsuperuser("admin@example.com", "admin@example.com") is False
+    assert "DJANGO_SUPERUSER_PASSWORD" not in os.environ
+
+    call.assert_called_once_with(
+        "createsuperuser",
+        email="admin@example.com",
+        username="admin@example.com",
+        verbosity=0,
+        interactive=False,
+    )
