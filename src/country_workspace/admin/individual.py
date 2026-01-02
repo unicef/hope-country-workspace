@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 @admin.register(Individual)
 class IndividualAdmin(BaseModelAdmin):
     actions = [reprocess_records]
-    list_display = ("name", "household", "country_office", "program", "batch", "removed")
-    search_fields = ("name",)
+    list_display = ("name", "household", "country_office", "program", "batch", "originating_id", "removed")
+    search_fields = ("name", "originating_id")
     list_filter = (
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
@@ -30,6 +30,7 @@ class IndividualAdmin(BaseModelAdmin):
         "batch",
         "household",
     )
+    readonly_fields = ("originating_id",)
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: "LinkButton") -> None:

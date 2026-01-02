@@ -1,5 +1,9 @@
 from country_workspace.models import Household
 from country_workspace.models import Individual
+from functools import partial
+from pathlib import Path
+
+from django.utils.text import slugify
 
 
 def validate_alien_fields(instance: Household | Individual) -> None:
@@ -29,3 +33,17 @@ def validate_alien_fields(instance: Household | Individual) -> None:
 
     if alien_fields:
         raise ValueError(f"Alien values found for: {alien_fields}")
+
+
+def get_originating_id(*args: str) -> str:
+    return "#".join([str(arg) for arg in args])
+
+
+get_kobo_originating_id = partial(get_originating_id, "KOB")
+get_aurora_originating_id = partial(get_originating_id, "AUR")
+get_xlsx_originating_id = partial(get_originating_id, "XLS")
+
+
+def normalize_file_name(file_name: str) -> str:
+    path = Path(file_name)
+    return f"{slugify(path.stem)}{path.suffix}"

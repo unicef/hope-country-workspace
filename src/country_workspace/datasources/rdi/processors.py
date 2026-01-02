@@ -14,6 +14,7 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
+from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
@@ -117,13 +118,14 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     for row in sheet:
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
-
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), household_key)
         try:
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
                     batch_id=batch.pk,
                     name=str(get_value(row, config["household_label"])),
+                    originating_id=originating_id,
                     flex_fields=transform_row(row),
                     raw_data=row,
                 ),
@@ -152,6 +154,7 @@ def process_beneficiaries(
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), beneficiary_key)
 
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
@@ -164,6 +167,7 @@ def process_beneficiaries(
                     batch_id=batch.pk,
                     name=name,
                     household=household,
+                    originating_id=originating_id,
                     flex_fields=transform_row(cleaned_row),
                     raw_data=row,
                 ),

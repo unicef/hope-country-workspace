@@ -109,7 +109,7 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
     batch.program.id = 42
 
     result = {"pk": "7"}
-
+    originating_id = "AUR#7"
     mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_sync_log_name", return_value="sync")
     mocker.patch(
         "country_workspace.contrib.aurora.import_processing.ContentType.objects.get_for_model",
@@ -130,7 +130,7 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
     res = import_result(batch, result, config)
 
     assert res == ImportResult(people=1)
-    create_people_mock.assert_called_once_with(batch, result, config)
+    create_people_mock.assert_called_once_with(batch, result, config, originating_id)
     update_or_create.assert_called_once()
 
 
@@ -179,6 +179,7 @@ def test_create_people_creates_individual_with_transformed_fields(mocker: Mocker
     batch.program = Mock()
 
     record: dict[str, Any] = {"fields": {"foo": "bar"}}
+    originating_id = "XLS#file.xlsx#1"
 
     mocker.patch(
         "country_workspace.contrib.aurora.import_processing.compose",
@@ -186,12 +187,13 @@ def test_create_people_creates_individual_with_transformed_fields(mocker: Mocker
     )
     create_ind = mocker.patch("country_workspace.contrib.aurora.import_processing.Individual.objects.create")
 
-    res = create_people(batch, record, config)
+    res = create_people(batch, record, config, originating_id)
 
     create_ind.assert_called_once_with(
         batch_id=5,
         name="",
         household=None,
+        originating_id=originating_id,
         flex_fields={"x": "y"},
         raw_data=record,
     )

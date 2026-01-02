@@ -140,12 +140,13 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
             ),
         ],
     }
-
+    originating_id = "KOB#1#1"
     individuals = create_individuals(
         batch_mock := Mock(name="batch"),
         household_mock := Mock(name="household"),
         cast("Submission", data),
         config,
+        originating_id,
     )
 
     assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
@@ -170,6 +171,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         raw_data=preprocess_mock.return_value,
         flex_fields=preprocess_mock.return_value,
+        originating_id=originating_id,
         household=household_mock,
         name=preprocess_mock.return_value.get.return_value,
     )
@@ -186,12 +188,13 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     mapping_importer_partial = Mock(name="mapping_importer_partial")
     default_fields_partial = Mock(name="default_fields_partial")
     partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
-
+    originating_id = "KOB#1#1"
     household = create_household(
         batch_mock := Mock(name="batch"),
         submission_mock := Mock(name="submission"),
         config,
         id_generator_mock,
+        originating_id,
     )
 
     assert household == batch_mock.program.households.create.return_value
@@ -218,6 +221,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         flex_fields=preprocess_mock.return_value,
         raw_data=preprocess_mock.return_value,
+        originating_id=originating_id,
     )
 
 

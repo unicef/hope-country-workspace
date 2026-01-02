@@ -21,6 +21,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual, Pro
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
 from country_workspace.utils.functional import compose
+from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
@@ -94,7 +95,9 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
     return next((key for key in individual if key.startswith("full_name")), None)
 
 
-def create_individuals(batch: Batch, household: Household, submission: Submission, config: Config) -> list[Individual]:
+def create_individuals(
+    batch: Batch, household: Household, submission: Submission, config: Config, originating_id: str
+) -> list[Individual]:
     individuals = []
     individual_mapping_id = config.get("individual_mapping_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
@@ -110,6 +113,7 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
                 batch=batch,
                 household=household,
                 name=individual_fields.get(fullname, "") if fullname else "",
+                originating_id=originating_id,
                 flex_fields=individual_fields,
                 raw_data=individual_fields,
             ),
@@ -119,7 +123,11 @@ def create_individuals(batch: Batch, household: Household, submission: Submissio
 
 
 def create_household(
-    batch: Batch, submission: Submission, config: Config, id_generator: Callable[[], int]
+    batch: Batch,
+    submission: Submission,
+    config: Config,
+    id_generator: Callable[[], int],
+    originating_id: str,
 ) -> Household:
     household_mapping_id = config.get("household_mapping_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
@@ -134,6 +142,7 @@ def create_household(
         "Household",
         batch.program.households.create(
             batch=batch,
+            originating_id=originating_id,
             flex_fields=household_fields,
             raw_data=household_fields,
         ),
@@ -246,10 +255,10 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     try:
         for submission in submissions_iterator:
             current_submission = submission
-
+            originating_id = get_kobo_originating_id(asset.uid, submission.id)
             with transaction.atomic():
-                household = create_household(batch, submission, config, id_generator)
-                individuals = create_individuals(batch, household, submission, config)
+                household = create_household(batch, submission, config, id_generator, originating_id)
+                individuals = create_individuals(batch, household, submission, config, originating_id)
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1
