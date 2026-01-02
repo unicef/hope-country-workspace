@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("contenttypes", "0002_remove_content_type_name"),
-        ("country_workspace", "0036_alter_individual_options_alter_office_options_and_more"),
+        ("country_workspace", "0038_alter_rdp_options"),
     ]
 
     operations = [
