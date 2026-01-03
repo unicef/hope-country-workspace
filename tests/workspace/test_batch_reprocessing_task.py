@@ -359,8 +359,219 @@ class TestReprocessBatchTask:
         hh.refresh_from_db()
         assert hh.flex_fields != {"field1": "value1"}
 
+    def test_apply_mapping_successful(self, program, user: User) -> None:
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_mapping
+        from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"old_col": "value1", "other_col": "value2"},
+            flex_fields={"existing": "data"},
+        )
+
+        mapping = MappingImporterFactory(rules="old_col=new_col")
+
+        result = _apply_mapping(hh, mapping)
+
+        assert result is True
+        hh.refresh_from_db()
+        # Mapping should transform old_col to new_col
+        assert hh.flex_fields["new_col"] == "value1"
+        assert "old_col" not in hh.flex_fields
+        # Other columns should remain
+        assert hh.flex_fields["other_col"] == "value2"
+        # last_checked and errors should be reset
+        assert hh.last_checked is None
+        assert hh.errors == {}
+
+    def test_reprocess_batch_household_mapping_applied(self, program, user: User, force_migrated_records) -> None:
+        """Test reprocess_batch applies household mapping when all conditions are met."""
+        from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, MappingImporterFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"external_field": "external_value", "other_field": "other_value"},
+            flex_fields={"existing": "data"},
+        )
+        batch = hh.batch
+
+        # Create a household mapping
+        household_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            rules="external_field=mapped_field",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={"batch_id": batch.pk, "household_mapping_id": household_mapping.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_households", 0) == 1
+            assert result.get("households", 0) == 1
+
+            hh.refresh_from_db()
+            assert hh.flex_fields["mapped_field"] == "external_value"
+            assert "external_field" not in hh.flex_fields
+            assert hh.flex_fields["other_field"] == "other_value"
+
+    def test_reprocess_batch_individual_mapping_applied(self, program, user: User, force_migrated_records) -> None:
+        from testutils.factories import AsyncJobFactory, CountryIndividualFactory, MappingImporterFactory
+
+        ind = CountryIndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"external_col": "external_val", "another_col": "another_val"},
+            flex_fields={"existing": "data"},
+        )
+        batch = ind.batch
+
+        individual_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            rules="external_col=mapped_col",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={"batch_id": batch.pk, "individual_mapping_id": individual_mapping.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_individuals", 0) == 1
+            assert result["individuals"] == 1
+
+            # Verify mapping was applied
+            ind.refresh_from_db()
+            assert ind.flex_fields["mapped_col"] == "external_val"
+            assert "external_col" not in ind.flex_fields
+            assert ind.flex_fields["another_col"] == "another_val"
+
+    def test_reprocess_batch_household_mapping_not_applied_when_no_households(self, program, user: User) -> None:
+        from testutils.factories import AsyncJobFactory, MappingImporterFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        # Set master_detail to True
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
+
+        # Create empty batch
+        from testutils.factories import CountryBatchFactory
+
+        empty_batch = CountryBatchFactory(program=program, country_office=program.country_office)
+
+        # Create a household mapping
+        household_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            rules="external_field=mapped_field",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=empty_batch,
+            owner=user,
+            config={"batch_id": empty_batch.pk, "household_mapping_id": household_mapping.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == empty_batch.pk
+            assert result.get("mapped_households", 0) == 0
+            assert result.get("households", 0) == 0
+
+    def test_reprocess_batch_household_mapping_not_applied_when_not_master_detail(
+        self, program, user: User, force_migrated_records
+    ) -> None:
+        from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, MappingImporterFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        # Set master_detail to False
+        bg = BeneficiaryGroupFactory(master_detail=False)
+        program.beneficiary_group = bg
+        program.save()
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"external_field": "external_value"},
+        )
+        batch = hh.batch
+
+        # Create a household mapping
+        household_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            rules="external_field=mapped_field",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={"batch_id": batch.pk, "household_mapping_id": household_mapping.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            # mapped_households should not be in result when not master_detail
+            assert "mapped_households" not in result
+            # Mapping should not be applied
+            hh.refresh_from_db()
+            assert "mapped_field" not in hh.flex_fields
+
+    def test_reprocess_batch_individual_mapping_not_applied_when_no_individuals(self, program, user: User) -> None:
+        from testutils.factories import AsyncJobFactory, MappingImporterFactory
+        from testutils.factories import CountryBatchFactory
+
+        # Create empty batch
+        empty_batch = CountryBatchFactory(program=program, country_office=program.country_office)
+
+        # Create an individual mapping
+        individual_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            rules="external_col=mapped_col",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=empty_batch,
+            owner=user,
+            config={"batch_id": empty_batch.pk, "individual_mapping_id": individual_mapping.pk},
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == empty_batch.pk
+            assert result.get("mapped_individuals", 0) == 0
+            assert result["individuals"] == 0
+
     def test_reprocess_batch_logs_skipped_records(self, program, user: User, force_migrated_records) -> None:
-        """Test reprocess_batch logs when records are skipped (removed=True)."""
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, CountryIndividualFactory
         from testutils.factories.program import BeneficiaryGroupFactory
 
