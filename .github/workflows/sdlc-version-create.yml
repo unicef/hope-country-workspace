@@ -80,7 +80,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.33
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ vars.DOCKERHUB_ORGANIZATION }}/${{ vars.DOCKERHUB_REPOSITORY }}:${{ needs.prepare-version.outputs.version }}
           format: 'sarif'
