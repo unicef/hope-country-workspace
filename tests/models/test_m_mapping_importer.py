@@ -130,6 +130,7 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         # Lines with ":" but no "=" in value_part should be skipped
         ("sex:M=MALE\nfield:value_without_equals\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
         ("sex:M=MALE\nfield:old_value\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        ("sex:M=MALE\nfield=name:value\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
     ],
     ids=[
         "empty_line_newline",
@@ -139,6 +140,7 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         "line_without_colon_or_equals_2",
         "line_with_colon_no_equals_in_value",
         "line_with_colon_no_equals_in_value_2",
+        "equals_in_field_part_not_value_part",
     ],
 )
 def test_value_transformations_as_dict_skips_invalid_lines(mapping_importer, value_transformations, expected):
