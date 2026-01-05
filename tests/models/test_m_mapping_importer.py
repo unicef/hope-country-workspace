@@ -80,13 +80,23 @@ def test_value_transformation_validator_valid_rules():
         ("field:", "Expected one '=' character"),
         (":old=new", "Field name cannot be empty"),
         ("field:old=old", "Old value and new value must be different"),
+        ("field=name:value", "Expected format: 'fieldname:old_value=new_value'"),
     ],
-    ids=["invalid_format", "missing_equals", "empty_fieldname", "same_old_new"],
+    ids=["invalid_format", "missing_equals", "empty_fieldname", "same_old_new", "no_equals_in_value_part"],
 )
 def test_value_transformation_validator_invalid_rules(rules, expected_error):
     validator = ValueTransformationRulesValidator()
     with pytest.raises(ValidationError, match=expected_error):
         validator(rules)
+
+
+def test_value_transformation_validator_skips_empty_lines():
+    """Test that ValueTransformationRulesValidator.__call__ skips empty lines (if line: check)."""
+    validator = ValueTransformationRulesValidator()
+    # Should not raise - empty lines are skipped
+    validator("sex:M=MALE\n\nsex:F=FEMALE")
+    validator("   \nsex:M=MALE\n\t\nsex:F=FEMALE")
+    validator("\n\n\n")
 
 
 @pytest.mark.parametrize(
@@ -108,6 +118,36 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
 
 
 @pytest.mark.parametrize(
+    ("value_transformations", "expected"),
+    [
+        # Empty lines should be skipped
+        ("sex:M=MALE\n\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        ("sex:M=MALE\n   \nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        ("sex:M=MALE\n\t\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        # Lines without ":" or "=" should be skipped
+        ("sex:M=MALE\ninvalid_line\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        ("sex:M=MALE\nno_colon_or_equals\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        # Lines with ":" but no "=" in value_part should be skipped
+        ("sex:M=MALE\nfield:value_without_equals\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+        ("sex:M=MALE\nfield:old_value\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
+    ],
+    ids=[
+        "empty_line_newline",
+        "empty_line_spaces",
+        "empty_line_tab",
+        "line_without_colon_or_equals",
+        "line_without_colon_or_equals_2",
+        "line_with_colon_no_equals_in_value",
+        "line_with_colon_no_equals_in_value_2",
+    ],
+)
+def test_value_transformations_as_dict_skips_invalid_lines(mapping_importer, value_transformations, expected):
+    """Test that value_transformations_as_dict skips lines that trigger continue statements."""
+    mi = mapping_importer(value_transformations=value_transformations)
+    assert mi.value_transformations_as_dict == expected
+
+
+@pytest.mark.parametrize(
     ("rules", "value_transformations", "data", "expected"),
     [
         # No transformations
@@ -124,6 +164,9 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         ("gender=sex", "status:1=ACTIVE", {"gender": "M", "status": "1"}, {"sex": "M", "status": "ACTIVE"}),
         # Value that doesn't match transformation
         ("gender=sex", "sex:M=MALE", {"gender": "X"}, {"sex": "X"}),
+        # Transformation rule exists but field_name not in data (field_name in data is False)
+        ("", "missing_field:old=new", {"other_field": "value"}, {"other_field": "value"}),
+        ("gender=sex", "missing_field:old=new", {"gender": "M"}, {"sex": "M"}),
     ],
     ids=[
         "no_transformations",
@@ -133,6 +176,8 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         "multiple_value_transformations",
         "transformation_on_different_field",
         "value_no_match",
+        "field_not_in_data",
+        "field_not_in_data_with_mapping",
     ],
 )
 def test_apply_with_value_transformations(mapping_importer, rules, value_transformations, data, expected):
