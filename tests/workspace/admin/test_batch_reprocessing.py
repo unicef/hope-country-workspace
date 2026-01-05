@@ -43,12 +43,41 @@ def office():
 def program(office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
+    alien_individual_fields = [
+        "phone_financial_institution",
+        "national_passport_photo",
+        "national_id_photo",
+        "phone_number",
+        "gender",
+        "birth_date",
+        "disability",
+        "estimated_birth_date",
+        "family_name",
+        "full_name",
+        "given_name",
+        "household_id",
+        "middle_name",
+        "photo",
+        "relationship",
+        "national_id_document_number",
+        "national_id_issuance_date",
+        "national_id_expiry_date",
+        "national_id_country",
+        "national_passport_document_number",
+        "national_passport_issuance_date",
+        "national_passport_expiry_date",
+        "national_passport_country",
+        "bank_number",
+        "bank_financial_institution",
+    ]
+
     return CountryProgramFactory(
         country_office=office,
         household_checker=household_checker,
         individual_checker=individual_checker,
         household_columns="name\nid\nxx",
         individual_columns="name\nid\nxx",
+        ind_alien_columns_to_ignore="\n".join(alien_individual_fields),
     )
 
 
@@ -327,22 +356,16 @@ class TestBatchReprocessingIntegration:
         url = reverse("workspace:workspaces_countrybatch_reprocess_batch", args=[batch_with_households.pk])
 
         with select_office(app, batch_with_households.country_office, batch_with_households.program):
-            # Get confirmation page
             res = app.get(url)
             assert res.status_code == 200
 
-            # Submit the form
-            # Use the confirmation form (last form on the page)
             form = res.forms[list(res.forms.keys())[-1]]
             res = form.submit()
             assert res.status_code == 302
 
-            # Verify job was created and executed
             job = AsyncJob.objects.filter(batch=batch_with_households).latest("id")
             assert job.batch == batch_with_households
 
-            # Since CELERY_TASK_ALWAYS_EAGER=True, job should have been executed
-            # and validation jobs should have been created
             validation_jobs = AsyncJob.objects.filter(
                 program=batch_with_households.program, description__icontains="Reprocess batch"
             )
