@@ -78,7 +78,6 @@ def test_value_transformation_validator_valid_rules():
     [
         ("invalid_rule", "Expected ':' character"),
         ("field:", "Expected one '=' character"),
-        ("field:old=new", "Old value and new value must be different"),
         (":old=new", "Field name cannot be empty"),
         ("field:old=old", "Old value and new value must be different"),
     ],
