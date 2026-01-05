@@ -12,6 +12,7 @@ from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
+from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
 from country_workspace.utils.functional import compose
 
@@ -44,9 +45,7 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     total_people = 0
     client = AuroraClient()
-    for i, result in enumerate(client.get(f"registration/{config['registration_reference_pk']}/records/")):
-        if i == 0 and config.get("fail_if_alien", False):
-            check_alien_fields(result.get("fields"), job.program)
+    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
         imported = import_result(batch, result, config)
         total_people += imported.people
     return ImportResult(people=total_people)
@@ -78,7 +77,8 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
         if current_id <= last_id:
             return ImportResult(people=0)
         with transaction.atomic():
-            create_people(batch, result, config)
+            originating_id = get_aurora_originating_id(result["pk"])
+            create_people(batch, result, config, originating_id)
             people_counter += 1
             last_successful_id = current_id
     except Exception as e:
@@ -100,12 +100,13 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
     return ImportResult(people=people_counter)
 
 
-def create_people(batch: Batch, record: dict[str, Any], config: Config) -> Individual:
+def create_people(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Individual:
     transform_individual_row = build_individual_transform(batch.program)
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
         household=None,
+        originating_id=originating_id,
         flex_fields=transform_individual_row(record["fields"]),
         raw_data=record,
     )

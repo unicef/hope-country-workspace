@@ -45,7 +45,7 @@ jobs:
       PYTHONPATH: src/
     steps:
       - uses: actions/checkout@v6
-      - uses: yezz123/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
 
       - uses: actions/cache/restore@v5
         id: restore-cache

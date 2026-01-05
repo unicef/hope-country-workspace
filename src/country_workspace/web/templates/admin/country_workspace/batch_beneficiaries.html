@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+{% block breadcrumbs %}
+    <div class="breadcrumbs">
+        <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+        &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+        &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+        &rsaquo; <a href="{% url opts|admin_urlname:'change' batch.pk %}">{{ batch|truncatewords:"18" }}</a>
+        &rsaquo; {% trans 'Beneficiaries' %}
+    </div>
+{% endblock %}
+{% block content %}
+    <div id="content-main">
+        <h1>
+            {% trans 'Beneficiaries for Batch' %}: {{ batch }}
+        </h1>
+        <div class="module">
+            <h2>
+                {% trans 'Households' %} ({{ households.count }})
+            </h2>
+            {% if households %}
+                <table style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>
+                                {% trans 'Name' %}
+                            </th>
+                            <th>
+                                {% trans 'ID' %}
+                            </th>
+                            <th>
+                                {% trans 'Status' %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hh in households %}
+                            <tr class="{% cycle 'row1' 'row2' %}">
+                                <td>
+                                    <a href="{% url 'admin:country_workspace_household_change' hh.pk %}">{{ hh.name }}</a>
+                                </td>
+                                <td>
+                                    {{ hh.pk }}
+                                </td>
+                                <td>
+                                    {% if hh.removed %}
+                                        <span style="color: red;">{% trans 'Removed' %}</span>
+                                    {% else %}
+                                        <span style="color: green;">{% trans 'Active' %}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>
+                    {% trans 'No households found.' %}
+                </p>
+            {% endif %}
+        </div>
+        <div class="module">
+            <h2>
+                {% trans 'Individuals' %} ({{ individuals.count }})
+            </h2>
+            {% if individuals %}
+                <table style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>
+                                {% trans 'Name' %}
+                            </th>
+                            <th>
+                                {% trans 'ID' %}
+                            </th>
+                            <th>
+                                {% trans 'Household' %}
+                            </th>
+                            <th>
+                                {% trans 'Status' %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ind in individuals %}
+                            <tr class="{% cycle 'row1' 'row2' %}">
+                                <td>
+                                    <a href="{% url 'admin:country_workspace_individual_change' ind.pk %}">{{ ind.name }}</a>
+                                </td>
+                                <td>
+                                    {{ ind.pk }}
+                                </td>
+                                <td>
+                                    {% if ind.household %}
+                                        <a href="{% url 'admin:country_workspace_household_change' ind.household.pk %}">{{ ind.household.name }}</a>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if ind.removed %}
+                                        <span style="color: red;">{% trans 'Removed' %}</span>
+                                    {% else %}
+                                        <span style="color: green;">{% trans 'Active' %}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>
+                    {% trans 'No individuals found.' %}
+                </p>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,26 @@
+.object-tools select.aeb-button {
+    margin: 0;
+    padding:.2rem .1rem .2rem .3rem; /* top right bottom left */
+    height: 1.6rem;
+    line-height: 1.25rem;
+
+    background: var(--object-tools-bg);
+    color: var(--object-tools-fg);
+
+    font: 400 .7rem/1.25rem var(--font-family-primary);
+    text-transform: uppercase;
+
+    border: 0;
+    border-radius: 1rem;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.object-tools select.aeb-button:hover {
+    background: var(--object-tools-hover-bg);
+}
+
+.object-tools select.aeb-button option {
+    background: var(--object-tools-bg);
+    color: var(--object-tools-fg);
+}

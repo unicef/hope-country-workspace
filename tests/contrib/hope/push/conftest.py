@@ -128,6 +128,7 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
         def __init__(self, **kw):
             if "id" not in kw and "pk" in kw:
                 kw["id"] = kw["pk"]
+            kw.setdefault("originating_id", kw.get("id"))
             self.__dict__.update(kw)
 
         def is_valid(self):

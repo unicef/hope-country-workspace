@@ -140,12 +140,13 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
             ),
         ],
     }
-
+    originating_id = "KOB#1#1"
     individuals = create_individuals(
         batch_mock := Mock(name="batch"),
         household_mock := Mock(name="household"),
         cast("Submission", data),
         config,
+        originating_id,
     )
 
     assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
@@ -170,6 +171,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         raw_data=preprocess_mock.return_value,
         flex_fields=preprocess_mock.return_value,
+        originating_id=originating_id,
         household=household_mock,
         name=preprocess_mock.return_value.get.return_value,
     )
@@ -186,12 +188,13 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     mapping_importer_partial = Mock(name="mapping_importer_partial")
     default_fields_partial = Mock(name="default_fields_partial")
     partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
-
+    originating_id = "KOB#1#1"
     household = create_household(
         batch_mock := Mock(name="batch"),
         submission_mock := Mock(name="submission"),
         config,
         id_generator_mock,
+        originating_id,
     )
 
     assert household == batch_mock.program.households.create.return_value
@@ -218,6 +221,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         flex_fields=preprocess_mock.return_value,
         raw_data=preprocess_mock.return_value,
+        originating_id=originating_id,
     )
 
 
@@ -562,54 +566,3 @@ def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, co
 
     assert exc_info.value.household_alien_fields == set()
     assert exc_info.value.individual_alien_fields == {"alien_individual_field"}
-
-
-@pytest.mark.django_db
-def test_import_asset_with_fail_if_alien_enabled(mocker: MockerFixture, config: Config) -> None:
-    config["fail_if_alien"] = True
-
-    batch = BatchFactory()
-    asset_mock = Mock()
-    asset_mock.uid = "test_asset_uid"
-
-    submission_mock = Mock()
-    submission_mock.id = 101
-    asset_mock.submissions = Mock(return_value=iter([submission_mock]))
-
-    check_for_alien_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.check_for_alien_fields")
-    check_for_alien_fields_mock.side_effect = AlienFieldsError({"alien_hh_field"}, {"alien_ind_field"})
-
-    id_generator_mock = Mock()
-
-    with pytest.raises(ImportError) as exc_info:
-        import_asset(batch, asset_mock, config, id_generator_mock)
-
-    assert "alien_hh_field" in str(exc_info.value) or "AlienFieldsError" in str(exc_info.value)
-    check_for_alien_fields_mock.assert_called_once()
-
-
-@pytest.mark.django_db
-def test_import_asset_with_fail_if_alien_disabled(mocker: MockerFixture, config: Config) -> None:
-    config["fail_if_alien"] = False
-
-    batch = BatchFactory()
-    asset_mock = Mock()
-    asset_mock.uid = "test_asset_uid"
-
-    submission_mock = Mock()
-    submission_mock.id = 101
-    asset_mock.submissions = Mock(return_value=iter([submission_mock]))
-
-    check_for_alien_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.check_for_alien_fields")
-    mocker.patch("country_workspace.contrib.kobo.sync.create_household")
-    create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    create_individuals_mock.return_value = []
-    mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
-
-    id_generator_mock = Mock()
-
-    result = import_asset(batch, asset_mock, config, id_generator_mock)
-
-    # check_for_alien_fields should not be called when validate_mode is NONE
-    check_for_alien_fields_mock.assert_not_called()
-    assert result["households"] == 1

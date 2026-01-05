@@ -1,4 +1,3 @@
-import itertools
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
@@ -15,7 +14,7 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import clean_field_names, Record
-from country_workspace.utils.imports import validate_alien_fields
+from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
@@ -119,13 +118,14 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     for row in sheet:
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
-
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), household_key)
         try:
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
                     batch_id=batch.pk,
                     name=str(get_value(row, config["household_label"])),
+                    originating_id=originating_id,
                     flex_fields=transform_row(row),
                     raw_data=row,
                 ),
@@ -154,6 +154,7 @@ def process_beneficiaries(
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
+        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), beneficiary_key)
 
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
@@ -166,6 +167,7 @@ def process_beneficiaries(
                     batch_id=batch.pk,
                     name=name,
                     household=household,
+                    originating_id=originating_id,
                     flex_fields=transform_row(cleaned_row),
                     raw_data=row,
                 ),
@@ -211,27 +213,17 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 
 def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
-    hh_sheet_gen1, hh_sheet_gen2 = itertools.tee(household_sheet)
-    ind_sheet_gen1, ind_sheet_gen2 = itertools.tee(individual_sheet)
 
-    if config.get("fail_if_alien"):
-        validate_alien_fields(hh_sheet_gen1, job.program.household_checker)
-        validate_alien_fields(ind_sheet_gen1, job.program.individual_checker)
-
-    household_mapping = process_households(hh_sheet_gen2, job, batch, config)
-    individuals_mapping = process_beneficiaries(ind_sheet_gen2, job, batch, config, household_mapping)
+    household_mapping = process_households(household_sheet, job, batch, config)
+    individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     _sync_ind_pks(household_mapping, individuals_mapping)
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-    people_sheet_gen1, people_sheet_gen2 = itertools.tee(people_sheet)
 
-    if config.get("fail_if_alien"):
-        validate_alien_fields(people_sheet_gen1, job.program.individual_checker)
-
-    people_mapping = process_beneficiaries(people_sheet_gen2, job, batch, config)
+    people_mapping = process_beneficiaries(people_sheet, job, batch, config)
     return {"people": len(people_mapping)}
 
 

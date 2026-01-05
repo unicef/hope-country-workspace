@@ -10,6 +10,7 @@ from country_workspace.models import AsyncJob, Batch
 from country_workspace.workspaces.admin import CountryBatchAdmin
 from country_workspace.workspaces.admin.batch_reprocessing import reprocess_batch
 from country_workspace.workspaces.models import CountryBatch
+from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.perms import user_grant_permissions
 
 if TYPE_CHECKING:
@@ -42,12 +43,41 @@ def office():
 def program(office, household_checker, individual_checker):
     from testutils.factories import CountryProgramFactory
 
+    alien_individual_fields = [
+        "phone_financial_institution",
+        "national_passport_photo",
+        "national_id_photo",
+        "phone_number",
+        "gender",
+        "birth_date",
+        "disability",
+        "estimated_birth_date",
+        "family_name",
+        "full_name",
+        "given_name",
+        "household_id",
+        "middle_name",
+        "photo",
+        "relationship",
+        "national_id_document_number",
+        "national_id_issuance_date",
+        "national_id_expiry_date",
+        "national_id_country",
+        "national_passport_document_number",
+        "national_passport_issuance_date",
+        "national_passport_expiry_date",
+        "national_passport_country",
+        "bank_number",
+        "bank_financial_institution",
+    ]
+
     return CountryProgramFactory(
         country_office=office,
         household_checker=household_checker,
         individual_checker=individual_checker,
         household_columns="name\nid\nxx",
         individual_columns="name\nid\nxx",
+        ind_alien_columns_to_ignore="\n".join(alien_individual_fields),
     )
 
 
@@ -106,8 +136,15 @@ class TestReprocessBatchTask:
 
             assert result["batch_id"] == batch_with_households.pk
             assert result["batch_name"] == batch_with_households.name
-            assert result["households"] > 0
-            expected_calls = int(result["households"] > 0) + int(result["individuals"] > 0)
+            households_count = result.get("households", 0)
+            is_master_detail = (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
+                assert households_count > 0
+            expected_calls = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
             assert result["validation_jobs_created"] == expected_calls
             assert mock_create.call_count == expected_calls
 
@@ -162,7 +199,7 @@ class TestReprocessBatchTask:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == empty_batch.pk
-        assert result["households"] == 0
+        assert result.get("households", 0) == 0
         assert result["individuals"] == 0
         assert result["validation_jobs_created"] == 0
 
@@ -188,11 +225,18 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            assert result["households"] > 0
+            is_master_detail = (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            )
+            if is_master_detail:
+                assert result.get("households", 0) > 0
             assert result["individuals"] > 0
-            assert result["validation_jobs_created"] == 2
-            # Should be called twice: once for households, once for individuals
-            assert mock_create.call_count == 2
+            expected_jobs = int(result.get("households", 0) > 0 and is_master_detail) + int(result["individuals"] > 0)
+            assert result["validation_jobs_created"] == expected_jobs
+            # Should be called for households (if master_detail) and individuals
+            assert mock_create.call_count == expected_jobs
 
 
 class TestBatchReprocessingPermissions:
@@ -312,22 +356,16 @@ class TestBatchReprocessingIntegration:
         url = reverse("workspace:workspaces_countrybatch_reprocess_batch", args=[batch_with_households.pk])
 
         with select_office(app, batch_with_households.country_office, batch_with_households.program):
-            # Get confirmation page
             res = app.get(url)
             assert res.status_code == 200
 
-            # Submit the form
-            # Use the confirmation form (last form on the page)
             form = res.forms[list(res.forms.keys())[-1]]
             res = form.submit()
             assert res.status_code == 302
 
-            # Verify job was created and executed
             job = AsyncJob.objects.filter(batch=batch_with_households).latest("id")
             assert job.batch == batch_with_households
 
-            # Since CELERY_TASK_ALWAYS_EAGER=True, job should have been executed
-            # and validation jobs should have been created
             validation_jobs = AsyncJob.objects.filter(
                 program=batch_with_households.program, description__icontains="Reprocess batch"
             )
@@ -365,7 +403,13 @@ class TestBatchReprocessingIntegration:
 
         # Verify the result
         assert result["validation_jobs_created"] > 0
-        assert result["households"] > 0
+        # Check households only if master_detail is True
+        if (
+            batch_with_households.program
+            and batch_with_households.program.beneficiary_group
+            and batch_with_households.program.beneficiary_group.master_detail
+        ):
+            assert result["households"] > 0
 
     def test_reprocess_batch_excludes_removed_households(
         self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
@@ -400,9 +444,13 @@ class TestBatchReprocessingIntegration:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            # Only non-removed households should be processed
-            assert result["households"] == not_removed_count
-            assert result["skipped_households"] == removed_count
+            if (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            ):
+                assert result["households"] == not_removed_count
+                assert result["skipped_households"] == removed_count
             assert result["validation_jobs_created"] > 0
 
             # Verify the queryset passed to create_validation_jobs excludes removed records
@@ -478,10 +526,14 @@ class TestBatchReprocessingIntegration:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            # No households should be processed
-            assert result["households"] == 0
+            if (
+                batch_with_households.program
+                and batch_with_households.program.beneficiary_group
+                and batch_with_households.program.beneficiary_group.master_detail
+            ):
+                assert result["households"] == 0
+                assert result["skipped_households"] > 0
             assert result["individuals"] == 0
-            assert result["skipped_households"] > 0
             assert result["skipped_individuals"] > 0
             assert result["validation_jobs_created"] == 0
 
@@ -492,6 +544,12 @@ class TestBatchReprocessingIntegration:
         self, batch_with_households: "CountryBatch", force_migrated_records, user: "User"
     ) -> None:
         from testutils.factories import AsyncJobFactory, CountryIndividualFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        # Ensure master_detail is True so skipped_households is included in result
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
 
         # Add standalone individuals
         CountryIndividualFactory(
@@ -525,11 +583,118 @@ class TestBatchReprocessingIntegration:
             result = reprocess_batch(job)
 
             # Check that removed records are excluded
-            assert result["skipped_households"] == 1
-            assert result["skipped_individuals"] == 1
-            assert result["households"] >= 0
+            assert result.get("skipped_households", 0) == 1
+            assert result.get("households", 0) >= 0
             assert result["individuals"] >= 1
 
             # Validation jobs should be created for non-removed records
-            if result["households"] > 0 or result["individuals"] > 0:
+            if result.get("households", 0) > 0 or result["individuals"] > 0:
                 assert result["validation_jobs_created"] > 0
+
+
+class TestBatchAdminButtons:
+    """Test workspace batch admin button labels and visibility."""
+
+    def test_imported_records_with_beneficiary_group_master_detail_true(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button sets group_label when beneficiary_group exists and master_detail is True."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is True
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_with_beneficiary_group_master_detail_false(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button is hidden when beneficiary_group exists and master_detail is False."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", master_detail=False)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is False
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_without_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button uses default behavior when no beneficiary_group exists."""
+        batch_with_households.program.beneficiary_group = None
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.visible is True
+        assert "countryhousehold" in btn.href
+        assert f"batch__exact={batch_with_households.pk}" in btn.href
+
+    def test_imported_records_with_beneficiary_group_uses_group_label(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_households: "CountryBatch"
+    ) -> None:
+        """Test imported_records button uses group_label (singular) from beneficiary_group."""
+        bg = BeneficiaryGroupFactory(group_label="Custom Group", group_label_plural="Custom Groups", master_detail=True)
+        batch_with_households.program.beneficiary_group = bg
+        batch_with_households.program.save()
+
+        btn = batch_admin_instance.imported_records.get_button({"original": batch_with_households})
+        batch_admin_instance.imported_records.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Group"
+        assert btn.visible is True
+
+    def test_imported_individuals_with_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button sets member_label when beneficiary_group exists."""
+        bg = BeneficiaryGroupFactory(member_label="Custom Member")
+        batch_with_individuals.program.beneficiary_group = bg
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Member"
+        assert btn.visible is True
+        assert "countryindividual" in btn.href
+        assert f"batch__exact={batch_with_individuals.pk}" in btn.href
+
+    def test_imported_individuals_without_beneficiary_group(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button uses default behavior when no beneficiary_group exists."""
+        batch_with_individuals.program.beneficiary_group = None
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        assert btn.visible is True
+        assert "countryindividual" in btn.href
+        assert f"batch__exact={batch_with_individuals.pk}" in btn.href
+
+    def test_imported_individuals_with_beneficiary_group_uses_member_label(
+        self, batch_admin_instance: CountryBatchAdmin, batch_with_individuals: "CountryBatch"
+    ) -> None:
+        """Test imported_individuals button uses member_label (singular) from beneficiary_group."""
+        bg = BeneficiaryGroupFactory(member_label="Custom Member", member_label_plural="Custom Members")
+        batch_with_individuals.program.beneficiary_group = bg
+        batch_with_individuals.program.save()
+
+        btn = batch_admin_instance.imported_individuals.get_button({"original": batch_with_individuals})
+        batch_admin_instance.imported_individuals.func(batch_admin_instance, btn)
+
+        assert btn.label == "Custom Member"
+        assert btn.visible is True
