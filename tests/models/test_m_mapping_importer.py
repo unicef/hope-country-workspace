@@ -81,7 +81,7 @@ def test_value_transformation_validator_valid_rules():
         (":old=new", "Field name cannot be empty"),
         ("field:old=old", "Old value and new value must be different"),
     ],
-    ids=["invalid_format", "missing_equals", "same_values", "empty_fieldname", "same_old_new"],
+    ids=["invalid_format", "missing_equals", "empty_fieldname", "same_old_new"],
 )
 def test_value_transformation_validator_invalid_rules(rules, expected_error):
     validator = ValueTransformationRulesValidator()
