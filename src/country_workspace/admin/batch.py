@@ -1,9 +1,12 @@
 from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.decorators import link
+from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
-from django.http import HttpRequest
+from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 from ..models import Batch
 from .base import BaseModelAdmin
@@ -24,14 +27,59 @@ class BatchAdmin(BaseModelAdmin):
     search_fields = ("name",)
     ordering = ("-import_date",)
 
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Batch]:
+        return super().get_queryset(request).select_related("program", "program__beneficiary_group", "country_office")
+
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
+    def _get_beneficiary_labels(self, batch: Batch) -> tuple[str, str]:
+        if batch.program.beneficiary_group:
+            beneficiary_group = batch.program.beneficiary_group
+            group_label = beneficiary_group.group_label_plural or beneficiary_group.group_label or _("Household")
+            member_label = beneficiary_group.member_label_plural or beneficiary_group.member_label or _("Individual")
+            return group_label, member_label
+        return _("Household"), _("Individual")
+
+    @button(change_list=False, label="All Beneficiaries")
+    def beneficiaries(self, request: HttpRequest, pk: str) -> HttpResponse:
+        batch: Batch = self.get_object(request, pk)
+        households = batch.household_set.all()
+        individuals = batch.individual_set.all()
+        context = {
+            "batch": batch,
+            "households": households,
+            "individuals": individuals,
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/country_workspace/batch_beneficiaries.html", context)
+
     @link(change_list=False)
-    def members(self, button: LinkButton) -> None:
+    def households(self, button: LinkButton) -> None:
+        obj: Batch = button.context["original"]
+
+        if not obj.household_set.exists():
+            button.visible = False
+            return
+
+        if obj.program and obj.program.beneficiary_group:
+            if not obj.program.beneficiary_group.master_detail:
+                button.visible = False
+                return
+
+            group_label, _ = self._get_beneficiary_labels(obj)
+            button.label = group_label
+        base = reverse("admin:country_workspace_household_changelist")
+        button.href = f"{base}?batch__exact={obj.pk}"
+
+    @link(change_list=False)
+    def individuals(self, button: LinkButton) -> None:
+        obj: Batch = button.context["original"]
+        _, member_label = self._get_beneficiary_labels(obj)
+        button.label = member_label
         base = reverse("admin:country_workspace_individual_changelist")
-        obj = button.context["original"]
-        button.href = f"{base}?household__exact={obj.pk}"
+        button.href = f"{base}?batch__exact={obj.pk}"
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: "LinkButton") -> None:

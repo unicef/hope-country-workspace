@@ -1,6 +1,6 @@
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
-from adminfilters.filters import LinkedAutoCompleteFilter
+from adminfilters.filters import LinkedAutoCompleteFilter, AutoCompleteFilter
 from django.contrib import admin, messages
 from django.urls import reverse
 from django.utils.translation import gettext as _
@@ -20,6 +20,7 @@ class HouseholdAdmin(BaseModelAdmin):
         ("batch__country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("batch__program", LinkedAutoCompleteFilter.factory(parent="batch__country_office")),
         ("batch", LinkedAutoCompleteFilter.factory(parent="batch__program")),
+        ("batch", AutoCompleteFilter),
         IsValidFilter,
         "removed",
     )
