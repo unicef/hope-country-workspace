@@ -67,19 +67,25 @@ class MappingImporter(BaseModel):
             return {}
 
         transformations: dict[str, dict[str, str]] = {}
-        for line in self.value_transformations.splitlines():
+        for line_num, line in enumerate(self.value_transformations.splitlines(), start=1):
             line = line.strip()  # noqa: PLW2901
             if not line:
                 continue
 
             # Format: fieldname:old_value=new_value
             if ":" not in line or "=" not in line:
-                continue
+                raise ValueError(
+                    f"Line {line_num}: Invalid format. Expected format: 'fieldname:old_value=new_value'. "
+                    f"Line must contain both ':' and '=' characters. Got: {line!r}"
+                )
 
             field_part, value_part = line.split(":", 1)
             field_name = field_part.strip()
             if "=" not in value_part:
-                continue
+                raise ValueError(
+                    f"Line {line_num}: Invalid format. Expected format: 'fieldname:old_value=new_value'. "
+                    f"The value part after ':' must contain '='. Got: {line!r}"
+                )
 
             old_value, new_value = (val.strip() for val in value_part.split("=", 1))
             if field_name not in transformations:

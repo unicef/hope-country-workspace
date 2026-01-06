@@ -4,7 +4,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0038_alter_rdp_options"),
+        ("country_workspace", "0040_add_originating_id_to_validable"),
     ]
 
     operations = [

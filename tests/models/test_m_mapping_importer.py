@@ -124,18 +124,32 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         ("sex:M=MALE\n\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
         ("sex:M=MALE\n   \nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
         ("sex:M=MALE\n\t\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        # Lines without ":" or "=" should be skipped
-        ("sex:M=MALE\ninvalid_line\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        ("sex:M=MALE\nno_colon_or_equals\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        # Lines with ":" but no "=" in value_part should be skipped
-        ("sex:M=MALE\nfield:value_without_equals\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        ("sex:M=MALE\nfield:old_value\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        ("sex:M=MALE\nfield=name:value\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
     ],
     ids=[
         "empty_line_newline",
         "empty_line_spaces",
         "empty_line_tab",
+    ],
+)
+def test_value_transformations_as_dict_skips_empty_lines(mapping_importer, value_transformations, expected):
+    """Test that value_transformations_as_dict skips empty lines."""
+    mi = mapping_importer(value_transformations=value_transformations)
+    assert mi.value_transformations_as_dict == expected
+
+
+@pytest.mark.parametrize(
+    ("value_transformations", "expected_error_line"),
+    [
+        # Lines without ":" or "=" should raise ValueError
+        ("sex:M=MALE\ninvalid_line\nsex:F=FEMALE", 2),
+        ("sex:M=MALE\nno_colon_or_equals\nsex:F=FEMALE", 2),
+        # Lines with ":" but no "=" in value_part should raise ValueError
+        ("sex:M=MALE\nfield:value_without_equals\nsex:F=FEMALE", 2),
+        ("sex:M=MALE\nfield:old_value\nsex:F=FEMALE", 2),
+        # Lines with "=" but no ":" should raise ValueError
+        ("sex:M=MALE\nfield=name:value\nsex:F=FEMALE", 2),
+    ],
+    ids=[
         "line_without_colon_or_equals",
         "line_without_colon_or_equals_2",
         "line_with_colon_no_equals_in_value",
@@ -143,10 +157,15 @@ def test_value_transformations_as_dict(mapping_importer, value_transformations, 
         "equals_in_field_part_not_value_part",
     ],
 )
-def test_value_transformations_as_dict_skips_invalid_lines(mapping_importer, value_transformations, expected):
-    """Test that value_transformations_as_dict skips lines that trigger continue statements."""
+def test_value_transformations_as_dict_raises_on_invalid_lines(
+    mapping_importer,
+    value_transformations,
+    expected_error_line,
+):
+    """Test that value_transformations_as_dict raises ValueError for invalid non-empty lines."""
     mi = mapping_importer(value_transformations=value_transformations)
-    assert mi.value_transformations_as_dict == expected
+    with pytest.raises(ValueError, match=f"Line {expected_error_line}"):
+        mi.value_transformations_as_dict  # noqa: B018
 
 
 @pytest.mark.parametrize(
