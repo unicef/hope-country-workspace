@@ -333,3 +333,10 @@ def test_upgrade_run_createsuperuser_pops_password_env_when_missing(mocker: Mock
         verbosity=0,
         interactive=False,
     )
+
+
+def test_upgrade_superuser_logins_drops_whitespace_only() -> None:
+    cmd = upgrade_cmd.Command()
+    cmd.admin_email = " admin@example.com "
+    cmd.superusers = ["  ", "u1", " u1 ", "", "   "]
+    assert cmd._superuser_logins() == ["admin@example.com", "u1"]

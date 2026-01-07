@@ -145,7 +145,7 @@ class Command(BaseCommand):
 
     def _superuser_logins(self) -> list[str]:
         raw = [self.admin_email, *self.superusers]
-        return list(dict.fromkeys(s.strip() for s in raw if s))
+        return list(dict.fromkeys(s for x in raw if x and (s := x.strip())))
 
     def _create_superusers(self, echo: Any) -> None:
         users = get_user_model().objects
