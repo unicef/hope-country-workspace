@@ -47,8 +47,12 @@ class MappingImporter(BaseModel):
     def rules_as_dict(self) -> dict[str, str]:
         if not self.rules:
             return {}
-
-        return dict(line.split("=", 1) for line in self.rules.splitlines())
+        return {
+            old_field.strip(): new_field.strip()
+            for raw in self.rules.splitlines()
+            if (line := raw.strip())
+            for old_field, new_field in (line.split("=", 1),)
+        }
 
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
         """Apply mapping rules to transform field names."""
