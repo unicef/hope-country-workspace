@@ -117,10 +117,11 @@ def test_sync_log_refresh_none_attrs(mocker: MockerFixture):
 
 @pytest.mark.django_db
 def test_sync_manager_refresh():
-    SyncLogFactory.create_batch(3)
+    for i in range(3):
+        content_type = ContentType.objects.create(app_label="test_app", model=f"model_{i}")
+        SyncLogFactory(content_type=content_type, object_id=None)
 
-    sync_logs = SyncLog.objects.all()
-    for sync_log in sync_logs:
+    for sync_log in SyncLog.objects.all():
         assert sync_log.last_update_date is not None
 
 
