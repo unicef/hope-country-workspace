@@ -169,18 +169,32 @@ class Program(BaseModel):
         m: type[Validable] | Validable,
         data: dict[str, str | int | bool],
         mapping_id: int | None = None,
+        transformer_id: int | None = None,
     ) -> dict[str, str | int | bool]:
-        """Apply mapping importer(s) either by explicit id or by the checker."""
-        from country_workspace.models import MappingImporter
+        """Apply transformer(s) first, then mapping importer(s).
+
+        Flow:
+            row data =>
+            apply transformer (keep fieldnames) =>
+            apply mapping (rename fields) =>
+            data checker (revalidate) =>
+            fields
+        """
+        from country_workspace.models import MappingImporter, Transformer
+
+        if transformer_id is not None:
+            if transformer := Transformer.objects.filter(id=transformer_id).first():
+                transformer.apply(data)
+        elif checker := self.get_checker_for(m):
+            for transformer in checker.transformers.filter(office=self.country_office):
+                transformer.apply(data)
 
         if mapping_id is not None:
             if importer := MappingImporter.objects.filter(id=mapping_id).first():
                 importer.apply(data)
-            return data
-        if (checker := self.get_checker_for(m)) is None:
-            return data
-        for importer in checker.mapping_importers.filter(office=self.country_office):
-            importer.apply(data)
+        elif checker := self.get_checker_for(m):
+            for importer in checker.mapping_importers.filter(office=self.country_office):
+                importer.apply(data)
 
         return data
 
@@ -196,7 +210,7 @@ class Program(BaseModel):
             return data
         if (checker := self.get_checker_for(m)) is None:
             return data
-        for transformer in checker.transformers.filter(office=self.country_office):
+        for transformer in checker.transformers.filter(office=self.country_office):  # type: ignore[attr-defined]
             transformer.apply(data)
         return data
 

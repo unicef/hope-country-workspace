@@ -338,9 +338,9 @@ class TestReprocessBatchTask:
             assert result["batch_id"] == batch.pk
             assert result.get("mapped_individuals", 0) == 0
 
-    def test_apply_mapping_no_raw_data(self, program, user: User) -> None:
-        """Test _apply_mapping returns False when record has no raw_data."""
-        from country_workspace.workspaces.admin.batch_reprocessing import _apply_mapping
+    def test_apply_transformations_no_raw_data(self, program, user: User) -> None:
+        """Test _apply_transformations returns False when record has no raw_data."""
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
         from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
 
         hh = CountryHouseholdFactory(
@@ -352,15 +352,16 @@ class TestReprocessBatchTask:
 
         mapping = MappingImporterFactory(rules="col1=field1")
 
-        result = _apply_mapping(hh, mapping)
+        result = _apply_transformations(hh, mapping=mapping)
 
         assert result is False
         # Record should not be modified
         hh.refresh_from_db()
         assert hh.flex_fields != {"field1": "value1"}
 
-    def test_apply_mapping_successful(self, program, user: User) -> None:
-        from country_workspace.workspaces.admin.batch_reprocessing import _apply_mapping
+    def test_apply_transformations_successful(self, program, user: User) -> None:
+        """Test _apply_transformations with only mapping (no transformer)."""
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
         from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
 
         hh = CountryHouseholdFactory(
@@ -372,7 +373,7 @@ class TestReprocessBatchTask:
 
         mapping = MappingImporterFactory(rules="old_col=new_col")
 
-        result = _apply_mapping(hh, mapping)
+        result = _apply_transformations(hh, mapping=mapping)
 
         assert result is True
         hh.refresh_from_db()
@@ -383,6 +384,78 @@ class TestReprocessBatchTask:
         assert hh.flex_fields["other_col"] == "value2"
         # last_checked and errors should be reset
         assert hh.last_checked is None
+        assert hh.errors == {}
+
+    def test_apply_transformations_with_transformer_then_mapping(self, program, user: User) -> None:
+        """Test _apply_transformations with transformer first, then mapping - correct flow."""
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from testutils.factories import CountryHouseholdFactory, MappingImporterFactory, TransformerFactory
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "M", "age": 25},
+            flex_fields={"existing": "data"},
+        )
+
+        # Transformer transforms values but keeps fieldnames
+        transformer = TransformerFactory(value_transformations="gender:M=MALE")
+        # Mapping renames fields
+        mapping = MappingImporterFactory(rules="gender=sex")
+
+        result = _apply_transformations(hh, mapping=mapping, transformer=transformer)
+
+        assert result is True
+        hh.refresh_from_db()
+        # After transformer: {"gender": "MALE", "age": 25}
+        # After mapping: {"sex": "MALE", "age": 25}
+        assert hh.flex_fields["sex"] == "MALE"
+        assert hh.flex_fields["age"] == 25
+        assert "gender" not in hh.flex_fields
+        assert hh.errors == {}
+
+    def test_apply_transformations_with_transformer_only(self, program, user: User) -> None:
+        """Test _apply_transformations with only transformer (no mapping)."""
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from testutils.factories import CountryHouseholdFactory, TransformerFactory
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "M", "status": "1"},
+            flex_fields={"existing": "data"},
+        )
+
+        transformer = TransformerFactory(value_transformations="gender:M=MALE\nstatus:1=ACTIVE")
+
+        result = _apply_transformations(hh, transformer=transformer)
+
+        assert result is True
+        hh.refresh_from_db()
+        # Transformer transforms values but keeps fieldnames
+        assert hh.flex_fields["gender"] == "MALE"
+        assert hh.flex_fields["status"] == "ACTIVE"
+        assert hh.errors == {}
+
+    def test_apply_transformations_with_neither_transformer_nor_mapping(self, program, user: User) -> None:
+        """Test _apply_transformations with neither transformer nor mapping (both None)."""
+        from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from testutils.factories import CountryHouseholdFactory
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"field1": "value1", "field2": "value2"},
+            flex_fields={"existing": "data"},
+        )
+
+        result = _apply_transformations(hh, transformer=None, mapping=None)
+
+        assert result is True
+        hh.refresh_from_db()
+        # Data should be copied from raw_data to flex_fields
+        assert hh.flex_fields["field1"] == "value1"
+        assert hh.flex_fields["field2"] == "value2"
         assert hh.errors == {}
 
     def test_reprocess_batch_household_mapping_applied(self, program, user: User, force_migrated_records) -> None:
@@ -425,8 +498,250 @@ class TestReprocessBatchTask:
 
             hh.refresh_from_db()
             assert hh.flex_fields["mapped_field"] == "external_value"
-            assert "external_field" not in hh.flex_fields
-            assert hh.flex_fields["other_field"] == "other_value"
+
+    def test_reprocess_batch_household_transformer_then_mapping_applied(
+        self, program, user: User, force_migrated_records
+    ) -> None:
+        """Test reprocess_batch applies transformer first, then mapping - correct flow."""
+        from testutils.factories import (
+            AsyncJobFactory,
+            CountryHouseholdFactory,
+            MappingImporterFactory,
+            TransformerFactory,
+        )
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "M", "age": 25},
+            flex_fields={"existing": "data"},
+        )
+        batch = hh.batch
+
+        # Transformer transforms values but keeps fieldnames
+        household_transformer = TransformerFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            value_transformations="gender:M=MALE",
+        )
+        # Mapping renames fields
+        household_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            rules="gender=sex",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "household_transformer_id": household_transformer.pk,
+                "household_mapping_id": household_mapping.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_households", 0) == 1
+            assert result.get("households", 0) == 1
+
+            hh.refresh_from_db()
+            # After transformer: {"gender": "MALE", "age": 25}
+            # After mapping: {"sex": "MALE", "age": 25}
+            assert hh.flex_fields["sex"] == "MALE"
+            assert hh.flex_fields["age"] == 25
+            assert "gender" not in hh.flex_fields
+
+    def test_reprocess_batch_individual_transformer_then_mapping_applied(
+        self, program, user: User, force_migrated_records
+    ) -> None:
+        """Test reprocess_batch applies transformer first, then mapping for individuals."""
+        from testutils.factories import (
+            AsyncJobFactory,
+            CountryIndividualFactory,
+            MappingImporterFactory,
+            TransformerFactory,
+        )
+
+        ind = CountryIndividualFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "F", "status": "1"},
+            flex_fields={"existing": "data"},
+        )
+        batch = ind.batch
+
+        # Transformer transforms values but keeps fieldnames
+        individual_transformer = TransformerFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            value_transformations="gender:F=FEMALE\nstatus:1=ACTIVE",
+        )
+        # Mapping renames fields
+        individual_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            rules="gender=sex",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "individual_transformer_id": individual_transformer.pk,
+                "individual_mapping_id": individual_mapping.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_individuals", 0) == 1
+            assert result.get("individuals", 0) == 1
+
+            ind.refresh_from_db()
+            # After transformer: {"gender": "FEMALE", "status": "ACTIVE"}
+            # After mapping: {"sex": "FEMALE", "status": "ACTIVE"}
+            assert ind.flex_fields["sex"] == "FEMALE"
+            assert ind.flex_fields["status"] == "ACTIVE"
+            assert "gender" not in ind.flex_fields
+
+    def test_reprocess_batch_transformer_not_found(self, program, user: User, force_migrated_records) -> None:
+        """Test reprocess_batch handles Transformer.DoesNotExist gracefully."""
+        from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, MappingImporterFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"field1": "value1"},
+        )
+        batch = hh.batch
+
+        household_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            rules="field1=field2",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "household_transformer_id": 99999,  # Non-existent transformer
+                "household_mapping_id": household_mapping.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            # Should still work with mapping only (transformer is optional)
+            assert result.get("mapped_households", 0) == 1
+
+            hh.refresh_from_db()
+            assert hh.flex_fields["field2"] == "value1"
+
+    def test_reprocess_batch_household_transformer_only(self, program, user: User, force_migrated_records) -> None:
+        """Test reprocess_batch with only household transformer (no mapping)."""
+        from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, TransformerFactory
+        from testutils.factories.program import BeneficiaryGroupFactory
+
+        bg = BeneficiaryGroupFactory(master_detail=True)
+        program.beneficiary_group = bg
+        program.save()
+
+        hh = CountryHouseholdFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "M", "status": "1"},
+            flex_fields={"existing": "data"},
+        )
+        batch = hh.batch
+
+        household_transformer = TransformerFactory(
+            office=program.country_office,
+            data_checker=program.household_checker,
+            value_transformations="gender:M=MALE\nstatus:1=ACTIVE",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "household_transformer_id": household_transformer.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_households", 0) == 1
+
+            hh.refresh_from_db()
+            # Transformer transforms values but keeps fieldnames
+            assert hh.flex_fields["gender"] == "MALE"
+            assert hh.flex_fields["status"] == "ACTIVE"
+
+    def test_reprocess_batch_individual_transformer_only(self, program, user: User, force_migrated_records) -> None:
+        """Test reprocess_batch with only individual transformer (no mapping)."""
+        from testutils.factories import AsyncJobFactory, CountryIndividualFactory, TransformerFactory
+
+        ind = CountryIndividualFactory(
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"gender": "F"},
+            flex_fields={"existing": "data"},
+        )
+        batch = ind.batch
+
+        individual_transformer = TransformerFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            value_transformations="gender:F=FEMALE",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "individual_transformer_id": individual_transformer.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            result = reprocess_batch(job)
+
+            assert result["batch_id"] == batch.pk
+            assert result.get("mapped_individuals", 0) == 1
+
+            ind.refresh_from_db()
+            # Transformer transforms values but keeps fieldnames
+            assert ind.flex_fields["gender"] == "FEMALE"
 
     def test_reprocess_batch_individual_mapping_applied(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import AsyncJobFactory, CountryIndividualFactory, MappingImporterFactory

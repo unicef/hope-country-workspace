@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.models import AsyncJob, MappingImporter, Program
+from country_workspace.models import AsyncJob, MappingImporter, Program, Transformer
 from ...state import state
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
@@ -31,17 +31,31 @@ class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
 
 
 class BatchReprocessForm(forms.Form):
+    household_transformer = forms.ModelChoiceField(
+        queryset=Transformer.objects.none(),
+        required=False,
+        label=_("Household Transformer (optional)"),
+        empty_label=_("No transformer"),
+        help_text=_("Optional: Transform values before applying mapping. Flow: transformer => mapping"),
+    )
     household_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
         required=False,
-        label=_("Household Mapping"),
+        label=_("Household Mapping (optional)"),
         empty_label=_("No mapping (validation only)"),
         help_text=_("Optional: Select a mapping to apply to household data before validation"),
+    )
+    individual_transformer = forms.ModelChoiceField(
+        queryset=Transformer.objects.none(),
+        required=False,
+        label=_("Individual Transformer (optional)"),
+        empty_label=_("No transformer"),
+        help_text=_("Optional: Transform values before applying mapping. Flow: transformer => mapping"),
     )
     individual_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
         required=False,
-        label=_("Individual Mapping"),
+        label=_("Individual Mapping (optional)"),
         empty_label=_("No mapping (validation only)"),
         help_text=_("Optional: Select a mapping to apply to individual data before validation"),
     )
@@ -51,19 +65,29 @@ class BatchReprocessForm(forms.Form):
 
         if program:
             if program.household_checker:
+                self.fields["household_transformer"].queryset = Transformer.objects.filter(
+                    office=program.country_office,
+                    data_checker=program.household_checker,
+                )
                 self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
                     office=program.country_office,
                     data_checker=program.household_checker,
                 )
             else:
+                self.fields.pop("household_transformer", None)
                 self.fields.pop("household_mapping", None)
 
             if program.individual_checker:
+                self.fields["individual_transformer"].queryset = Transformer.objects.filter(
+                    office=program.country_office,
+                    data_checker=program.individual_checker,
+                )
                 self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
                     office=program.country_office,
                     data_checker=program.individual_checker,
                 )
             else:
+                self.fields.pop("individual_transformer", None)
                 self.fields.pop("individual_mapping", None)
 
 
@@ -127,8 +151,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             if form.is_valid():
                 config = {"batch_id": obj.pk}
 
+                if form.cleaned_data.get("household_transformer"):
+                    config["household_transformer_id"] = form.cleaned_data["household_transformer"].pk
                 if form.cleaned_data.get("household_mapping"):
                     config["household_mapping_id"] = form.cleaned_data["household_mapping"].pk
+                if form.cleaned_data.get("individual_transformer"):
+                    config["individual_transformer_id"] = form.cleaned_data["individual_transformer"].pk
                 if form.cleaned_data.get("individual_mapping"):
                     config["individual_mapping_id"] = form.cleaned_data["individual_mapping"].pk
 
