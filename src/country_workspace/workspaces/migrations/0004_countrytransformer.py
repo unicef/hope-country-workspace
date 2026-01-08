@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0042_create_transformer_and_migrate_data"),
+        ("country_workspace", "0041_create_transformer_and_migrate_data"),
         ("workspaces", "0003_countrymappingimporter"),
     ]
 
