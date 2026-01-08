@@ -1,7 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 
-from country_workspace.validators.mapping import FieldMappingRulesValidator, ValueTransformationRulesValidator
+from country_workspace.validators.mapping import FieldMappingRulesValidator
 
 
 @pytest.fixture
@@ -68,106 +68,6 @@ def test_rules_as_dict(mapping_importer, rules, expected):
     assert mi.rules_as_dict == expected
 
 
-def test_value_transformation_validator_valid_rules():
-    validator = ValueTransformationRulesValidator()
-    validator("sex:M=MALE\nsex:F=FEMALE")
-
-
-@pytest.mark.parametrize(
-    ("rules", "expected_error"),
-    [
-        ("invalid_rule", "Expected ':' character"),
-        ("field:", "Expected one '=' character"),
-        (":old=new", "Field name cannot be empty"),
-        ("field:old=old", "Old value and new value must be different"),
-        ("field=name:value", "Expected format: 'fieldname:old_value=new_value'"),
-    ],
-    ids=["invalid_format", "missing_equals", "empty_fieldname", "same_old_new", "no_equals_in_value_part"],
-)
-def test_value_transformation_validator_invalid_rules(rules, expected_error):
-    validator = ValueTransformationRulesValidator()
-    with pytest.raises(ValidationError, match=expected_error):
-        validator(rules)
-
-
-def test_value_transformation_validator_skips_empty_lines():
-    """Test that ValueTransformationRulesValidator.__call__ skips empty lines (if line: check)."""
-    validator = ValueTransformationRulesValidator()
-    # Should not raise - empty lines are skipped
-    validator("sex:M=MALE\n\nsex:F=FEMALE")
-    validator("   \nsex:M=MALE\n\t\nsex:F=FEMALE")
-    validator("\n\n\n")
-
-
-@pytest.mark.parametrize(
-    ("value_transformations", "expected"),
-    [
-        ("", {}),
-        ("sex:M=MALE", {"sex": {"M": "MALE"}}),
-        ("sex:M=MALE\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        (
-            "status:1=ACTIVE\nstatus:0=INACTIVE\ngender:M=MALE",
-            {"status": {"1": "ACTIVE", "0": "INACTIVE"}, "gender": {"M": "MALE"}},
-        ),
-    ],
-    ids=["empty", "single_rule", "multiple_same_field", "multiple_fields"],
-)
-def test_value_transformations_as_dict(mapping_importer, value_transformations, expected):
-    mi = mapping_importer(value_transformations=value_transformations)
-    assert mi.value_transformations_as_dict == expected
-
-
-@pytest.mark.parametrize(
-    ("value_transformations", "expected"),
-    [
-        # Empty lines should be skipped
-        ("sex:M=MALE\n\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        ("sex:M=MALE\n   \nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-        ("sex:M=MALE\n\t\nsex:F=FEMALE", {"sex": {"M": "MALE", "F": "FEMALE"}}),
-    ],
-    ids=[
-        "empty_line_newline",
-        "empty_line_spaces",
-        "empty_line_tab",
-    ],
-)
-def test_value_transformations_as_dict_skips_empty_lines(mapping_importer, value_transformations, expected):
-    """Test that value_transformations_as_dict skips empty lines."""
-    mi = mapping_importer(value_transformations=value_transformations)
-    assert mi.value_transformations_as_dict == expected
-
-
-@pytest.mark.parametrize(
-    ("value_transformations", "expected_error_line"),
-    [
-        # Lines without ":" or "=" should raise ValueError
-        ("sex:M=MALE\ninvalid_line\nsex:F=FEMALE", 2),
-        ("sex:M=MALE\nno_colon_or_equals\nsex:F=FEMALE", 2),
-        # Lines with ":" but no "=" in value_part should raise ValueError
-        ("sex:M=MALE\nfield:value_without_equals\nsex:F=FEMALE", 2),
-        ("sex:M=MALE\nfield:old_value\nsex:F=FEMALE", 2),
-        # Lines with "=" but no ":" should raise ValueError
-        ("sex:M=MALE\nfield=name:value\nsex:F=FEMALE", 2),
-    ],
-    ids=[
-        "line_without_colon_or_equals",
-        "line_without_colon_or_equals_2",
-        "line_with_colon_no_equals_in_value",
-        "line_with_colon_no_equals_in_value_2",
-        "equals_in_field_part_not_value_part",
-    ],
-)
-def test_value_transformations_as_dict_raises_on_invalid_lines(
-    mapping_importer,
-    value_transformations,
-    expected_error_line,
-):
-    """Test that value_transformations_as_dict raises ValueError for invalid non-empty lines."""
-    mi = mapping_importer(value_transformations=value_transformations)
-    with pytest.raises(ValueError, match=f"Line {expected_error_line}"):
-        mi.value_transformations_as_dict  # noqa: B018
-
-
 @pytest.mark.parametrize(
     ("rules", "value_transformations", "data", "expected"),
     [
@@ -175,34 +75,38 @@ def test_value_transformations_as_dict_raises_on_invalid_lines(
         ("", "", {"gender": "M"}, {"gender": "M"}),
         # Only field mapping
         ("gender=sex", "", {"gender": "M"}, {"sex": "M"}),
-        # Only value transformation
-        ("", "gender:M=MALE", {"gender": "M"}, {"gender": "MALE"}),
-        # Field mapping then value transformation
+        # Field mapping then value transformation (using separate Transformer)
         ("gender=sex", "sex:M=MALE", {"gender": "M"}, {"sex": "MALE"}),
-        # Multiple value transformations
+        # Multiple value transformations (using separate Transformer)
         ("gender=sex", "sex:M=MALE\nsex:F=FEMALE", {"gender": "F"}, {"sex": "FEMALE"}),
-        # Value transformation on non-mapped field
+        # Value transformation on non-mapped field (using separate Transformer)
         ("gender=sex", "status:1=ACTIVE", {"gender": "M", "status": "1"}, {"sex": "M", "status": "ACTIVE"}),
-        # Value that doesn't match transformation
+        # Value that doesn't match transformation (using separate Transformer)
         ("gender=sex", "sex:M=MALE", {"gender": "X"}, {"sex": "X"}),
-        # Transformation rule exists but field_name not in data (field_name in data is False)
-        ("", "missing_field:old=new", {"other_field": "value"}, {"other_field": "value"}),
+        # Transformation rule exists but field_name not in data (using separate Transformer)
         ("gender=sex", "missing_field:old=new", {"gender": "M"}, {"sex": "M"}),
     ],
     ids=[
         "no_transformations",
         "only_field_mapping",
-        "only_value_transformation",
         "field_mapping_then_value",
         "multiple_value_transformations",
         "transformation_on_different_field",
         "value_no_match",
-        "field_not_in_data",
         "field_not_in_data_with_mapping",
     ],
 )
-def test_apply_with_value_transformations(mapping_importer, rules, value_transformations, data, expected):
-    mi = mapping_importer(rules=rules, value_transformations=value_transformations)
+def test_apply_with_transformer(mapping_importer, rules, value_transformations, data, expected):
+    """Test that MappingImporter can work with Transformer for value transformations."""
+    from testutils.factories import TransformerFactory
+
+    mi = mapping_importer(rules=rules)
     result = mi.apply(data)
+
+    # Apply transformer if value_transformations are provided
+    if value_transformations:
+        transformer = TransformerFactory(value_transformations=value_transformations)
+        result = transformer.apply(result)
+
     assert result == expected
     assert result is data

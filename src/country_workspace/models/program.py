@@ -184,6 +184,22 @@ class Program(BaseModel):
 
         return data
 
+    def apply_transformer(
+        self, m: type[Validable] | Validable, data: dict[str, Any], transformer_id: int | None = None
+    ) -> dict[str, Any]:
+        """Apply transformer(s) either by explicit id or by the checker."""
+        from country_workspace.models import Transformer
+
+        if transformer_id is not None:
+            if transformer := Transformer.objects.filter(id=transformer_id).first():
+                transformer.apply(data)
+            return data
+        if (checker := self.get_checker_for(m)) is None:
+            return data
+        for transformer in checker.transformers.filter(office=self.country_office):
+            transformer.apply(data)
+        return data
+
     def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:
         """Return defaults from system_fields['default_fields'][scope] for the given model."""
         scope = self._scope_for(m).value

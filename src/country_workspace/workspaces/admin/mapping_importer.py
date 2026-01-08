@@ -24,7 +24,6 @@ class CountryMappingImporterAdmin(WorkspaceModelAdmin):
         "office",
         "data_checker",
         "rules",
-        "value_transformations",
         "created_by",
         "created_at",
         "last_modified",

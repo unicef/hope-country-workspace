@@ -4,9 +4,26 @@ from django.db import models
 from django.utils.functional import cached_property
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Office, Program, Rdp
+from country_workspace.models import (
+    AsyncJob,
+    Batch,
+    Household,
+    Individual,
+    MappingImporter,
+    Office,
+    Program,
+    Rdp,
+    Transformer,
+)
 
-__all__ = ["CountryBatch", "CountryHousehold", "CountryIndividual", "CountryMappingImporter", "CountryProgram"]
+__all__ = [
+    "CountryBatch",
+    "CountryHousehold",
+    "CountryIndividual",
+    "CountryMappingImporter",
+    "CountryProgram",
+    "CountryTransformer",
+]
 
 
 class CountryBatch(Batch):
@@ -64,3 +81,10 @@ class CountryMappingImporter(MappingImporter):
         proxy = True
         verbose_name = "Mapping"
         verbose_name_plural = "Mappings"
+
+
+class CountryTransformer(Transformer):
+    class Meta:
+        proxy = True
+        verbose_name = "Transformer"
+        verbose_name_plural = "Transformers"
