@@ -386,8 +386,8 @@ class TestReprocessBatchTask:
         assert hh.last_checked is None
         assert hh.errors == {}
 
-    def test_apply_transformations_with_transformer_then_mapping(self, program, user: User) -> None:
-        """Test _apply_transformations with transformer first, then mapping - correct flow."""
+    def test_apply_transformations_with_mapping_then_transformer(self, program, user: User) -> None:
+        """Test _apply_transformations with mapping first, then transformer - correct flow."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
         from testutils.factories import CountryHouseholdFactory, MappingImporterFactory, TransformerFactory
 
@@ -398,17 +398,17 @@ class TestReprocessBatchTask:
             flex_fields={"existing": "data"},
         )
 
-        # Transformer transforms values but keeps fieldnames
-        transformer = TransformerFactory(value_transformations="gender:M=MALE")
-        # Mapping renames fields
+        # Mapping renames fields (field-level)
         mapping = MappingImporterFactory(rules="gender=sex")
+        # Transformer transforms values (record-level)
+        transformer = TransformerFactory(value_transformations="sex:M=MALE")
 
         result = _apply_transformations(hh, mapping=mapping, transformer=transformer)
 
         assert result is True
         hh.refresh_from_db()
-        # After transformer: {"gender": "MALE", "age": 25}
-        # After mapping: {"sex": "MALE", "age": 25}
+        # After mapping: {"sex": "M", "age": 25}
+        # After transformer: {"sex": "MALE", "age": 25}
         assert hh.flex_fields["sex"] == "MALE"
         assert hh.flex_fields["age"] == 25
         assert "gender" not in hh.flex_fields
@@ -499,10 +499,10 @@ class TestReprocessBatchTask:
             hh.refresh_from_db()
             assert hh.flex_fields["mapped_field"] == "external_value"
 
-    def test_reprocess_batch_household_transformer_then_mapping_applied(
+    def test_reprocess_batch_household_mapping_then_transformer_applied(
         self, program, user: User, force_migrated_records
     ) -> None:
-        """Test reprocess_batch applies transformer first, then mapping - correct flow."""
+        """Test reprocess_batch applies mapping first, then transformer - correct flow."""
         from testutils.factories import (
             AsyncJobFactory,
             CountryHouseholdFactory,
@@ -523,17 +523,16 @@ class TestReprocessBatchTask:
         )
         batch = hh.batch
 
-        # Transformer transforms values but keeps fieldnames
-        household_transformer = TransformerFactory(
-            office=program.country_office,
-            data_checker=program.household_checker,
-            value_transformations="gender:M=MALE",
-        )
-        # Mapping renames fields
+        # Mapping renames fields (field-level)
         household_mapping = MappingImporterFactory(
             office=program.country_office,
             data_checker=program.household_checker,
             rules="gender=sex",
+        )
+        # Transformer transforms values (record-level)
+        household_transformer = TransformerFactory(
+            office=program.country_office,
+            value_transformations="sex:M=MALE",
         )
 
         job = AsyncJobFactory(
@@ -555,16 +554,16 @@ class TestReprocessBatchTask:
             assert result.get("households", 0) == 1
 
             hh.refresh_from_db()
-            # After transformer: {"gender": "MALE", "age": 25}
-            # After mapping: {"sex": "MALE", "age": 25}
+            # After mapping: {"sex": "M", "age": 25}
+            # After transformer: {"sex": "MALE", "age": 25}
             assert hh.flex_fields["sex"] == "MALE"
             assert hh.flex_fields["age"] == 25
             assert "gender" not in hh.flex_fields
 
-    def test_reprocess_batch_individual_transformer_then_mapping_applied(
+    def test_reprocess_batch_individual_mapping_then_transformer_applied(
         self, program, user: User, force_migrated_records
     ) -> None:
-        """Test reprocess_batch applies transformer first, then mapping for individuals."""
+        """Test reprocess_batch applies mapping first, then transformer for individuals."""
         from testutils.factories import (
             AsyncJobFactory,
             CountryIndividualFactory,
@@ -580,17 +579,16 @@ class TestReprocessBatchTask:
         )
         batch = ind.batch
 
-        # Transformer transforms values but keeps fieldnames
-        individual_transformer = TransformerFactory(
-            office=program.country_office,
-            data_checker=program.individual_checker,
-            value_transformations="gender:F=FEMALE\nstatus:1=ACTIVE",
-        )
-        # Mapping renames fields
+        # Mapping renames fields (field-level)
         individual_mapping = MappingImporterFactory(
             office=program.country_office,
             data_checker=program.individual_checker,
             rules="gender=sex",
+        )
+        # Transformer transforms values (record-level)
+        individual_transformer = TransformerFactory(
+            office=program.country_office,
+            value_transformations="sex:F=FEMALE\nstatus:1=ACTIVE",
         )
 
         job = AsyncJobFactory(
@@ -612,8 +610,8 @@ class TestReprocessBatchTask:
             assert result.get("individuals", 0) == 1
 
             ind.refresh_from_db()
-            # After transformer: {"gender": "FEMALE", "status": "ACTIVE"}
-            # After mapping: {"sex": "FEMALE", "status": "ACTIVE"}
+            # After mapping: {"sex": "F", "status": "1"}
+            # After transformer: {"sex": "FEMALE", "status": "ACTIVE"}
             assert ind.flex_fields["sex"] == "FEMALE"
             assert ind.flex_fields["status"] == "ACTIVE"
             assert "gender" not in ind.flex_fields
@@ -680,7 +678,6 @@ class TestReprocessBatchTask:
 
         household_transformer = TransformerFactory(
             office=program.country_office,
-            data_checker=program.household_checker,
             value_transformations="gender:M=MALE\nstatus:1=ACTIVE",
         )
 
@@ -719,7 +716,6 @@ class TestReprocessBatchTask:
 
         individual_transformer = TransformerFactory(
             office=program.country_office,
-            data_checker=program.individual_checker,
             value_transformations="gender:F=FEMALE",
         )
 

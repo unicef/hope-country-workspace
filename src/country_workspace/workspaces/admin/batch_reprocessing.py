@@ -12,21 +12,17 @@ def _apply_transformations(
     mapping: MappingImporter | None = None,
     transformer: Transformer | None = None,
 ) -> bool:
-    """Apply transformer first (keep fieldnames, transform values), then mapping (rename fields).
-
-    Flow: row data => apply transformer => apply mapping => data checker (revalidate) => fields
-    """
     if not record.raw_data:
         logger.warning("Record %s has no raw data, skipping transformations", record)
         return False
 
     data = record.raw_data.copy()
 
-    if transformer:
-        transformer.apply(data)
-
     if mapping:
         mapping.apply(data)
+
+    if transformer:
+        transformer.apply(data)
 
     record.flex_fields = data
     record.last_checked = None
@@ -102,7 +98,6 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             batch.name,
         )
 
-    # Apply transformations if provided (transformer first, then mapping)
     mapped_households = 0
     mapped_individuals = 0
     is_master_detail = batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail

@@ -69,9 +69,9 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
             for record in queryset:
                 if record.raw_data:
                     data = record.raw_data.copy()
+                    mapping.apply(data)
                     if transformer:
                         transformer.apply(data)
-                    mapping.apply(data)
                     record.flex_fields = data
 
                     record.last_checked = None
@@ -87,8 +87,10 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
     mapping_qs = MappingImporter.objects.none()
     if checker_field:
         program_ids = queryset.values_list("batch__program", flat=True).distinct()
-        checker_ids = Program.objects.filter(id__in=program_ids).values_list(checker_field, flat=True).distinct()
-        transformer_qs = Transformer.objects.filter(data_checker__id__in=checker_ids)
+        programs = Program.objects.filter(id__in=program_ids)
+        office_ids = programs.values_list("country_office_id", flat=True).distinct()
+        transformer_qs = Transformer.objects.filter(office_id__in=office_ids)
+        checker_ids = programs.values_list(checker_field, flat=True).distinct()
         mapping_qs = MappingImporter.objects.filter(data_checker__id__in=checker_ids)
 
     form = ReprocessForm(transformer_queryset=transformer_qs, mapping_queryset=mapping_qs)

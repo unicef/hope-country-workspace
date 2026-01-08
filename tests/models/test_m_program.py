@@ -307,7 +307,6 @@ def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Prog
 
 
 def test_apply_mapping_importer_with_transformer_id(program: Program):
-    """Test apply_mapping_importer with transformer_id parameter."""
     transformer_id = 456
     mapping_id = 123
     data: dict[str, Any] = {"gender": "M"}
@@ -322,98 +321,39 @@ def test_apply_mapping_importer_with_transformer_id(program: Program):
         mock_mapping_filter.return_value.first.return_value = mock_importer
         result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
 
-        mock_transformer_filter.assert_called_once_with(id=transformer_id)
-        mock_transformer.apply.assert_called_once_with(data)
+        # Mapping should be applied first
         mock_mapping_filter.assert_called_once_with(id=mapping_id)
         mock_importer.apply.assert_called_once_with(data)
+        # Then transformer
+        mock_transformer_filter.assert_called_once_with(id=transformer_id)
+        mock_transformer.apply.assert_called_once_with(data)
         assert result == data
 
 
-def test_apply_mapping_importer_transformer_then_mapping_flow(program: Program):
-    """Test the correct flow: transformer first (keep fieldnames, transform values), then mapping (rename fields)."""
+def test_apply_mapping_importer_mapping_then_transformer_flow(program: Program):
+    """Test the correct flow: mapping first (field-level), then transformer (record-level)."""
     from tests.extras.testutils.factories import TransformerFactory
 
     data: dict[str, Any] = {"gender": "M", "age": 25}
     office = program.country_office
 
-    # Transformer transforms values but keeps fieldnames
-    transformer = TransformerFactory(office=office, value_transformations="gender:M=MALE")
-    # Mapping renames fields
+    # Mapping renames fields (field-level)
     mapping = MappingImporterFactory(office=office, rules="gender=sex")
+    # Transformer transforms values (record-level)
+    transformer = TransformerFactory(office=office, value_transformations="sex:M=MALE")
 
     mock_checker = MagicMock()
-    mock_checker.transformers.filter.return_value = [transformer]
     mock_checker.mapping_importers.filter.return_value = [mapping]
 
     with patch.object(program, "get_checker_for", return_value=mock_checker):
-        result = program.apply_mapping_importer(Household, data)
+        # Apply transformer via transformer_id (transformers are not linked to checkers)
+        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
 
-        # After transformer: {"gender": "MALE", "age": 25}
-        # After mapping: {"sex": "MALE", "age": 25}
+        # After mapping: {"sex": "M", "age": 25}
+        # After transformer: {"sex": "MALE", "age": 25}
         assert result["sex"] == "MALE"
         assert result["age"] == 25
         assert "gender" not in result
-
-
-def test_apply_transformer_with_transformer_id(program: Program):
-    """Test apply_transformer with transformer_id parameter."""
-    transformer_id = 456
-    data: dict[str, Any] = {"gender": "M"}
-    mock_transformer = MagicMock(spec=Transformer)
-
-    with patch("country_workspace.models.Transformer.objects.filter") as mock_filter:
-        mock_filter.return_value.first.return_value = mock_transformer
-        result = program.apply_transformer(Household, data, transformer_id=transformer_id)
-
-        mock_filter.assert_called_once_with(id=transformer_id)
-        mock_transformer.apply.assert_called_once_with(data)
-        assert result == data
-
-
-def test_apply_transformer_with_invalid_transformer_id(program: Program):
-    """Test apply_transformer with invalid transformer_id."""
-    transformer_id = 999
-    data: dict[str, Any] = {"gender": "M"}
-
-    with patch("country_workspace.models.Transformer.objects.filter") as mock_filter:
-        mock_filter.return_value.first.return_value = None
-        result = program.apply_transformer(Household, data, transformer_id=transformer_id)
-
-        mock_filter.assert_called_once_with(id=transformer_id)
-        assert result == data
-
-
-def test_apply_transformer_from_checker(program: Program):
-    """Test apply_transformer applies transformers from checker."""
-    from tests.extras.testutils.factories import TransformerFactory
-
-    data: dict[str, Any] = {"gender": "M"}
-    office = program.country_office
-    other_office = OfficeFactory()
-
-    transformer1 = TransformerFactory(office=office, value_transformations="gender:M=MALE")
-    transformer2 = TransformerFactory(office=office, value_transformations="gender:F=FEMALE")
-    TransformerFactory(office=other_office, value_transformations="status:1=ACTIVE")
-
-    mock_checker = MagicMock()
-    mock_checker.transformers.filter.return_value = [transformer1, transformer2]
-
-    with patch.object(program, "get_checker_for", return_value=mock_checker):
-        result = program.apply_transformer(Household, data)
-
-        mock_checker.transformers.filter.assert_called_once_with(office=office)
-        # Transformer1 transforms M -> MALE (first transformer applied wins)
-        assert result["gender"] == "MALE"
-
-
-def test_apply_transformer_returns_early_when_checker_is_none(program: Program) -> None:
-    """Test apply_transformer returns early when checker is None."""
-    data: dict[str, Any] = {"gender": "M"}
-
-    with patch.object(program, "get_checker_for", return_value=None):
-        result = program.apply_transformer(Household, data)
-
-        assert result == data
 
 
 def test_apply_mapping_importer_transformer_id_not_found(program: Program):
@@ -488,26 +428,6 @@ def test_apply_mapping_importer_mapping_id_only(program: Program):
         assert result == data
 
 
-def test_apply_mapping_importer_checker_with_no_transformers(program: Program):
-    """Test apply_mapping_importer when checker exists but has no transformers."""
-    from tests.extras.testutils.factories import MappingImporterFactory
-
-    data: dict[str, Any] = {"gender": "M"}
-    office = program.country_office
-    mapping = MappingImporterFactory(office=office, rules="gender=sex")
-
-    mock_checker = MagicMock()
-    mock_checker.transformers.filter.return_value = []  # No transformers
-    mock_checker.mapping_importers.filter.return_value = [mapping]
-
-    with patch.object(program, "get_checker_for", return_value=mock_checker):
-        result = program.apply_mapping_importer(Household, data)
-
-        # Mapping should still be applied
-        assert result["sex"] == "M"
-        assert "gender" not in result
-
-
 def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
     """Test apply_mapping_importer when checker exists but has no mappings."""
     from tests.extras.testutils.factories import TransformerFactory
@@ -517,26 +437,11 @@ def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
     transformer = TransformerFactory(office=office, value_transformations="gender:M=MALE")
 
     mock_checker = MagicMock()
-    mock_checker.transformers.filter.return_value = [transformer]
     mock_checker.mapping_importers.filter.return_value = []  # No mappings
 
     with patch.object(program, "get_checker_for", return_value=mock_checker):
-        result = program.apply_mapping_importer(Household, data)
+        # Apply transformer via transformer_id (transformers are not linked to checkers)
+        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
 
         # Transformer should still be applied
         assert result["gender"] == "MALE"
-
-
-def test_apply_transformer_checker_with_no_transformers(program: Program):
-    """Test apply_transformer when checker exists but has no transformers."""
-    data: dict[str, Any] = {"gender": "M"}
-
-    mock_checker = MagicMock()
-    mock_checker.transformers.filter.return_value = []  # No transformers
-
-    with patch.object(program, "get_checker_for", return_value=mock_checker):
-        result = program.apply_transformer(Household, data)
-
-        # Should return data unchanged
-        assert result == data
-        assert result["gender"] == "M"

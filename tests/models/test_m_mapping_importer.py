@@ -97,13 +97,17 @@ def test_rules_as_dict(mapping_importer, rules, expected):
     ],
 )
 def test_apply_with_transformer(mapping_importer, rules, value_transformations, data, expected):
-    """Test that MappingImporter can work with Transformer for value transformations."""
+    """Test that MappingImporter can work with Transformer for value transformations.
+
+    Flow: INPUT -> MAPPER (field mapping) -> TRANSFORMER (value transformation)
+    """
     from testutils.factories import TransformerFactory
 
     mi = mapping_importer(rules=rules)
+    # Step 1: Apply mapping first (field-level)
     result = mi.apply(data)
 
-    # Apply transformer if value_transformations are provided
+    # Step 2: Apply transformer if value_transformations are provided (record-level)
     if value_transformations:
         transformer = TransformerFactory(value_transformations=value_transformations)
         result = transformer.apply(result)

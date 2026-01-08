@@ -2,7 +2,6 @@ from typing import Any
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from hope_flex_fields.models import DataChecker
 
 from country_workspace.models.base import BaseModel
 from country_workspace.validators.mapping import ValueTransformationRulesValidator
@@ -16,12 +15,6 @@ class Transformer(BaseModel):
         on_delete=models.CASCADE,
         related_name="transformers",
         help_text=_("Business Area (Office) this transformer belongs to"),
-    )
-    data_checker = models.ForeignKey(
-        DataChecker,
-        on_delete=models.CASCADE,
-        related_name="transformers",
-        help_text=_("DataChecker (Household/Individual) this transformer is valid for"),
     )
     value_transformations = models.TextField(
         blank=True,

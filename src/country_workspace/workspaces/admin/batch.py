@@ -36,7 +36,7 @@ class BatchReprocessForm(forms.Form):
         required=False,
         label=_("Household Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Optional: Transform values before applying mapping. Flow: transformer => mapping"),
+        help_text=_("Optional: Transform values after applying mapping. Flow: mapping => transformer"),
     )
     household_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
@@ -50,7 +50,7 @@ class BatchReprocessForm(forms.Form):
         required=False,
         label=_("Individual Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Optional: Transform values before applying mapping. Flow: transformer => mapping"),
+        help_text=_("Optional: Transform values after applying mapping. Flow: mapping => transformer"),
     )
     individual_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
@@ -64,30 +64,24 @@ class BatchReprocessForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         if program:
+            transformer_queryset = Transformer.objects.filter(office=program.country_office)
+            self.fields["household_transformer"].queryset = transformer_queryset
+            self.fields["individual_transformer"].queryset = transformer_queryset
+
             if program.household_checker:
-                self.fields["household_transformer"].queryset = Transformer.objects.filter(
-                    office=program.country_office,
-                    data_checker=program.household_checker,
-                )
                 self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
                     office=program.country_office,
                     data_checker=program.household_checker,
                 )
             else:
-                self.fields.pop("household_transformer", None)
                 self.fields.pop("household_mapping", None)
 
             if program.individual_checker:
-                self.fields["individual_transformer"].queryset = Transformer.objects.filter(
-                    office=program.country_office,
-                    data_checker=program.individual_checker,
-                )
                 self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
                     office=program.country_office,
                     data_checker=program.individual_checker,
                 )
             else:
-                self.fields.pop("individual_transformer", None)
                 self.fields.pop("individual_mapping", None)
 
 

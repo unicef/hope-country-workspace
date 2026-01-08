@@ -8,7 +8,6 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("country_workspace", "0040_add_originating_id_to_validable"),
-        ("hope_flex_fields", "0013_fielddefinition_validated_alter_datachecker_id_and_more"),
     ]
 
     operations = [
@@ -47,15 +46,6 @@ class Migration(migrations.Migration):
                         related_name="transformers",
                         to="country_workspace.office",
                         help_text="Business Area (Office) this transformer belongs to",
-                    ),
-                ),
-                (
-                    "data_checker",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="transformers",
-                        to="hope_flex_fields.datachecker",
-                        help_text="DataChecker (Household/Individual) this transformer is valid for",
                     ),
                 ),
             ],

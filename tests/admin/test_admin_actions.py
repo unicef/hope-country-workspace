@@ -107,17 +107,15 @@ def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer)
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, rf, mapping_importer):
-    """Test reprocess_records with transformer and mapping - transformer first, then mapping."""
+    """Test reprocess_records with transformer and mapping - mapping first, then transformer."""
     user = UserFactory(is_staff=True, is_active=True)
     program = CountryProgramFactory()
     office = program.country_office
-    dc = DataChecker.objects.create(name="Test Checker")
 
     transformer = Transformer.objects.create(
         name="Test Transformer",
         office=office,
-        data_checker=dc,
-        value_transformations="old_field:value=transformed_value",
+        value_transformations="new_field:value=transformed_value",
     )
 
     hh = CountryHouseholdFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
@@ -136,8 +134,8 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
 
     assert response.status_code == 302
     hh.refresh_from_db()
-    # After transformer: {"old_field": "transformed_value"}
-    # After mapping: {"new_field": "transformed_value"}
+    # After mapping: {"new_field": "value"}
+    # After transformer: {"new_field": "transformed_value"}
     assert hh.flex_fields.get("new_field") == "transformed_value"
     assert "old_field" not in hh.flex_fields
     assert "Successfully reprocessed 1 records." in model_admin.message_user.call_args[0][1]
@@ -173,7 +171,7 @@ def test_reprocess_records_post_apply_transformer_only_no_mapping(model_admin, r
     dc = DataChecker.objects.create(name="Test Checker")
 
     transformer = Transformer.objects.create(
-        name="Test Transformer", office=office, data_checker=dc, value_transformations="field1:old=new"
+        name="Test Transformer", office=office, value_transformations="field1:old=new"
     )
     # Create a mapping but don't use it
     mapping_importer = MappingImporter.objects.create(name="Test Mapping", office=office, data_checker=dc, rules="")
@@ -239,7 +237,7 @@ def test_reprocess_records_post_apply_with_transformer_only(model_admin, rf):
     dc = DataChecker.objects.create(name="Test Checker")
 
     transformer = Transformer.objects.create(
-        name="Test Transformer", office=office, data_checker=dc, value_transformations="field1:old=new"
+        name="Test Transformer", office=office, value_transformations="field1:old=new"
     )
     mapping_importer = MappingImporter.objects.create(name="Test Mapping", office=office, data_checker=dc, rules="")
 
@@ -265,19 +263,21 @@ def test_reprocess_records_post_apply_with_transformer_only(model_admin, rf):
 
 
 @pytest.mark.django_db
-def test_reprocess_records_filter_transformers_by_checker(model_admin, rf):
-    """Test reprocess_records filters transformers by checker."""
+def test_reprocess_records_filter_transformers_by_office(model_admin, rf):
+    """Test reprocess_records filters transformers by office (not checker)."""
     user = UserFactory(is_staff=True, is_active=True)
     dc1 = DataChecker.objects.create(name="Checker 1")
     dc2 = DataChecker.objects.create(name="Checker 2")
 
-    office = OfficeFactory()
-    program1 = CountryProgramFactory(country_office=office, household_checker=dc1)
-    CountryProgramFactory(country_office=office, household_checker=dc2)
+    office1 = OfficeFactory()
+    office2 = OfficeFactory()
+    program1 = CountryProgramFactory(country_office=office1, household_checker=dc1)
+    CountryProgramFactory(country_office=office2, household_checker=dc2)
 
-    transformer1 = Transformer.objects.create(name="T1", office=office, data_checker=dc1, value_transformations="")
-    transformer2 = Transformer.objects.create(name="T2", office=office, data_checker=dc2, value_transformations="")
-    mapping_importer = MappingImporter.objects.create(name="M1", office=office, data_checker=dc1, rules="")
+    # Transformers are not linked to checkers, only to offices
+    transformer1 = Transformer.objects.create(name="T1", office=office1, value_transformations="")
+    transformer2 = Transformer.objects.create(name="T2", office=office2, value_transformations="")
+    mapping_importer = MappingImporter.objects.create(name="M1", office=office1, data_checker=dc1, rules="")
 
     hh = CountryHouseholdFactory(batch__program=program1)
 
@@ -296,8 +296,7 @@ def test_reprocess_records_filter_transformers_by_checker(model_admin, rf):
         transformer_queryset = call_kwargs["transformer_queryset"]
         mapping_queryset = call_kwargs["mapping_queryset"]
 
-        # The transformer queryset should only contain transformer1 (same checker as program1)
-        assert transformer_queryset.count() == 1
+        # The transformer queryset should contain transformers from office1 (same office as program1)
         assert transformer1 in transformer_queryset
         assert transformer2 not in transformer_queryset
 
