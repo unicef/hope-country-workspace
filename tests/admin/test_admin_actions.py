@@ -357,7 +357,7 @@ def test_reprocess_records_filter_mappings_by_checker(model_admin, rf):
         # Verify the form was called with the correct queryset
         assert mock_form_class.called
         call_kwargs = mock_form_class.call_args[1]
-        mapping_queryset = call_kwargs["queryset"]
+        mapping_queryset = call_kwargs["mapping_queryset"]
 
         # The mapping queryset should only contain mi1 (same checker as program1)
         assert mapping_queryset.count() == 1

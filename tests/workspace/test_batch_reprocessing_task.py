@@ -566,18 +566,21 @@ class TestReprocessBatchTask:
         """Test reprocess_batch applies mapping first, then transformer for individuals."""
         from testutils.factories import (
             AsyncJobFactory,
+            CountryBatchFactory,
             CountryIndividualFactory,
             MappingImporterFactory,
             TransformerFactory,
         )
 
+        # Create a fresh batch to ensure we only have the individual we create
+        batch = CountryBatchFactory(program=program, country_office=program.country_office)
+
         ind = CountryIndividualFactory(
-            batch__program=program,
-            batch__country_office=program.country_office,
+            batch=batch,
+            household=None,
             raw_data={"gender": "F", "status": "1"},
             flex_fields={"existing": "data"},
         )
-        batch = ind.batch
 
         # Mapping renames fields (field-level)
         individual_mapping = MappingImporterFactory(
