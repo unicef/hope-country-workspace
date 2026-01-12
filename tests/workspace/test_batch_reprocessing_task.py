@@ -662,6 +662,56 @@ class TestReprocessBatchTask:
             hh.refresh_from_db()
             assert hh.flex_fields["field2"] == "value1"
 
+    def test_reprocess_batch_individual_transformer_not_found(
+        self, program, user: User, force_migrated_records, caplog
+    ) -> None:
+        """Test reprocess_batch handles Transformer.DoesNotExist for individual transformer gracefully."""
+        from testutils.factories import AsyncJobFactory, CountryIndividualFactory, MappingImporterFactory
+
+        ind = CountryIndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+            raw_data={"col1": "value1"},
+        )
+        batch = ind.batch
+
+        individual_mapping = MappingImporterFactory(
+            office=program.country_office,
+            data_checker=program.individual_checker,
+            rules="col1=col2",
+        )
+
+        job = AsyncJobFactory(
+            program=program,
+            batch=batch,
+            owner=user,
+            config={
+                "batch_id": batch.pk,
+                "individual_transformer_id": 99999,  # Non-existent transformer
+                "individual_mapping_id": individual_mapping.pk,
+            },
+        )
+
+        with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+            with caplog.at_level("WARNING"):
+                # Should not raise, just log warning and skip transformer
+                result = reprocess_batch(job)
+
+                assert result["batch_id"] == batch.pk
+                # Should still work with mapping only (transformer is optional)
+                assert result.get("mapped_individuals", 0) == 1
+
+                ind.refresh_from_db()
+                assert ind.flex_fields["col2"] == "value1"
+
+                # Check that warning was logged
+                assert any(
+                    "Individual transformer 99999 not found, skipping transformer" in record.message
+                    for record in caplog.records
+                    if record.levelname == "WARNING"
+                )
+
     def test_reprocess_batch_household_transformer_only(self, program, user: User, force_migrated_records) -> None:
         """Test reprocess_batch with only household transformer (no mapping)."""
         from testutils.factories import AsyncJobFactory, CountryHouseholdFactory, TransformerFactory
