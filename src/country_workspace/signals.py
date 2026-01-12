@@ -1,7 +1,7 @@
 from typing import Any
 
 from django.db.models import Q
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker, FlexField
 
@@ -79,6 +79,7 @@ def invalidate_entities_on_datachecker_change(
 
 
 @receiver(post_save, sender=FlexField, dispatch_uid="cw_on_flex_field_change")
+@receiver(post_delete, sender=FlexField, dispatch_uid="cw_on_flex_field_delete")
 def invalidate_fieldset_fields_admin_cache(
     sender: type[FlexField],
     instance: FlexField,
