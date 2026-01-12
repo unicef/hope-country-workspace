@@ -115,7 +115,7 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
     transformer = Transformer.objects.create(
         name="Test Transformer",
         office=office,
-        value_transformations="new_field:value=transformed_value",
+        value_transformations="function t(d) { if(d['new_field']=='value') d['new_field']='transformed_value'; return d; }",  # noqa: E501
     )
 
     hh = CountryHouseholdFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
@@ -171,7 +171,9 @@ def test_reprocess_records_post_apply_transformer_only_no_mapping(model_admin, r
     dc = DataChecker.objects.create(name="Test Checker")
 
     transformer = Transformer.objects.create(
-        name="Test Transformer", office=office, value_transformations="field1:old=new"
+        name="Test Transformer",
+        office=office,
+        value_transformations="function t(d) { if(d['field1']=='old') d['field1']='new'; return d; }",
     )
     # Create a mapping but don't use it
     mapping_importer = MappingImporter.objects.create(name="Test Mapping", office=office, data_checker=dc, rules="")
@@ -237,7 +239,9 @@ def test_reprocess_records_post_apply_with_transformer_only(model_admin, rf):
     dc = DataChecker.objects.create(name="Test Checker")
 
     transformer = Transformer.objects.create(
-        name="Test Transformer", office=office, value_transformations="field1:old=new"
+        name="Test Transformer",
+        office=office,
+        value_transformations="function t(d) { if(d['field1']=='old') d['field1']='new'; return d; }",
     )
     mapping_importer = MappingImporter.objects.create(name="Test Mapping", office=office, data_checker=dc, rules="")
 

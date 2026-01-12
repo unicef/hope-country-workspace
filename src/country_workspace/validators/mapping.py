@@ -2,6 +2,8 @@ from django.core.exceptions import ValidationError
 from django.utils.deconstruct import deconstructible
 from django.utils.translation import gettext_lazy as _
 
+from country_workspace.utils.js_executor import JavaScriptExecutor
+
 
 @deconstructible
 class FieldMappingRulesValidator:
@@ -35,38 +37,14 @@ class FieldMappingRulesValidator:
 
 @deconstructible
 class ValueTransformationRulesValidator:
-    """Validate each non-empty line against: 'fieldname:old_value=new_value'."""
+    """Validate that the value is valid JavaScript code."""
 
     def __call__(self, value: str) -> None:
-        errors = []
-        for idx, line in enumerate((raw_line.strip() for raw_line in value.splitlines()), start=1):
-            if line:
-                error = self._validate_line(line, idx)
-                if error:
-                    errors.append(error)
-        if errors:
-            raise ValidationError(errors)
+        if not value.strip():
+            return
 
-    def _validate_line(self, line: str, num: int) -> ValidationError | None:
-        if ":" not in line:
-            return self._error(num, _("Invalid format. Expected ':' character to separate fieldname from values."))
-
-        if line.count("=") != 1:
-            return self._error(num, _("Invalid format. Expected one '=' character."))
-
-        field_part, value_part = line.split(":", 1)
-        field_name = field_part.strip()
-        if not field_name:
-            return self._error(num, _("Invalid format. Field name cannot be empty."))
-
-        if "=" not in value_part:
-            return self._error(num, _("Invalid format. Expected format: 'fieldname:old_value=new_value'"))
-
-        old_value, new_value = (val.strip() for val in value_part.split("=", 1))
-        if old_value == new_value:
-            return self._error(num, _("Old value and new value must be different"))
-
-        return None
-
-    def _error(self, num: int, message: str) -> ValidationError:
-        return ValidationError(_("Line %(num)d: %(message)s") % {"num": num, "message": message}, code="invalid_rule")
+        if not JavaScriptExecutor.is_valid_js(value):
+            raise ValidationError(
+                _("Invalid JavaScript code. Must contain a function definition."),
+                code="invalid_js",
+            )

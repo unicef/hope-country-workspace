@@ -19,7 +19,7 @@ class ReprocessForm(forms.Form):
         required=False,
         label=_("Select Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Transform values before applying mapping. Flow: transformer => mapping"),
+        help_text=_("Transform values after applying mapping. Flow: mapping => transformer"),
     )
     mapping_importer = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
@@ -37,7 +37,7 @@ class ReprocessForm(forms.Form):
 
 
 @admin.action(description=_("Reprocess records (apply mapping)"))
-def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> HttpResponse:  # noqa: C901
+def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> HttpResponse:
     model = queryset.model
     checker_field = None
 
@@ -45,43 +45,6 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
         checker_field = "household_checker"
     elif issubclass(model, Individual):
         checker_field = "individual_checker"
-
-    if "apply" in request.POST:
-        transformer_id = request.POST.get("transformer")
-        mapping_id = request.POST.get("mapping_importer")
-
-        transformer = None
-        if transformer_id:
-            try:
-                transformer = Transformer.objects.get(pk=transformer_id)
-            except Transformer.DoesNotExist:
-                modeladmin.message_user(request, _("Selected transformer not found."), messages.ERROR)
-                return HttpResponseRedirect(request.get_full_path())
-
-        if mapping_id:
-            try:
-                mapping = MappingImporter.objects.get(pk=mapping_id)
-            except MappingImporter.DoesNotExist:
-                modeladmin.message_user(request, _("Selected mapping not found."), messages.ERROR)
-                return HttpResponseRedirect(request.get_full_path())
-
-            count = 0
-            for record in queryset:
-                if record.raw_data:
-                    data = record.raw_data.copy()
-                    mapping.apply(data)
-                    if transformer:
-                        transformer.apply(data)
-                    record.flex_fields = data
-
-                    record.last_checked = None
-                    record.errors = {}
-
-                    record.save(update_fields=["flex_fields", "last_checked", "errors"])
-                    count += 1
-
-            modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)
-            return HttpResponseRedirect(request.get_full_path())
 
     transformer_qs = Transformer.objects.none()
     mapping_qs = MappingImporter.objects.none()
@@ -93,7 +56,34 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
         checker_ids = programs.values_list(checker_field, flat=True).distinct()
         mapping_qs = MappingImporter.objects.filter(data_checker__id__in=checker_ids)
 
-    form = ReprocessForm(transformer_queryset=transformer_qs, mapping_queryset=mapping_qs)
+    form = ReprocessForm(
+        request.POST if "apply" in request.POST else None,
+        transformer_queryset=transformer_qs,
+        mapping_queryset=mapping_qs,
+    )
+
+    if "apply" in request.POST and form.is_valid():
+        transformer = form.cleaned_data.get("transformer")
+        mapping = form.cleaned_data.get("mapping_importer")
+
+        count = 0
+        for record in queryset:
+            if record.raw_data:
+                data = record.raw_data.copy()
+                if mapping:
+                    mapping.apply(data)
+                if transformer:
+                    transformer.apply(data)
+                record.flex_fields = data
+
+                record.last_checked = None
+                record.errors = {}
+
+                record.save(update_fields=["flex_fields", "last_checked", "errors"])
+                count += 1
+
+        modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)
+        return HttpResponseRedirect(request.get_full_path())
 
     context = {
         **modeladmin.admin_site.each_context(request),

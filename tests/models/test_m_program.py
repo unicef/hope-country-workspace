@@ -340,7 +340,9 @@ def test_apply_mapping_importer_mapping_then_transformer_flow(program: Program):
     # Mapping renames fields (field-level)
     mapping = MappingImporterFactory(office=office, rules="gender=sex")
     # Transformer transforms values (record-level)
-    transformer = TransformerFactory(office=office, value_transformations="sex:M=MALE")
+    transformer = TransformerFactory(
+        office=office, value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }"
+    )
 
     mock_checker = MagicMock()
     mock_checker.mapping_importers.filter.return_value = [mapping]
@@ -434,7 +436,9 @@ def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
 
     data: dict[str, Any] = {"gender": "M"}
     office = program.country_office
-    transformer = TransformerFactory(office=office, value_transformations="gender:M=MALE")
+    transformer = TransformerFactory(
+        office=office, value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; return d; }"
+    )
 
     mock_checker = MagicMock()
     mock_checker.mapping_importers.filter.return_value = []  # No mappings
