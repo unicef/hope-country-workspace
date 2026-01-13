@@ -143,7 +143,9 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
 
     assert response.status_code == 302
     hh.refresh_from_db()
-    assert hh.flex_fields.get("old_field") == "transformed_value"
+    # After transformer: {"old_field": "transformed_value"}
+    # After mapping: {"new_field": "transformed_value"}
+    assert hh.flex_fields.get("new_field") == "transformed_value"
     assert "old_field" not in hh.flex_fields
     assert "Successfully reprocessed 1 records." in model_admin.message_user.call_args[0][1]
 
