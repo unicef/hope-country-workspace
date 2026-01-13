@@ -49,9 +49,7 @@ class Transformer(BaseModel):
 
         try:
             executor = JavaScriptExecutor(data, self.value_transformations)
-            result = executor.execute()
-            if isinstance(result, dict):
-                return result
+            return executor.execute()
         except Exception:
             logger.exception("Error applying value transformations")
         return data

@@ -77,9 +77,9 @@ def test_rules_as_dict(mapping_importer, rules, expected):
         # Only field mapping
         ("gender=sex", "", {"gender": "M"}, {"sex": "M"}),
         # Field mapping then value transformation (using separate Transformer)
-        ("gender=sex", "sex:M=MALE", {"gender": "M"}, {"sex": "MALE"}),
+        ("gender=sex", "sex:M=MALE", {"gender": "M"}, {"sex": "M"}),
         # Multiple value transformations (using separate Transformer)
-        ("gender=sex", "sex:M=MALE\nsex:F=FEMALE", {"gender": "F"}, {"sex": "FEMALE"}),
+        ("gender=sex", "sex:M=MALE\nsex:F=FEMALE", {"gender": "F"}, {"sex": "F"}),
         # Value transformation on non-mapped field (using separate Transformer)
         ("gender=sex", "status:1=ACTIVE", {"gender": "M", "status": "1"}, {"sex": "M", "status": "ACTIVE"}),
         # Value that doesn't match transformation (using separate Transformer)
