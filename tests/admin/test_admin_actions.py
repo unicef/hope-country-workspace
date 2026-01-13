@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import Mock, patch
-from django.contrib import messages
 from django.contrib.admin import ModelAdmin
 from django.contrib.admin.sites import AdminSite
 from django.contrib.messages.storage.fallback import FallbackStorage
@@ -80,14 +79,19 @@ def test_reprocess_records_post_apply_invalid_mapping(model_admin, rf):
     add_middleware_to_request(request, user)
     queryset = Household.objects.none()
     response = reprocess_records(model_admin, request, queryset)
-    assert response.status_code == 302
-    model_admin.message_user.assert_called_with(request, "Selected mapping not found.", messages.ERROR)
+
+    # Form validation fails because 999 is not a valid choice.
+    # Should render the form again (status 200) with errors.
+    assert response.status_code == 200
+    assert "form" in response.context_data
+    assert response.context_data["form"].errors["mapping_importer"]
 
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer):
     user = UserFactory(is_staff=True, is_active=True)
-    program = CountryProgramFactory()
+    # Ensure program uses the same checker as the mapping importer
+    program = CountryProgramFactory(household_checker=mapping_importer.data_checker)
     hh = CountryHouseholdFactory(
         batch__program=program, raw_data={"old_field": "value"}, flex_fields={}, last_checked="2023-01-01"
     )
@@ -109,8 +113,13 @@ def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer)
 def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, rf, mapping_importer):
     """Test reprocess_records with transformer and mapping - mapping first, then transformer."""
     user = UserFactory(is_staff=True, is_active=True)
-    program = CountryProgramFactory()
+    # Ensure program uses the same checker as the mapping importer
+    program = CountryProgramFactory(household_checker=mapping_importer.data_checker)
     office = program.country_office
+
+    # Ensure mapping importer belongs to office (mostly for consistency, filter relies on checker)
+    mapping_importer.office = office
+    mapping_importer.save()
 
     transformer = Transformer.objects.create(
         name="Test Transformer",
@@ -143,8 +152,11 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_invalid_transformer(model_admin, rf, mapping_importer):
-    """Test reprocess_records handles Transformer.DoesNotExist gracefully."""
+    """Test reprocess_records handles invalid transformer ID gracefully."""
     user = UserFactory(is_staff=True, is_active=True)
+    program = CountryProgramFactory(household_checker=mapping_importer.data_checker)
+    hh = CountryHouseholdFactory(batch__program=program)
+
     request = rf.post(
         "/",
         {
@@ -154,12 +166,14 @@ def test_reprocess_records_post_apply_invalid_transformer(model_admin, rf, mappi
         },
     )
     add_middleware_to_request(request, user)
-    queryset = Household.objects.none()
+    queryset = Household.objects.filter(pk=hh.pk)
 
     response = reprocess_records(model_admin, request, queryset)
 
-    assert response.status_code == 302
-    model_admin.message_user.assert_called_with(request, "Selected transformer not found.", messages.ERROR)
+    # Form validation fails for transformer
+    assert response.status_code == 200
+    assert "form" in response.context_data
+    assert response.context_data["form"].errors["transformer"]
 
 
 @pytest.mark.django_db
@@ -168,7 +182,12 @@ def test_reprocess_records_post_apply_transformer_only_no_mapping(model_admin, r
     user = UserFactory(is_staff=True, is_active=True)
     program = CountryProgramFactory()
     office = program.country_office
-    dc = DataChecker.objects.create(name="Test Checker")
+
+    # Ensure program has a checker
+    dc = program.household_checker or DataChecker.objects.create(name="Test Checker")
+    if not program.household_checker:
+        program.household_checker = dc
+        program.save()
 
     transformer = Transformer.objects.create(
         name="Test Transformer",
@@ -205,7 +224,12 @@ def test_reprocess_records_post_apply_no_transformer_no_mapping(model_admin, rf)
     user = UserFactory(is_staff=True, is_active=True)
     program = CountryProgramFactory()
     office = program.country_office
-    dc = DataChecker.objects.create(name="Test Checker")
+
+    # Ensure program has a checker
+    dc = program.household_checker or DataChecker.objects.create(name="Test Checker")
+    if not program.household_checker:
+        program.household_checker = dc
+        program.save()
 
     # Create a mapping but don't use it
     mapping_importer = MappingImporter.objects.create(name="Test Mapping", office=office, data_checker=dc, rules="")
@@ -236,7 +260,12 @@ def test_reprocess_records_post_apply_with_transformer_only(model_admin, rf):
     user = UserFactory(is_staff=True, is_active=True)
     program = CountryProgramFactory()
     office = program.country_office
-    dc = DataChecker.objects.create(name="Test Checker")
+
+    # Ensure program has a checker
+    dc = program.household_checker or DataChecker.objects.create(name="Test Checker")
+    if not program.household_checker:
+        program.household_checker = dc
+        program.save()
 
     transformer = Transformer.objects.create(
         name="Test Transformer",
@@ -315,7 +344,12 @@ def test_reprocess_records_filter_transformers_by_office(model_admin, rf):
 def test_reprocess_records_individual_model(site, rf, mapping_importer):
     user = UserFactory(is_staff=True, is_active=True)
     model_admin = MockModelAdmin(Individual, site)
-    program = CountryProgramFactory()
+
+    # Ensure program uses the same checker as the mapping importer
+    # MappingImporter created in fixture uses a DataChecker.
+    # Individual uses individual_checker.
+    program = CountryProgramFactory(individual_checker=mapping_importer.data_checker)
+
     ind = CountryIndividualFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
     request = rf.post("/", {"apply": "true", "mapping_importer": str(mapping_importer.id)})
     add_middleware_to_request(request, user)
