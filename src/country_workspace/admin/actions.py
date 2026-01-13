@@ -6,6 +6,7 @@ from django.contrib.admin import helpers
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
+from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
 from country_workspace.models import MappingImporter, Program, Transformer
@@ -19,7 +20,7 @@ class ReprocessForm(forms.Form):
         required=False,
         label=_("Select Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Transform values after applying mapping. Flow: mapping => transformer"),
+        help_text=_("Transform values before applying mapping. Flow: transformer => mapping"),
     )
     mapping_importer = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
@@ -37,7 +38,9 @@ class ReprocessForm(forms.Form):
 
 
 @admin.action(description=_("Reprocess records (apply mapping)"))
-def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> HttpResponse:
+def reprocess_records(
+    modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet
+) -> HttpResponse | TemplateResponse:
     model = queryset.model
     checker_field = None
 
@@ -70,10 +73,10 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
         for record in queryset:
             if record.raw_data:
                 data = record.raw_data.copy()
+                if transformer:
+                    data = transformer.apply(data)
                 if mapping:
                     mapping.apply(data)
-                if transformer:
-                    transformer.apply(data)
                 record.flex_fields = data
 
                 record.last_checked = None

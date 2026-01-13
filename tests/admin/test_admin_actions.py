@@ -111,7 +111,7 @@ def test_reprocess_records_post_apply_success(model_admin, rf, mapping_importer)
 
 @pytest.mark.django_db
 def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, rf, mapping_importer):
-    """Test reprocess_records with transformer and mapping - mapping first, then transformer."""
+    """Test reprocess_records with transformer and mapping - transformer first, then mapping."""
     user = UserFactory(is_staff=True, is_active=True)
     # Ensure program uses the same checker as the mapping importer
     program = CountryProgramFactory(household_checker=mapping_importer.data_checker)
@@ -124,7 +124,7 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
     transformer = Transformer.objects.create(
         name="Test Transformer",
         office=office,
-        value_transformations="function t(d) { if(d['new_field']=='value') d['new_field']='transformed_value'; return d; }",  # noqa: E501
+        value_transformations="function t(d) { if(d['old_field']=='value') d['old_field']='transformed_value'; return d; }",  # noqa: E501
     )
 
     hh = CountryHouseholdFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
@@ -143,9 +143,7 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
 
     assert response.status_code == 302
     hh.refresh_from_db()
-    # After mapping: {"new_field": "value"}
-    # After transformer: {"new_field": "transformed_value"}
-    assert hh.flex_fields.get("new_field") == "transformed_value"
+    assert hh.flex_fields.get("old_field") == "transformed_value"
     assert "old_field" not in hh.flex_fields
     assert "Successfully reprocessed 1 records." in model_admin.message_user.call_args[0][1]
 
