@@ -109,9 +109,15 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
     household_mapping_id = config.get("household_mapping_id")
+    household_transformer_id = config.get("household_transformer_id")
     transform_row = compose(
         clean_field_names,
-        partial(job.program.apply_mapping_importer, Household, mapping_id=household_mapping_id),
+        partial(
+            job.program.apply_mapping_importer,
+            Household,
+            mapping_id=household_mapping_id,
+            transformer_id=household_transformer_id,
+        ),
         partial(job.program.apply_default_fields, Household),
     )
 
@@ -144,9 +150,15 @@ def process_beneficiaries(
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
     individual_mapping_id = config.get("individual_mapping_id")
+    individual_transformer_id = config.get("individual_transformer_id")
     transform_row = compose(
         clean_field_names,
-        partial(job.program.apply_mapping_importer, Individual, mapping_id=individual_mapping_id),
+        partial(
+            job.program.apply_mapping_importer,
+            Individual,
+            mapping_id=individual_mapping_id,
+            transformer_id=individual_transformer_id,
+        ),
         partial(job.program.apply_default_fields, Individual),
     )
 

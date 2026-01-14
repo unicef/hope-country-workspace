@@ -35,6 +35,8 @@ class Config(BatchNameConfig, ValidateModeConfig):
     first_line: int
     household_mapping_id: NotRequired[int | None]
     individual_mapping_id: NotRequired[int | None]
+    household_transformer_id: NotRequired[int | None]
+    individual_transformer_id: NotRequired[int | None]
 
 
 class SheetName(StrEnum):

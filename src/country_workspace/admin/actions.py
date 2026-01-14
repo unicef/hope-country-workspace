@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 from django import forms
 from django.contrib import admin, messages
@@ -33,8 +33,8 @@ class ReprocessForm(forms.Form):
         transformer_qs = kwargs.pop("transformer_queryset", Transformer.objects.none())
         mapping_qs = kwargs.pop("mapping_queryset", MappingImporter.objects.none())
         super().__init__(*args, **kwargs)
-        cast("forms.ModelChoiceField", self.fields["transformer"]).queryset = transformer_qs
-        cast("forms.ModelChoiceField", self.fields["mapping_importer"]).queryset = mapping_qs
+        self.fields["transformer"].queryset = transformer_qs
+        self.fields["mapping_importer"].queryset = mapping_qs
 
 
 @admin.action(description=_("Reprocess records (apply mapping)"))

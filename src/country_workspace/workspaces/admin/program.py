@@ -594,6 +594,16 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "individual_mapping_id": individual_mapping.id
                 if (individual_mapping := form.cleaned_data.get("individual_mapping"))
                 else None,
+                "household_transformer_id": (
+                    form.cleaned_data.get("household_transformer").id
+                    if form.cleaned_data.get("household_transformer")
+                    else None
+                ),
+                "individual_transformer_id": (
+                    form.cleaned_data.get("individual_transformer").id
+                    if form.cleaned_data.get("individual_transformer")
+                    else None
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",
@@ -624,6 +634,16 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "individual_mapping_id": form.cleaned_data.get("individual_mapping").id
                 if form.cleaned_data.get("individual_mapping")
                 else None,
+                "household_transformer_id": (
+                    form.cleaned_data.get("household_transformer").id
+                    if form.cleaned_data.get("household_transformer")
+                    else None
+                ),
+                "individual_transformer_id": (
+                    form.cleaned_data.get("individual_transformer").id
+                    if form.cleaned_data.get("individual_transformer")
+                    else None
+                ),
             }
             job: AsyncJob = AsyncJob.objects.create(
                 description="Aurora importing",
@@ -659,6 +679,16 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 "individual_mapping_id": (
                     individual_mapping.id
                     if (individual_mapping := form.cleaned_data.get("individual_mapping"))
+                    else None
+                ),
+                "household_transformer_id": (
+                    form.cleaned_data.get("household_transformer").id
+                    if form.cleaned_data.get("household_transformer")
+                    else None
+                ),
+                "individual_transformer_id": (
+                    form.cleaned_data.get("individual_transformer").id
+                    if form.cleaned_data.get("individual_transformer")
                     else None
                 ),
             }

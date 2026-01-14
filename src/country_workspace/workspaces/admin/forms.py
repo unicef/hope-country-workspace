@@ -68,11 +68,23 @@ class BaseImportForm(forms.Form):
     fail_if_alien = forms.BooleanField(
         initial=True, required=False, help_text="Alien field will be checked on first record only"
     )
+    household_transformer = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        help_text=_("Optional transformer applied after household mapping"),
+        empty_label=_("No transformer"),
+    )
     household_mapping = forms.ModelChoiceField(
         queryset=None,
         required=False,
         help_text=_("Optional mapping to apply to household data"),
         empty_label=_("No mapping"),
+    )
+    individual_transformer = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        help_text=_("Optional transformer applied after individual mapping"),
+        empty_label=_("No transformer"),
     )
     individual_mapping = forms.ModelChoiceField(
         queryset=None,
@@ -82,7 +94,7 @@ class BaseImportForm(forms.Form):
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        from country_workspace.models import MappingImporter
+        from country_workspace.models import MappingImporter, Transformer
 
         # Extract custom kwargs
         program = kwargs.pop("program", None)
@@ -101,6 +113,14 @@ class BaseImportForm(forms.Form):
                 )
             else:
                 self.fields.pop(field_name, None)
+
+        if program:
+            transformer_qs = Transformer.objects.filter(office=program.country_office)
+            self.fields["household_transformer"].queryset = transformer_qs
+            self.fields["individual_transformer"].queryset = transformer_qs
+        else:
+            self.fields.pop("household_transformer", None)
+            self.fields.pop("individual_transformer", None)
 
 
 class ImportFileForm(BaseImportForm):
