@@ -21,18 +21,18 @@ CONSTANCE_ADDITIONAL_FIELDS = {
             "widget": "country_workspace.utils.constance.ObfuscatedInput",
         },
     ],
-    "write_only_text": [
+    "write_only_textarea": [
         "django.forms.fields.CharField",
         {
             "required": False,
             "widget": "country_workspace.utils.constance.WriteOnlyTextarea",
         },
     ],
-    "write_only_input": [
+    "write_only_text_input": [
         "django.forms.fields.CharField",
         {
             "required": False,
-            "widget": "country_workspace.utils.constance.WriteOnlyInput",
+            "widget": "country_workspace.utils.constance.WriteOnlyTextInput",
         },
     ],
 }
@@ -44,12 +44,12 @@ CONSTANCE_CONFIG = {
         "Group to assign to any new user",
         "group_select",
     ),
-    "AURORA_API_TOKEN": (AURORA_API_TOKEN, "Aurora API Access Token", "write_only_input"),
+    "AURORA_API_TOKEN": (AURORA_API_TOKEN, "Aurora API Access Token", "write_only_text_input"),
     "AURORA_API_URL": (AURORA_API_URL, "Aurora API Server address", str),
-    "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_input"),
+    "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_text_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
-    "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_input"),
-    "KOBO_MASTER_API_TOKEN": (KOBO_MASTER_API_TOKEN, "Kobo API Master Access Token", "write_only_input"),
+    "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_text_input"),
+    "KOBO_MASTER_API_TOKEN": (KOBO_MASTER_API_TOKEN, "Kobo API Master Access Token", "write_only_text_input"),
     "KOBO_PROJECT_VIEW_ID": (KOBO_PROJECT_VIEW_ID, "Kobo Project View ID", str),
     "KOBO_KF_URL": (KOBO_KF_URL, "Kobo Server address", str),
     "KOBO_CACHE_TTL": (86400, "Kobo data cache TTL", int),
@@ -63,7 +63,7 @@ CONSTANCE_CONFIG = {
         bool,
     ),
     "MAILJET_API_KEY": (MAILJET_API_KEY, "Mailjet API key", str),
-    "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_input"),
+    "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_text_input"),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
     "KOBO_FIELDS_TO_IGNORE": (
         "audit, collect_individual_data, deviceid, start, end, hh_geopoint, instanceid, number_alternate, "
@@ -104,11 +104,11 @@ CONSTANCE_CONFIG_FIELDSETS = {
     ),
 }
 
-# Mapping of config keys to masked default display values in the Constance admin UI.
-CONSTANCE_MASKED_DEFAULTS = {
-    "AURORA_API_TOKEN": "***",
-    "HOPE_API_TOKEN": "***",
-    "KOBO_API_TOKEN": "***",
-    "KOBO_API_MASTER_TOKEN": "***",
-    "MAILJET_SECRET_KEY": "***",
-}
+CONSTANCE_DEFAULTS_MASK = "***"
+CONSTANCE_MASKED_DEFAULTS = (
+    "AURORA_API_TOKEN",
+    "HOPE_API_TOKEN",
+    "KOBO_API_TOKEN",
+    "KOBO_MASTER_API_TOKEN",
+    "MAILJET_SECRET_KEY",
+)
