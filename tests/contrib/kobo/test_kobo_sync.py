@@ -153,7 +153,12 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
     partial_mock.assert_has_calls(
         [
-            call(batch_mock.program.apply_mapping_importer, individual_class_mock, mapping_id=None),
+            call(
+                batch_mock.program.apply_mapping_importer,
+                individual_class_mock,
+                mapping_id=None,
+                transformer_id=None,
+            ),
             call(batch_mock.program.apply_default_fields, individual_class_mock),
         ]
     )
@@ -202,7 +207,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
     partial_mock.assert_has_calls(
         [
-            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None),
+            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None, transformer_id=None),
             call(batch_mock.program.apply_default_fields, household_class_mock),
         ]
     )

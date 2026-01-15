@@ -14,4 +14,8 @@ def config(request) -> Config:
         "household_label": "household_label",
         "people_prefix": "pp_",
         "first_line": 2,
+        "household_mapping_id": None,
+        "individual_mapping_id": None,
+        "household_transformer_id": None,
+        "individual_transformer_id": None,
     }
