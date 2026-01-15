@@ -73,10 +73,10 @@ def reprocess_records(
         for record in queryset:
             if record.raw_data:
                 data = record.raw_data.copy()
-                if transformer:
-                    data = transformer.apply(data)
                 if mapping:
                     mapping.apply(data)
+                if transformer:
+                    data = transformer.apply(data)
                 record.flex_fields = data
 
                 record.last_checked = None

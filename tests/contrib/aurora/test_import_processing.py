@@ -5,6 +5,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
+from country_workspace.contrib.aurora import import_processing
 from country_workspace.contrib.aurora.import_processing import (
     Config,
     ImportResult,
@@ -250,6 +251,23 @@ def test_check_alien_fields_returns_none_when_all_fields_valid(mocker: MockerFix
     )
 
     assert check_alien_fields(fields, program) is None
+
+
+def test_build_individual_transform_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
+    program = Mock()
+    program.apply_mapping_importer = Mock(
+        side_effect=lambda _m, data, mapping_id=None, transformer_id=None: {**data, "t": transformer_id}
+    )
+    program.apply_default_fields = Mock(side_effect=lambda _m, data: data)
+
+    transform = import_processing.build_individual_transform(program, mapping_id=11, transformer_id=22)
+    out = transform({"foo": "bar"})
+
+    program.apply_mapping_importer.assert_called_once()
+    _, kwargs = program.apply_mapping_importer.call_args
+    assert kwargs["mapping_id"] == 11
+    assert kwargs["transformer_id"] == 22
+    assert out["t"] == 22
 
 
 # --- flatten_top2_prefixed / make_full_name --------------------------------------

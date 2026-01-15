@@ -122,7 +122,7 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
     transformer = Transformer.objects.create(
         name="Test Transformer",
         office=office,
-        value_transformations="function t(d) { if(d['old_field']=='value') d['old_field']='transformed_value'; return d; }",  # noqa: E501
+        value_transformations="function t(d) { if(d['new_field']=='value') d['new_field']='transformed_value'; return d; }",  # noqa: E501
     )
 
     hh = CountryHouseholdFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
@@ -130,8 +130,8 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
         "/",
         {
             "apply": "true",
-            "transformer": str(transformer.id),
-            "mapping_importer": str(mapping_importer.id),
+            "transformer": str(transformer.pk),
+            "mapping_importer": str(mapping_importer.pk),
         },
     )
     add_middleware_to_request(request, user)
@@ -141,8 +141,8 @@ def test_reprocess_records_post_apply_with_transformer_and_mapping(model_admin, 
 
     assert response.status_code == 302
     hh.refresh_from_db()
-    # After transformer: {"old_field": "transformed_value"}
-    # After mapping: {"new_field": "transformed_value"}
+    # Mapping first: {"new_field": "value"}
+    # Transformer after mapping modifies mapped field
     assert hh.flex_fields.get("new_field") == "transformed_value"
     assert "old_field" not in hh.flex_fields
     assert "Successfully reprocessed 1 records." in model_admin.message_user.call_args[0][1]
@@ -160,7 +160,7 @@ def test_reprocess_records_post_apply_invalid_transformer(model_admin, rf, mappi
         {
             "apply": "true",
             "transformer": "99999",  # Non-existent transformer
-            "mapping_importer": str(mapping_importer.id),
+            "mapping_importer": str(mapping_importer.pk),
         },
     )
     add_middleware_to_request(request, user)
@@ -198,8 +198,8 @@ def test_reprocess_records_post_apply_transformer_only_no_mapping(model_admin, r
         "/",
         {
             "apply": "true",
-            "transformer": str(transformer.id),
-            "mapping_importer": str(mapping_importer.id),  # Empty mapping
+            "transformer": str(transformer.pk),
+            "mapping_importer": str(mapping_importer.pk),  # Empty mapping
         },
     )
     add_middleware_to_request(request, user)
@@ -235,7 +235,7 @@ def test_reprocess_records_post_apply_no_transformer_no_mapping(model_admin, rf)
         "/",
         {
             "apply": "true",
-            "mapping_importer": str(mapping_importer.id),  # Empty mapping (no transformation)
+            "mapping_importer": str(mapping_importer.pk),  # Empty mapping (no transformation)
         },
     )
     add_middleware_to_request(request, user)
@@ -275,8 +275,8 @@ def test_reprocess_records_post_apply_with_transformer_only(model_admin, rf):
         "/",
         {
             "apply": "true",
-            "transformer": str(transformer.id),
-            "mapping_importer": str(mapping_importer.id),
+            "transformer": str(transformer.pk),
+            "mapping_importer": str(mapping_importer.pk),
         },
     )
     add_middleware_to_request(request, user)
@@ -347,7 +347,7 @@ def test_reprocess_records_individual_model(site, rf, mapping_importer):
     program = CountryProgramFactory(individual_checker=mapping_importer.data_checker)
 
     ind = CountryIndividualFactory(batch__program=program, raw_data={"old_field": "value"}, flex_fields={})
-    request = rf.post("/", {"apply": "true", "mapping_importer": str(mapping_importer.id)})
+    request = rf.post("/", {"apply": "true", "mapping_importer": str(mapping_importer.pk)})
     add_middleware_to_request(request, user)
     queryset = Individual.objects.filter(pk=ind.pk)
 
