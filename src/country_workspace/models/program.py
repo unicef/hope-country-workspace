@@ -176,13 +176,13 @@ class Program(BaseModel):
 
         if mapping_id is not None:
             if importer := MappingImporter.objects.filter(id=mapping_id).first():
-                importer.apply(data)
+                data = importer.apply(data)
         elif checker := self.get_checker_for(m):
             for importer in checker.mapping_importers.filter(office=self.country_office):
-                importer.apply(data)
+                data = importer.apply(data)
 
         if transformer_id is not None and (transformer := Transformer.objects.filter(id=transformer_id).first()):
-            transformer.apply(data)
+            data = transformer.apply(data)
         return data
 
     def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:
