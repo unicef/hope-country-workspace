@@ -4,18 +4,24 @@ from typing import Any
 
 from django.db import transaction
 
-
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
+from country_workspace.contrib.dedup_engine import dedup_was_successful
 
-
-from .config import PushConfig, WorkflowConfig
 from .processor import PushProcessor
-from .repository import individuals_by_pks, individuals_by_household_pks, households
+from .config import CreateRdpConfig, PushWorkflowConfig
+from .repository import (
+    individuals_by_pks,
+    individuals_by_household_pks,
+    households,
+    rdp_for_push,
+    preflight_errors,
+    workflow_config_for_rdp,
+)
 
 
-def create_rdp_records(config: PushConfig, job_id: int) -> int:
+def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
     """Create an RDP and link beneficiaries."""
     with transaction.atomic():
         rdp = Rdp.objects.create(
@@ -27,7 +33,7 @@ def create_rdp_records(config: PushConfig, job_id: int) -> int:
         )
         rdp.add_beneficiaries(config["pks"], config["master_detail"])
         AsyncJob.objects.filter(id=job_id).update(rdp=rdp)
-        return rdp.id
+        return rdp
 
 
 def complete_rdp(rdp_id: int, status: Rdp.PushStatus, hope_rdi_id: str) -> Rdp:
@@ -49,7 +55,7 @@ def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
         rdp.individuals.update(removed=True)
 
 
-def steps(processor: PushProcessor, config: WorkflowConfig) -> Iterator[Callable[[], None]]:
+def steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
     """Yield the ordered workflow callables; each step appends errors to processor.total."""
     pks = config["pks"]
 
@@ -65,25 +71,45 @@ def steps(processor: PushProcessor, config: WorkflowConfig) -> Iterator[Callable
     yield processor.rdi_complete
 
 
-def push_to_hope_core(job: AsyncJob) -> dict[str, Any]:
-    """Run the push workflow for a job; raise HopePushError on step failure."""
+def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Create an RDP for the selected beneficiaries after passing preflight checks."""
     if job.program.beneficiary_group is None:
-        return {"errors": ["RDI: beneficiary_group is not set"]}
+        raise HopePushError({"errors": ["RDP: beneficiary_group is not set"]})
     if not job.config.get("pks"):
-        return {"errors": ["RDI: no beneficiaries to push"]}
+        raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
 
-    rdp_id = create_rdp_records(job.config, job.id)
-    config: WorkflowConfig = {**job.config, "rdp_id": rdp_id}
+    config: CreateRdpConfig = job.config
+    errors = preflight_errors(
+        pks=config["pks"],
+        master_detail=config["master_detail"],
+        exclude_rdp_id=None,
+    )
+    if errors:
+        raise HopePushError({"errors": errors})
+
+    rdp = create_rdp_records(config, job.id)
+    return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
+
+
+def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Run the push workflow for an existing RDP."""
+    rdp_id = job.config["rdp_id"]
+    if not dedup_was_successful(rdp_id=rdp_id):
+        raise HopePushError({"errors": ["Dedup must be successful before pushing to HOPE."]})
+
+    rdp = rdp_for_push(pk=rdp_id)
+    imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
+
+    config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
     processor = PushProcessor(config)
-
     for step in steps(processor, config):
         step()
         if processor.total["errors"]:
-            complete_rdp(rdp_id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
+            complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
             raise HopePushError(processor.total)
 
     with transaction.atomic():
-        rdp = complete_rdp(rdp_id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)
-        mark_rdp_beneficiaries_removed(rdp, config["master_detail"])
+        updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)
+        mark_rdp_beneficiaries_removed(updated, config["master_detail"])
 
     return processor.total

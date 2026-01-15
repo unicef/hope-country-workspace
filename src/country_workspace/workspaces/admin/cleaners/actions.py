@@ -6,8 +6,8 @@ from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.hope.forms import PushToHopeForm
-from country_workspace.contrib.hope.push import push_to_hope_core, PushConfig
+from country_workspace.contrib.hope.forms import CreateRDPForm
+from country_workspace.contrib.hope.push import CreateRdpConfig, create_rdp_core
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
@@ -239,8 +239,8 @@ def calculate_checksum(
     return redirect(".")
 
 
-@admin.action(description="Push to HOPE core", permissions=["push_to_hope"])
-def push_to_hope(
+@admin.action(description="Create RDP", permissions=["push_to_hope"])
+def create_rdp(
     model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
@@ -248,40 +248,37 @@ def push_to_hope(
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     program = model_admin.get_selected_program(request)
-    if request.method == "POST" and "_push" in request.POST:
-        if (form := PushToHopeForm(request.POST)).is_valid():
-            config: PushConfig = {
-                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
-                "co_slug": program.country_office.slug,
-                "country_office_id": program.country_office.id,
-                "imported_by_email": request.user.email,
-                "master_detail": program.beneficiary_group.master_detail,
+    if request.method == "POST" and "_create" in request.POST:
+        if (form := CreateRDPForm(request.POST)).is_valid():
+            config: CreateRdpConfig = {
                 "pks": list(queryset.values_list("pk", flat=True)),
+                "master_detail": program.beneficiary_group.master_detail,
+                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                "country_office_id": program.country_office.id,
                 "program_id": program.id,
-                "program_hope_id": program.hope_id,
                 "pushed_by_id": request.user.id,
             }
             job = AsyncJob.objects.create(
-                description=push_to_hope.short_description,
+                description=create_rdp.short_description,
                 type=AsyncJob.JobType.TASK,
                 owner=request.user,
-                action=fqn(push_to_hope_core),
+                action=fqn(create_rdp_core),
                 program=program,
                 config=config,
             )
             job.queue()
-            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            model_admin.message_user(request, "RDP creation scheduled", messages.SUCCESS)
             return redirect("workspace:workspaces_countryrdp_changelist")
     else:
-        form = PushToHopeForm(
+        form = CreateRDPForm(
             initial={
                 "action": request.POST.get("action", ""),
                 "select_across": request.POST.get("select_across", False),
                 "_selected_action": request.POST.getlist("_selected_action"),
             },
         )
-    ctx = model_admin.get_common_context(request, title=push_to_hope.short_description, form=form)
-    return render(request, "workspace/actions/push_to_hope.html", ctx)
+    ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
+    return render(request, "workspace/actions/create_rdp.html", ctx)
 
 
 @admin.action(description="Concatenate field action", permissions=["mass_update"])

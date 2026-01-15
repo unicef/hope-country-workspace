@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable
-from typing import Any, TypedDict, ReadOnly, Final, NamedTuple
+from typing import Any, TypedDict, ReadOnly, Final, NamedTuple, NotRequired
 from enum import StrEnum, auto
 
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -14,22 +14,28 @@ IND_TAG_RE = re.compile(r"^IND(?:-\d+)+\.\d+$")
 ROLE_FIELDS: Final[tuple[str, ...]] = ("head_of_household", "primary_collector", "alternate_collector")
 
 
-class PushConfig(TypedDict):
-    batch_name: ReadOnly[str]
-    co_slug: ReadOnly[str]
-    country_office_id: ReadOnly[int]
-    imported_by_email: ReadOnly[str]
-    master_detail: ReadOnly[bool]
+class SelectionConfig(TypedDict):
     pks: ReadOnly[list[int]]
+    master_detail: ReadOnly[bool]
+
+
+class CreateRdpConfig(SelectionConfig):
+    batch_name: ReadOnly[str]
+    country_office_id: ReadOnly[int]
     program_id: ReadOnly[int]
-    program_hope_id: ReadOnly[str]
     pushed_by_id: ReadOnly[int]
 
 
-class WorkflowConfig(PushConfig):
-    """Extends PushConfig with the runtime-created RDP id."""
+class PushExistingRdpConfig(TypedDict):
+    rdp_id: ReadOnly[int]
 
-    rdp_id: int
+
+class PushWorkflowConfig(SelectionConfig):
+    batch_name: ReadOnly[str]
+    co_slug: ReadOnly[str]
+    imported_by_email: ReadOnly[str]
+    program_hope_id: ReadOnly[str]
+    rdp_id: NotRequired[int]
 
 
 class Route(StrEnum):

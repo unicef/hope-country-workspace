@@ -3,9 +3,9 @@
 {% block action-content %}
     Selected beneficiaries will be pushed to the HOPE core system.
     <div>
-        <form method="post" id="push-to-hope-form">
+        <form method="post" id="create-rdp-form">
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Push' %}" class="default" name="_push" />
+                <input type="submit" value="{% translate 'Create RDP' %}" class="default" name="_create" />
             </div>
             {% csrf_token %}
             <table>

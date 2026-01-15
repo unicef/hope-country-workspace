@@ -1,5 +1,9 @@
-from .config import PushConfig
-from .orchestration import push_to_hope_core
+from .config import CreateRdpConfig, PushExistingRdpConfig
+from .orchestration import create_rdp_core, push_existing_rdp_core
 
-
-__all__ = ["PushConfig", "push_to_hope_core"]
+__all__ = [
+    "CreateRdpConfig",
+    "PushExistingRdpConfig",
+    "create_rdp_core",
+    "push_existing_rdp_core",
+]

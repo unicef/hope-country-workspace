@@ -63,7 +63,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
-        actions.push_to_hope,
+        actions.create_rdp,
         actions.name_parser_action,
     ]
     list_per_page = 20
@@ -92,7 +92,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             and program.beneficiary_group
             and self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
-            _actions.pop("push_to_hope", None)
+            _actions.pop("create_rdp", None)
         return _actions
 
     def has_validate_permission(self, request: HttpRequest) -> bool:

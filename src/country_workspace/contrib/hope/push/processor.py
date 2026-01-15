@@ -9,22 +9,16 @@ from django.db.models import QuerySet
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import Beneficiary, ROLE_FIELDS, Serializer, WorkflowConfig, ERROR_CONFIG
+from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
-from .repository import (
-    households_for_preflight,
-    individuals_for_preflight_by_households,
-    individuals_for_preflight_by_pks,
-    rdp_pending_or_success,
-    serializer_for_program,
-)
+from .repository import serializer_for_program, preflight_errors
 from .transport import HopeApi
 
 
 class PushProcessor:
     """Push pipeline: validate, prepare, send and track results via Hope API."""
 
-    def __init__(self, config: WorkflowConfig) -> None:
+    def __init__(self, config: PushWorkflowConfig) -> None:
         self.api = HopeApi(co_slug=config["co_slug"], err=self._err)
         self.batch_name: str = config["batch_name"]
         self.hope_rdi_id: str | None = None
@@ -43,24 +37,9 @@ class PushProcessor:
         return serializer_for_program(self.program_hope_id)
 
     def preflight(self) -> None:
-        """Validate selected beneficiaries before the push."""
-
-        def check(qs: QuerySet[Beneficiary], tag: str) -> None:
-            for obj in qs.iterator(chunk_size=PUSH_BATCH_SIZE * 5):
-                base = f"{tag} #{obj.pk}"
-                if not obj.is_valid():
-                    self._err(f"{base} invalid")
-                if getattr(obj, "rdp_pre", []):
-                    self._err(f"{base} already in another RDP(s) (pending/success)")
-
-        if not self.pks:
-            return
-        rdp_qs = rdp_pending_or_success(exclude_id=self.rdp_id)
-        if self.master_detail:
-            check(households_for_preflight(pks=self.pks, rdp_qs=rdp_qs), "HH")
-            check(individuals_for_preflight_by_households(hh_pks=self.pks, rdp_qs=rdp_qs), "Ind")
-        else:
-            check(individuals_for_preflight_by_pks(pks=self.pks, rdp_qs=rdp_qs), "Ind")
+        """Validate selected beneficiaries before creating/pushing RDP."""
+        for msg in preflight_errors(pks=self.pks, master_detail=self.master_detail, exclude_rdp_id=self.rdp_id):
+            self._err(msg)
 
     def rdi_complete(self) -> None:
         """Finalize the remote RDI."""
@@ -157,7 +136,7 @@ class PushProcessor:
             ):
                 self.total["households"] = self.total.get("households", 0) + a
             case _:
-                self._resp_unexpected("Households", response, batch_ids)
+                self._resp_unexpected("Households", batch_ids, response)
 
     def _process_individuals_response(self, response: dict | None, batch_ids: list[int]) -> None:
         """Update totals, refresh IND mapping or log errors based on individuals response."""
@@ -172,7 +151,7 @@ class PushProcessor:
                 self.total["individuals"] = self.total.get("individuals", 0) + a
                 self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
-                self._resp_unexpected("Individuals", response, batch_ids)
+                self._resp_unexpected("Individuals", batch_ids, response)
 
     def _process_people_response(self, response: dict | None, batch_ids: list[int]) -> None:
         """Update totals or log errors based on the people push response."""
@@ -185,7 +164,7 @@ class PushProcessor:
             ):
                 self.total["people"] = self.total.get("people", 0) + expected
             case _:
-                self._resp_unexpected("People", response, batch_ids)
+                self._resp_unexpected("People", batch_ids, response)
 
     def _push_batched(
         self,
