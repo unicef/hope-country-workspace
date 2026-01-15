@@ -21,7 +21,7 @@ from country_workspace.contrib.aurora.import_processing import (
 def config() -> Config:
     return {
         "batch_name": "Aurora batch",
-        "validate_mode": "none",
+        "validate_after_import": False,
         "registration_reference_pk": "27",
         "master_detail": False,
     }
@@ -183,7 +183,7 @@ def test_create_people_creates_individual_with_transformed_fields(mocker: Mocker
     originating_id = "XLS#file.xlsx#1"
 
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.compose",
+        "country_workspace.contrib.aurora.import_processing.build_individual_transform",
         return_value=lambda row: {"x": "y"},
     )
     create_ind = mocker.patch("country_workspace.contrib.aurora.import_processing.Individual.objects.create")
@@ -222,7 +222,7 @@ def test_check_alien_fields_raises_when_alien_fields_present(mocker: MockerFixtu
     fields = {"field1": "value1", "alien_field": "value2"}
 
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.compose",
+        "country_workspace.contrib.aurora.import_processing.build_individual_transform",
         return_value=lambda row: {"field1": "value1", "alien_field": "value2"},
     )
 
@@ -246,7 +246,7 @@ def test_check_alien_fields_returns_none_when_all_fields_valid(mocker: MockerFix
     fields = {"field1": "value1", "field2": "value2"}
 
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.compose",
+        "country_workspace.contrib.aurora.import_processing.build_individual_transform",
         return_value=lambda row: {"field1": "value1", "field2": "value2"},
     )
 

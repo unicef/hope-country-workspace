@@ -54,7 +54,8 @@ def test_edit_and_verify_save_updates_code(rf: RequestFactory):
     request.POST = request.POST.copy()  # type: ignore[assignment]
     request.POST.update({"code": "new code", "record": "{}", "action": "save"})
 
-    admin.edit_and_verify(request, str(obj.pk))  # type: ignore[misc]
+    # call underlying handler function directly to avoid ButtonHandler indirection
+    admin.edit_and_verify.func(admin, request, str(obj.pk))
 
     obj.refresh_from_db()
     assert obj.value_transformations == "new code"
@@ -71,7 +72,7 @@ def test_edit_and_verify_verify_does_not_persist_code(rf: RequestFactory, mocker
 
     apply_mock = mocker.patch.object(Transformer, "apply", return_value={"foo": "baz"})
 
-    admin.edit_and_verify(request, str(obj.pk))  # type: ignore[misc]
+    admin.edit_and_verify.func(admin, request, str(obj.pk))
     obj.refresh_from_db()
 
     # verify uses provided code but does not persist it
