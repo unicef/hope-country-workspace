@@ -2,8 +2,13 @@ import pytest
 
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.tasks import removed_expired_jobs, clean_program_data
-from tests.extras.testutils.factories import ProgramFactory, BatchFactory, HouseholdFactory, IndividualFactory, \
-    AsyncJobFactory
+from tests.extras.testutils.factories import (
+    ProgramFactory,
+    BatchFactory,
+    HouseholdFactory,
+    IndividualFactory,
+    AsyncJobFactory,
+)
 
 
 def test_celery_app(**kwargs):
