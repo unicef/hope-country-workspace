@@ -12,7 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
 
-from country_workspace.contrib.kobo.api.client.auth import Auth
+from country_workspace.utils.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset

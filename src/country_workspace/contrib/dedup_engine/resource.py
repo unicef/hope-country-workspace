@@ -1,0 +1,47 @@
+from dataclasses import dataclass
+from typing import TypedDict
+
+from requests import Session
+
+from country_workspace.contrib.dedup_engine import endpoint, request, response
+
+
+@dataclass
+class GenericResource[T]:
+    session: Session
+    endpoint: T
+
+
+class CreateMixin[T]:
+    def create(self: GenericResource, body: T) -> None:
+        result = self.session.post(str(self.endpoint), json=body)
+        result.raise_for_status()
+
+
+class RetrieveMixin[T: TypedDict]:
+    def retrieve(self: GenericResource) -> T:
+        result = self.session.get(str(self.endpoint))
+        result.raise_for_status()
+        return result.json()
+
+
+class ActionMixin:
+    def call(self: GenericResource) -> None:
+        result = self.session.post(str(self.endpoint))
+        result.raise_for_status()
+
+
+class DeduplicationSetCollection(GenericResource[endpoint.DeduplicationSets], CreateMixin[request.DeduplicationSet]):
+    pass
+
+
+class DeduplicationSetItem(GenericResource[endpoint.DeduplicationSet], RetrieveMixin[response.DeduplicationSet]):
+    pass
+
+
+class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[request.Image]]):
+    pass
+
+
+class ProcessDeduplicationSetAction(GenericResource[endpoint.Process], ActionMixin):
+    pass

@@ -227,3 +227,4 @@ from .fragments.social_auth import *  # noqa: E402, F403
 from .fragments.spectacular import *  # noqa: E402, F403
 from .fragments.tailwind import *  # noqa: E402, F403
 from .fragments.mail import *  # noqa: E402, F403
+from .fragments.dedup import *  # noqa: E402, F403
