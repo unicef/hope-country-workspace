@@ -4,10 +4,11 @@ from typing import Any, Generator
 
 import sentry_sdk
 from django.core.cache import cache
+from django.db import transaction
 from redis_lock import Lock
 
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob
+from country_workspace.models import AsyncJob, Batch, Individual, Household
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +54,41 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
 @app.task()
 def removed_expired_jobs(**kwargs: Any) -> None:
     AsyncJob.objects.filter(**kwargs).delete()
+
+
+def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
+    program_id = job.program.pk
+    deleted_counts = {"individuals": 0, "households": 0}
+    batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
+    if not batch_ids:
+        return None
+
+    while True:
+        with transaction.atomic():
+            individual_ids = list(
+                Individual.objects.filter(batch_id__in=batch_ids, removed=False).values_list("id", flat=True)[
+                    :batch_size
+                ]
+            )
+
+            if not individual_ids:
+                break
+
+            count = Individual.objects.filter(id__in=individual_ids).update(removed=True)
+            deleted_counts["individuals"] += count
+
+    while True:
+        with transaction.atomic():
+            household_ids = list(
+                Household.objects.filter(batch_id__in=batch_ids, removed=False).values_list("id", flat=True)[
+                    :batch_size
+                ]
+            )
+
+            if not household_ids:
+                break
+
+            count = Household.objects.filter(id__in=household_ids).update(removed=True)
+            deleted_counts["households"] += count
+
+    return deleted_counts
