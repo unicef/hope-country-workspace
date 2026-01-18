@@ -8,7 +8,7 @@ from django.http.request import QueryDict
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.kobo.forms import ImportKoboForm
-from country_workspace.models import Office
+from tests.extras.testutils.factories import OfficeFactory
 from country_workspace.workspaces.admin import CountryProgramAdmin
 from country_workspace.workspaces.admin.program import KOBO_IMPORT_JOB_DESCRIPTION
 from country_workspace.workspaces.models import CountryProgram
@@ -37,7 +37,7 @@ def mock_request():
 @pytest.fixture
 def mock_program():
     program = MagicMock(spec=CountryProgram)
-    program.country_office = MagicMock(spec=Office)
+    program.country_office = OfficeFactory()
     program.country_office.kobo_country_code = "ABC"
     program.household_checker = None
     program.individual_checker = None

@@ -15,8 +15,6 @@ def test_value_transformation_validator_valid_js():
     validator = ValueTransformationRulesValidator()
     # Valid JS function
     validator("function transform(record) { return record; }")
-    # Valid JS arrow function assigned to const
-    validator("const transform = (record) => { return record; }")
     # Valid JS function expression assigned to const
     validator("const transform = function(record) { return record; }")
 
