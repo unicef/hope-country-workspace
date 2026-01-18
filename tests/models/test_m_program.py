@@ -240,6 +240,7 @@ def test_apply_mapping_importer_with_mapping_id(program: Program):
     mapping_id = 123
     data: dict[str, Any] = {"name": "Test"}
     mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
 
     with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
         mock_filter.return_value.first.return_value = mock_importer
@@ -271,10 +272,12 @@ def test_apply_mapping_importer_from_checker(program: Program):
     # Importer for the correct office - should be used
     importer1 = MappingImporterFactory(office=office)
     importer1.apply = MagicMock()
+    importer1.apply.return_value = data
 
     # Second importer for the correct office - should be used
     importer2 = MappingImporterFactory(office=office)
     importer2.apply = MagicMock()
+    importer2.apply.return_value = data
 
     # Importer for another office - should NOT be used
     importer3 = MappingImporterFactory(office=other_office)
@@ -312,6 +315,8 @@ def test_apply_mapping_importer_with_transformer_id(program: Program):
     data: dict[str, Any] = {"gender": "M"}
     mock_transformer = MagicMock(spec=Transformer)
     mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
+    mock_transformer.apply.return_value = data
 
     with (
         patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
@@ -364,6 +369,7 @@ def test_apply_mapping_importer_transformer_id_not_found(program: Program):
     mapping_id = 123
     data: dict[str, Any] = {"gender": "M"}
     mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
 
     with (
         patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
@@ -385,6 +391,7 @@ def test_apply_mapping_importer_mapping_id_not_found(program: Program):
     mapping_id = 999
     data: dict[str, Any] = {"gender": "M"}
     mock_transformer = MagicMock(spec=Transformer)
+    mock_transformer.apply.return_value = data
 
     with (
         patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
@@ -405,6 +412,7 @@ def test_apply_mapping_importer_transformer_id_only(program: Program):
     transformer_id = 456
     data: dict[str, Any] = {"gender": "M"}
     mock_transformer = MagicMock(spec=Transformer)
+    mock_transformer.apply.return_value = data
 
     with patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter:
         mock_transformer_filter.return_value.first.return_value = mock_transformer
@@ -420,6 +428,7 @@ def test_apply_mapping_importer_mapping_id_only(program: Program):
     mapping_id = 123
     data: dict[str, Any] = {"gender": "M"}
     mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
 
     with patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter:
         mock_mapping_filter.return_value.first.return_value = mock_importer

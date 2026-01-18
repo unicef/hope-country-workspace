@@ -92,18 +92,18 @@ def test_apply_handles_js_error(transformer, caplog):
 
 
 def test_apply_handles_non_dict_return(transformer):
-    """Test that if JS returns something that is not a dict, apply returns original data."""
+    """If JS returns a non-dict value, the raw result is returned."""
     t = transformer(value_transformations="function t(d) { return 'not a dict'; }")
     data = {"foo": "bar"}
 
     result = t.apply(data)
-    assert result == data
+    assert result == "not a dict"
 
 
 def test_apply_handles_null_return(transformer):
-    """Test that if JS returns null, apply returns original data."""
+    """If JS returns null, the raw None is returned."""
     t = transformer(value_transformations="function t(d) { return null; }")
     data = {"foo": "bar"}
 
     result = t.apply(data)
-    assert result == data
+    assert result is None

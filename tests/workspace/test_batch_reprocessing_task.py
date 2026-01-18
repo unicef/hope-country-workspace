@@ -426,7 +426,9 @@ class TestReprocessBatchTask:
             flex_fields={"existing": "data"},
         )
 
-        transformer = TransformerFactory(value_transformations="gender:M=MALE\nstatus:1=ACTIVE")
+        transformer = TransformerFactory(
+            value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; if(d['status']=='1') d['status']='ACTIVE'; return d; }",  # noqa: E501
+        )
 
         result = _apply_transformations(hh, transformer=transformer)
 
@@ -591,7 +593,7 @@ class TestReprocessBatchTask:
         # Transformer transforms values (record-level)
         individual_transformer = TransformerFactory(
             office=program.country_office,
-            value_transformations="sex:F=FEMALE\nstatus:1=ACTIVE",
+            value_transformations="function t(d) { if(d['sex']=='F') d['sex']='FEMALE'; if(d['status']=='1') d['status']='ACTIVE'; return d; }",  # noqa: E501
         )
 
         job = AsyncJobFactory(
@@ -731,7 +733,7 @@ class TestReprocessBatchTask:
 
         household_transformer = TransformerFactory(
             office=program.country_office,
-            value_transformations="gender:M=MALE\nstatus:1=ACTIVE",
+            value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; if(d['status']=='1') d['status']='ACTIVE'; return d; }",  # noqa: E501
         )
 
         job = AsyncJobFactory(
