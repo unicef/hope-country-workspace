@@ -19,10 +19,10 @@ def _apply_transformations(
     data = record.raw_data.copy()
 
     if mapping:
-        mapping.apply(data)
+        data = mapping.apply(data)
 
     if transformer:
-        transformer.apply(data)
+        data = transformer.apply(data)
 
     record.flex_fields = data
     record.last_checked = None
