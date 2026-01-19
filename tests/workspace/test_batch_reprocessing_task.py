@@ -401,7 +401,9 @@ class TestReprocessBatchTask:
         # Mapping renames fields (field-level)
         mapping = MappingImporterFactory(rules="gender=sex")
         # Transformer transforms values (record-level)
-        transformer = TransformerFactory(value_transformations="sex:M=MALE")
+        transformer = TransformerFactory(
+            value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }"
+        )
 
         result = _apply_transformations(hh, mapping=mapping, transformer=transformer)
 
@@ -534,7 +536,7 @@ class TestReprocessBatchTask:
         # Transformer transforms values (record-level)
         household_transformer = TransformerFactory(
             office=program.country_office,
-            value_transformations="sex:M=MALE",
+            value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }",
         )
 
         job = AsyncJobFactory(
@@ -771,7 +773,7 @@ class TestReprocessBatchTask:
 
         individual_transformer = TransformerFactory(
             office=program.country_office,
-            value_transformations="gender:F=FEMALE",
+            value_transformations="function t(d) { if(d['gender']=='F') d['gender']='FEMALE'; return d; }",
         )
 
         job = AsyncJobFactory(
