@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 from constance import config
 from requests import Session
@@ -7,6 +7,11 @@ from requests.adapters import HTTPAdapter
 
 from country_workspace.contrib.dedup_engine import endpoint, resource, request, response
 from country_workspace.utils.auth import Auth
+
+
+class Status(NamedTuple):
+    status: response.Status
+    duplicates_found: int
 
 
 @dataclass
@@ -28,15 +33,22 @@ class Client:
         process_action = resource.ProcessDeduplicationSetAction(self.session, deduplication_set_endpoint.process)
         process_action.call()
 
-    def status(self) -> response.Status:
+    def status(self) -> Status:
         deduplication_set_endpoint = self.api_root.deduplication_sets.deduplication_set(self.program_id)
         deduplication_set_item = resource.DeduplicationSetItem(self.session, deduplication_set_endpoint)
         deduplication_set = deduplication_set_item.retrieve()
 
         try:
-            return response.Status(deduplication_set["status"].lower())
-        except ValueError:
-            return response.Status.UNKNOWN
+            status = response.Status(deduplication_set["status"].lower())
+        except (ValueError, KeyError):
+            status = response.Status.UNKNOWN
+
+        try:
+            duplicates_found = deduplication_set["duplicates_found"]
+        except KeyError:
+            duplicates_found = -1
+
+        return Status(status, duplicates_found)
 
 
 def make_client(program_id: str) -> Client:
