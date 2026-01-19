@@ -67,3 +67,15 @@ def test_apply_successful(mapping_importer, rules, data, expected):
 def test_rules_as_dict(mapping_importer, rules, expected):
     mi = mapping_importer(rules=rules)
     assert mi.rules_as_dict == expected
+
+
+def test_apply_logs_exception(mapping_importer, caplog, mocker):
+    mi = mapping_importer(rules="gender=sex")
+    mocker.patch.object(type(mi), "rules_as_dict", new_callable=mocker.PropertyMock, side_effect=RuntimeError("boom"))
+    data = {"gender": "M"}
+
+    with caplog.at_level("ERROR"):
+        result = mi.apply(data)
+
+    assert "Error applying mapping rules" in caplog.text
+    assert result == data
