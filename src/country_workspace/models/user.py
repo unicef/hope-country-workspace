@@ -1,6 +1,6 @@
-from unicef_security.models import AbstractUser, SecurityMixin
+from unicef_security.models import AbstractUser, SecurityMixin, TimeStampedModel
 
 
-class User(SecurityMixin, AbstractUser):
+class User(SecurityMixin, TimeStampedModel, AbstractUser):
     class Meta:
         abstract = False
