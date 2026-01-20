@@ -182,7 +182,7 @@ runs:
             DISTRO=${{ inputs.target }}
             CHECKSUM=${{ inputs.code_checksum }}
             VERSION=${{ steps.meta.outputs.version }}
-            SOURCE_COMMIT=${{ steps.last_commit.outputs.last_commit_short_sha }}
+            GIT_SHA=${{ steps.last_commit.outputs.last_commit_short_sha }}
     - name: Status
       id: status
       if: (steps.image_status.outputs.updated != 'true' || inputs.rebuild == 'true') && inputs.dryrun != 'true'
