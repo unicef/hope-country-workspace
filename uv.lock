@@ -4401,7 +4401,7 @@ wheels = [
 
 [[package]]
 name = "unicef-security"
-version = "1.9.1"
+version = "1.9.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery" },
@@ -4415,9 +4415,9 @@ dependencies = [
     { name = "requests" },
     { name = "social-auth-app-django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/59/ab5a08c588b3d6529ef4bcb30623aaa110bfb80ee2a31b954dda15839c27/unicef_security-1.9.1.tar.gz", hash = "sha256:331ace2724d8c31735b3e6c1a95a771d338fc58fa22cad3df3a1e05cb592bd07", size = 14456, upload-time = "2026-01-20T13:00:48.86Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/14/69f63043bbeccf32ef72166969fb155cdd6c81b0ebc0f374718b5a4909c2/unicef_security-1.9.2.tar.gz", hash = "sha256:be17f6f50564337911eb68f83dc16bcf2a0030867617df6364784f13c9cfda7a", size = 14450, upload-time = "2026-01-20T13:07:24.394Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/0e/f0ffb39eaa8bd120dcb112408b9f276eebdd92d1a922c60f69eddc242809/unicef_security-1.9.1-py2.py3-none-any.whl", hash = "sha256:370bc9ad541502ed6cedcbb57533fb7e71164d9cf83a68fca90149739f5bf842", size = 23318, upload-time = "2026-01-20T13:00:47.207Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/d6/eace713a7d9b0ae4f92dc1bbc063eb6b3681654a030321c55f262efea023/unicef_security-1.9.2-py2.py3-none-any.whl", hash = "sha256:8f22858cd035df021d784b58557b5cf1892b099824700498786bc9f4631d6a3b", size = 23310, upload-time = "2026-01-20T13:07:22.333Z" },
 ]
 
 [[package]]
