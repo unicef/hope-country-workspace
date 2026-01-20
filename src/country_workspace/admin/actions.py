@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 from django import forms
 from django.contrib import admin, messages
@@ -6,14 +6,22 @@ from django.contrib.admin import helpers
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
+from django.template.response import TemplateResponse
 from django.utils.translation import gettext as _
 
-from country_workspace.models import MappingImporter, Program
+from country_workspace.models import MappingImporter, Program, Transformer
 from country_workspace.models.household import Household
 from country_workspace.models.individual import Individual
 
 
 class ReprocessForm(forms.Form):
+    transformer = forms.ModelChoiceField(
+        queryset=Transformer.objects.none(),
+        required=False,
+        label=_("Select Transformer (optional)"),
+        empty_label=_("No transformer"),
+        help_text=_("Transform values before applying mapping. Flow: transformer => mapping"),
+    )
     mapping_importer = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
         required=True,
@@ -22,13 +30,17 @@ class ReprocessForm(forms.Form):
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        queryset = kwargs.pop("queryset", MappingImporter.objects.none())
+        transformer_qs = kwargs.pop("transformer_queryset", Transformer.objects.none())
+        mapping_qs = kwargs.pop("mapping_queryset", MappingImporter.objects.none())
         super().__init__(*args, **kwargs)
-        cast("forms.ModelChoiceField", self.fields["mapping_importer"]).queryset = queryset
+        self.fields["transformer"].queryset = transformer_qs
+        self.fields["mapping_importer"].queryset = mapping_qs
 
 
 @admin.action(description=_("Reprocess records (apply mapping)"))
-def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> HttpResponse:
+def reprocess_records(
+    modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet
+) -> HttpResponse | TemplateResponse:
     model = queryset.model
     checker_field = None
 
@@ -37,39 +49,44 @@ def reprocess_records(modeladmin: admin.ModelAdmin, request: HttpRequest, querys
     elif issubclass(model, Individual):
         checker_field = "individual_checker"
 
-    if "apply" in request.POST:
-        mapping_id = request.POST.get("mapping_importer")
-
-        if mapping_id:
-            try:
-                mapping = MappingImporter.objects.get(pk=mapping_id)
-            except MappingImporter.DoesNotExist:
-                modeladmin.message_user(request, _("Selected mapping not found."), messages.ERROR)
-                return HttpResponseRedirect(request.get_full_path())
-
-            count = 0
-            for record in queryset:
-                if record.raw_data:
-                    data = record.raw_data.copy()
-                    mapping.apply(data)
-                    record.flex_fields = data
-
-                    record.last_checked = None
-                    record.errors = {}
-
-                    record.save(update_fields=["flex_fields", "last_checked", "errors"])
-                    count += 1
-
-            modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)
-            return HttpResponseRedirect(request.get_full_path())
-
+    transformer_qs = Transformer.objects.none()
     mapping_qs = MappingImporter.objects.none()
     if checker_field:
         program_ids = queryset.values_list("batch__program", flat=True).distinct()
-        checker_ids = Program.objects.filter(id__in=program_ids).values_list(checker_field, flat=True).distinct()
+        programs = Program.objects.filter(id__in=program_ids)
+        office_ids = programs.values_list("country_office_id", flat=True).distinct()
+        transformer_qs = Transformer.objects.filter(office_id__in=office_ids)
+        checker_ids = programs.values_list(checker_field, flat=True).distinct()
         mapping_qs = MappingImporter.objects.filter(data_checker__id__in=checker_ids)
 
-    form = ReprocessForm(queryset=mapping_qs)
+    form = ReprocessForm(
+        request.POST if "apply" in request.POST else None,
+        transformer_queryset=transformer_qs,
+        mapping_queryset=mapping_qs,
+    )
+
+    if "apply" in request.POST and form.is_valid():
+        transformer = form.cleaned_data.get("transformer")
+        mapping = form.cleaned_data.get("mapping_importer")
+
+        count = 0
+        for record in queryset:
+            if record.raw_data:
+                data = record.raw_data.copy()
+                if mapping:
+                    mapping.apply(data)
+                if transformer:
+                    data = transformer.apply(data)
+                record.flex_fields = data
+
+                record.last_checked = None
+                record.errors = {}
+
+                record.save(update_fields=["flex_fields", "last_checked", "errors"])
+                count += 1
+
+        modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)
+        return HttpResponseRedirect(request.get_full_path())
 
     context = {
         **modeladmin.admin_site.each_context(request),

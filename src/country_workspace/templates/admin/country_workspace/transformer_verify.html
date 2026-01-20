@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+    <h1>
+        {{ title }}
+    </h1>
+    <div style="margin-bottom: 1rem;">
+        <a class="button" href="{{ back_url }}">Back</a>
+    </div>
+    <form method="post" novalidate>
+        {% csrf_token %}
+        <table>
+            {{ form.as_table }}
+        </table>
+        <div style="margin-top: 1rem;">
+            <button type="submit" class="default" name="action" value="save">
+                Save
+            </button>
+            <button type="submit" class="button" name="action" value="verify">
+                Verify
+            </button>
+        </div>
+    </form>
+{% endblock %}

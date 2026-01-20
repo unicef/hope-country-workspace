@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple, NotRequired, Callable
+from typing import Any, NamedTuple, NotRequired, Callable, cast
 from itertools import chain
 from collections.abc import Mapping
 from functools import partial
@@ -14,7 +14,6 @@ from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
-from country_workspace.utils.functional import compose
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -22,6 +21,8 @@ class Config(BatchNameConfig, ValidateModeConfig):
     master_detail: bool
     household_mapping_id: NotRequired[int | None]
     individual_mapping_id: NotRequired[int | None]
+    household_transformer_id: NotRequired[int | None]
+    individual_transformer_id: NotRequired[int | None]
 
 
 class ImportResult(NamedTuple):
@@ -51,11 +52,15 @@ def import_data(job: AsyncJob) -> ImportResult:
     return ImportResult(people=total_people)
 
 
-def check_alien_fields(fields: dict, program: Program) -> None:
+def check_alien_fields(fields: dict, program: Program, transformer_id: int | None = None) -> None:
     if not program.individual_checker:
         return
 
-    transform_individual_row = build_individual_transform(program)
+    transform_individual_row = build_individual_transform(
+        program,
+        mapping_id=None,
+        transformer_id=transformer_id,
+    )
     flex_fields = set(transform_individual_row(fields).keys())
     dc_fields = {f.name for _, f in program.individual_checker.get_fields()}
 
@@ -101,7 +106,11 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
 
 
 def create_people(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Individual:
-    transform_individual_row = build_individual_transform(batch.program)
+    transform_individual_row = build_individual_transform(
+        batch.program,
+        mapping_id=config.get("individual_mapping_id"),
+        transformer_id=config.get("individual_transformer_id"),
+    )
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
@@ -146,11 +155,23 @@ def make_full_name(row: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
     return row
 
 
-def build_individual_transform(program: Program) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    return compose(
-        flatten_top2_prefixed,
-        clean_field_names,
-        partial(program.apply_mapping_importer, Individual),
-        make_full_name,
+def build_individual_transform(
+    program: Program, mapping_id: int | None = None, transformer_id: int | None = None
+) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+    mapping_step = cast(
+        "Callable[[Mapping[str, Any]], dict[str, Any]]",
+        partial(program.apply_mapping_importer, Individual, mapping_id=mapping_id, transformer_id=transformer_id),
+    )
+    default_step = cast(
+        "Callable[[dict[str, Any]], dict[str, Any]]",
         partial(program.apply_default_fields, Individual),
     )
+
+    def transform(row: Mapping[str, Any]) -> dict[str, Any]:
+        data = flatten_top2_prefixed(row)
+        data = clean_field_names(data)
+        data = mapping_step(data)
+        data = make_full_name(data)
+        return default_step(data)
+
+    return transform

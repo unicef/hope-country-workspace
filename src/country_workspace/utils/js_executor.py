@@ -13,7 +13,7 @@ class JsValidationError(Exception):
 
 
 class JavaScriptExecutor:
-    def __init__(self, data: list[dict], code: str) -> None:
+    def __init__(self, data: Any, code: str) -> None:
         self.data = data
         self.code = code
 

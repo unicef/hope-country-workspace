@@ -1,19 +1,29 @@
 import logging
 from typing import Any
 
-from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual
+from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual, Transformer
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_mapping(record: Household | Individual, mapping: MappingImporter) -> bool:
+def _apply_transformations(
+    record: Household | Individual,
+    mapping: MappingImporter | None = None,
+    transformer: Transformer | None = None,
+) -> bool:
     if not record.raw_data:
-        logger.warning("Record %s has no raw data, skipping mapping", record)
+        logger.warning("Record %s has no raw data, skipping transformations", record)
         return False
 
     data = record.raw_data.copy()
-    mapping.apply(data)
+
+    if mapping:
+        data = mapping.apply(data)
+
+    if transformer:
+        data = transformer.apply(data)
+
     record.flex_fields = data
     record.last_checked = None
     record.errors = {}
@@ -31,12 +41,29 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         logger.error("Batch %s not found", batch_id)
         raise Batch.DoesNotExist(f"Batch {batch_id} not found")
 
-    # Get optional mapping importers
+    household_transformer_id = job.config.get("household_transformer_id")
+    individual_transformer_id = job.config.get("individual_transformer_id")
     household_mapping_id = job.config.get("household_mapping_id")
     individual_mapping_id = job.config.get("individual_mapping_id")
 
+    household_transformer = None
+    individual_transformer = None
     household_mapping = None
     individual_mapping = None
+
+    if household_transformer_id:
+        try:
+            household_transformer = Transformer.objects.get(pk=household_transformer_id)
+            logger.info("Using household transformer: %s", household_transformer)
+        except Transformer.DoesNotExist:
+            logger.warning("Household transformer %s not found, skipping transformer", household_transformer_id)
+
+    if individual_transformer_id:
+        try:
+            individual_transformer = Transformer.objects.get(pk=individual_transformer_id)
+            logger.info("Using individual transformer: %s", individual_transformer)
+        except Transformer.DoesNotExist:
+            logger.warning("Individual transformer %s not found, skipping transformer", individual_transformer_id)
 
     if household_mapping_id:
         try:
@@ -71,26 +98,35 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             batch.name,
         )
 
-    # Apply mappings if provided
     mapped_households = 0
     mapped_individuals = 0
     is_master_detail = batch.program.beneficiary_group and batch.program.beneficiary_group.master_detail
 
-    if household_mapping and household_count > 0 and is_master_detail:
-        logger.info("Applying household mapping to %d households", household_count)
+    if (household_transformer or household_mapping) and household_count > 0 and is_master_detail:
+        logger.info(
+            "Applying household transformations to %d households (transformer: %s, mapping: %s)",
+            household_count,
+            household_transformer.name if household_transformer else None,
+            household_mapping.name if household_mapping else None,
+        )
         for household in households_to_process:
-            is_applied = _apply_mapping(household, household_mapping)
+            is_applied = _apply_transformations(household, household_mapping, household_transformer)
             mapped_households += int(is_applied)
 
-        logger.info("Applied mapping to %d households", mapped_households)
+        logger.info("Applied transformations to %d households", mapped_households)
 
-    if individual_mapping and individual_count > 0:
-        logger.info("Applying individual mapping to %d individuals", individual_count)
+    if (individual_transformer or individual_mapping) and individual_count > 0:
+        logger.info(
+            "Applying individual transformations to %d individuals (transformer: %s, mapping: %s)",
+            individual_count,
+            individual_transformer.name if individual_transformer else None,
+            individual_mapping.name if individual_mapping else None,
+        )
         for individual in individuals_to_process:
-            is_applied = _apply_mapping(individual, individual_mapping)
+            is_applied = _apply_transformations(individual, individual_mapping, individual_transformer)
             mapped_individuals += int(is_applied)
 
-        logger.info("Applied mapping to %d individuals", mapped_individuals)
+        logger.info("Applied transformations to %d individuals", mapped_individuals)
 
     validation_jobs_created = 0
     if household_count > 0 and is_master_detail:

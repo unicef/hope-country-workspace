@@ -153,7 +153,12 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
     partial_mock.assert_has_calls(
         [
-            call(batch_mock.program.apply_mapping_importer, individual_class_mock, mapping_id=None),
+            call(
+                batch_mock.program.apply_mapping_importer,
+                individual_class_mock,
+                mapping_id=None,
+                transformer_id=None,
+            ),
             call(batch_mock.program.apply_default_fields, individual_class_mock),
         ]
     )
@@ -202,7 +207,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
     partial_mock.assert_has_calls(
         [
-            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None),
+            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None, transformer_id=None),
             call(batch_mock.program.apply_default_fields, household_class_mock),
         ]
     )
@@ -222,6 +227,83 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
         flex_fields=preprocess_mock.return_value,
         raw_data=preprocess_mock.return_value,
         originating_id=originating_id,
+    )
+
+
+def test_create_individuals_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
+    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess", return_value={})
+    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+
+    mapping_partial = Mock(name="mapping_partial")
+    default_partial = Mock(name="default_partial")
+    partial_mock.side_effect = [mapping_partial, default_partial]
+
+    config_with_transformer = {**config, "individual_transformer_id": 99}
+    create_individuals(
+        batch_mock := Mock(),
+        household_mock := Mock(),  # noqa
+        cast("Submission", {INDIVIDUAL_RECORDS_FIELD: [{}]}),
+        config_with_transformer,
+        originating_id := "orig",  # noqa
+    )
+
+    partial_mock.assert_has_calls(
+        [
+            call(
+                batch_mock.program.apply_mapping_importer,
+                individual_class_mock,
+                mapping_id=None,
+                transformer_id=99,
+            ),
+            call(batch_mock.program.apply_default_fields, individual_class_mock),
+        ]
+    )
+    preprocess_mock.assert_called_once_with(
+        {},
+        INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        mapping_partial,
+        default_partial,
+    )
+
+
+def test_create_household_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
+    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
+    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess", return_value={})
+    extract_household_data_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.extract_household_data", return_value={}
+    )
+    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
+
+    mapping_partial = Mock(name="mapping_partial_hh")
+    default_partial = Mock(name="default_partial_hh")
+    partial_mock.side_effect = [mapping_partial, default_partial]
+
+    config_with_transformer = {**config, "household_transformer_id": 77}
+    create_household(
+        batch_mock := Mock(),
+        submission_mock := Mock(),  # noqa
+        config_with_transformer,
+        id_generator_mock := Mock(return_value=1),  # noqa
+        originating_id := "orig",  # noqa
+    )
+
+    partial_mock.assert_has_calls(
+        [
+            call(
+                batch_mock.program.apply_mapping_importer,
+                household_class_mock,
+                mapping_id=None,
+                transformer_id=77,
+            ),
+            call(batch_mock.program.apply_default_fields, household_class_mock),
+        ]
+    )
+    preprocess_mock.assert_called_once_with(
+        extract_household_data_mock.return_value,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        mapping_partial,
+        default_partial,
     )
 
 

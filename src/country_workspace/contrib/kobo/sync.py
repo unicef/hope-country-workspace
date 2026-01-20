@@ -34,6 +34,8 @@ class Config(BatchNameConfig, ValidateModeConfig):
     individual_records_field: str
     household_mapping_id: NotRequired[int | None]
     individual_mapping_id: NotRequired[int | None]
+    household_transformer_id: NotRequired[int | None]
+    individual_transformer_id: NotRequired[int | None]
 
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
@@ -100,11 +102,17 @@ def create_individuals(
 ) -> list[Individual]:
     individuals = []
     individual_mapping_id = config.get("individual_mapping_id")
+    individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
         individual_fields = preprocess(
             raw_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            partial(batch.program.apply_mapping_importer, Individual, mapping_id=individual_mapping_id),
+            partial(
+                batch.program.apply_mapping_importer,
+                Individual,
+                mapping_id=individual_mapping_id,
+                transformer_id=individual_transformer_id,
+            ),
             partial(batch.program.apply_default_fields, Individual),
         )
         fullname = get_fullname_key(individual_fields)
@@ -130,11 +138,17 @@ def create_household(
     originating_id: str,
 ) -> Household:
     household_mapping_id = config.get("household_mapping_id")
+    household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial(batch.program.apply_mapping_importer, Household, mapping_id=household_mapping_id),
+        partial(
+            batch.program.apply_mapping_importer,
+            Household,
+            mapping_id=household_mapping_id,
+            transformer_id=household_transformer_id,
+        ),
         partial(batch.program.apply_default_fields, Household),
     )
     household_fields["household_id"] = id_generator()

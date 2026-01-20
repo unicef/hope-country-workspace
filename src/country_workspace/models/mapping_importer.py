@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from django.conf import settings
 from django.db import models
@@ -6,6 +7,8 @@ from hope_flex_fields.models import DataChecker
 
 from country_workspace.models.base import BaseModel
 from country_workspace.validators.mapping import FieldMappingRulesValidator
+
+logger = logging.getLogger(__name__)
 
 
 class MappingImporter(BaseModel):
@@ -55,12 +58,14 @@ class MappingImporter(BaseModel):
         }
 
     def apply(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Apply mapping rules to transform field names."""
+        """Apply field mapping to the data dictionary."""
         if not self.rules:
             return data
 
-        for external, internal in self.rules_as_dict.items():
-            if external in data:
-                data[internal] = data.pop(external)
-
+        try:
+            for external, internal in self.rules_as_dict.items():
+                if external in data:
+                    data[internal] = data.pop(external)
+        except Exception:
+            logger.exception("Error applying mapping rules")
         return data

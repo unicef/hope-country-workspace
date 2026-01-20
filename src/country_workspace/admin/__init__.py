@@ -20,6 +20,7 @@ from .role import UserRoleAdmin
 from .sync_log import SyncLog
 from .user import UserAdmin
 from .serializer import DataSerializerAdmin
+from .transformer import TransformerAdmin
 
 site.register(ContentType, admin_class=ContentTypeAdmin)
 site.register(Permission, admin_class=PermissionAdmin)
@@ -46,6 +47,7 @@ __all__ = [
     "ProgramAdmin",
     "RdpAdmin",
     "SyncLog",
+    "TransformerAdmin",
     "UserAdmin",
     "UserRoleAdmin",
 ]

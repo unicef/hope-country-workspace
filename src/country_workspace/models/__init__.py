@@ -12,6 +12,7 @@ from .rdi import Rdi
 from .rdp import Rdp
 from .role import UserRole
 from .sync import SyncLog
+from .transformer import Transformer
 from .user import User
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "Rdi",
     "Rdp",
     "SyncLog",
+    "Transformer",
     "User",
     "UserRole",
 ]

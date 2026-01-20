@@ -244,7 +244,12 @@ def test_process_households(
     household_mapping_id = config.get("household_mapping_id")
     job.program.apply_mapping_importer.assert_has_calls(
         [
-            call(Household, clean_field_names_mock.return_value, mapping_id=household_mapping_id)
+            call(
+                Household,
+                clean_field_names_mock.return_value,
+                mapping_id=household_mapping_id,
+                transformer_id=config.get("household_transformer_id"),
+            )
             for row in household_sheet
         ]
     )
@@ -308,7 +313,12 @@ def test_process_beneficiaries_with_households(
     individual_mapping_id = config.get("individual_mapping_id")
     job_mock.program.apply_mapping_importer.assert_has_calls(
         [
-            call(Individual, clean_field_names_mock.return_value, mapping_id=individual_mapping_id)
+            call(
+                Individual,
+                clean_field_names_mock.return_value,
+                mapping_id=individual_mapping_id,
+                transformer_id=config.get("individual_transformer_id"),
+            )
             for row in individual_sheet
         ]
     )
@@ -358,7 +368,12 @@ def test_process_beneficiaries_people_only(
         prefix = config.get("people_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
         expected_apply_mapping_calls.append(
-            call(Individual, clean_field_names_mock.return_value, mapping_id=individual_mapping_id)
+            call(
+                Individual,
+                clean_field_names_mock.return_value,
+                mapping_id=individual_mapping_id,
+                transformer_id=config.get("individual_transformer_id"),
+            )
         )
         expected_apply_default_calls.append(call(Individual, job_mock.program.apply_mapping_importer.return_value))
         expected_calls.append(

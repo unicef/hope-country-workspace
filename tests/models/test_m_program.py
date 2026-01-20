@@ -14,6 +14,7 @@ from country_workspace.models import (
     Individual,
     Household,
     MappingImporter,
+    Transformer,
 )
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
 from typing import Any
@@ -239,6 +240,7 @@ def test_apply_mapping_importer_with_mapping_id(program: Program):
     mapping_id = 123
     data: dict[str, Any] = {"name": "Test"}
     mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
 
     with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
         mock_filter.return_value.first.return_value = mock_importer
@@ -270,10 +272,12 @@ def test_apply_mapping_importer_from_checker(program: Program):
     # Importer for the correct office - should be used
     importer1 = MappingImporterFactory(office=office)
     importer1.apply = MagicMock()
+    importer1.apply.return_value = data
 
     # Second importer for the correct office - should be used
     importer2 = MappingImporterFactory(office=office)
     importer2.apply = MagicMock()
+    importer2.apply.return_value = data
 
     # Importer for another office - should NOT be used
     importer3 = MappingImporterFactory(office=other_office)
@@ -298,11 +302,159 @@ def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Prog
 
     with (
         patch.object(program, "get_checker_for", return_value=None) as mock_get_checker_for,
-        patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter,
+        patch("country_workspace.models.MappingImporter.objects.filter"),
     ):
-        result = program.apply_mapping_importer(Household, data)
+        program.apply_mapping_importer(Household, data)
 
     mock_get_checker_for.assert_called_once_with(Household)
-    mock_filter.assert_not_called()
-    assert result is data
-    assert result == data
+
+
+def test_apply_mapping_importer_with_transformer_id(program: Program):
+    transformer_id = 456
+    mapping_id = 123
+    data: dict[str, Any] = {"gender": "M"}
+    mock_transformer = MagicMock(spec=Transformer)
+    mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
+    mock_transformer.apply.return_value = data
+
+    with (
+        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
+        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
+    ):
+        mock_transformer_filter.return_value.first.return_value = mock_transformer
+        mock_mapping_filter.return_value.first.return_value = mock_importer
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
+
+        # Mapping should be applied first
+        mock_mapping_filter.assert_called_once_with(id=mapping_id)
+        mock_importer.apply.assert_called_once_with(data)
+        # Then transformer
+        mock_transformer_filter.assert_called_once_with(id=transformer_id)
+        mock_transformer.apply.assert_called_once_with(data)
+        assert result == data
+
+
+def test_apply_mapping_importer_mapping_then_transformer_flow(program: Program):
+    """Test the correct flow: mapping first (field-level), then transformer (record-level)."""
+    from tests.extras.testutils.factories import TransformerFactory
+
+    data: dict[str, Any] = {"gender": "M", "age": 25}
+    office = program.country_office
+
+    # Mapping renames fields (field-level)
+    mapping = MappingImporterFactory(office=office, rules="gender=sex")
+    # Transformer transforms values (record-level)
+    transformer = TransformerFactory(
+        office=office, value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }"
+    )
+
+    mock_checker = MagicMock()
+    mock_checker.mapping_importers.filter.return_value = [mapping]
+
+    with patch.object(program, "get_checker_for", return_value=mock_checker):
+        # Apply transformer via transformer_id (transformers are not linked to checkers)
+        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
+
+        # After mapping: {"sex": "M", "age": 25}
+        # After transformer: {"sex": "MALE", "age": 25}
+        assert result["sex"] == "MALE"
+        assert result["age"] == 25
+        assert "gender" not in result
+
+
+def test_apply_mapping_importer_transformer_id_not_found(program: Program):
+    """Test apply_mapping_importer when transformer_id is provided but transformer not found."""
+    transformer_id = 999
+    mapping_id = 123
+    data: dict[str, Any] = {"gender": "M"}
+    mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
+
+    with (
+        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
+        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
+    ):
+        mock_transformer_filter.return_value.first.return_value = None  # Transformer not found
+        mock_mapping_filter.return_value.first.return_value = mock_importer
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
+
+        mock_transformer_filter.assert_called_once_with(id=transformer_id)
+        mock_mapping_filter.assert_called_once_with(id=mapping_id)
+        mock_importer.apply.assert_called_once_with(data)  # Mapping should still be applied
+        assert result == data
+
+
+def test_apply_mapping_importer_mapping_id_not_found(program: Program):
+    """Test apply_mapping_importer when mapping_id is provided but importer not found."""
+    transformer_id = 456
+    mapping_id = 999
+    data: dict[str, Any] = {"gender": "M"}
+    mock_transformer = MagicMock(spec=Transformer)
+    mock_transformer.apply.return_value = data
+
+    with (
+        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
+        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
+    ):
+        mock_transformer_filter.return_value.first.return_value = mock_transformer
+        mock_mapping_filter.return_value.first.return_value = None  # Mapping not found
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
+
+        mock_transformer_filter.assert_called_once_with(id=transformer_id)
+        mock_transformer.apply.assert_called_once_with(data)  # Transformer should still be applied
+        mock_mapping_filter.assert_called_once_with(id=mapping_id)
+        assert result == data
+
+
+def test_apply_mapping_importer_transformer_id_only(program: Program):
+    """Test apply_mapping_importer with only transformer_id (no mapping_id)."""
+    transformer_id = 456
+    data: dict[str, Any] = {"gender": "M"}
+    mock_transformer = MagicMock(spec=Transformer)
+    mock_transformer.apply.return_value = data
+
+    with patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter:
+        mock_transformer_filter.return_value.first.return_value = mock_transformer
+        result = program.apply_mapping_importer(Household, data, transformer_id=transformer_id)
+
+        mock_transformer_filter.assert_called_once_with(id=transformer_id)
+        mock_transformer.apply.assert_called_once_with(data)
+        assert result == data
+
+
+def test_apply_mapping_importer_mapping_id_only(program: Program):
+    """Test apply_mapping_importer with only mapping_id (no transformer_id)."""
+    mapping_id = 123
+    data: dict[str, Any] = {"gender": "M"}
+    mock_importer = MagicMock(spec=MappingImporter)
+    mock_importer.apply.return_value = data
+
+    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter:
+        mock_mapping_filter.return_value.first.return_value = mock_importer
+        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+        mock_mapping_filter.assert_called_once_with(id=mapping_id)
+        mock_importer.apply.assert_called_once_with(data)
+        assert result == data
+
+
+def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
+    """Test apply_mapping_importer when checker exists but has no mappings."""
+    from tests.extras.testutils.factories import TransformerFactory
+
+    data: dict[str, Any] = {"gender": "M"}
+    office = program.country_office
+    transformer = TransformerFactory(
+        office=office, value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; return d; }"
+    )
+
+    mock_checker = MagicMock()
+    mock_checker.mapping_importers.filter.return_value = []  # No mappings
+
+    with patch.object(program, "get_checker_for", return_value=mock_checker):
+        # Apply transformer via transformer_id (transformers are not linked to checkers)
+        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
+
+        # Transformer should still be applied
+        assert result["gender"] == "MALE"

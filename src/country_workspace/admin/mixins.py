@@ -20,7 +20,7 @@ class JobErrorDisplayMixin:
             else:
                 data = task_result.result
 
-            if isinstance(data, (dict, list)):
+            if isinstance(data, (dict | list)):
                 return format_html("<pre>{}</pre>", json.dumps(data, indent=2))
         except (json.JSONDecodeError, TypeError):
             pass

@@ -2,6 +2,8 @@ from django.core.exceptions import ValidationError
 from django.utils.deconstruct import deconstructible
 from django.utils.translation import gettext_lazy as _
 
+from country_workspace.utils.js_executor import JavaScriptExecutor
+
 
 @deconstructible
 class FieldMappingRulesValidator:
@@ -31,3 +33,18 @@ class FieldMappingRulesValidator:
 
     def _error(self, num: int, message: str) -> ValidationError:
         return ValidationError(_("Line %(num)d: %(message)s") % {"num": num, "message": message}, code="invalid_rule")
+
+
+@deconstructible
+class ValueTransformationRulesValidator:
+    """Validate that the value is valid JavaScript code."""
+
+    def __call__(self, value: str) -> None:
+        if not value.strip():
+            return
+
+        if not JavaScriptExecutor.is_valid_js(value):
+            raise ValidationError(
+                _("Invalid JavaScript code. Must contain a function definition."),
+                code="invalid_js",
+            )
