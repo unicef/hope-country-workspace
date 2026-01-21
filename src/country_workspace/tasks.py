@@ -74,8 +74,8 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
             if not individual_ids:
                 break
 
-            count = Individual.objects.filter(id__in=individual_ids).update(removed=True)
-            deleted_counts["individuals"] += count
+            Individual.objects.filter(id__in=individual_ids).delete()
+            deleted_counts["individuals"] += len(individual_ids)
 
     while True:
         with transaction.atomic():
@@ -88,7 +88,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
             if not household_ids:
                 break
 
-            count = Household.objects.filter(id__in=household_ids).update(removed=True)
-            deleted_counts["households"] += count
+            Household.objects.filter(id__in=household_ids).delete()
+            deleted_counts["households"] += len(household_ids)
 
     return deleted_counts

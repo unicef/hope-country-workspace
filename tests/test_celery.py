@@ -55,18 +55,16 @@ def individuals(program, batch):
 
 @pytest.mark.django_db
 def test_clean_program_data(job, batch, households, individuals):
-    assert HouseholdFactory._meta.model.objects.filter(batch=batch, removed=False).count() == 11
+    assert HouseholdFactory._meta.model.objects.filter(batch=batch).count() == 21
     assert IndividualFactory._meta.model.objects.filter(batch=batch, removed=False).count() == 10
+    assert IndividualFactory._meta.model.objects.filter(batch=batch).count() == 20
 
     result = clean_program_data(job, batch_size=5)
 
     assert result == {"individuals": 10, "households": 11}
 
-    assert HouseholdFactory._meta.model.objects.filter(batch=batch, removed=False).count() == 0
-    assert IndividualFactory._meta.model.objects.filter(batch=batch, removed=False).count() == 0
-
-    assert HouseholdFactory._meta.model.objects.filter(batch=batch).count() == 21  # 11 + 10
-    assert IndividualFactory._meta.model.objects.filter(batch=batch).count() == 20  # 10 + 10
+    assert HouseholdFactory._meta.model.objects.filter(batch=batch).count() == 10
+    assert IndividualFactory._meta.model.objects.filter(batch=batch).count() == 0
 
 
 @pytest.mark.django_db
