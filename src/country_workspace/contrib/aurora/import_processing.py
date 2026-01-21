@@ -1,3 +1,4 @@
+import logging
 from typing import Any, NamedTuple, NotRequired, Callable, cast
 from itertools import chain
 from collections.abc import Mapping
@@ -9,11 +10,13 @@ from django.utils import timezone
 
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
-from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program
+from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import clean_field_names
 from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
+
+logger = logging.getLogger(__name__)
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -27,12 +30,11 @@ class Config(BatchNameConfig, ValidateModeConfig):
 
 class ImportResult(NamedTuple):
     people: int
+    households: int = 0
 
 
 def import_data(job: AsyncJob) -> ImportResult:
     config: Config = job.config
-    if config.get("master_detail"):
-        raise NotImplementedError
     if not config.get("registration_reference_pk"):
         raise ImportError("registration_reference_pk is required for Aurora import")
 
@@ -45,11 +47,13 @@ def import_data(job: AsyncJob) -> ImportResult:
     )
 
     total_people = 0
+    total_households = 0
     client = AuroraClient()
     for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
         imported = import_result(batch, result, config)
         total_people += imported.people
-    return ImportResult(people=total_people)
+        total_households += imported.households
+    return ImportResult(people=total_people, households=total_households)
 
 
 def check_alien_fields(fields: dict, program: Program, transformer_id: int | None = None) -> None:
@@ -71,6 +75,7 @@ def check_alien_fields(fields: dict, program: Program, transformer_id: int | Non
 
 def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
     people_counter = 0
+    household_counter = 0
     sync_log_name = get_aurora_sync_log_name(f"registration{config['registration_reference_pk']}")
     program_ct = ContentType.objects.get_for_model(Program)
     sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=batch.program.id).first()
@@ -83,8 +88,13 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
             return ImportResult(people=0)
         with transaction.atomic():
             originating_id = get_aurora_originating_id(result["pk"])
-            create_people(batch, result, config, originating_id)
-            people_counter += 1
+            if config.get("master_detail"):
+                created_households, created_people = create_household_and_people(batch, result, config, originating_id)
+                household_counter += created_households
+                people_counter += created_people
+            else:
+                create_people(batch, result, config, originating_id)
+                people_counter += 1
             last_successful_id = current_id
     except Exception as e:
         failed_id = result.get("pk", "unknown (before first record)")
@@ -102,10 +112,11 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
                 object_id=batch.program.id,
                 defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
             )
-    return ImportResult(people=people_counter)
+    return ImportResult(people=people_counter, households=household_counter)
 
 
 def create_people(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Individual:
+    row = record.get("fields", record)
     transform_individual_row = build_individual_transform(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
@@ -116,9 +127,75 @@ def create_people(batch: Batch, record: Mapping[str, Any], config: Config, origi
         name="",
         household=None,
         originating_id=originating_id,
-        flex_fields=transform_individual_row(record["fields"]),
+        flex_fields=transform_individual_row(row),
         raw_data=record,
     )
+
+
+def create_household(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Household:
+    row = record.get("fields", record)
+    transform_household_row = build_household_transform(
+        batch.program,
+        mapping_id=config.get("household_mapping_id"),
+        transformer_id=config.get("household_transformer_id"),
+    )
+    return Household.objects.create(
+        batch_id=batch.pk,
+        name="",
+        originating_id=originating_id,
+        flex_fields=transform_household_row(row),
+        raw_data=record,
+    )
+
+
+def create_household_and_people(  # noqa: C901
+    batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str
+) -> tuple[int, int]:
+    fields = record.get("fields", {})
+    household_candidates = ("household", "household-info", "household_info")
+    individual_candidates = ("individuals", "individual-details", "individual_details")
+
+    def _extract_group(keys: tuple[str, ...]) -> tuple[list[Mapping[str, Any]] | None, str | None]:
+        for key in keys:
+            if not fields.get(key):
+                continue
+
+            value = fields[key]
+            if isinstance(value, list):
+                return value, key
+            if isinstance(value, Mapping):
+                return [value], key
+        return None, None
+
+    households_data, household_key = _extract_group(household_candidates)
+    individuals_data, individual_key = _extract_group(individual_candidates)
+
+    if households_data is None:
+        households_data = []
+    if individuals_data is None:
+        individuals_data = []
+
+    if isinstance(households_data, Mapping):
+        households_data = [households_data]
+
+    used_keys = {household_key, individual_key}
+    shared_fields = {k: v for k, v in fields.items() if k not in used_keys and k is not None}
+    household_raw = households_data[0] if households_data else {}
+    household_fields = {**shared_fields, **household_raw}
+
+    household = create_household(batch, household_fields, config, f"{originating_id}#HH0")
+    people_counter = 0
+    for idx, individual_raw in enumerate(individuals_data):
+        try:
+            individual_fields = {**shared_fields, **household_raw, **individual_raw}
+            individual = create_people(batch, individual_fields, config, f"{originating_id}#IND{idx}")
+            individual.household = household
+            individual.save(update_fields=["household"])
+            people_counter += 1
+        except Exception as exception:  # noqa: BLE001
+            logger.error("Error creating individual %s: %s", str(idx), str(exception))
+
+    return 1, people_counter
 
 
 def flatten_top2_prefixed(
@@ -165,6 +242,28 @@ def build_individual_transform(
     default_step = cast(
         "Callable[[dict[str, Any]], dict[str, Any]]",
         partial(program.apply_default_fields, Individual),
+    )
+
+    def transform(row: Mapping[str, Any]) -> dict[str, Any]:
+        data = flatten_top2_prefixed(row)
+        data = clean_field_names(data)
+        data = mapping_step(data)
+        data = make_full_name(data)
+        return default_step(data)
+
+    return transform
+
+
+def build_household_transform(
+    program: Program, mapping_id: int | None = None, transformer_id: int | None = None
+) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+    mapping_step = cast(
+        "Callable[[Mapping[str, Any]], dict[str, Any]]",
+        partial(program.apply_mapping_importer, Household, mapping_id=mapping_id, transformer_id=transformer_id),
+    )
+    default_step = cast(
+        "Callable[[dict[str, Any]], dict[str, Any]]",
+        partial(program.apply_default_fields, Household),
     )
 
     def transform(row: Mapping[str, Any]) -> dict[str, Any]:

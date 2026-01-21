@@ -30,14 +30,6 @@ def config() -> Config:
 # --- import_data -----------------------------------------------------------------
 
 
-def test_import_data_master_detail_not_implemented(config: Config) -> None:
-    job = Mock()
-    job.config = {**config, "master_detail": True}
-
-    with pytest.raises(NotImplementedError):
-        import_data(job)
-
-
 def test_import_data_requires_registration_reference_pk(config: Config) -> None:
     job = Mock()
     job.config = {**config, "registration_reference_pk": None}
@@ -70,6 +62,27 @@ def test_import_data_calls_client_and_aggregates(mocker: MockerFixture, config: 
     assert import_result_mock.call_count == 2
     import_result_mock.assert_any_call(batch, {"pk": "5"}, config)
     import_result_mock.assert_any_call(batch, {"pk": "6"}, config)
+
+
+def test_import_data_master_detail_aggregates_households(mocker: MockerFixture, config: Config) -> None:
+    job = Mock()
+    job.config = {**config, "master_detail": True}
+    job.program = Mock()
+    job.program.country_office = Mock()
+    job.owner = Mock()
+
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client = client_cls.return_value
+    client.get.return_value = [{"pk": "5"}, {"pk": "6"}]
+
+    import_result_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.import_result")
+    import_result_mock.side_effect = [ImportResult(people=1, households=1), ImportResult(people=2, households=3)]
+
+    res = import_data(job)
+
+    assert res == ImportResult(people=3, households=4)
+    client.get.assert_called_once_with(f"registration/{config['registration_reference_pk']}/records/")
+    assert import_result_mock.call_count == 2
 
 
 # --- import_result ----------------------------------------------------------------
@@ -132,6 +145,162 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
 
     assert res == ImportResult(people=1)
     create_people_mock.assert_called_once_with(batch, result, config, originating_id)
+    update_or_create.assert_called_once()
+
+
+def test_import_result_master_detail_creates_households_and_people(mocker: MockerFixture, config: Config) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.program.id = 42
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    result = {
+        "pk": "9",
+        "fields": {
+            "enumerator": "abc",
+            "household": [{"hh_field": "hhv"}],
+            "individuals": [{"ind_field": "indv"}],
+        },
+    }
+    household_fields = {"enumerator": "abc", "hh_field": "hhv"}
+    individual_fields = {"enumerator": "abc", "hh_field": "hhv", "ind_field": "indv"}
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_sync_log_name", return_value="sync")
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.ContentType.objects.get_for_model",
+        return_value=Mock(),
+    )
+    filt = mocker.patch("country_workspace.contrib.aurora.import_processing.SyncLog.objects.filter")
+    filt.return_value.first.return_value = None
+
+    atomic = mocker.patch("country_workspace.contrib.aurora.import_processing.transaction.atomic")
+    atomic.return_value.__enter__.return_value = None
+    atomic.return_value.__exit__.return_value = None
+
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.build_household_transform",
+        return_value=lambda row: row,
+    )
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.build_individual_transform",
+        return_value=lambda row: row,
+    )
+
+    household_create = mocker.patch("country_workspace.contrib.aurora.import_processing.Household.objects.create")
+    individual_create = mocker.patch("country_workspace.contrib.aurora.import_processing.Individual.objects.create")
+    update_or_create = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.SyncLog.objects.update_or_create"
+    )
+
+    res = import_result(batch, result, config)
+
+    assert res == ImportResult(people=1, households=1)
+    household_create.assert_called_once_with(
+        batch_id=1,
+        name="",
+        originating_id="AUR#9#HH0",
+        flex_fields=household_fields,
+        raw_data=household_fields,
+    )
+    individual_create.assert_called_once_with(
+        batch_id=1,
+        name="",
+        household=None,
+        originating_id="AUR#9#IND0",
+        flex_fields=individual_fields,
+        raw_data=individual_fields,
+    )
+    update_or_create.assert_called_once()
+
+
+def test_import_result_master_detail_handles_hyphenated_keys(mocker: MockerFixture, config: Config) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.program.id = 42
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    result = {
+        "pk": "11",
+        "fields": {
+            "household-info": [
+                {"admin1_h_c": "NG002", "admin2_h_c": "NG002001", "admin3_h_c": "NG002001001"},
+            ],
+            "intro-and-consent": [
+                {"consent_h_c": True, "enumerator_code": "ENUM001", "who_to_register": "myself"},
+            ],
+            "individual-details": [
+                {
+                    "given_name_i_c": "Tawakalitu",
+                    "family_name_i_c": "Ijaya",
+                    "phone_no_i_c": "+2348052855249",
+                }
+            ],
+        },
+    }
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_sync_log_name", return_value="sync")
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.ContentType.objects.get_for_model",
+        return_value=Mock(),
+    )
+    filt = mocker.patch("country_workspace.contrib.aurora.import_processing.SyncLog.objects.filter")
+    filt.return_value.first.return_value = None
+
+    atomic = mocker.patch("country_workspace.contrib.aurora.import_processing.transaction.atomic")
+    atomic.return_value.__enter__.return_value = None
+    atomic.return_value.__exit__.return_value = None
+
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.build_household_transform",
+        return_value=lambda row: row,
+    )
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.build_individual_transform",
+        return_value=lambda row: row,
+    )
+
+    household_create = mocker.patch("country_workspace.contrib.aurora.import_processing.Household.objects.create")
+    individual_create = mocker.patch("country_workspace.contrib.aurora.import_processing.Individual.objects.create")
+    update_or_create = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.SyncLog.objects.update_or_create"
+    )
+
+    res = import_result(batch, result, config)
+
+    expected_household_fields = {
+        "intro-and-consent": [{"consent_h_c": True, "enumerator_code": "ENUM001", "who_to_register": "myself"}],
+        "admin1_h_c": "NG002",
+        "admin2_h_c": "NG002001",
+        "admin3_h_c": "NG002001001",
+    }
+    expected_individual_fields = {
+        "intro-and-consent": [{"consent_h_c": True, "enumerator_code": "ENUM001", "who_to_register": "myself"}],
+        "admin1_h_c": "NG002",
+        "admin2_h_c": "NG002001",
+        "admin3_h_c": "NG002001001",
+        "given_name_i_c": "Tawakalitu",
+        "family_name_i_c": "Ijaya",
+        "phone_no_i_c": "+2348052855249",
+    }
+
+    assert res == ImportResult(people=1, households=1)
+    household_create.assert_called_once_with(
+        batch_id=1,
+        name="",
+        originating_id="AUR#11#HH0",
+        flex_fields=expected_household_fields,
+        raw_data=expected_household_fields,
+    )
+    individual_create.assert_called_once_with(
+        batch_id=1,
+        name="",
+        household=None,
+        originating_id="AUR#11#IND0",
+        flex_fields=expected_individual_fields,
+        raw_data=expected_individual_fields,
+    )
     update_or_create.assert_called_once()
 
 
