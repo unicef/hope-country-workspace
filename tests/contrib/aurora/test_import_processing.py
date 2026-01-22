@@ -71,6 +71,8 @@ def test_import_data_master_detail_aggregates_households(mocker: MockerFixture, 
     job.program.country_office = Mock()
     job.owner = Mock()
 
+    batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+
     client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
     client = client_cls.return_value
     client.get.return_value = [{"pk": "5"}, {"pk": "6"}]
@@ -83,6 +85,7 @@ def test_import_data_master_detail_aggregates_households(mocker: MockerFixture, 
     assert res == ImportResult(people=3, households=4)
     client.get.assert_called_once_with(f"registration/{config['registration_reference_pk']}/records/")
     assert import_result_mock.call_count == 2
+    batch_cls.objects.create.assert_called_once()
 
 
 # --- import_result ----------------------------------------------------------------
