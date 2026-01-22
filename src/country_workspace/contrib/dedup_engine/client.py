@@ -20,18 +20,38 @@ class Client:
     session: Session
     api_root: endpoint.APIRoot
 
-    def deduplicate(self, images: list[request.Image], settings: dict[str, Any]) -> None:
+    @property
+    def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
+        return self.api_root.deduplication_sets.deduplication_set(self.program_id)
+
+    def create_deduplication_set(self, settings: dict[str, Any]) -> None:
         deduplication_set_collection = resource.DeduplicationSetCollection(
             self.session, self.api_root.deduplication_sets
         )
         deduplication_set_collection.create({"reference_pk": self.program_id, "settings": settings})
 
-        deduplication_set_endpoint = self.api_root.deduplication_sets.deduplication_set(self.program_id)
-        image_collection = resource.ImagesBulkCollection(self.session, deduplication_set_endpoint.images_bulk)
+    def create_images(self, images: list[request.Image]) -> None:
+        image_collection = resource.ImagesBulkCollection(self.session, self.deduplication_set_endpoint.images_bulk)
         image_collection.create(images)
 
-        process_action = resource.ProcessDeduplicationSetAction(self.session, deduplication_set_endpoint.process)
-        process_action.call()
+    def process(self) -> None:
+        process_action = resource.ProcessDeduplicationSetAction(self.session, self.deduplication_set_endpoint.process)
+        process_action.call(None)
+
+    def approve(self) -> None:
+        # we use reject action here and pass an empty pks list
+        reject_action = resource.RejectDeduplicationSetAction(self.session, self.deduplication_set_endpoint.reject)
+        reject_action.call(
+            {
+                "action": "reject",
+                "reference_pks": [],
+            }
+        )
+
+    def deduplicate(self, images: list[request.Image], settings: dict[str, Any]) -> None:
+        self.create_deduplication_set(settings)
+        self.create_images(images)
+        self.process()
 
     def status(self) -> Status:
         deduplication_set_endpoint = self.api_root.deduplication_sets.deduplication_set(self.program_id)
