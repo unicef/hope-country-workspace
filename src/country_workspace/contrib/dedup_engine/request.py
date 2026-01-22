@@ -1,4 +1,4 @@
-from typing import TypedDict, Any
+from typing import TypedDict, Any, Literal
 
 
 class DeduplicationSet(TypedDict):
@@ -9,3 +9,15 @@ class DeduplicationSet(TypedDict):
 class Image(TypedDict):
     reference_pk: str
     filename: str
+
+
+class ReferencePks(TypedDict):
+    reference_pks: list[str]
+
+
+class Approve(ReferencePks):
+    action: Literal["approve"]
+
+
+class Reject(ReferencePks):
+    action: Literal["reject"]

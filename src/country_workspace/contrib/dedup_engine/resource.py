@@ -25,9 +25,9 @@ class RetrieveMixin[T: TypedDict]:
         return result.json()
 
 
-class ActionMixin:
-    def call(self: GenericResource) -> None:
-        result = self.session.post(str(self.endpoint))
+class ActionMixin[T]:
+    def call(self: GenericResource, body: T) -> None:
+        result = self.session.post(str(self.endpoint), json=body)
         result.raise_for_status()
 
 
@@ -43,5 +43,13 @@ class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[re
     pass
 
 
-class ProcessDeduplicationSetAction(GenericResource[endpoint.Process], ActionMixin):
+class ProcessDeduplicationSetAction(GenericResource[endpoint.Process], ActionMixin[None]):
+    pass
+
+
+class ApproveDeduplicationSetAction(GenericResource[endpoint.Approve], ActionMixin[request.Approve]):
+    pass
+
+
+class RejectDeduplicationSetAction(GenericResource[endpoint.Reject], ActionMixin[request.Reject]):
     pass
