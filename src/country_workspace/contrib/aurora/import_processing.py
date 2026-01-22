@@ -151,12 +151,18 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
     )
 
 
-def create_household_and_people(  # noqa: C901
+def create_household_and_people(
     batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str
 ) -> tuple[int, int]:
     fields = record.get("fields", {})
     household_candidates = ("household", "household-info", "household_info")
     individual_candidates = ("individuals", "individual-details", "individual_details")
+
+    def _ensure_list(value: list[Mapping[str, Any]] | Mapping[str, Any] | None) -> list[Mapping[str, Any]]:
+        value = value or []
+        if isinstance(value, Mapping):
+            return [value]
+        return value
 
     def _extract_group(keys: tuple[str, ...]) -> tuple[list[Mapping[str, Any]] | None, str | None]:
         for key in keys:
@@ -173,13 +179,8 @@ def create_household_and_people(  # noqa: C901
     households_data, household_key = _extract_group(household_candidates)
     individuals_data, individual_key = _extract_group(individual_candidates)
 
-    if households_data is None:
-        households_data = []
-    if individuals_data is None:
-        individuals_data = []
-
-    if isinstance(households_data, Mapping):
-        households_data = [households_data]
+    households_data = _ensure_list(households_data)
+    individuals_data = _ensure_list(individuals_data)
 
     used_keys = {household_key, individual_key}
     shared_fields = {k: v for k, v in fields.items() if k not in used_keys and k is not None}

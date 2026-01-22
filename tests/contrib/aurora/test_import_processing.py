@@ -328,6 +328,30 @@ def test_create_household_and_people_handles_mapping_and_no_individuals(mocker: 
     create_people.assert_not_called()
 
 
+def test_create_household_and_people_normalizes_mapping_to_list(mocker: MockerFixture, config: Config) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    record = {"fields": {"household": {"hh_field": "hhv"}, "individuals": {"ind_field": "x"}}}
+
+    create_household = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_household",
+        return_value=Mock(),
+    )
+    create_people = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_people",
+        return_value=Mock(),
+    )
+
+    households, people = import_processing.create_household_and_people(batch, record, config, "AUR#3")
+
+    assert (households, people) == (1, 1)
+    create_household.assert_called_once()
+    create_people.assert_called_once()
+
+
 def test_create_household_and_people_logs_on_individual_error(mocker: MockerFixture, config: Config) -> None:
     batch = Mock()
     batch.program = Mock()
