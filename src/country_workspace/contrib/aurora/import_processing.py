@@ -83,7 +83,10 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
     last_successful_id = last_id
 
     try:
-        current_id = int(result["pk"])
+        pk_value = result.get("pk")
+        if pk_value is None:
+            raise ValueError("Missing record pk")  # noqa: TRY301
+        current_id = int(pk_value)
         if current_id <= last_id:
             return ImportResult(people=0)
         with transaction.atomic():
