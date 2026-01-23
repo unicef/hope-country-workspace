@@ -3,7 +3,7 @@ nav:
   - contributing.md
   - run
   - config
-  - settings.md
+  - docker.md
   - dev_helpers.md
   - flows
   - Interfaces: interfaces.md
