@@ -3,6 +3,7 @@ from typing import TypedDict
 
 
 class Status(StrEnum):
+    NOT_SCHEDULED = "not scheduled"
     STARTED = auto()
     SUCCESS = auto()
     PENDING = auto()

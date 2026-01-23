@@ -12,9 +12,10 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.dedup_engine import dedup, dedup_was_successful
 from country_workspace.contrib.hope.push import PushExistingRdpConfig, push_existing_rdp_core
 from country_workspace.models import AsyncJob
+from country_workspace.contrib.dedup_engine.processing import get_dedup_status, dedup
+from country_workspace.contrib.dedup_engine.response import Status
 
 from ...state import state
 from ..models import CountryRdp
@@ -24,11 +25,48 @@ from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
 
+from admin_extra_buttons.buttons import ButtonWidget
+
+
+def enabled_deduplicate(btn: ButtonWidget) -> bool:
+    obj = btn.original
+    if obj is None or obj.status != obj.PushStatus.PENDING:
+        return False
+    if obj.dedup_run_state == obj.DedupRunState.NOT_RUN:
+        return True
+    if obj.dedup_run_state == obj.DedupRunState.APPROVED:
+        return False
+
+    return get_dedup_status(obj.program.code).status in {
+        Status.FAILURE,
+        Status.REVOKED,
+        Status.NOT_SCHEDULED,
+        Status.UNKNOWN,
+    }
+
+
+def enabled_push(btn: ButtonWidget) -> bool:
+    obj = btn.original
+    if obj is None or obj.status != obj.PushStatus.PENDING:
+        return False
+    if obj.dedup_run_state != obj.DedupRunState.SCHEDULED:
+        return False
+
+    return get_dedup_status(obj.program.code).status == Status.SUCCESS
+
+
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "push_date", "status", "dedup_state")
+    list_display = ("name", "push_date", "status")
     list_filter = (("status", ChoiceFilter),)
-    readonly_fields = fields = ("name", "push_date", "status", "hope_rdi_id", "dedup_state", "related_job")
+    readonly_fields = fields = (
+        "name",
+        "push_date",
+        "status",
+        "dedup_run_state",
+        "dedup_engine_state",
+        "related_job",
+    )
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
@@ -57,8 +95,14 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return format_html('<a href="{}" style="color: var(--link-fg)">{}</a>', url, str(job))
         return "-"
 
-    def dedup_state(self, obj: CountryRdp) -> str:
-        return "<STATUS>. Findings: <num>"
+    def dedup_engine_state(self, obj: CountryRdp) -> str:
+        if obj.dedup_run_state != obj.DedupRunState.SCHEDULED:
+            return "N/A"
+
+        res = get_dedup_status(obj.program.code)
+        if res.status == Status.SUCCESS:
+            return f"{res.status.value} with findings={res.duplicates_found}"
+        return res.status.value
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -71,6 +115,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_beneficiary_to_hope",
+        enabled=enabled_deduplicate,
+        visible=lambda btn: btn.original is not None and btn.original.status != btn.original.PushStatus.SUCCESS,
         html_attrs={"title": "Run Dedup on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -89,6 +135,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
         job.queue()
 
+        obj._meta.model.objects.filter(pk=obj.pk).update(dedup_run_state=obj.DedupRunState.SCHEDULED)
         messages.success(request, "Dedup task scheduled")
         return redirect(self._change_url(obj))
 
@@ -97,7 +144,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_beneficiary_to_hope",
-        enabled=dedup_was_successful,
+        enabled=enabled_push,
+        visible=lambda btn: btn.original is not None and btn.original.status != btn.original.PushStatus.SUCCESS,
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:

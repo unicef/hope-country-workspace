@@ -2,12 +2,15 @@ from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
 
-from django.db import transaction
+from country_workspace.contrib.dedup_engine.processing import get_dedup_status
+from django.db import transaction, IntegrityError
 
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
-from country_workspace.contrib.dedup_engine import dedup_was_successful
+from country_workspace.contrib.dedup_engine.client import make_client
+from country_workspace.contrib.dedup_engine.response import Status
+
 
 from .processor import PushProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
@@ -23,17 +26,20 @@ from .repository import (
 
 def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
     """Create an RDP and link beneficiaries."""
-    with transaction.atomic():
-        rdp = Rdp.objects.create(
-            country_office_id=config["country_office_id"],
-            program_id=config["program_id"],
-            name=config["batch_name"],
-            pushed_by_id=config["pushed_by_id"],
-            status=Rdp.PushStatus.PENDING,
-        )
-        rdp.add_beneficiaries(config["pks"], config["master_detail"])
-        AsyncJob.objects.filter(id=job_id).update(rdp=rdp)
-        return rdp
+    try:
+        with transaction.atomic():
+            rdp = Rdp.objects.create(
+                country_office_id=config["country_office_id"],
+                program_id=config["program_id"],
+                name=config["batch_name"],
+                pushed_by_id=config["pushed_by_id"],
+                status=Rdp.PushStatus.PENDING,
+            )
+            rdp.add_beneficiaries(config["pks"], config["master_detail"])
+            AsyncJob.objects.filter(id=job_id).update(rdp=rdp)
+            return rdp
+    except IntegrityError as e:
+        raise HopePushError({"errors": [f"RDP: can not create record: {e}"]}) from e
 
 
 def complete_rdp(rdp_id: int, status: Rdp.PushStatus, hope_rdi_id: str) -> Rdp:
@@ -94,8 +100,6 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
     rdp_id = job.config["rdp_id"]
-    if not dedup_was_successful(rdp_id=rdp_id):
-        raise HopePushError({"errors": ["Dedup must be successful before pushing to HOPE."]})
 
     rdp = rdp_for_push(pk=rdp_id)
     imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
@@ -107,6 +111,15 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         if processor.total["errors"]:
             complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
             raise HopePushError(processor.total)
+
+    program_code = rdp.program.code
+    if rdp.dedup_run_state == Rdp.DedupRunState.SCHEDULED and get_dedup_status(program_code).status == Status.SUCCESS:
+        client = make_client(program_code)
+        try:
+            client.approve()
+        finally:
+            client.session.close()
+        Rdp.objects.filter(pk=rdp.pk).update(dedup_run_state=Rdp.DedupRunState.APPROVED)
 
     with transaction.atomic():
         updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)

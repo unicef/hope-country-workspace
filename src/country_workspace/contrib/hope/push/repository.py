@@ -41,9 +41,10 @@ def serializer_for_program(hope_id: str) -> Serializer:
     return prog.serializer.serialize if prog.serializer else (lambda data: data)
 
 
-def rdp_pending_or_success(exclude_id: int | None) -> QuerySet[Rdp]:
-    """RDPs with PENDING/SUCCESS status, exclude the current RDP."""
-    return Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS]).exclude(pk=exclude_id)
+def rdp_pending_or_success(*, exclude_id: int | None = None) -> QuerySet[Rdp]:
+    """RDPs with PENDING/SUCCESS status; optionally exclude the current RDP."""
+    qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
+    return qs.exclude(pk=exclude_id) if exclude_id is not None else qs
 
 
 def rdp_for_push(*, pk: int) -> Rdp:

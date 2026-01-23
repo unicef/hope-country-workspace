@@ -60,10 +60,10 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         actions.bulk_update_export,
         actions.calculate_checksum,
         actions.concatenate_field,
+        actions.create_rdp,
         actions.mass_update,
         actions.regex_update,
         actions.validate_records,
-        actions.create_rdp,
         actions.name_parser_action,
     ]
     list_per_page = 20
