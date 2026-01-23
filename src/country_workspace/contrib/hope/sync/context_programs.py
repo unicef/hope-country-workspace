@@ -131,6 +131,7 @@ def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
         "code": record["code"],
         "status": record["status"],
         "sector": record["sector"],
+        "biometric_deduplication_enabled": record["biometric_deduplication_enabled"],
         "country_office": office,
         "beneficiary_group": bg,
     }
