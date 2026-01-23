@@ -65,9 +65,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "status",
         "dedup_run_state",
         "dedup_engine_state",
+        "deduplication_set_id",
         "related_job",
     )
-    search_fields = ("name",)
+    search_fields = ("name", "deduplication_set_id")
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
     ordering = ("-push_date",)
@@ -100,8 +101,11 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return "N/A"
 
         res = get_dedup_status(obj.program.code)
+        if res.deduplication_set_id and res.deduplication_set_id != obj.deduplication_set_id:
+            obj._meta.model.objects.filter(pk=obj.pk).update(deduplication_set_id=res.deduplication_set_id)
         if res.status == Status.SUCCESS:
             return f"{res.status.value} with findings={res.duplicates_found}"
+
         return res.status.value
 
     def _change_url(self, obj: CountryRdp) -> str:

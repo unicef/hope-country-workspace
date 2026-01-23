@@ -35,6 +35,7 @@ class Rdp(BaseModel):
         default=DedupRunState.NOT_RUN,
         help_text=_("Internal deduplication lifecycle."),
     )
+    deduplication_set_id = models.UUIDField(blank=True, null=True)
 
     class Meta:
         constraints = [

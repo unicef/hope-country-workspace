@@ -2,6 +2,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, NamedTuple
+from uuid import UUID
 
 from constance import config
 from requests import Session
@@ -14,6 +15,7 @@ from country_workspace.utils.auth import Auth
 class Status(NamedTuple):
     status: response.Status
     duplicates_found: int
+    deduplication_set_id: UUID | None = None
 
 
 @dataclass
@@ -71,7 +73,12 @@ class Client:
         except KeyError:
             duplicates_found = -1
 
-        return Status(status, duplicates_found)
+        try:
+            deduplication_set_id = UUID(deduplication_set["id"])
+        except (TypeError, ValueError, KeyError):
+            deduplication_set_id = None
+
+        return Status(status, duplicates_found, deduplication_set_id)
 
 
 @contextmanager
