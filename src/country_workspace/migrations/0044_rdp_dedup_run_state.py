@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0041_alter_rdp_unique_together_alter_rdp_status_and_more"),
+        ("country_workspace", "0043_alter_rdp_unique_together_alter_rdp_status_and_more"),
     ]
 
     operations = [

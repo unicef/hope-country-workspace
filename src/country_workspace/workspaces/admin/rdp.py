@@ -14,7 +14,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.push import PushExistingRdpConfig, push_existing_rdp_core
 from country_workspace.models import AsyncJob
-from country_workspace.contrib.dedup_engine.processing import get_dedup_status, dedup
+from country_workspace.contrib.dedup_engine.processing import fetch_dedup_status, dedup
 from country_workspace.contrib.dedup_engine.response import Status
 
 from ...state import state
@@ -37,7 +37,7 @@ def enabled_deduplicate(btn: ButtonWidget) -> bool:
     if obj.dedup_run_state == obj.DedupRunState.APPROVED:
         return False
 
-    return get_dedup_status(obj.program.code).status in {
+    return fetch_dedup_status(obj.program.code).status in {
         Status.FAILURE,
         Status.REVOKED,
         Status.NOT_SCHEDULED,
@@ -51,8 +51,7 @@ def enabled_push(btn: ButtonWidget) -> bool:
         return False
     if obj.dedup_run_state != obj.DedupRunState.SCHEDULED:
         return False
-
-    return get_dedup_status(obj.program.code).status == Status.SUCCESS
+    return fetch_dedup_status(obj.program.code).status == Status.SUCCESS
 
 
 @register(CountryRdp, site=workspace)
@@ -100,7 +99,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if obj.dedup_run_state != obj.DedupRunState.SCHEDULED:
             return "N/A"
 
-        res = get_dedup_status(obj.program.code)
+        res = fetch_dedup_status(obj.program.code)
+
         if res.deduplication_set_id and res.deduplication_set_id != obj.deduplication_set_id:
             obj._meta.model.objects.filter(pk=obj.pk).update(deduplication_set_id=res.deduplication_set_id)
         if res.status == Status.SUCCESS:

@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
 
-from country_workspace.contrib.dedup_engine.processing import get_dedup_status
+from country_workspace.contrib.dedup_engine.processing import fetch_dedup_status
 from django.db import transaction, IntegrityError
 
 from country_workspace.contrib.hope.exceptions import HopePushError
@@ -113,7 +113,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             raise HopePushError(processor.total)
 
     program_code = rdp.program.code
-    if rdp.dedup_run_state == Rdp.DedupRunState.SCHEDULED and get_dedup_status(program_code).status == Status.SUCCESS:
+    if rdp.dedup_run_state == Rdp.DedupRunState.SCHEDULED and fetch_dedup_status(program_code).status == Status.SUCCESS:
         client = make_client(program_code)
         try:
             client.approve()

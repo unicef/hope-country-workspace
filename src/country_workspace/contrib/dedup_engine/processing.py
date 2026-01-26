@@ -1,7 +1,9 @@
 from typing import Any, TYPE_CHECKING
+from requests.exceptions import RequestException
 
 from country_workspace.models import AsyncJob, Rdp
 from .client import Status, make_client
+from .response import Status as ResponseStatus
 
 if TYPE_CHECKING:
     from .request import Image
@@ -37,9 +39,12 @@ def dedup(job: AsyncJob) -> dict[str, Any]:
     return {"deduplication_set_group__reference_id": program_code, "images": len(images)}
 
 
-def get_dedup_status(program_code: str) -> Status:
-    """Fetch DedupEngine status for the given program code."""
-    client = make_client(program_code)
-    status = client.status()
-    client.session.close()
-    return status
+def fetch_dedup_status(program_id: str) -> "Status | None":
+    """Fetch DedupEngine status or None if the service is unreachable or errored."""
+    client = make_client(program_id)
+    try:
+        return client.status()
+    except RequestException:
+        return Status(ResponseStatus.UNKNOWN, -1, None)
+    finally:
+        client.session.close()
