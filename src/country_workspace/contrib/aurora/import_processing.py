@@ -44,7 +44,10 @@ def import_data(job: AsyncJob) -> ImportResult:
         country_office=job.program.country_office,
         imported_by=job.owner,
         source=Batch.BatchSource.AURORA,
+        status=Batch.BatchStatus.LOADING,
     )
+    job.batch = batch
+    job.save(update_fields=["batch"])
 
     total_people = 0
     total_households = 0
@@ -53,6 +56,9 @@ def import_data(job: AsyncJob) -> ImportResult:
         imported = import_result(batch, result, config)
         total_people += imported.people
         total_households += imported.households
+
+    batch.status = Batch.BatchStatus.COMPLETE
+    batch.save(update_fields=["status"])
     return ImportResult(people=total_people, households=total_households)
 
 

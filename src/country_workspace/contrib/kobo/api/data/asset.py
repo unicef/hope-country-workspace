@@ -7,7 +7,9 @@ from country_workspace.contrib.kobo.api.raw import asset as raw_asset
 
 class Asset(Raw[raw_asset.Asset]):
     def __init__(
-        self, raw: raw_asset.Asset, submissions: Callable[[int | None], Generator[Submission, None, None]]
+        self,
+        raw: raw_asset.Asset,
+        submissions: Callable[[int | None, int, Callable[[int], None] | None], Generator[Submission, None, None]],
     ) -> None:
         super().__init__(raw)
         self._submissions = submissions
@@ -20,8 +22,10 @@ class Asset(Raw[raw_asset.Asset]):
     def name(self) -> str:
         return self._raw["name"]
 
-    def submissions(self, min_id: int | None = None) -> Generator[Submission, None, None]:
-        yield from self._submissions(min_id)
+    def submissions(
+        self, min_id: int | None = None, start_page: int = 0, on_page: Callable[[int], None] | None = None
+    ) -> Generator[Submission, None, None]:
+        yield from self._submissions(min_id, start_page, on_page)
 
     def __str__(self) -> str:
         return f"Asset: {self.name}"

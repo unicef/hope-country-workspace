@@ -18,6 +18,7 @@ from ...cache.manager import cache_manager
 from ...state import state
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
+from ...models import Batch
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import Base64ImageField, get_checker_fields
@@ -127,7 +128,11 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if prg := self.get_selected_program(request):
-            return qs.filter(batch__program=prg, removed=False)
+            return qs.filter(
+                batch__program=prg,
+                removed=False,
+                batch__status=Batch.BatchStatus.COMPLETE,
+            )
         return qs.none()
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:

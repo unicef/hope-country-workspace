@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call
 
 import pytest
 from constance.test.unittest import override_config
@@ -342,9 +342,9 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         id_generator_mock,
     )
 
-    assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2)
+    assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2, completed=True)
 
-    asset_mock.submissions.assert_called_once_with(min_id=100)
+    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
 
     assert create_household_mock.call_count == 2
     assert create_individuals_mock.call_count == 2
@@ -387,6 +387,7 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
 
+    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
     sync_log.refresh_from_db()
     assert sync_log.last_id == "101"
 
@@ -416,9 +417,9 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
         id_generator_mock,
     )
 
-    assert result == ImportResult(households=0, individuals=0)
+    assert result == ImportResult(households=0, individuals=0, completed=True)
 
-    asset_mock.submissions.assert_called_once_with(min_id=100)
+    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
 
     sync_log.refresh_from_db()
     assert sync_log.last_id == initial_last_id
@@ -429,13 +430,22 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     asset_mock.uid = config["project_id"]
     job_mock = Mock(name="job")
     job_mock.config = config
+    job_mock.program = Mock()
+    job_mock.program.country_office = Mock()
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.owner = Mock()
+    job_mock.batch_id = None
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
     make_client_mock.return_value.get_asset.return_value = asset_mock
     import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
     import_asset_mock.return_value = ImportResult(
-        households=(household_counter := 1), individuals=(individual_counter := 2)
+        households=(household_counter := 1), individuals=(individual_counter := 2), completed=True
     )
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
 
@@ -443,16 +453,24 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
 
     result = import_data(job_mock)
 
-    assert result == ImportResult(households=household_counter, individuals=individual_counter)
+    assert result == ImportResult(households=household_counter, individuals=individual_counter, completed=True)
     batch_class_mock.objects.create.assert_called_once_with(
         name=BATCH_NAME,
         program=job_mock.program,
         country_office=job_mock.program.country_office,
         imported_by=job_mock.owner,
         source=batch_class_mock.BatchSource.KOBO,
+        status=batch_class_mock.BatchStatus.LOADING,
     )
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
-    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config, get_id_generator_mock.return_value)
+    import_asset_mock.assert_called_once_with(
+        batch_mock,
+        asset_mock,
+        config,
+        get_id_generator_mock.return_value,
+        start_page=batch_mock.kobo_last_page,
+        timebox_seconds=300,
+    )
     get_id_generator_mock.assert_called_once()
 
     create_validation_jobs_mock.assert_called_once()

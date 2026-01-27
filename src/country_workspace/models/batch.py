@@ -6,6 +6,10 @@ from .user import User
 
 
 class Batch(BaseModel):
+    class BatchStatus(models.TextChoices):
+        LOADING = "LOADING", "Loading"
+        COMPLETE = "COMPLETE", "Complete"
+
     class BatchSource(models.TextChoices):
         RDI = "RDI", "Rdi file"
         AURORA = "AURORA", "Aurora"
@@ -17,6 +21,13 @@ class Batch(BaseModel):
     import_date = models.DateTimeField(auto_now=True)
     imported_by = models.ForeignKey(User, on_delete=models.CASCADE)
     source = models.CharField(max_length=255, blank=True, null=True, choices=BatchSource.choices)
+    status = models.CharField(
+        max_length=32,
+        choices=BatchStatus.choices,
+        default=BatchStatus.LOADING,
+        db_index=True,
+    )
+    kobo_last_page = models.PositiveIntegerField(default=0)
 
     class Meta:
         unique_together = (("import_date", "name"),)

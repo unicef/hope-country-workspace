@@ -199,7 +199,11 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             country_office=job.program.country_office,
             imported_by=job.owner,
             source=Batch.BatchSource.RDI,
+            status=Batch.BatchStatus.LOADING,
         )
+        job.batch = batch
+        job.save(update_fields=["batch"])
+
         with batch_ctx(batch.pk):
             if config["master_detail"]:
                 result = _import_master_detail(job, batch, config)
@@ -207,6 +211,8 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
                 result = _import_people_only(job, batch, config)
 
     if not config.get("validate_after_import"):
+        batch.status = Batch.BatchStatus.COMPLETE
+        batch.save(update_fields=["status"])
         return result
 
     if job.config.get("master_detail"):
@@ -220,6 +226,8 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         program=job.program,
         queryset=queryset,
     )
+    batch.status = Batch.BatchStatus.COMPLETE
+    batch.save(update_fields=["status"])
     return result
 
 

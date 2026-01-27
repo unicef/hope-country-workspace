@@ -14,7 +14,7 @@ from .base import BaseModelAdmin
 
 @admin.register(Batch)
 class BatchAdmin(BaseModelAdmin):
-    list_display = ("name", "import_date", "imported_by", "program", "source")
+    list_display = ("name", "import_date", "imported_by", "program", "source", "status", "kobo_last_page")
     list_filter = (
         # "country_office",
         # "program",
@@ -23,7 +23,7 @@ class BatchAdmin(BaseModelAdmin):
         ("imported_by", AutoCompleteFilter),
         "source",
     )
-    readonly_fields = ("country_office", "program", "imported_by")
+    readonly_fields = ("country_office", "program", "imported_by", "status", "kobo_last_page")
     search_fields = ("name",)
     ordering = ("-import_date",)
 
@@ -44,8 +44,12 @@ class BatchAdmin(BaseModelAdmin):
     @button(change_list=False, label="All Beneficiaries")
     def beneficiaries(self, request: HttpRequest, pk: str) -> HttpResponse:
         batch: Batch = self.get_object(request, pk)
-        households = batch.household_set.all()
-        individuals = batch.individual_set.all()
+        if batch.status == Batch.BatchStatus.COMPLETE:
+            households = batch.household_set.all()
+            individuals = batch.individual_set.all()
+        else:
+            households = batch.household_set.none()
+            individuals = batch.individual_set.none()
         context = {
             "batch": batch,
             "households": households,

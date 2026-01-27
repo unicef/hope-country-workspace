@@ -10,6 +10,7 @@ from django.urls import reverse
 from country_workspace.admin.filters import IsValidFilter
 from country_workspace.admin.job import FailedFilter
 from country_workspace.state import state
+from country_workspace.models import Batch
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
@@ -77,7 +78,7 @@ class HouseholdFilter(CWLinkedAutoCompleteFilter):
     def queryset(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> "QuerySet[Beneficiary]":
         qs = super().queryset(request, queryset)
         if oid := state.program:
-            qs = qs.filter(batch__program__exact=oid)
+            qs = qs.filter(batch__program__exact=oid, batch__status=Batch.BatchStatus.COMPLETE)
         else:
             qs = qs.none()
         return qs

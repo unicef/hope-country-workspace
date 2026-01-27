@@ -188,7 +188,12 @@ def test_get_submission_list(mocker: MockerFixture, min_id: int | None, expected
     change_url_mock.assert_called_once_with(BASE_URL, query=expected_query)
     partial.assert_called_once_with(download_attachments, data_getter_mock)
     handle_paginated_response_mock.assert_called_once_with(
-        data_getter_mock, change_url_mock.return_value, get_raw_submission_list, Submission
+        data_getter_mock,
+        change_url_mock.return_value,
+        get_raw_submission_list,
+        Submission,
+        start_page=0,
+        on_page=None,
     )
 
 

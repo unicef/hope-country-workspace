@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
+from django.db import transaction
 from requests import Session
 from requests.adapters import HTTPAdapter
 
@@ -166,6 +167,7 @@ def create_household(
 class ImportResult(TypedDict):
     households: int
     individuals: int
+    completed: bool
 
 
 def _is_primary_collector(individual: Individual) -> bool:
@@ -215,6 +217,7 @@ def check_for_alien_fields(
 ) -> None:
     """Check first submission for alien fields and raise if found."""
     default_fields_applier = lambda x: x
+
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
         raw_household_fields,
@@ -250,9 +253,15 @@ def check_for_alien_fields(
         raise AlienFieldsError(household_alien, individual_alien)
 
 
-def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
-    from django.db import transaction
-
+def import_asset(  # noqa: PLR0913
+    batch: Batch,
+    asset: Asset,
+    config: Config,
+    id_generator: Callable[[], int],
+    *,
+    start_page: int = 0,
+    timebox_seconds: int | None = None,
+) -> ImportResult:
     household_counter = 0
     individual_counter = 0
     sync_log_name = get_kobo_sync_log_name(asset.uid)
@@ -264,7 +273,15 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     last_successful_id = last_id
     current_submission = None
 
-    submissions_iterator = asset.submissions(min_id=last_id)
+    start_time = timezone.now()
+    time_exhausted = False
+
+    def mark_page(page_index: int) -> None:
+        with transaction.atomic():
+            (Batch.objects.select_for_update().filter(pk=batch.pk).update(kobo_last_page=page_index))
+        batch.kobo_last_page = page_index
+
+    submissions_iterator = asset.submissions(min_id=last_id, start_page=start_page, on_page=mark_page)
 
     try:
         for submission in submissions_iterator:
@@ -279,6 +296,11 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
                 individual_counter += len(individuals)
 
             last_successful_id = submission.id
+            if timebox_seconds is not None:
+                elapsed_seconds = (timezone.now() - start_time).total_seconds()
+                if elapsed_seconds >= timebox_seconds:
+                    time_exhausted = True
+                    break
 
     except Exception as e:
         failed_id = current_submission.id if current_submission else "unknown (before first submission)"
@@ -299,7 +321,11 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
                 defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
             )
 
-    return ImportResult(households=household_counter, individuals=individual_counter)
+    return ImportResult(
+        households=household_counter,
+        individuals=individual_counter,
+        completed=not time_exhausted,
+    )
 
 
 def get_id_generator() -> Callable[[], int]:
@@ -317,13 +343,30 @@ def get_id_generator() -> Callable[[], int]:
 def import_data(job: AsyncJob) -> ImportResult:
     config: Config = job.config
 
-    batch = Batch.objects.create(
-        name=config["batch_name"],
-        program=job.program,
-        country_office=job.program.country_office,
-        imported_by=job.owner,
-        source=Batch.BatchSource.KOBO,
-    )
+    with transaction.atomic():
+        batch_id = getattr(job, "batch_id", None)
+        if batch_id:
+            batch = (
+                Batch.objects.select_for_update().select_related("program", "program__country_office").get(pk=batch_id)
+            )
+        else:
+            batch = Batch.objects.create(
+                name=config["batch_name"],
+                program=job.program,
+                country_office=job.program.country_office,
+                imported_by=job.owner,
+                source=Batch.BatchSource.KOBO,
+                status=Batch.BatchStatus.LOADING,
+            )
+            job.batch = batch
+            job.save(update_fields=["batch"])
+
+        if batch.status != Batch.BatchStatus.LOADING:
+            batch.status = Batch.BatchStatus.LOADING
+            batch.save(update_fields=["status"])
+
+        start_page = batch.kobo_last_page
+
     id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
@@ -331,11 +374,21 @@ def import_data(job: AsyncJob) -> ImportResult:
     individual_counter = 0
 
     asset = client.get_asset(config["project_id"])
-    import_result = import_asset(batch, asset, config, id_generator)
+    timebox_minutes = getattr(constance_config, "KOBO_IMPORT_TIMEBOX_MINUTES", 0) or 0
+    timebox_seconds = int(timebox_minutes * 60) if timebox_minutes > 0 else None
+
+    import_result = import_asset(
+        batch,
+        asset,
+        config,
+        id_generator,
+        start_page=start_page,
+        timebox_seconds=timebox_seconds,
+    )
     household_counter += import_result["households"]
     individual_counter += import_result["individuals"]
 
-    if config.get("validate_after_import"):
+    if import_result["completed"] and config.get("validate_after_import"):
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
@@ -343,4 +396,23 @@ def import_data(job: AsyncJob) -> ImportResult:
             queryset=batch.household_set.all().prefetch_related("members"),
         )
 
-    return ImportResult(households=household_counter, individuals=individual_counter)
+    if import_result["completed"]:
+        with transaction.atomic():
+            Batch.objects.select_for_update().filter(pk=batch.pk).update(status=Batch.BatchStatus.COMPLETE)
+    else:
+        AsyncJob.objects.create(
+            description=job.description,
+            type=job.type,
+            action=job.action,
+            file=getattr(job, "file", None),
+            program=job.program,
+            owner=job.owner,
+            config=config,
+            batch=batch,
+        ).queue()
+
+    return ImportResult(
+        households=household_counter,
+        individuals=individual_counter,
+        completed=import_result["completed"],
+    )
