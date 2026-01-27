@@ -12,10 +12,11 @@ class GenericResource[T]:
     endpoint: T
 
 
-class CreateMixin[T]:
-    def create(self: GenericResource, body: T) -> None:
+class CreateMixin[T, R]:
+    def create(self: GenericResource, body: T) -> R:
         result = self.session.post(str(self.endpoint), json=body)
         result.raise_for_status()
+        return result.json()
 
 
 class RetrieveMixin[T: TypedDict]:
@@ -31,7 +32,9 @@ class ActionMixin[T]:
         result.raise_for_status()
 
 
-class DeduplicationSetCollection(GenericResource[endpoint.DeduplicationSets], CreateMixin[request.DeduplicationSet]):
+class DeduplicationSetCollection(
+    GenericResource[endpoint.DeduplicationSets], CreateMixin[request.DeduplicationSet, response.DeduplicationSet]
+):
     pass
 
 
@@ -39,7 +42,7 @@ class DeduplicationSetItem(GenericResource[endpoint.DeduplicationSet], RetrieveM
     pass
 
 
-class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[request.Image]]):
+class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[request.Image], None]):
     pass
 
 
