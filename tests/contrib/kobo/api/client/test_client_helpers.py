@@ -106,12 +106,17 @@ def test_handle_paginated_response() -> None:
     mapped0, mapped1 = Mock(), Mock()
     item_mapper.side_effect = mapped0, mapped1
 
-    result = tuple(handle_paginated_response(data_getter, BASE_URL, collection_mapper, item_mapper))
+    on_page = Mock()
+
+    result = tuple(
+        handle_paginated_response(data_getter, BASE_URL, collection_mapper, item_mapper, start_page=2, on_page=on_page)
+    )
 
     response0.raise_for_status.assert_called_once()
     response1.raise_for_status.assert_called_once()
     collection_mapper.assert_has_calls((call(data0), call(data1)))
     item_mapper.assert_has_calls((call(item0), call(item1)))
+    on_page.assert_has_calls([call(2), call(3)])
     assert result == (mapped0, mapped1)
 
 
@@ -195,6 +200,45 @@ def test_get_submission_list(mocker: MockerFixture, min_id: int | None, expected
         start_page=0,
         on_page=None,
     )
+
+
+def test_get_submission_list_with_start_page_and_callback(mocker: MockerFixture) -> None:
+    change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
+    data_getter_mock = Mock()
+    partial = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.partial")
+    map_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.map")
+    handle_paginated_response_mock = mocker.patch(
+        "country_workspace.contrib.kobo.api.client.helpers.handle_paginated_response"
+    )
+
+    on_page = Mock()
+    start_page = 3
+
+    get_submission_list(
+        data_getter_mock,
+        BASE_URL,
+        min_id=77,
+        start_page=start_page,
+        on_page=on_page,
+    )
+
+    change_url_mock.assert_called_once_with(
+        BASE_URL,
+        query={
+            START_PARAMETER_NAME: START_PARAMETER_VALUE + start_page * LIMIT_PARAMETER_VALUE,
+            LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE,
+            "query": '{"_id": {"$gt": 77}}',
+        },
+    )
+    handle_paginated_response_mock.assert_called_once_with(
+        data_getter_mock,
+        change_url_mock.return_value,
+        get_raw_submission_list,
+        Submission,
+        start_page=start_page,
+        on_page=on_page,
+    )
+    map_mock.assert_called_once_with(partial.return_value, handle_paginated_response_mock.return_value)
 
 
 def test_get_asset(mocker: MockerFixture) -> None:
