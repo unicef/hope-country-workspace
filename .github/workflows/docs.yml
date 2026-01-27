@@ -4,9 +4,20 @@ on:
   push:
     branches:
       - develop
-      - master
-  schedule:
-    - cron: '37 23 * * 2'
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yaml'
+      - './.github/workflows/docs.yml'
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yaml'
+      - './.github/workflows/docs.yml'
 
 permissions:
   contents: read
