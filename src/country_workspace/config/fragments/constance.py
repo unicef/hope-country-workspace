@@ -71,6 +71,37 @@ CONSTANCE_CONFIG = {
         "Comma separated Kobo system specific fields to ignore during data import",
         str,
     ),
+    "KOBO_HH_FIELDS_TO_IGNORE": (
+        "audit, collect_individual_data, deviceid, end, hh_geopoint, instanceid, number_alternate, "
+        "number_primary, number_repeat, org_name_enumerator, rootuuid, uuid",
+        "Comma separated default Kobo household fields to ignore during data import",
+        str,
+    ),
+    "KOBO_IND_FIELDS_TO_IGNORE": (
+        "",
+        "Comma separated default Kobo individual fields to ignore during data import",
+        str,
+    ),
+    "AURORA_HH_FIELDS_TO_IGNORE": (
+        "",
+        "Comma separated default Aurora household fields to ignore during data import",
+        str,
+    ),
+    "AURORA_IND_FIELDS_TO_IGNORE": (
+        "",
+        "Comma separated default Aurora individual fields to ignore during data import",
+        str,
+    ),
+    "XLS_HH_FIELDS_TO_IGNORE": (
+        "",
+        "Comma separated default XLS household fields to ignore during data import",
+        str,
+    ),
+    "XLS_IND_FIELDS_TO_IGNORE": (
+        "",
+        "Comma separated default XLS individual fields to ignore during data import",
+        str,
+    ),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = {
@@ -81,10 +112,14 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "KOBO_KF_URL",
         "KOBO_CACHE_TTL",
         "KOBO_FIELDS_TO_IGNORE",
+        "KOBO_HH_FIELDS_TO_IGNORE",
+        "KOBO_IND_FIELDS_TO_IGNORE",
     ),
     "Remote System Settings - Aurora": (
         "AURORA_API_TOKEN",
         "AURORA_API_URL",
+        "AURORA_HH_FIELDS_TO_IGNORE",
+        "AURORA_IND_FIELDS_TO_IGNORE",
     ),
     "Remote System Settings - HOPE": (
         "HOPE_API_TOKEN",
@@ -93,6 +128,10 @@ CONSTANCE_CONFIG_FIELDSETS = {
     "Remote System Settings - Mailjet": (
         "MAILJET_API_KEY",
         "MAILJET_SECRET_KEY",
+    ),
+    "Data Import Settings - XLS": (
+        "XLS_HH_FIELDS_TO_IGNORE",
+        "XLS_IND_FIELDS_TO_IGNORE",
     ),
     "System Settings": (
         "CACHE_TIMEOUT",

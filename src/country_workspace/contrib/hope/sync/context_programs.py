@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any, Final, Mapping
 
+from constance import config as constance_config
 from django.db.models import Model
 from hope_flex_fields.models import DataChecker
 
@@ -117,15 +118,58 @@ def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def get_default_ignored_fields(entity_type: str) -> str | None:
+    """Collect ignored fields from all sources for given entity type (hh or ind).
+
+    Args:
+        entity_type: Either "hh" for household or "ind" for individual.
+
+    Returns:
+        Newline-separated string of field names, or None if no fields configured.
+
+    """
+    settings = [
+        f"KOBO_{entity_type.upper()}_FIELDS_TO_IGNORE",
+        f"AURORA_{entity_type.upper()}_FIELDS_TO_IGNORE",
+        f"XLS_{entity_type.upper()}_FIELDS_TO_IGNORE",
+    ]
+
+    fields: set[str] = set()
+    for setting in settings:
+        value = getattr(constance_config, setting, "")
+        if value:
+            fields.update(f.strip() for f in value.split(",") if f.strip())
+
+    return "\n".join(sorted(fields)) if fields else None
+
+
 def post_process_program(program: Program, created: bool) -> None:
+    if not created:
+        return
+
     default_checkers = get_default_checkers()
-    if created and default_checkers:
+    update_fields: list[str] = []
+
+    if default_checkers:
         program.household_checker = default_checkers.get("hh")
         program.individual_checker = (
             default_checkers.get("ind") if program.beneficiary_group.master_detail else default_checkers.get("ppl")
         )
         if program.household_checker or program.individual_checker:
-            program.save(update_fields=("household_checker", "individual_checker"))
+            update_fields.extend(["household_checker", "individual_checker"])
+
+    hh_ignored = get_default_ignored_fields("hh")
+    if hh_ignored:
+        program.hh_alien_columns_to_ignore = hh_ignored
+        update_fields.append("hh_alien_columns_to_ignore")
+
+    ind_ignored = get_default_ignored_fields("ind")
+    if ind_ignored:
+        program.ind_alien_columns_to_ignore = ind_ignored
+        update_fields.append("ind_alien_columns_to_ignore")
+
+    if update_fields:
+        program.save(update_fields=update_fields)
 
 
 def sync_programs(delta_sync: bool = False, programs_limit_to_office: Office | None = None) -> Stats:
