@@ -92,9 +92,11 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
         with transaction.atomic():
             originating_id = get_aurora_originating_id(result["pk"])
             if config.get("master_detail"):
-                created_households, created_people = create_household_and_people(batch, result, config, originating_id)
+                created_households, created_individuals = create_household_and_individuals(
+                    batch, result, config, originating_id
+                )
                 household_counter += created_households
-                people_counter += created_people
+                people_counter += created_individuals
             else:
                 create_people(batch, result, config, originating_id)
                 people_counter += 1
@@ -151,7 +153,7 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
     )
 
 
-def create_household_and_people(
+def create_household_and_individuals(
     batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str
 ) -> tuple[int, int]:
     fields = record.get("fields", {})

@@ -307,7 +307,9 @@ def test_import_result_master_detail_handles_hyphenated_keys(mocker: MockerFixtu
     update_or_create.assert_called_once()
 
 
-def test_create_household_and_people_handles_mapping_and_no_individuals(mocker: MockerFixture, config: Config) -> None:
+def test_create_household_and_individuals_handles_mapping_and_no_individuals(
+    mocker: MockerFixture, config: Config
+) -> None:
     batch = Mock()
     batch.program = Mock()
     batch.pk = 1
@@ -321,14 +323,14 @@ def test_create_household_and_people_handles_mapping_and_no_individuals(mocker: 
     )
     create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
 
-    households, people = import_processing.create_household_and_people(batch, record, config, "AUR#1")
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#1")
 
     assert (households, people) == (1, 0)
     create_household.assert_called_once()
     create_people.assert_not_called()
 
 
-def test_create_household_and_people_normalizes_mapping_to_list(mocker: MockerFixture, config: Config) -> None:
+def test_create_household_and_individuals_normalizes_mapping_to_list(mocker: MockerFixture, config: Config) -> None:
     batch = Mock()
     batch.program = Mock()
     batch.pk = 1
@@ -345,14 +347,45 @@ def test_create_household_and_people_normalizes_mapping_to_list(mocker: MockerFi
         return_value=Mock(),
     )
 
-    households, people = import_processing.create_household_and_people(batch, record, config, "AUR#3")
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#3")
 
     assert (households, people) == (1, 1)
     create_household.assert_called_once()
     create_people.assert_called_once()
 
 
-def test_create_household_and_people_logs_on_individual_error(mocker: MockerFixture, config: Config) -> None:
+def test_create_household_and_individuals_extract_group_mapping_hyphenated_keys(
+    mocker: MockerFixture, config: Config
+) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    record = {
+        "fields": {
+            "household-info": {"hh_field": "hhv"},
+            "individual-details": {"ind_field": "x"},
+        }
+    }
+
+    create_household = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_household",
+        return_value=Mock(),
+    )
+    create_people = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_people",
+        return_value=Mock(),
+    )
+
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#5")
+
+    assert (households, people) == (1, 1)
+    create_household.assert_called_once()
+    create_people.assert_called_once()
+
+
+def test_create_household_and_individuals_logs_on_individual_error(mocker: MockerFixture, config: Config) -> None:
     batch = Mock()
     batch.program = Mock()
     batch.pk = 1
@@ -375,7 +408,7 @@ def test_create_household_and_people_logs_on_individual_error(mocker: MockerFixt
     )
     logger = mocker.patch("country_workspace.contrib.aurora.import_processing.logger")
 
-    households, people = import_processing.create_household_and_people(batch, record, config, "AUR#2")
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#2")
 
     assert (households, people) == (1, 0)
     logger.error.assert_called_once()
