@@ -1,3 +1,5 @@
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -24,11 +26,12 @@ class Client:
     def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
         return self.api_root.deduplication_sets.deduplication_set(self.program_id)
 
-    def create_deduplication_set(self, settings: dict[str, Any]) -> None:
+    def create_deduplication_set(self, settings: dict[str, Any]) -> str:
         deduplication_set_collection = resource.DeduplicationSetCollection(
             self.session, self.api_root.deduplication_sets
         )
-        deduplication_set_collection.create({"reference_pk": self.program_id, "settings": settings})
+        deduplication_set = deduplication_set_collection.create({"reference_pk": self.program_id, "settings": settings})
+        return deduplication_set["id"]
 
     def create_images(self, images: list[request.Image]) -> None:
         image_collection = resource.ImagesBulkCollection(self.session, self.deduplication_set_endpoint.images_bulk)
@@ -71,10 +74,11 @@ class Client:
         return Status(status, duplicates_found)
 
 
-def make_client(program_id: str) -> Client:
-    session = Session()
-    session.mount("https://", HTTPAdapter(max_retries=3))
-    session.auth = Auth(config.DEDUP_API_TOKEN)
-    api_root = endpoint.APIRoot(config.DEDUP_API_URL)
+@contextmanager
+def make_client(program_id: str) -> Generator[Client, None, None]:
+    with Session() as session:
+        session.mount("https://", HTTPAdapter(max_retries=3))
+        session.auth = Auth(config.DEDUP_API_TOKEN)
+        api_root = endpoint.APIRoot(config.DEDUP_API_URL)
 
-    return Client(program_id, session, api_root)
+        yield Client(program_id, session, api_root)

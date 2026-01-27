@@ -13,5 +13,6 @@ class Status(StrEnum):
 
 
 class DeduplicationSet(TypedDict):
+    id: str
     status: str
     duplicates_found: int
