@@ -171,7 +171,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         default_fields_partial,
     )
 
-    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
+    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
         raw_data=preprocess_mock.return_value,
@@ -468,7 +468,6 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         asset_mock,
         config,
         get_id_generator_mock.return_value,
-        start_page=batch_mock.kobo_last_page,
         timebox_seconds=300,
     )
     get_id_generator_mock.assert_called_once()
@@ -533,7 +532,6 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
     batch_mock.BatchStatus.LOADING = "LOADING"
-    batch_mock.kobo_last_page = 7
 
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
     make_client_mock.return_value.get_asset.return_value = asset_mock
