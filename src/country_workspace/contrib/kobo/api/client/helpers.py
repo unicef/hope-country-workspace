@@ -54,25 +54,19 @@ def get_asset_url(base_url: str, asset_id: str) -> str:
     return change_url(base_url, path=path)
 
 
-def handle_paginated_response[T, U](  # noqa: PLR0913
+def handle_paginated_response[T, U](
     data_getter: DataGetter,
     url: str,
     collection_mapper: Callable[[raw_common.ListResponse], list[T]],
     item_mapper: Callable[[T], U],
-    *,
-    start_page: int = 0,
-    on_page: Callable[[int], None] | None = None,
 ) -> Generator[U, None, None]:
-    page_index = start_page
-    while url:
-        if on_page:
-            on_page(page_index)
-        response = data_getter(url)
+    next_url: str | None = url
+    while next_url:
+        response = data_getter(next_url)
         response.raise_for_status()
-        data: raw_common.ListResponse = response.json()
+        data = cast("raw_common.ListResponse", response.json())
         yield from map(item_mapper, collection_mapper(data))
-        url = data["next"]
-        page_index += 1
+        next_url = cast("str | None", data["next"])
 
 
 def get_raw_asset_list(data: raw_common.ListResponse) -> list[raw_asset_list.Asset]:
@@ -87,17 +81,11 @@ def get_asset_list(data_getter: DataGetter, url: str) -> Generator[Asset, None, 
     return handle_paginated_response(data_getter, url, get_raw_asset_list, partial(get_asset, data_getter))
 
 
-def get_submission_list(
-    data_getter: DataGetter,
-    url: str,
-    min_id: int | None = None,
-    start_page: int = 0,
-    on_page: Callable[[int], None] | None = None,
-) -> Iterable[Submission]:
+def get_submission_list(data_getter: DataGetter, url: str, min_id: int | None = None) -> Iterable[Submission]:
     import json
 
-    query_params = {
-        START_PARAMETER_NAME: START_PARAMETER_VALUE + start_page * LIMIT_PARAMETER_VALUE,
+    query_params: dict[str, Any] = {
+        START_PARAMETER_NAME: START_PARAMETER_VALUE,
         LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE,
     }
 
@@ -105,21 +93,12 @@ def get_submission_list(
         query_params["query"] = json.dumps({"_id": {"$gt": min_id}})
 
     url_with_params = change_url(url, query=query_params)
-    return map(
-        partial(download_attachments, data_getter),
-        handle_paginated_response(
-            data_getter,
-            url_with_params,
-            get_raw_submission_list,
-            Submission,
-            start_page=start_page,
-            on_page=on_page,
-        ),
-    )
+    downloader = partial(download_attachments, cast("Callable[[str], Any]", data_getter))
+    return map(downloader, handle_paginated_response(data_getter, url_with_params, get_raw_submission_list, Submission))
 
 
 def get_asset(data_getter: DataGetter, raw: raw_asset_list.Asset) -> Asset:
     response = data_getter(raw["url"])
     response.raise_for_status()
-    raw_asset_data: raw_asset.Asset = response.json()
+    raw_asset_data = cast("raw_asset.Asset", response.json())
     return Asset(raw_asset_data, partial(get_submission_list, data_getter, raw_asset_data["data"]))

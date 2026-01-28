@@ -89,8 +89,10 @@ def preprocess(
     mapping_importer: Callable[[Raw], Raw],
     default_fields_applier: Callable[[Raw], Raw],
 ) -> Raw:
-    clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
-    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)
+    clean: Callable[[Raw], Raw] = cast(
+        "Callable[[Raw], Raw]", partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
+    )
+    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)  # type: ignore[arg-type]
     return processor(raw)
 
 
@@ -105,18 +107,23 @@ def create_individuals(
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual_fields = preprocess(
-            raw_individual,
-            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        mapping_importer_callable = cast(
+            "Callable[[Raw], Raw]",
             partial(
                 batch.program.apply_mapping_importer,
                 Individual,
                 mapping_id=individual_mapping_id,
                 transformer_id=individual_transformer_id,
             ),
-            partial(batch.program.apply_default_fields, Individual),
         )
-        fullname = get_fullname_key(individual_fields)
+        default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Individual))
+        individual_fields = preprocess(
+            raw_individual,
+            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            mapping_importer_callable,
+            default_fields_callable,
+        )
+        fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         individuals.append(
             Individual(
                 batch=batch,
@@ -141,16 +148,21 @@ def create_household(
     household_mapping_id = config.get("household_mapping_id")
     household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(
-        raw_household_fields,
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    mapping_importer_callable = cast(
+        "Callable[[Raw], Raw]",
         partial(
             batch.program.apply_mapping_importer,
             Household,
             mapping_id=household_mapping_id,
             transformer_id=household_transformer_id,
         ),
-        partial(batch.program.apply_default_fields, Household),
+    )
+    default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Household))
+    household_fields = preprocess(
+        raw_household_fields,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        mapping_importer_callable,
+        default_fields_callable,
     )
     household_fields["household_id"] = id_generator()
     return cast(
@@ -184,13 +196,13 @@ def _is_head_of_household(individual: Individual) -> bool:
 
 def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
-        household.flex_fields["primary_collector"] = primary_collector.id
+        household.flex_fields["primary_collector"] = getattr(primary_collector, "id", None)
 
     if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
-        household.flex_fields["alternate_collector"] = alternate_collector.id
+        household.flex_fields["alternate_collector"] = getattr(alternate_collector, "id", None)
 
     if head_of_household := next(filter(_is_head_of_household, individuals), None):
-        household.flex_fields["head_of_household"] = head_of_household.id
+        household.flex_fields["head_of_household"] = getattr(head_of_household, "id", None)
 
     household.save(update_fields=["flex_fields"])
 
@@ -199,7 +211,7 @@ def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
     """Get set of allowed field names from a DataChecker."""
     if not checker:
         return set()
-    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}
+    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}  # type: ignore[misc]
 
 
 def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
@@ -219,10 +231,10 @@ def check_for_alien_fields(
     default_fields_applier = lambda x: x
 
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(
+    household_fields = preprocess(  # type: ignore[arg-type]
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial(mapping_importer, Household),
+        mapping_importer,
         default_fields_applier,
     )
 
@@ -236,10 +248,10 @@ def check_for_alien_fields(
     individual_alien: set[str] = set()
     if individuals_data := submission.get(config["individual_records_field"]):
         first_individual = individuals_data[0]
-        individual_fields = preprocess(
+        individual_fields = preprocess(  # type: ignore[arg-type]
             first_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            partial(mapping_importer, Individual),
+            mapping_importer,
             default_fields_applier,
         )
         individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
@@ -253,13 +265,12 @@ def check_for_alien_fields(
         raise AlienFieldsError(household_alien, individual_alien)
 
 
-def import_asset(  # noqa: PLR0913
+def import_asset(
     batch: Batch,
     asset: Asset,
     config: Config,
     id_generator: Callable[[], int],
     *,
-    start_page: int = 0,
     timebox_seconds: int | None = None,
 ) -> ImportResult:
     household_counter = 0
@@ -276,17 +287,12 @@ def import_asset(  # noqa: PLR0913
     start_time = timezone.now()
     time_exhausted = False
 
-    def mark_page(page_index: int) -> None:
-        with transaction.atomic():
-            (Batch.objects.select_for_update().filter(pk=batch.pk).update(kobo_last_page=page_index))
-        batch.kobo_last_page = page_index
-
-    submissions_iterator = asset.submissions(min_id=last_id, start_page=start_page, on_page=mark_page)
+    submissions_iterator = asset.submissions(min_id=last_id)
 
     try:
         for submission in submissions_iterator:
             current_submission = submission
-            originating_id = get_kobo_originating_id(asset.uid, submission.id)
+            originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
                 individuals = create_individuals(batch, household, submission, config, originating_id)
@@ -365,8 +371,6 @@ def import_data(job: AsyncJob) -> ImportResult:
             batch.status = Batch.BatchStatus.LOADING
             batch.save(update_fields=["status"])
 
-        start_page = batch.kobo_last_page
-
     id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
@@ -382,7 +386,6 @@ def import_data(job: AsyncJob) -> ImportResult:
         asset,
         config,
         id_generator,
-        start_page=start_page,
         timebox_seconds=timebox_seconds,
     )
     household_counter += import_result["households"]
@@ -393,7 +396,7 @@ def import_data(job: AsyncJob) -> ImportResult:
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=job.program,
-            queryset=batch.household_set.all().prefetch_related("members"),
+            queryset=batch.household_set.all().prefetch_related("members"),  # type: ignore[attr-defined]
         )
 
     if import_result["completed"]:

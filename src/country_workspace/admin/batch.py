@@ -14,7 +14,7 @@ from .base import BaseModelAdmin
 
 @admin.register(Batch)
 class BatchAdmin(BaseModelAdmin):
-    list_display = ("name", "import_date", "imported_by", "program", "source", "status", "kobo_last_page")
+    list_display = ("name", "import_date", "imported_by", "program", "source", "status")
     list_filter = (
         # "country_office",
         # "program",
@@ -23,7 +23,7 @@ class BatchAdmin(BaseModelAdmin):
         ("imported_by", AutoCompleteFilter),
         "source",
     )
-    readonly_fields = ("country_office", "program", "imported_by", "status", "kobo_last_page")
+    readonly_fields = ("country_office", "program", "imported_by", "status")
     search_fields = ("name",)
     ordering = ("-import_date",)
 

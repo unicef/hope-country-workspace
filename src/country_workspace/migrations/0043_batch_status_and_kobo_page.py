@@ -16,11 +16,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="batch",
-            name="kobo_last_page",
-            field=models.PositiveIntegerField(default=0),
-        ),
-        migrations.AddField(
-            model_name="batch",
             name="status",
             field=models.CharField(
                 choices=[("LOADING", "Loading"), ("COMPLETE", "Complete")],

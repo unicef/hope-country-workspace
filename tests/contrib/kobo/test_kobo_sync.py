@@ -344,7 +344,7 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2, completed=True)
 
-    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
+    asset_mock.submissions.assert_called_once_with(min_id=100)
 
     assert create_household_mock.call_count == 2
     assert create_individuals_mock.call_count == 2
@@ -387,7 +387,7 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
 
-    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
+    asset_mock.submissions.assert_called_once_with(min_id=100)
     sync_log.refresh_from_db()
     assert sync_log.last_id == "101"
 
@@ -419,7 +419,7 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
 
     assert result == ImportResult(households=0, individuals=0, completed=True)
 
-    asset_mock.submissions.assert_called_once_with(min_id=100, start_page=batch.kobo_last_page, on_page=ANY)
+    asset_mock.submissions.assert_called_once_with(min_id=100)
 
     sync_log.refresh_from_db()
     assert sync_log.last_id == initial_last_id
@@ -477,7 +477,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
 
 
 @pytest.mark.django_db
-def test_import_asset_timeboxed_updates_page_and_returns_incomplete(mocker: MockerFixture, config: Config) -> None:
+def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(mocker: MockerFixture, config: Config) -> None:
     batch = BatchFactory()
     program_ct = ContentType.objects.get_for_model(Program)
     SyncLogFactory(
@@ -492,14 +492,9 @@ def test_import_asset_timeboxed_updates_page_and_returns_incomplete(mocker: Mock
     submission_2 = Mock(spec=dict)
     submission_2.id = 2
 
-    def submission_gen(min_id: int, start_page: int, on_page) -> None:  # pragma: no cover - generator body exercised
-        on_page(5)
-        yield submission_1
-        yield submission_2
-
     asset_mock = Mock()
     asset_mock.uid = "test_asset_uid"
-    asset_mock.submissions = submission_gen
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
 
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
@@ -511,15 +506,12 @@ def test_import_asset_timeboxed_updates_page_and_returns_incomplete(mocker: Mock
         asset_mock,
         config,
         id_generator_mock := mocker.Mock(name="id_generator"),
-        start_page=2,
         timebox_seconds=0,
     )
 
     assert res == ImportResult(households=1, individuals=1, completed=False)
-    assert batch.kobo_last_page == 5
     create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, ANY)
     create_individuals_mock.assert_called_once()
-    # watermark should reflect last successful submission id (1)
     assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"
 
 
@@ -565,7 +557,6 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
         asset_mock,
         config,
         get_id_generator_mock.return_value,
-        start_page=batch_mock.kobo_last_page,
         timebox_seconds=300,
     )
     create_validation_jobs_mock.assert_not_called()

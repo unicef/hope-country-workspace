@@ -27,7 +27,6 @@ class Batch(BaseModel):
         default=BatchStatus.LOADING,
         db_index=True,
     )
-    kobo_last_page = models.PositiveIntegerField(default=0)
 
     class Meta:
         unique_together = (("import_date", "name"),)
