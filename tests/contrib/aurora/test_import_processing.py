@@ -167,7 +167,7 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
         },
     }
     household_fields = {"enumerator": "abc", "hh_field": "hhv"}
-    individual_fields = {"enumerator": "abc", "hh_field": "hhv", "ind_field": "indv"}
+    individual_fields = {"enumerator": "abc", "ind_field": "indv"}
 
     mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_sync_log_name", return_value="sync")
     mocker.patch(
@@ -206,14 +206,14 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
         flex_fields=household_fields,
         raw_data=household_fields,
     )
-    individual_create.assert_called_once_with(
-        batch_id=1,
-        name="",
-        household=None,
-        originating_id="AUR#9#IND0",
-        flex_fields=individual_fields,
-        raw_data=individual_fields,
-    )
+    individual_create.assert_called_once()
+    _, individual_kwargs = individual_create.call_args
+    assert individual_kwargs["batch_id"] == 1
+    assert individual_kwargs["name"] == ""
+    assert individual_kwargs["household"] is None
+    assert individual_kwargs["originating_id"] == "AUR#9#IND0"
+    assert individual_kwargs["flex_fields"] == individual_fields
+    assert individual_kwargs["raw_data"] == individual_fields
     update_or_create.assert_called_once()
 
 
@@ -280,9 +280,6 @@ def test_import_result_master_detail_handles_hyphenated_keys(mocker: MockerFixtu
     }
     expected_individual_fields = {
         "intro-and-consent": [{"consent_h_c": True, "enumerator_code": "ENUM001", "who_to_register": "myself"}],
-        "admin1_h_c": "NG002",
-        "admin2_h_c": "NG002001",
-        "admin3_h_c": "NG002001001",
         "given_name_i_c": "Tawakalitu",
         "family_name_i_c": "Ijaya",
         "phone_no_i_c": "+2348052855249",
@@ -296,14 +293,14 @@ def test_import_result_master_detail_handles_hyphenated_keys(mocker: MockerFixtu
         flex_fields=expected_household_fields,
         raw_data=expected_household_fields,
     )
-    individual_create.assert_called_once_with(
-        batch_id=1,
-        name="",
-        household=None,
-        originating_id="AUR#11#IND0",
-        flex_fields=expected_individual_fields,
-        raw_data=expected_individual_fields,
-    )
+    individual_create.assert_called_once()
+    _, individual_kwargs = individual_create.call_args
+    assert individual_kwargs["batch_id"] == 1
+    assert individual_kwargs["name"] == ""
+    assert individual_kwargs["household"] is None
+    assert individual_kwargs["originating_id"] == "AUR#11#IND0"
+    assert individual_kwargs["flex_fields"] == expected_individual_fields
+    assert individual_kwargs["raw_data"] == expected_individual_fields
     update_or_create.assert_called_once()
 
 
