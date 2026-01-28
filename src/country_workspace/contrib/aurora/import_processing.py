@@ -193,7 +193,7 @@ def create_household_and_individuals(
     people_counter = 0
     for idx, individual_raw in enumerate(individuals_data):
         try:
-            individual_fields = {**shared_fields, **household_raw, **individual_raw}
+            individual_fields = {**shared_fields, **individual_raw}
             individual = create_people(batch, individual_fields, config, f"{originating_id}#IND{idx}")
             individual.household = household
             individual.save(update_fields=["household"])
