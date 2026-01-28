@@ -160,12 +160,6 @@ def create_household_and_individuals(
     household_candidates = ("household", "household-info", "household_info")
     individual_candidates = ("individuals", "individual-details", "individual_details")
 
-    def _ensure_list(value: list[Mapping[str, Any]] | Mapping[str, Any] | None) -> list[Mapping[str, Any]]:
-        value = value or []
-        if isinstance(value, Mapping):
-            return [value]
-        return value
-
     def _extract_group(keys: tuple[str, ...]) -> tuple[list[Mapping[str, Any]] | None, str | None]:
         for key in keys:
             if not fields.get(key):
@@ -181,8 +175,8 @@ def create_household_and_individuals(
     households_data, household_key = _extract_group(household_candidates)
     individuals_data, individual_key = _extract_group(individual_candidates)
 
-    households_data = _ensure_list(households_data)
-    individuals_data = _ensure_list(individuals_data)
+    households_data = households_data or []
+    individuals_data = individuals_data or []
 
     used_keys = {household_key, individual_key}
     shared_fields = {k: v for k, v in fields.items() if k not in used_keys and k is not None}

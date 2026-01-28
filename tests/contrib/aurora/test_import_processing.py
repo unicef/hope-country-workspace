@@ -441,6 +441,48 @@ def test_create_household_and_individuals_logs_on_individual_error(mocker: Mocke
     logger.error.assert_called_once()
 
 
+def test_create_household_and_individuals_no_groups_uses_shared_fields(mocker: MockerFixture, config: Config) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    record = {"fields": {"shared_field": "shared_value"}}
+
+    create_household = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_household",
+        return_value=Mock(),
+    )
+    create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#7")
+
+    assert (households, people) == (1, 0)
+    create_household.assert_called_once_with(batch, {"shared_field": "shared_value"}, config, "AUR#7#HH0")
+    create_people.assert_not_called()
+
+
+def test_create_household_and_individuals_skips_falsy_groups(mocker: MockerFixture, config: Config) -> None:
+    batch = Mock()
+    batch.program = Mock()
+    batch.pk = 1
+
+    config = {**config, "master_detail": True}
+    record = {"fields": {"household": None, "individuals": [], "shared_field": "x"}}
+
+    create_household = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_household",
+        return_value=Mock(),
+    )
+    create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+
+    households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#8")
+
+    assert (households, people) == (1, 0)
+    create_household.assert_called_once_with(batch, {"shared_field": "x"}, config, "AUR#8#HH0")
+    create_people.assert_not_called()
+
+
 def test_import_result_wraps_exception(mocker: MockerFixture, config: Config) -> None:
     batch = Mock()
     batch.program = Mock()
