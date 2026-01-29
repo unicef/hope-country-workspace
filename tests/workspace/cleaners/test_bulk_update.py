@@ -88,7 +88,7 @@ def worksheet_mock():
 
 @pytest.fixture
 def test_data(households, individuals, program) -> dict[str, Any]:
-    is_master_detail = program.beneficiary_group.master_detail
+    is_master_detail = program.is_master_detail
     entities = households if is_master_detail else individuals
     import_function = import_household_updates if is_master_detail else import_individual_updates
 

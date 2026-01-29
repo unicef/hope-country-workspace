@@ -137,6 +137,10 @@ class Program(BaseModel):
 
         return Individual.objects.filter(batch__program=self)
 
+    @property
+    def is_master_detail(self) -> bool:
+        return self.beneficiary_group is None or self.beneficiary_group.master_detail
+
     @staticmethod
     def _scope_for(m: type[Validable] | Validable) -> BeneficiaryScope:
         """Return 'household' or 'individual' for a given model class or instance."""

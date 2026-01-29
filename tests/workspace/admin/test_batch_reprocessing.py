@@ -8,6 +8,7 @@ from django.urls import reverse
 from country_workspace.models import User
 from country_workspace.models import AsyncJob, Batch
 from country_workspace.workspaces.admin import CountryBatchAdmin
+from country_workspace.workspaces.admin.batch import BatchReprocessForm
 from country_workspace.workspaces.admin.batch_reprocessing import reprocess_batch
 from country_workspace.workspaces.models import CountryBatch
 from testutils.factories.program import BeneficiaryGroupFactory
@@ -137,11 +138,7 @@ class TestReprocessBatchTask:
             assert result["batch_id"] == batch_with_households.pk
             assert result["batch_name"] == batch_with_households.name
             households_count = result.get("households", 0)
-            is_master_detail = (
-                batch_with_households.program
-                and batch_with_households.program.beneficiary_group
-                and batch_with_households.program.beneficiary_group.master_detail
-            )
+            is_master_detail = batch_with_households.program.is_master_detail
             if is_master_detail:
                 assert households_count > 0
             expected_calls = int(households_count > 0 and is_master_detail) + int(result["individuals"] > 0)
@@ -225,11 +222,7 @@ class TestReprocessBatchTask:
         with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
             result = reprocess_batch(job)
 
-            is_master_detail = (
-                batch_with_households.program
-                and batch_with_households.program.beneficiary_group
-                and batch_with_households.program.beneficiary_group.master_detail
-            )
+            is_master_detail = batch_with_households.program.is_master_detail
             if is_master_detail:
                 assert result.get("households", 0) > 0
             assert result["individuals"] > 0
@@ -340,6 +333,24 @@ class TestBatchReprocessingButton:
             res = app.get(url, expect_errors=True)
             # Should get 404 or similar error
             assert res.status_code in [404, 500]
+
+
+def test_reprocess_batch_form_hides_household_fields_for_people_program(household_checker, individual_checker) -> None:
+    from testutils.factories import CountryProgramFactory
+
+    beneficiary_group = BeneficiaryGroupFactory(master_detail=False)
+    program = CountryProgramFactory(
+        beneficiary_group=beneficiary_group,
+        household_checker=household_checker,
+        individual_checker=individual_checker,
+    )
+
+    form = BatchReprocessForm(program=program)
+
+    assert "household_mapping" not in form.fields
+    assert "household_transformer" not in form.fields
+    assert "individual_mapping" in form.fields
+    assert "individual_transformer" in form.fields
 
 
 class TestBatchReprocessingIntegration:
