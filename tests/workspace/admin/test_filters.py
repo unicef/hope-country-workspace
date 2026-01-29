@@ -4,6 +4,7 @@ import pytest
 from adminfilters.mixin import AdminFiltersMixin
 from django.http import HttpRequest
 
+from country_workspace.models import Batch
 from country_workspace.workspaces.admin.filters import (
     CWLinkedAutoCompleteFilter,
     HouseholdFilter,
@@ -193,7 +194,10 @@ def test_household_filter_queryset_with_program(mock_state, household_filter, mo
     with patch.object(CWLinkedAutoCompleteFilter, "queryset", return_value=mock_queryset):
         result = household_filter.queryset(mock_request, mock_queryset)
 
-    mock_queryset.filter.assert_called_once_with(batch__program__exact="test_program")
+    mock_queryset.filter.assert_called_once_with(
+        batch__program__exact="test_program",
+        batch__status=Batch.BatchStatus.COMPLETE,
+    )
     assert result == filtered_queryset
 
 
