@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Final, Mapping
+from typing import Any, Final, Mapping, Literal
 
 from constance import config as constance_config
 from django.db.models import Model
@@ -118,7 +118,7 @@ def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def get_default_ignored_fields(entity_type: str) -> str | None:
+def get_default_ignored_fields(entity_type: Literal["ind", "hh"]) -> str | None:
     """Collect ignored fields from all sources for given entity type (hh or ind).
 
     Args:
