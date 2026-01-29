@@ -53,8 +53,8 @@ def test_base_import_form_pops_individual_mapping_when_no_individual_checker(hou
 
     form = BaseImportForm(program=program)
 
-    assert "household_mapping" in form.fields
-    assert "household_transformer" in form.fields
+    assert "household_mapping" not in form.fields
+    assert "household_transformer" not in form.fields
     assert "individual_mapping" not in form.fields
     assert "individual_transformer" in form.fields
 
