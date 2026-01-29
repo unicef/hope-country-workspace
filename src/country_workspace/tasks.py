@@ -8,7 +8,7 @@ from django.db import transaction
 from redis_lock import Lock
 
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Individual, Household
+from country_workspace.models import AsyncJob, Batch, Individual, Household, Rdp, Rdi
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,9 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 
 def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     program_id = job.program.pk
-    deleted_counts = {"individuals": 0, "households": 0}
+    current_job_id = job.pk
+    deleted_counts = {"individuals": 0, "households": 0, "batches": 0, "rdps": 0, "rdis": 0, "jobs": 0}
+
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
     if not batch_ids:
         return None
@@ -66,9 +68,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     while True:
         with transaction.atomic():
             individual_ids = list(
-                Individual.objects.filter(batch_id__in=batch_ids, removed=False).values_list("id", flat=True)[
-                    :batch_size
-                ]
+                Individual.objects.filter(batch_id__in=batch_ids).values_list("id", flat=True)[:batch_size]
             )
 
             if not individual_ids:
@@ -80,9 +80,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     while True:
         with transaction.atomic():
             household_ids = list(
-                Household.objects.filter(batch_id__in=batch_ids, removed=False).values_list("id", flat=True)[
-                    :batch_size
-                ]
+                Household.objects.filter(batch_id__in=batch_ids).values_list("id", flat=True)[:batch_size]
             )
 
             if not household_ids:
@@ -90,5 +88,21 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
 
             Household.objects.filter(id__in=household_ids).delete()
             deleted_counts["households"] += len(household_ids)
+
+    with transaction.atomic():
+        batch_count, _ = Batch.objects.filter(id__in=batch_ids).delete()
+        deleted_counts["batches"] = batch_count
+
+    with transaction.atomic():
+        rdp_count, _ = Rdp.objects.filter(program_id=program_id).delete()
+        deleted_counts["rdps"] = rdp_count
+
+    with transaction.atomic():
+        rdi_count, _ = Rdi.objects.filter(program_id=program_id).delete()
+        deleted_counts["rdis"] = rdi_count
+
+    with transaction.atomic():
+        job_count, _ = AsyncJob.objects.filter(program_id=program_id).exclude(id=current_job_id).delete()
+        deleted_counts["jobs"] = job_count
 
     return deleted_counts
