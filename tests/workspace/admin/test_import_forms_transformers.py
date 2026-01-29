@@ -40,3 +40,29 @@ def test_base_import_form_hides_household_fields_for_people_program(household_ch
     assert "household_transformer" not in form.fields
     assert "individual_mapping" in form.fields
     assert "individual_transformer" in form.fields
+
+
+@pytest.mark.django_db
+def test_base_import_form_pops_individual_mapping_when_no_individual_checker(household_checker) -> None:
+    """When program has no individual_checker, individual_mapping is removed; household fields remain."""
+    program = CountryProgramFactory(
+        household_checker=household_checker,
+        individual_checker=None,
+    )
+    TransformerFactory(office=program.country_office)
+
+    form = BaseImportForm(program=program)
+
+    assert "household_mapping" in form.fields
+    assert "household_transformer" in form.fields
+    assert "individual_mapping" not in form.fields
+    assert "individual_transformer" in form.fields
+
+
+@pytest.mark.django_db
+def test_base_import_form_pops_both_transformers_when_no_program() -> None:
+    """When no program is passed, both transformer fields are removed."""
+    form = BaseImportForm(program=None)
+
+    assert "household_transformer" not in form.fields
+    assert "individual_transformer" not in form.fields

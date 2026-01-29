@@ -353,6 +353,46 @@ def test_reprocess_batch_form_hides_household_fields_for_people_program(househol
     assert "individual_transformer" in form.fields
 
 
+def test_reprocess_batch_form_pops_household_mapping_when_master_detail_and_no_household_checker(
+    individual_checker,
+) -> None:
+    """When master_detail is True but household_checker is missing, household_mapping is removed."""
+    from testutils.factories import CountryProgramFactory
+
+    beneficiary_group = BeneficiaryGroupFactory(master_detail=True)
+    program = CountryProgramFactory(
+        beneficiary_group=beneficiary_group,
+        household_checker=None,
+        individual_checker=individual_checker,
+    )
+
+    form = BatchReprocessForm(program=program)
+
+    assert "household_mapping" not in form.fields
+    assert "household_transformer" in form.fields
+    assert "individual_mapping" in form.fields
+    assert "individual_transformer" in form.fields
+
+
+def test_reprocess_batch_form_pops_individual_mapping_when_no_individual_checker(household_checker) -> None:
+    """When individual_checker is missing, individual_mapping is removed."""
+    from testutils.factories import CountryProgramFactory
+
+    beneficiary_group = BeneficiaryGroupFactory(master_detail=True)
+    program = CountryProgramFactory(
+        beneficiary_group=beneficiary_group,
+        household_checker=household_checker,
+        individual_checker=None,
+    )
+
+    form = BatchReprocessForm(program=program)
+
+    assert "household_mapping" in form.fields
+    assert "household_transformer" in form.fields
+    assert "individual_mapping" not in form.fields
+    assert "individual_transformer" in form.fields
+
+
 class TestBatchReprocessingIntegration:
     def test_full_reprocessing_workflow(
         self,
