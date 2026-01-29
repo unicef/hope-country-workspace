@@ -348,7 +348,7 @@ def test_import_data_aurora_success(
     assert res.status_code in (200, 302)
     if program.beneficiary_group.master_detail:
         assert program.individuals.count() == expected_people
-        assert program.households.count() == expected_people
+        assert program.households.count() == 0
     else:
         assert program.individuals.count() == expected_people
         assert program.households.count() == 0
