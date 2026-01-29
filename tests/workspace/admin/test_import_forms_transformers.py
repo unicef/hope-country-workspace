@@ -14,11 +14,13 @@ def test_base_import_form_includes_transformers_when_program_provided() -> None:
 
     form = BaseImportForm(program=program)
 
-    assert "household_transformer" not in form.fields
+    assert "household_transformer" in form.fields
     assert "individual_transformer" in form.fields
 
+    ht_qs = form.fields["household_transformer"].queryset
     it_qs = form.fields["individual_transformer"].queryset
 
+    assert list(ht_qs.order_by("id")) == [t1, t2]
     assert list(it_qs.order_by("id")) == [t1, t2]
 
 
