@@ -563,6 +563,56 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
     batch_class_mock.objects.select_for_update.return_value.filter.assert_not_called()
 
 
+def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Config) -> None:
+    """When job.batch_id is set, import_data uses select_for_update().get() and does not create a new batch."""
+    asset_mock = Mock(name="asset")
+    asset_mock.uid = config["project_id"]
+    job_mock = Mock(name="job")
+    job_mock.config = config
+    job_mock.program = Mock()
+    job_mock.program.country_office = Mock()
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.owner = Mock()
+    job_mock.batch_id = 42
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
+    job_mock.save = Mock()
+
+    batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
+    resumed_batch = Mock()
+    resumed_batch.pk = 42
+    resumed_batch.status = batch_class_mock.BatchStatus.LOADING
+    qs = batch_class_mock.objects.select_for_update.return_value
+    qs.select_related.return_value.get.return_value = resumed_batch
+
+    make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
+    make_client_mock.return_value.get_asset.return_value = asset_mock
+
+    import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
+    import_asset_mock.return_value = ImportResult(households=2, individuals=3, completed=True)
+
+    get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
+    create_validation_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+
+    result = import_data(job_mock)
+
+    assert result == ImportResult(households=2, individuals=3, completed=True)
+    batch_class_mock.objects.create.assert_not_called()
+    batch_class_mock.objects.select_for_update.assert_called_once()
+    qs.select_related.assert_called_once_with("program", "program__country_office")
+    qs.select_related.return_value.get.assert_called_once_with(pk=42)
+    import_asset_mock.assert_called_once_with(
+        resumed_batch,
+        asset_mock,
+        config,
+        get_id_generator_mock.return_value,
+        timebox_seconds=300,
+    )
+    create_validation_mock.assert_called_once()
+
+
 def test_get_fullname_key_key_exists() -> None:
     assert get_fullname_key((key := "full_name",)) == key
 
