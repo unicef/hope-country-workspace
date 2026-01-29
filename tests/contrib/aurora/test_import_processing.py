@@ -11,7 +11,7 @@ from country_workspace.contrib.aurora.import_processing import (
     ImportResult,
     import_data,
     import_result,
-    create_people,
+    create_individual,
     flatten_top2_prefixed,
     check_alien_fields,
 )
@@ -108,7 +108,7 @@ def test_import_result_skips_when_id_not_greater_than_last(mocker: MockerFixture
     sync_log.last_id = "10"
     filt.return_value.first.return_value = sync_log
 
-    create_people_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+    create_people_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
     update_or_create = mocker.patch(
         "country_workspace.contrib.aurora.import_processing.SyncLog.objects.update_or_create"
     )
@@ -139,7 +139,7 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
     atomic.return_value.__enter__.return_value = None
     atomic.return_value.__exit__.return_value = None
 
-    create_people_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+    create_people_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
     update_or_create = mocker.patch(
         "country_workspace.contrib.aurora.import_processing.SyncLog.objects.update_or_create"
     )
@@ -319,13 +319,13 @@ def test_create_household_and_individuals_handles_mapping_and_no_individuals(
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+    create_individual = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
 
     households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#1")
 
     assert (households, people) == (1, 0)
     create_household.assert_called_once()
-    create_people.assert_not_called()
+    create_individual.assert_not_called()
 
 
 def test_create_household_and_individuals_normalizes_mapping_to_list(mocker: MockerFixture, config: Config) -> None:
@@ -340,8 +340,8 @@ def test_create_household_and_individuals_normalizes_mapping_to_list(mocker: Moc
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.create_people",
+    create_individual = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_individual",
         return_value=Mock(),
     )
 
@@ -349,7 +349,7 @@ def test_create_household_and_individuals_normalizes_mapping_to_list(mocker: Moc
 
     assert (households, people) == (1, 1)
     create_household.assert_called_once()
-    create_people.assert_called_once()
+    create_individual.assert_called_once()
 
 
 def test_create_household_and_individuals_extract_group_mapping_hyphenated_keys(
@@ -371,8 +371,8 @@ def test_create_household_and_individuals_extract_group_mapping_hyphenated_keys(
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.create_people",
+    create_individual = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_individual",
         return_value=Mock(),
     )
 
@@ -380,7 +380,7 @@ def test_create_household_and_individuals_extract_group_mapping_hyphenated_keys(
 
     assert (households, people) == (1, 1)
     create_household.assert_called_once()
-    create_people.assert_called_once()
+    create_individual.assert_called_once()
 
 
 def test_create_household_and_individuals_extract_group_mapping_non_list(mocker: MockerFixture, config: Config) -> None:
@@ -400,8 +400,8 @@ def test_create_household_and_individuals_extract_group_mapping_non_list(mocker:
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.create_people",
+    create_individual = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.create_individual",
         return_value=Mock(),
     )
 
@@ -409,7 +409,7 @@ def test_create_household_and_individuals_extract_group_mapping_non_list(mocker:
 
     assert (households, people) == (1, 1)
     create_household.assert_called_once()
-    create_people.assert_called_once()
+    create_individual.assert_called_once()
 
 
 def test_create_household_and_individuals_logs_on_individual_error(mocker: MockerFixture, config: Config) -> None:
@@ -430,7 +430,7 @@ def test_create_household_and_individuals_logs_on_individual_error(mocker: Mocke
         return_value=Mock(),
     )
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.create_people",
+        "country_workspace.contrib.aurora.import_processing.create_individual",
         side_effect=ValueError("boom"),
     )
     logger = mocker.patch("country_workspace.contrib.aurora.import_processing.logger")
@@ -453,13 +453,13 @@ def test_create_household_and_individuals_no_groups_uses_shared_fields(mocker: M
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+    create_individual = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
 
     households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#7")
 
     assert (households, people) == (1, 0)
     create_household.assert_called_once_with(batch, {"shared_field": "shared_value"}, config, "AUR#7#HH0")
-    create_people.assert_not_called()
+    create_individual.assert_not_called()
 
 
 def test_create_household_and_individuals_skips_falsy_groups(mocker: MockerFixture, config: Config) -> None:
@@ -474,13 +474,13 @@ def test_create_household_and_individuals_skips_falsy_groups(mocker: MockerFixtu
         "country_workspace.contrib.aurora.import_processing.create_household",
         return_value=Mock(),
     )
-    create_people = mocker.patch("country_workspace.contrib.aurora.import_processing.create_people")
+    create_individual = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
 
     households, people = import_processing.create_household_and_individuals(batch, record, config, "AUR#8")
 
     assert (households, people) == (1, 0)
     create_household.assert_called_once_with(batch, {"shared_field": "x"}, config, "AUR#8#HH0")
-    create_people.assert_not_called()
+    create_individual.assert_not_called()
 
 
 def test_import_result_wraps_exception(mocker: MockerFixture, config: Config) -> None:
@@ -503,7 +503,7 @@ def test_import_result_wraps_exception(mocker: MockerFixture, config: Config) ->
     atomic.return_value.__exit__.return_value = None
 
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.create_people",
+        "country_workspace.contrib.aurora.import_processing.create_individual",
         side_effect=ValueError("boom"),
     )
     update_or_create = mocker.patch(
@@ -519,7 +519,7 @@ def test_import_result_wraps_exception(mocker: MockerFixture, config: Config) ->
     update_or_create.assert_not_called()
 
 
-# --- create_people ----------------------------------------------------------------
+# --- create_individual ----------------------------------------------------------------
 
 
 def test_create_people_creates_individual_with_transformed_fields(mocker: MockerFixture, config: Config) -> None:
@@ -536,7 +536,7 @@ def test_create_people_creates_individual_with_transformed_fields(mocker: Mocker
     )
     create_ind = mocker.patch("country_workspace.contrib.aurora.import_processing.Individual.objects.create")
 
-    res = create_people(batch, record, config, originating_id)
+    res = create_individual(batch, record, config, originating_id)
 
     create_ind.assert_called_once_with(
         batch_id=5,

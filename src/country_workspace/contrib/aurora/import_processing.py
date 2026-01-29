@@ -98,7 +98,7 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
                 household_counter += created_households
                 people_counter += created_individuals
             else:
-                create_people(batch, result, config, originating_id)
+                create_individual(batch, result, config, originating_id)
                 people_counter += 1
             last_successful_id = current_id
     except Exception as e:
@@ -120,7 +120,13 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
     return ImportResult(people=people_counter, households=household_counter)
 
 
-def create_people(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Individual:
+def create_individual(
+    batch: Batch,
+    record: Mapping[str, Any],
+    config: Config,
+    originating_id: str,
+    **extras: Any,
+) -> Individual:
     row = record.get("fields", record)
     transform_individual_row = build_individual_transform(
         batch.program,
@@ -134,6 +140,7 @@ def create_people(batch: Batch, record: Mapping[str, Any], config: Config, origi
         originating_id=originating_id,
         flex_fields=transform_individual_row(row),
         raw_data=record,
+        **extras,
     )
 
 
@@ -160,26 +167,26 @@ def create_household_and_individuals(
     household_candidates = ("household", "household-info", "household_info")
     individual_candidates = ("individuals", "individual-details", "individual_details")
 
-    def _extract_group(keys: tuple[str, ...]) -> tuple[list[Mapping[str, Any]] | None, str | None]:
+    def _extract_group(keys: tuple[str, ...]) -> list[Mapping[str, Any]] | None:
         for key in keys:
             if not fields.get(key):
                 continue
 
             value = fields[key]
             if isinstance(value, list):
-                return value, key
+                return value
             if isinstance(value, Mapping):
-                return [value], key
-        return None, None
+                return [value]
+        return None
 
-    households_data, household_key = _extract_group(household_candidates)
-    individuals_data, individual_key = _extract_group(individual_candidates)
+    households_data = _extract_group(household_candidates)
+    individuals_data = _extract_group(individual_candidates)
 
     households_data = households_data or []
     individuals_data = individuals_data or []
 
-    used_keys = {household_key, individual_key}
-    shared_fields = {k: v for k, v in fields.items() if k not in used_keys and k is not None}
+    group_keys = set(household_candidates) | set(individual_candidates)
+    shared_fields = {k: v for k, v in fields.items() if k not in group_keys and k is not None}
     household_raw = households_data[0] if households_data else {}
     household_fields = {**shared_fields, **household_raw}
 
@@ -188,9 +195,13 @@ def create_household_and_individuals(
     for idx, individual_raw in enumerate(individuals_data):
         try:
             individual_fields = {**shared_fields, **individual_raw}
-            individual = create_people(batch, individual_fields, config, f"{originating_id}#IND{idx}")
-            individual.household = household
-            individual.save(update_fields=["household"])
+            create_individual(
+                batch,
+                individual_fields,
+                config,
+                f"{originating_id}#IND{idx}",
+                household=household,
+            )
             people_counter += 1
         except Exception as exception:  # noqa: BLE001
             logger.error("Error creating individual %s: %s", str(idx), str(exception))
