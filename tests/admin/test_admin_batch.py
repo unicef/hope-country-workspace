@@ -1,8 +1,7 @@
-from unittest.mock import patch
-
 import pytest
 from django.contrib.admin import AdminSite
-from django.test import RequestFactory
+from django.test import Client
+from django.urls import reverse
 from django.utils.translation import gettext as _
 
 from country_workspace.admin.batch import BatchAdmin
@@ -233,21 +232,18 @@ class TestBatchAdminGetBeneficiaryLabels:
 class TestBatchAdminBeneficiariesButton:
     """Test BatchAdmin.beneficiaries view (All Beneficiaries button)."""
 
-    def test_beneficiaries_when_batch_loading_returns_empty_querysets(
-        self, batch_admin_instance: BatchAdmin, empty_batch: "Batch"
-    ) -> None:
+    def test_beneficiaries_when_batch_loading_returns_empty_querysets(self, empty_batch: "Batch") -> None:
         """When batch status is LOADING, households and individuals are empty querysets."""
         from testutils.factories import SuperUserFactory
 
         empty_batch.status = Batch.BatchStatus.LOADING
         empty_batch.save()
 
-        request = RequestFactory().get("/")
-        request.user = SuperUserFactory(username="beneficiaries_test_user")
-        request.session = {}
-        request._request = request
+        user = SuperUserFactory(username="beneficiaries_test_user")
+        client = Client()
+        client.force_login(user)
 
-        with patch.object(batch_admin_instance, "get_object", return_value=empty_batch):
-            response = batch_admin_instance.beneficiaries(request, str(empty_batch.pk))
+        url = reverse("admin:country_workspace_batch_beneficiaries", args=[empty_batch.pk])
+        response = client.get(url)
 
         assert response.status_code == 200

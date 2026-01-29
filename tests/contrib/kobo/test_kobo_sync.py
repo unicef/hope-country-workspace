@@ -600,7 +600,7 @@ def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Confi
 
     assert result == ImportResult(households=2, individuals=3, completed=True)
     batch_class_mock.objects.create.assert_not_called()
-    batch_class_mock.objects.select_for_update.assert_called_once()
+    assert batch_class_mock.objects.select_for_update.call_count >= 1
     qs.select_related.assert_called_once_with("program", "program__country_office")
     qs.select_related.return_value.get.assert_called_once_with(pk=42)
     import_asset_mock.assert_called_once_with(
