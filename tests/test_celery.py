@@ -62,10 +62,7 @@ def rdps(program):
 
 @pytest.fixture
 def rdis(program):
-    return [
-        Rdi.objects.create(name=f"RDI {i}", program=program, hhs=[], inds=[])
-        for i in range(2)
-    ]
+    return [Rdi.objects.create(name=f"RDI {i}", program=program, hhs=[], inds=[]) for i in range(2)]
 
 
 @pytest.fixture
