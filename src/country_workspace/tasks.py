@@ -8,7 +8,7 @@ from django.db import transaction
 from redis_lock import Lock
 
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Individual, Household, Rdp, Rdi
+from country_workspace.models import AsyncJob, Batch, Rdp, Rdi
 
 logger = logging.getLogger(__name__)
 
@@ -59,39 +59,17 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     program_id = job.program.pk
     current_job_id = job.pk
-    deleted_counts = {"individuals": 0, "households": 0, "batches": 0, "rdps": 0, "rdis": 0, "jobs": 0}
+    deleted_counts = {"batches": 0, "rdps": 0, "rdis": 0, "jobs": 0}
 
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
     if not batch_ids:
         return None
 
-    while True:
+    for i in range(0, len(batch_ids), batch_size):
+        chunk = batch_ids[i : i + batch_size]
         with transaction.atomic():
-            individual_ids = list(
-                Individual.objects.filter(batch_id__in=batch_ids).values_list("id", flat=True)[:batch_size]
-            )
-
-            if not individual_ids:
-                break
-
-            Individual.objects.filter(id__in=individual_ids).delete()
-            deleted_counts["individuals"] += len(individual_ids)
-
-    while True:
-        with transaction.atomic():
-            household_ids = list(
-                Household.objects.filter(batch_id__in=batch_ids).values_list("id", flat=True)[:batch_size]
-            )
-
-            if not household_ids:
-                break
-
-            Household.objects.filter(id__in=household_ids).delete()
-            deleted_counts["households"] += len(household_ids)
-
-    with transaction.atomic():
-        batch_count, _ = Batch.objects.filter(id__in=batch_ids).delete()
-        deleted_counts["batches"] = batch_count
+            count, _ = Batch.objects.filter(id__in=chunk).delete()  # cascades to Households and Individuals
+            deleted_counts["batches"] += count
 
     with transaction.atomic():
         rdp_count, _ = Rdp.objects.filter(program_id=program_id).delete()
