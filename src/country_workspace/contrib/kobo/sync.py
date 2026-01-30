@@ -293,6 +293,8 @@ def import_asset(
         for submission in submissions_iterator:
             current_submission = submission
             originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
+            # One transaction per submission: if this block fails, only this
+            # submission is rolled back; previously committed data stays.
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
                 individuals = create_individuals(batch, household, submission, config, originating_id)
@@ -319,6 +321,8 @@ def import_asset(
         raise ImportError(error_msg) from e
 
     finally:
+        # Persist watermark so the next run (or retry) resumes after the last
+        # successful submission; runs even when an exception is raised.
         if last_successful_id > last_id:
             SyncLog.objects.update_or_create(
                 name=sync_log_name,
@@ -347,8 +351,22 @@ def get_id_generator() -> Callable[[], int]:
 
 
 def import_data(job: AsyncJob) -> ImportResult:
+    """
+    Import Kobo asset data for a job.
+
+    Transaction management:
+    - Batch setup (create or lock batch, set status to LOADING) runs in a single
+      atomic block so the batch is visible and locked before import starts.
+    - import_asset() runs outside that block; it commits each submission in its
+      own transaction (see import_asset). That way, partial progress is persisted
+      and the watermark (SyncLog) can be updated per submission.
+    - On success, batch status is updated to COMPLETE in a final atomic block.
+    - On incomplete (timebox or reschedule), a new AsyncJob is queued; no batch
+      status change until the run that completes.
+    """
     config: Config = job.config
 
+    # Create or lock the batch and set status to LOADING in one transaction.
     with transaction.atomic():
         batch_id = getattr(job, "batch_id", None)
         if batch_id:
@@ -381,17 +399,19 @@ def import_data(job: AsyncJob) -> ImportResult:
     timebox_minutes = getattr(constance_config, "KOBO_IMPORT_TIMEBOX_MINUTES", 0) or 0
     timebox_seconds = int(timebox_minutes * 60) if timebox_minutes > 0 else None
 
-    import_result = import_asset(
+    # import_asset commits each submission in its own transaction; on error it
+    # raises after updating the watermark so the next run can resume.
+    asset_import_result = import_asset(
         batch,
         asset,
         config,
         id_generator,
         timebox_seconds=timebox_seconds,
     )
-    household_counter += import_result["households"]
-    individual_counter += import_result["individuals"]
+    household_counter += asset_import_result["households"]
+    individual_counter += asset_import_result["individuals"]
 
-    if import_result["completed"] and config.get("validate_after_import"):
+    if asset_import_result["completed"] and config.get("validate_after_import"):
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
@@ -399,7 +419,8 @@ def import_data(job: AsyncJob) -> ImportResult:
             queryset=batch.household_set.all().prefetch_related("members"),  # type: ignore[attr-defined]
         )
 
-    if import_result["completed"]:
+    if asset_import_result["completed"]:
+        # Mark batch complete in a dedicated transaction.
         with transaction.atomic():
             Batch.objects.select_for_update().filter(pk=batch.pk).update(status=Batch.BatchStatus.COMPLETE)
     else:
@@ -417,5 +438,5 @@ def import_data(job: AsyncJob) -> ImportResult:
     return ImportResult(
         households=household_counter,
         individuals=individual_counter,
-        completed=import_result["completed"],
+        completed=asset_import_result["completed"],
     )

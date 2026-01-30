@@ -35,6 +35,8 @@ from testutils.factories import (
     DataCheckerFactory,
     FieldsetFactory,
     FlexFieldFactory,
+    HouseholdFactory,
+    IndividualFactory,
     SyncLogFactory,
 )
 from testutils.factories.smart_fields import DataCheckerFieldsetFactory
@@ -389,6 +391,65 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
 
     asset_mock.submissions.assert_called_once_with(min_id=100)
     sync_log.refresh_from_db()
+    assert sync_log.last_id == "101"
+
+
+@pytest.mark.django_db
+def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, config: Config) -> None:
+    """
+    When import_asset fails on a later submission, earlier data are persisted:
+    each submission runs in its own transaction, so a failure rolls back only
+    that submission; we assert the first household (and its individuals) remain
+    in the DB and the watermark is updated for recovery.
+    """
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+
+    id_generator_mock = mocker.Mock(name="id_generator")
+
+    def create_household_real(batch, submission, config, id_generator, originating_id):
+        return HouseholdFactory(batch=batch, individuals=[])
+
+    def create_individuals_real(batch, household, submission, config, originating_id):
+        return [IndividualFactory(batch=batch, household=household)]
+
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.create_household",
+        side_effect=create_household_real,
+    )
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.create_individuals",
+        side_effect=create_individuals_real,
+    )
+    set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+    set_roles_and_relationships_mock.side_effect = [None, ValueError("fail on second")]
+
+    submission_1 = Mock(spec=dict)
+    submission_1.id = 101
+    submission_2 = Mock(spec=dict)
+    submission_2.id = 102
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+
+    with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
+        import_asset(batch, asset_mock, config, id_generator_mock)
+
+    batch.refresh_from_db()
+    assert batch.household_set.count() == 1
+    assert batch.household_set.first().members.count() == 1
+
+    sync_log = SyncLog.objects.get(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+    )
     assert sync_log.last_id == "101"
 
 
