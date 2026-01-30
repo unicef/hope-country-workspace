@@ -133,10 +133,10 @@ def create_individual(
         mapping_id=config.get("individual_mapping_id"),
         transformer_id=config.get("individual_transformer_id"),
     )
+    extras.setdefault("household", None)
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
-        household=None,
         originating_id=originating_id,
         flex_fields=transform_individual_row(row),
         raw_data=record,
