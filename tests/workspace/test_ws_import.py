@@ -12,7 +12,7 @@ from webtest import Upload, forms
 from django import forms as django_forms
 
 from country_workspace.contrib.hope.constants import PEOPLE_CHECKER_NAME
-from country_workspace.models import Office, Individual, Household, Batch
+from country_workspace.models import AsyncJob, Office, Individual, Household, Batch
 from country_workspace.state import state
 from tests.contrib.aurora import stub
 from tests.extras.testutils.factories import DataCheckerFactory
@@ -346,6 +346,11 @@ def test_import_data_aurora_success(
     res = form_aurora.submit()
 
     assert res.status_code in (200, 302)
+    # Aurora import is queued; run the job so created individuals/households are visible
+    job = AsyncJob.objects.filter(program=program).order_by("-id").first()
+    if job:
+        job.execute()
+    program.refresh_from_db()
     if program.beneficiary_group.master_detail:
         assert program.individuals.count() == expected_people
         assert program.households.count() == 0
