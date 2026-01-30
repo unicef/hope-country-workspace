@@ -346,10 +346,13 @@ def test_import_data_aurora_success(
     res = form_aurora.submit()
 
     assert res.status_code in (200, 302)
-    # Aurora import is queued; run the job so created individuals/households are visible
+    # Aurora import is queued; run the job so created individuals/households are visible.
+    # Patch the client so the job sees stub data (responses mock may not apply inside job.execute()).
     job = AsyncJob.objects.filter(program=program).order_by("-id").first()
     if job:
-        job.execute()
+        with patch("country_workspace.contrib.aurora.import_processing.AuroraClient") as mock_client_cls:
+            mock_client_cls.return_value.get.return_value = iter(stub_data.get("results", []))
+            job.execute()
     program.refresh_from_db()
     if program.beneficiary_group.master_detail:
         assert program.individuals.count() == expected_people
