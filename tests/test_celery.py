@@ -74,14 +74,19 @@ def other_jobs(program):
 def test_clean_program_data(job, batch, households, individuals):
     program = job.program
 
-    assert Household.objects.filter(batch__program=program).count() > 0
-    assert Individual.objects.filter(batch__program=program).count() > 0
+    initial_households = Household.objects.filter(batch__program=program).count()
+    initial_individuals = Individual.objects.filter(batch__program=program).count()
+
+    assert initial_households > 0
+    assert initial_individuals > 0
     assert Batch.objects.filter(program=program).count() > 0
 
     result = clean_program_data(job, batch_size=5)
 
     assert result is not None
     assert result["batches"] > 0
+    assert result["households"] == initial_households
+    assert result["individuals"] == initial_individuals
 
     assert Household.objects.filter(batch__program=program).count() == 0
     assert Individual.objects.filter(batch__program=program).count() == 0
@@ -100,6 +105,8 @@ def test_clean_program_data_with_rdps_and_rdis(job, batch, households, individua
 
     assert result is not None
     assert result["batches"] > 0
+    assert result["households"] > 0
+    assert result["individuals"] > 0
     assert result["rdps"] == 3
     assert result["rdis"] == 2
 
@@ -117,6 +124,7 @@ def test_clean_program_data_with_jobs(job, batch, households, other_jobs):
     result = clean_program_data(job, batch_size=5)
 
     assert result["jobs"] == 4
+    assert result["households"] > 0
     assert AsyncJob.objects.filter(program=program).count() == 1
     assert AsyncJob.objects.filter(id=job.pk).exists()
 
@@ -130,13 +138,16 @@ def test_clean_program_data_multiple_batches(job):
     HouseholdFactory.create_batch(5, individuals=[], batch=batch1, removed=False)
     HouseholdFactory.create_batch(5, individuals=[], batch=batch2, removed=True)
 
+    initial_households = Household.objects.filter(batch__program=program).count()
+
     assert Batch.objects.filter(program=program).count() >= 2
-    assert Household.objects.filter(batch__program=program).count() >= 10
+    assert initial_households >= 10
 
     result = clean_program_data(job, batch_size=1)
 
     assert result is not None
     assert result["batches"] >= 2
+    assert result["households"] == initial_households
 
     assert Batch.objects.filter(program=program).count() == 0
     assert Household.objects.filter(batch__program=program).count() == 0

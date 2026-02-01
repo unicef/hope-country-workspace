@@ -59,7 +59,7 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     program_id = job.program.pk
     current_job_id = job.pk
-    deleted_counts = {"batches": 0, "rdps": 0, "rdis": 0, "jobs": 0}
+    deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
 
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
     if not batch_ids:
@@ -68,19 +68,18 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
     for i in range(0, len(batch_ids), batch_size):
         chunk = batch_ids[i : i + batch_size]
         with transaction.atomic():
-            count, _ = Batch.objects.filter(id__in=chunk).delete()  # cascades to Households and Individuals
-            deleted_counts["batches"] += count
+            _, counts = Batch.objects.filter(id__in=chunk).delete()
+            deleted_counts["batches"] += counts.get("country_workspace.Batch", 0)
+            deleted_counts["households"] += counts.get("country_workspace.Household", 0)
+            deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
 
-    with transaction.atomic():
-        rdp_count, _ = Rdp.objects.filter(program_id=program_id).delete()
-        deleted_counts["rdps"] = rdp_count
+    _, counts = Rdp.objects.filter(program_id=program_id).delete()
+    deleted_counts["rdps"] = counts.get("country_workspace.Rdp", 0)
 
-    with transaction.atomic():
-        rdi_count, _ = Rdi.objects.filter(program_id=program_id).delete()
-        deleted_counts["rdis"] = rdi_count
+    _, counts = Rdi.objects.filter(program_id=program_id).delete()
+    deleted_counts["rdis"] = counts.get("country_workspace.Rdi", 0)
 
-    with transaction.atomic():
-        job_count, _ = AsyncJob.objects.filter(program_id=program_id).exclude(id=current_job_id).delete()
-        deleted_counts["jobs"] = job_count
+    _, counts = AsyncJob.objects.filter(program_id=program_id).exclude(id=current_job_id).delete()
+    deleted_counts["jobs"] = counts.get("country_workspace.AsyncJob", 0)
 
     return deleted_counts
