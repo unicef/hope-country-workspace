@@ -10,8 +10,11 @@ from country_workspace.contrib.hope.constants import (
     PEOPLE_CHECKER_NAME,
 )
 from country_workspace.contrib.hope.sync.base import SyncConfig, ParamDateName, EndpointConfig, SkipRecordError
+from constance.test import override_config
+
 from country_workspace.contrib.hope.sync.context_programs import (
     get_default_checkers,
+    get_default_ignored_fields,
     get_field_extractor,
     should_process_office,
     sync_offices,
@@ -172,6 +175,65 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
     get_group_mock.assert_called_once_with(hope_id=group)
 
 
+def test_get_default_ignored_fields_collects_from_all_sources() -> None:
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="field1, field2",
+        AURORA_HH_FIELDS_TO_IGNORE="field3",
+        XLS_HH_FIELDS_TO_IGNORE="field4, field5",
+    ):
+        result = get_default_ignored_fields("hh")
+        assert result is not None
+        fields = set(result.split("\n"))
+        assert fields == {"field1", "field2", "field3", "field4", "field5"}
+
+
+def test_get_default_ignored_fields_removes_duplicates() -> None:
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="field1, field2",
+        AURORA_HH_FIELDS_TO_IGNORE="field1, field3",
+        XLS_HH_FIELDS_TO_IGNORE="field2",
+    ):
+        result = get_default_ignored_fields("hh")
+        assert result is not None
+        fields = result.split("\n")
+        assert len(fields) == 3
+        assert set(fields) == {"field1", "field2", "field3"}
+
+
+def test_get_default_ignored_fields_returns_none_when_empty() -> None:
+    with override_config(
+        KOBO_IND_FIELDS_TO_IGNORE="",
+        AURORA_IND_FIELDS_TO_IGNORE="",
+        XLS_IND_FIELDS_TO_IGNORE="",
+    ):
+        result = get_default_ignored_fields("ind")
+        assert result is None
+
+
+def test_get_default_ignored_fields_handles_whitespace() -> None:
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="  field1  ,  field2  ",
+        AURORA_HH_FIELDS_TO_IGNORE="",
+        XLS_HH_FIELDS_TO_IGNORE="  , field3,  ",
+    ):
+        result = get_default_ignored_fields("hh")
+        assert result is not None
+        fields = set(result.split("\n"))
+        assert fields == {"field1", "field2", "field3"}
+
+
+def test_get_default_ignored_fields_sorts_results() -> None:
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="zebra, apple",
+        AURORA_HH_FIELDS_TO_IGNORE="mango",
+        XLS_HH_FIELDS_TO_IGNORE="",
+    ):
+        result = get_default_ignored_fields("hh")
+        assert result is not None
+        fields = result.split("\n")
+        assert fields == ["apple", "mango", "zebra"]
+
+
 @pytest.mark.parametrize("created", [True, False])
 @pytest.mark.parametrize("master_detail", [True, False])
 @pytest.mark.parametrize(
@@ -187,10 +249,11 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
         {"hh": "hh", "ind": "ind", "ppl": "ppl"},
     ],
 )
-def test_post_process_program(
+def test_post_process_program_checkers(
     mocker: MockerFixture, created: bool, master_detail: bool, checkers: Mapping[str, str]
 ) -> None:
     mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_checkers", return_value=checkers)
+    mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_ignored_fields", return_value=None)
     program = mocker.Mock()
     program.beneficiary_group.master_detail = master_detail
     household_checker = checkers.get("hh")
@@ -203,8 +266,51 @@ def test_post_process_program(
     if should_save:
         assert program.household_checker == household_checker
         assert program.individual_checker == individual_checker
-        program.save.assert_called_once_with(update_fields=("household_checker", "individual_checker"))
-    else:
+        program.save.assert_called_once()
+    elif not created:
+        program.save.assert_not_called()
+
+
+def test_post_process_program_sets_ignored_fields_on_creation(mocker: MockerFixture) -> None:
+    mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_checkers", return_value={})
+
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="hh_field1, hh_field2",
+        AURORA_HH_FIELDS_TO_IGNORE="",
+        XLS_HH_FIELDS_TO_IGNORE="",
+        KOBO_IND_FIELDS_TO_IGNORE="ind_field1",
+        AURORA_IND_FIELDS_TO_IGNORE="",
+        XLS_IND_FIELDS_TO_IGNORE="",
+    ):
+        program = mocker.Mock()
+        program.beneficiary_group.master_detail = True
+
+        post_process_program(program, created=True)
+
+        assert program.hh_alien_columns_to_ignore == "hh_field1\nhh_field2"
+        assert program.ind_alien_columns_to_ignore == "ind_field1"
+        program.save.assert_called_once()
+        call_args = program.save.call_args
+        update_fields = call_args.kwargs.get("update_fields", [])
+        assert "hh_alien_columns_to_ignore" in update_fields
+        assert "ind_alien_columns_to_ignore" in update_fields
+
+
+def test_post_process_program_does_not_set_ignored_fields_when_not_created(mocker: MockerFixture) -> None:
+    mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_checkers", return_value={})
+
+    with override_config(
+        KOBO_HH_FIELDS_TO_IGNORE="hh_field1",
+        AURORA_HH_FIELDS_TO_IGNORE="",
+        XLS_HH_FIELDS_TO_IGNORE="",
+        KOBO_IND_FIELDS_TO_IGNORE="ind_field1",
+        AURORA_IND_FIELDS_TO_IGNORE="",
+        XLS_IND_FIELDS_TO_IGNORE="",
+    ):
+        program = mocker.Mock()
+
+        post_process_program(program, created=False)
+
         program.save.assert_not_called()
 
 
