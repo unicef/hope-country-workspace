@@ -116,6 +116,10 @@ class Program(BaseModel):
         blank=True,
         help_text=_('Internal metadata (e.g. "default_fields" for household/individual defaults).'),
     )
+    biometric_deduplication_enabled = models.BooleanField(
+        default=False,
+        help_text="Is biometric deduplication enabled for this program?",
+    )
 
     def __str__(self) -> str:
         return self.name

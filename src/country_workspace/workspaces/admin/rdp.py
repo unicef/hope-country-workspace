@@ -52,6 +52,9 @@ def enabled_deduplicate(btn: ButtonWidget) -> bool:
     if obj is None or obj.status != obj.PushStatus.PENDING:
         return False
 
+    if not obj.program.biometric_deduplication_enabled:
+        return False
+
     match obj.dedup_run_state:
         case obj.DedupRunState.NOT_RUN:
             return True
@@ -71,6 +74,9 @@ def enabled_push(btn: ButtonWidget) -> bool:
     if obj is None or obj.status != obj.PushStatus.PENDING:
         return False
 
+    if not obj.program.biometric_deduplication_enabled:
+        return True
+
     match obj.dedup_run_state:
         case obj.DedupRunState.IN_PROGRESS:
             return _dedup_status_safe(obj.program.code).status == DedupResponseStatus.SUCCESS
@@ -86,6 +92,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "name",
         "push_date",
         "status",
+        "biometric_deduplication_enabled",
         "dedup_run_state",
         "dedup_engine_state",
         "deduplication_set_id",
@@ -95,6 +102,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
     ordering = ("-push_date",)
+
+    def biometric_deduplication_enabled(self, obj: CountryRdp) -> bool:
+        return bool(obj.program.biometric_deduplication_enabled)
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
