@@ -104,8 +104,9 @@ def create_individuals(
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
+        raw_individual_fields = dict(raw_individual)
         individual_fields = preprocess(
-            raw_individual,
+            raw_individual_fields.copy(),
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
             partial(
                 batch.program.apply_mapping_importer,
@@ -123,7 +124,7 @@ def create_individuals(
                 name=individual_fields.get(fullname, "") if fullname else "",
                 originating_id=originating_id,
                 flex_fields=individual_fields,
-                raw_data=individual_fields,
+                raw_data=raw_individual_fields,
             ),
         )
     household.program.individuals.bulk_create(individuals)
@@ -141,7 +142,7 @@ def create_household(
     household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = preprocess(
-        raw_household_fields,
+        raw_household_fields.copy(),
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
         partial(
             batch.program.apply_mapping_importer,
@@ -158,7 +159,7 @@ def create_household(
             batch=batch,
             originating_id=originating_id,
             flex_fields=household_fields,
-            raw_data=household_fields,
+            raw_data=raw_household_fields,
         ),
     )
 
