@@ -11,7 +11,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
@@ -114,10 +114,23 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
     def related_job(self, obj: CountryRdp) -> str:
-        if job := obj.jobs.first():
-            url = reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk])
-            return format_html('<a href="{}" style="color: var(--link-fg)">{}</a>', url, str(job))
-        return "-"
+        if not (jobs := obj.jobs.order_by("datetime_created")).exists():
+            return "-"
+        return format_html_join(
+            "\n",
+            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
+            "<a href='{}' style='color: var(--link-fg)'>{}</a>"
+            "<span style='white-space:nowrap'>{}</span>"
+            "</div>",
+            (
+                (
+                    reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
+                    str(job),
+                    str(job.task_status) if getattr(job, "task_status", None) is not None else "—",
+                )
+                for job in jobs
+            ),
+        )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         if obj.status != obj.PushStatus.PENDING:
