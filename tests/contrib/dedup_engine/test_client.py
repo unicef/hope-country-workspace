@@ -36,7 +36,9 @@ def test_client_deduplicate(mocker: MockerFixture) -> None:
         }
     )
     deduplication_set_endpoint_mock = api_root_mock.deduplication_sets.deduplication_set
-    deduplication_set_endpoint_mock.assert_called_once_with(program_id)
+    deduplication_set_endpoint_mock.assert_has_calls([mocker.call(program_id), mocker.call(program_id)])
+    assert deduplication_set_endpoint_mock.call_count == 2
+
     images_bulk_collection_class_mock.assert_called_once_with(
         session_mock, deduplication_set_endpoint_mock.return_value.images_bulk
     )
@@ -46,7 +48,7 @@ def test_client_deduplicate(mocker: MockerFixture) -> None:
         session_mock, deduplication_set_endpoint_mock.return_value.process
     )
     process_deduplication_set_action_mock = process_deduplication_set_action_class_mock.return_value
-    process_deduplication_set_action_mock.call.assert_called_once_with()
+    process_deduplication_set_action_mock.call.assert_called_once_with(None)
 
 
 @pytest.mark.parametrize(
@@ -98,16 +100,15 @@ def test_make_client(mocker: MockerFixture) -> None:
         override_config(DEDUP_API_URL=(url := "https://test.org")),
         override_config(DEDUP_API_TOKEN=(token := "token")),
     ):
-        client = make_client(program_id := "PROGRAM_ID")
-
-    assert client is client_class_mock.return_value
+        with make_client(program_id := "PROGRAM_ID") as client:
+            assert client is client_class_mock.return_value
 
     session_class_mock.assert_called_once_with()
-    session_class_mock.return_value.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
-    assert session_class_mock.return_value.auth is auth_class_mock.return_value
+    session = session_class_mock.return_value.__enter__.return_value
+    session.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
+    assert session.auth is auth_class_mock.return_value
+
     http_adapter_class_mock.assert_called_once_with(max_retries=3)
     auth_class_mock.assert_called_once_with(token)
     api_root_class_mock.assert_called_once_with(url)
-    client_class_mock.assert_called_once_with(
-        program_id, session_class_mock.return_value, api_root_class_mock.return_value
-    )
+    client_class_mock.assert_called_once_with(program_id, session, api_root_class_mock.return_value)

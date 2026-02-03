@@ -1,30 +1,25 @@
 from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
-from requests.exceptions import RequestException
-from uuid import UUID
 from django.db import transaction, IntegrityError
 
 from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
-from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
 from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
 
 
-from .processor import PushProcessor
+from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
 from .repository import (
     individuals_by_pks,
-    individuals_for_rdp,
     individuals_by_household_pks,
     households,
     rdp_for_push,
-    rdp_for_dedup,
     preflight_errors,
     workflow_config_for_rdp,
 )
+from .transport import dedup_api
 
 
 def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
@@ -100,99 +95,13 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
 
 
-def dedup_engine_status_or_error(program_code: str) -> DedupClientStatus:
-    """Fetch DedupEngine status or raise HopePushError."""
-    try:
-        with make_client(program_code) as client:
-            return client.status()
-    except (RequestException, ValueError) as e:
-        raise HopePushError({"errors": [f"DedupEngine: status() failed: {e}"]}) from e
-
-
-def dedup_engine_approve_or_error(program_code: str) -> None:
-    """Approve DedupEngine results or raise HopePushError."""
-    try:
-        with make_client(program_code) as client:
-            client.approve()
-    except (RequestException, ValueError) as e:
-        raise HopePushError({"errors": [f"DedupEngine: approve() failed: {e}"]}) from e
-
-
-def _parse_uuid(value: object) -> UUID | None:
-    """Return UUID parsed from value or None if parsing fails."""
-    if value is None:
-        return None
-    try:
-        return UUID(str(value))
-    except (TypeError, ValueError):
-        return None
-
-
-def _collect_dedup_images(*, rdp: Rdp) -> tuple[list[dict[str, str]], int]:
-    """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
-    rows = individuals_for_rdp(rdp=rdp).values_list("pk", "flex_fields__photo")
-
-    images: list[dict[str, str]] = []
-    skipped = 0
-    for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
-        if isinstance(photo, str) and (photo := photo.strip()):
-            images.append({"reference_pk": str(pk), "filename": photo})
-        else:
-            skipped += 1
-    return images, skipped
-
-
-def _dedup_engine_create_set_or_error(*, program_code: str) -> UUID:
-    """Create a DedupEngine deduplication set and return its UUID."""
-    try:
-        with make_client(program_code) as client:
-            ds_id = client.create_deduplication_set(settings={})
-    except (RequestException, ValueError, KeyError, TypeError) as e:
-        raise HopePushError({"errors": [f"DedupEngine: create_deduplication_set() failed: {e}"]}) from e
-
-    if (dedup_uuid := _parse_uuid(ds_id)) is None:
-        raise HopePushError({"errors": [f"DedupEngine: invalid deduplication_set_id={ds_id!r}"]})
-    return dedup_uuid
-
-
-def _dedup_engine_upload_and_process_or_error(*, program_code: str, images: list[dict[str, str]]) -> None:
-    """Upload images to DedupEngine and start processing."""
-    try:
-        with make_client(program_code) as client:
-            client.create_images(images)
-            client.process()
-    except (RequestException, ValueError, KeyError, TypeError) as e:
-        raise HopePushError({"errors": [f"DedupEngine: create_images()/process() failed: {e}"]}) from e
-
-
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run DedupEngine deduplication for an existing RDP."""
-    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    if rdp.status != Rdp.PushStatus.PENDING:
-        raise HopePushError({"errors": [f"RDP: can not run dedup in status={rdp.status}"]})
-    if rdp.dedup_run_state == rdp.DedupRunState.APPROVED:
-        raise HopePushError({"errors": ["RDP: can not run dedup after approval"]})
-
-    images, skipped = _collect_dedup_images(rdp=rdp)
-    total = {
-        "rdp_id": rdp.pk,
-        "program": rdp.program.code,
-        "skipped_no_photo": skipped,
-        "images_sent": len(images),
-    }
-    if not images:
-        return total | {"deduplication_set_id": None}
-
-    deduplication_set_id = _dedup_engine_create_set_or_error(program_code=rdp.program.code)
-
-    Rdp.objects.filter(pk=rdp.pk).update(
-        deduplication_set_id=deduplication_set_id,
-        dedup_run_state=rdp.DedupRunState.IN_PROGRESS,
-    )
-
-    _dedup_engine_upload_and_process_or_error(program_code=rdp.program.code, images=images)
-
-    return total | {"deduplication_set_id": str(deduplication_set_id)}
+    processor = DedupProcessor(rdp_id=job.config["rdp_id"])
+    processor.run()
+    if processor.has_errors:
+        raise HopePushError(processor.total)
+    return processor.total
 
 
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
@@ -203,25 +112,24 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
 
     config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
-    processor = PushProcessor(config)
-    for step in steps(processor, config):
+    hope_processor = PushProcessor(config)
+    for step in steps(hope_processor, config):
         step()
-        if processor.total["errors"]:
-            complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
-            raise HopePushError(processor.total)
+        if hope_processor.has_errors:
+            complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, hope_processor.hope_rdi_id or "N/A")
+            raise HopePushError(hope_processor.total)
 
-    program_code = rdp.program.code
-    if rdp.dedup_run_state == Rdp.DedupRunState.IN_PROGRESS:
-        try:
-            if dedup_engine_status_or_error(program_code).status == DedupResponseStatus.SUCCESS:
-                dedup_engine_approve_or_error(program_code)
+    if rdp.program.biometric_deduplication_enabled:
+        with dedup_api(rdp.program.code, hope_processor._err) as de:
+            if (de_status := de.status()) is None:
+                raise HopePushError(hope_processor.total)
+            if de_status.status == DedupResponseStatus.SUCCESS:
+                if not de.approve():
+                    raise HopePushError(hope_processor.total)
                 Rdp.objects.filter(pk=rdp.pk).update(dedup_run_state=Rdp.DedupRunState.APPROVED)
-        except HopePushError:
-            complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, processor.hope_rdi_id or "N/A")
-            raise
 
     with transaction.atomic():
-        updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, processor.hope_rdi_id)
+        updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, hope_processor.hope_rdi_id)
         mark_rdp_beneficiaries_removed(updated, config["master_detail"])
 
-    return processor.total
+    return hope_processor.total

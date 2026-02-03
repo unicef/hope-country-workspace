@@ -2,14 +2,11 @@ import pytest
 from hope_flex_fields.models import DataChecker
 from collections.abc import Callable
 from typing import Any
+
 from country_workspace.models import Office, User, AsyncJob
-from country_workspace.workspaces.models import (
-    CountryProgram,
-    CountryRdp,
-)
+from country_workspace.workspaces.models import CountryProgram, CountryRdp
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG
 from country_workspace.contrib.hope.push.processor import PushProcessor
-
 from country_workspace.state import state
 
 
@@ -54,6 +51,9 @@ def rdp(program: CountryProgram) -> CountryRdp:
 
 @pytest.fixture
 def beneficiary_instance(program: CountryProgram, rdp: CountryRdp) -> Beneficiary:
+    """
+    Beneficiary already linked to an existing RDP (used by push_existing_* / mark_removed tests).
+    """
     from testutils.factories import CountryHouseholdFactory
 
     hh = CountryHouseholdFactory(rdps=rdp)
@@ -65,15 +65,34 @@ def beneficiary_instance(program: CountryProgram, rdp: CountryRdp) -> Beneficiar
 
 
 @pytest.fixture
+def create_beneficiary_instance(program: CountryProgram) -> Beneficiary:
+    """
+    Beneficiary NOT linked to any RDP (used by create_rdp_* tests).
+    """
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory()
+    hh.rdp.clear()
+
+    if not program.beneficiary_group.master_detail:
+        ind = hh.members.first() or CountryIndividualFactory(household=hh)
+        ind.rdp.clear()
+        return ind
+    return hh
+
+
+@pytest.fixture
 def user() -> User:
     from testutils.factories import UserFactory
 
     return UserFactory()
 
 
-# Config for push (without rdp_id for orchestration.create_rdp_records)
 @pytest.fixture
 def push_config_base(beneficiary_instance: Beneficiary, user: User) -> dict:
+    """
+    Base workflow config used by processor/unit tests (derived from an existing RDP).
+    """
     rdp = beneficiary_instance.rdp.first()
     return {
         "batch_name": f"Test Batch - {rdp.program.name}",
@@ -88,20 +107,43 @@ def push_config_base(beneficiary_instance: Beneficiary, user: User) -> dict:
     }
 
 
-# Async job uses config without rdp_id (orchestration adds it)
+@pytest.fixture
+def create_config_base(program: CountryProgram, create_beneficiary_instance: Beneficiary, user: User) -> dict:
+    """
+    Minimal CreateRdpConfig for create_rdp_records/create_rdp_core.
+    """
+    return {
+        "batch_name": f"Test Batch - {program.name}",
+        "country_office_id": program.country_office.id,
+        "program_id": program.id,
+        "pushed_by_id": user.id,
+        "master_detail": program.beneficiary_group.master_detail,
+        "pks": [create_beneficiary_instance.pk],
+    }
+
+
+@pytest.fixture
+def create_job(program: CountryProgram, create_config_base: dict) -> AsyncJob:
+    from testutils.factories import AsyncJobFactory
+
+    return AsyncJobFactory(program=program, config=create_config_base)
+
+
 @pytest.fixture
 def job(beneficiary_instance: Beneficiary, push_config_base: dict) -> AsyncJob:
+    """
+    Push job must include rdp_id because push_existing_rdp_core reads job.config['rdp_id'].
+    """
     from testutils.factories import AsyncJobFactory
 
     rdp = beneficiary_instance.rdp.first()
-    return AsyncJobFactory(program=rdp.program, rdp=rdp, config=push_config_base)
+    cfg = {**push_config_base, "rdp_id": rdp.id}
+    return AsyncJobFactory(program=rdp.program, rdp=rdp, config=cfg)
 
 
-# Processor constructed with WorkflowConfig (includes rdp_id)
 @pytest.fixture
 def processor(job: AsyncJob) -> PushProcessor:
-    cfg = {**job.config, "rdp_id": job.rdp.id}
-    return PushProcessor(cfg)
+    return PushProcessor(job.config)
 
 
 @pytest.fixture
@@ -120,9 +162,7 @@ def qs() -> Callable[[list], Any]:
 
 @pytest.fixture
 def beneficiary_stub() -> Callable[..., Beneficiary]:
-    """Factory fixture for a tiny attribute bag with a few helper methods.
-    Mirrors pk -> id if only pk is provided.
-    """
+    """Factory fixture for a tiny attribute bag with a few helper methods."""
 
     class _Stub:
         def __init__(self, **kw):
@@ -165,3 +205,22 @@ def err_contains() -> Callable[[list[str], str], bool]:
         return any((expected in e) or (tr in e) for e in errors)
 
     return _contains
+
+
+@pytest.fixture
+def dedup_api_cm(mocker):
+    def _cm(api):
+        return mocker.MagicMock(
+            __enter__=mocker.Mock(return_value=api),
+            __exit__=mocker.Mock(return_value=False),
+        )
+
+    return _cm
+
+
+@pytest.fixture
+def dedup_processor(mocker, rdp):
+    from country_workspace.contrib.hope.push.processor import DedupProcessor
+
+    mocker.patch("country_workspace.contrib.hope.push.processor.rdp_for_dedup", return_value=rdp)
+    return DedupProcessor(rdp_id=rdp.pk)

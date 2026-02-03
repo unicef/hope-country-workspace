@@ -1,11 +1,14 @@
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Iterator
 from json import JSONDecodeError
 from typing import Any
+from contextlib import contextmanager
 
 from requests.exceptions import RequestException
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.exceptions import RemoteError
+from country_workspace.contrib.dedup_engine.client import make_client
+
 
 from .config import ROUTES, Route
 
@@ -42,3 +45,27 @@ class HopeApi:
         except (RequestException, JSONDecodeError, RemoteError) as e:
             self.err(f"{error_msg}: {e}")
             return None
+
+
+@contextmanager
+def dedup_api(program_code: str, err: Callable[[str], None]) -> Iterator[Any]:
+    """Yield a safe proxy over DedupEngine Client with uniform error handling."""
+    with make_client(program_code) as client:
+
+        class Proxy:
+            def __getattr__(self, name: str) -> Any:
+                attr = getattr(client, name)
+                if not callable(attr):
+                    return attr
+
+                def wrapped(*args: Any, **kwargs: Any) -> Any | None:
+                    try:
+                        result = attr(*args, **kwargs)
+                    except (RequestException, ValueError, KeyError, TypeError) as e:
+                        err(f"DedupEngine client.{name} failed: {e}")
+                        return None
+                    return True if result is None else result
+
+                return wrapped
+
+        yield Proxy()

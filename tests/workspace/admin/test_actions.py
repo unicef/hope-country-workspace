@@ -12,7 +12,7 @@ from country_workspace.workspaces.admin.cleaners.actions import (
     regex_update,
     bulk_update_export,
     calculate_checksum,
-    push_to_hope,
+    create_rdp,
     validate_records,
     concatenate_field,
     name_parser_action,
@@ -153,12 +153,12 @@ def test_calculate_checksum_redirects_when_queryset_empty(mock_redirect, mock_ad
 
 
 @patch("country_workspace.workspaces.admin.cleaners.actions.redirect")
-def test_push_to_hope_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
+def test_create_rdp_redirects_when_queryset_empty(mock_redirect, mock_admin, mock_request):
     empty_queryset = MagicMock()
     empty_queryset.exists.return_value = False
     mock_redirect.return_value = HttpResponse()
 
-    result = push_to_hope(mock_admin, mock_request, empty_queryset)
+    result = create_rdp(mock_admin, mock_request, empty_queryset)
 
     mock_redirect.assert_called_once_with(".")
     assert result == mock_redirect.return_value

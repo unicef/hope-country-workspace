@@ -27,6 +27,7 @@ class ProgramFactory(AutoRegisterModelFactory):
     country_office = factory.SubFactory(OfficeFactory)
     hope_id = factory.Sequence(lambda n: f"program-{n}")
     name = factory.Sequence(lambda n: f"Program {n}")
+    code = factory.Sequence(lambda n: f"{n:04d}")
     household_checker = factory.SubFactory(DataCheckerFactory)
     individual_checker = factory.SubFactory(DataCheckerFactory)
     beneficiary_group = factory.SubFactory(BeneficiaryGroupFactory)
