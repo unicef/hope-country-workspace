@@ -46,26 +46,25 @@
                                     {{ action.get_change_message }}
                                 </td>
                                 <td>
-                                    {% get_changed action.change_message "permissions" as perms %}
-                                    {% if perms.added %}
+                                    {% get_message_details action.change_message as details %}
+                                    {% if details.added %}
                                         <div>
-                                            <b>Added permissions</b>: {{ perms.added|join:", " }}
+                                            <b>Added permissions</b>: {{ details.added.permissions|join:", " }}
                                         </div>
                                     {% endif %}
-                                    {% if perms.removed %}
+                                    {% if details.removed %}
                                         <div>
-                                            <b>Removed permissions</b>: {{ perms.removed|join:", " }}
+                                            <b>Removed permissions</b>: {{ details.removed.permissions|join:", " }}
                                         </div>
                                     {% endif %}
-                                    {% get_changed action.change_message "groups" as groups %}
-                                    {% if groups.added %}
+                                    {% if details.added %}
                                         <div>
-                                            <b>Added groups</b>: {{ groups.added|join:", " }}
+                                            <b>Added groups</b>: {{ details.added.groups|join:", " }}
                                         </div>
                                     {% endif %}
-                                    {% if groups.removed %}
+                                    {% if details.removed %}
                                         <div>
-                                            <b>Removed groups</b>: {{ groups.removed|join:", " }}
+                                            <b>Removed groups</b>: {{ details.removed.groups|join:", " }}
                                         </div>
                                     {% endif %}
                                 </td>

@@ -49,6 +49,7 @@ INSTALLED_APPS = (
     "hope_smart_import",
     "hope_smart_export",
     "smart_env",
+    "smart_admin.apps.SmartTemplateConfig",
     "anymail",
     "country_workspace.security",
     "country_workspace.apps.HCWConfig",
