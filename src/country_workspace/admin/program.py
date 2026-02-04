@@ -3,14 +3,17 @@ from typing import TYPE_CHECKING
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
 from django.contrib import admin
+from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
+from strategy_field.utils import fqn
 
+from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
+from .base import BaseModelAdmin
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
-from ..models import Program
-from .base import BaseModelAdmin
-from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
+from ..models import Program, AsyncJob
+from ..tasks import clean_program_data
 
 if TYPE_CHECKING:
     from admin_extra_buttons.buttons import LinkButton
@@ -80,3 +83,18 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
             description="Continuing will erase all the beneficiaries from this program",
             success_message="Successfully executed",
         )
+
+    @button()
+    def clean_program(self, request: HttpRequest, pk: str) -> None:
+        obj: Program = self.get_object(request, pk)
+
+        job = AsyncJob.objects.create(
+            description=f"Clean data for program {obj.name}",
+            program=obj,
+            owner=request.user,
+            type=AsyncJob.JobType.TASK,
+            action=fqn(clean_program_data),
+            config={},
+        )
+        job.queue()
+        self.message_user(request, "Job for program data cleaning is scheduled", level=messages.SUCCESS)
