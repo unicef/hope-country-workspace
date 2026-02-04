@@ -118,6 +118,10 @@ class BaseImportForm(forms.Form):
             transformer_qs = Transformer.objects.filter(office=program.country_office)
             self.fields["household_transformer"].queryset = transformer_qs
             self.fields["individual_transformer"].queryset = transformer_qs
+
+            if program.beneficiary_group and not program.beneficiary_group.master_detail:
+                self.fields.pop("household_mapping", None)
+                self.fields.pop("household_transformer", None)
         else:
             self.fields.pop("household_transformer", None)
             self.fields.pop("individual_transformer", None)

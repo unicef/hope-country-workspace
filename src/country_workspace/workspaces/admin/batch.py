@@ -68,13 +68,17 @@ class BatchReprocessForm(forms.Form):
             self.fields["household_transformer"].queryset = transformer_queryset
             self.fields["individual_transformer"].queryset = transformer_queryset
 
-            if program.household_checker:
-                self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
-                    office=program.country_office,
-                    data_checker=program.household_checker,
-                )
+            if program.is_master_detail:
+                if program.household_checker:
+                    self.fields["household_mapping"].queryset = MappingImporter.objects.filter(
+                        office=program.country_office,
+                        data_checker=program.household_checker,
+                    )
+                else:
+                    self.fields.pop("household_mapping", None)
             else:
                 self.fields.pop("household_mapping", None)
+                self.fields.pop("household_transformer", None)
 
             if program.individual_checker:
                 self.fields["individual_mapping"].queryset = MappingImporter.objects.filter(
