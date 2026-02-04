@@ -340,22 +340,18 @@ def test_import_data_aurora_success(
     stub_data: dict[str, Any],
     expected_people: int,
 ) -> None:
-    if program.beneficiary_group.master_detail:
-        with pytest.raises(NotImplementedError):
-            form_aurora.submit()
-
-        assert program.individuals.count() == 0
-        assert program.households.count() == 0
-        return
-
     assert program.individuals.count() == 0
     assert program.households.count() == 0
 
     res = form_aurora.submit()
 
     assert res.status_code in (200, 302)
-    assert program.individuals.count() == expected_people
-    assert program.households.count() == 0
+    if program.beneficiary_group.master_detail:
+        assert program.individuals.count() == expected_people
+        assert program.households.count() == expected_people
+    else:
+        assert program.individuals.count() == expected_people
+        assert program.households.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
@@ -371,15 +367,7 @@ def test_import_data_aurora_failure(
     form_aurora: forms.Form,
     stub_data: dict[str, Any],
 ) -> None:
-    if program.beneficiary_group.master_detail:
-        with pytest.raises(NotImplementedError):
-            form_aurora.submit()
-
-        assert program.individuals.count() == 0
-        assert program.households.count() == 0
-        return
-
-    with pytest.raises(ImportError, match=r"Last successful record ID"):
+    with pytest.raises(ImportError, match=r"Last successful record ID|Missing record pk"):
         form_aurora.submit()
 
     assert program.individuals.count() == 0
