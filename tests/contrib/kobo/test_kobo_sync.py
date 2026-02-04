@@ -174,7 +174,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
-        raw_data=preprocess_mock.return_value,
+        raw_data=individual_data,
         flex_fields=preprocess_mock.return_value,
         originating_id=originating_id,
         household=household_mock,
@@ -186,7 +186,9 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
     preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
     partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
-    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
+    extract_household_data_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.extract_household_data", return_value={"field": "value"}
+    )
     household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
     id_generator_mock = mocker.Mock(name="id_generator")
 
@@ -225,7 +227,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock,
         flex_fields=preprocess_mock.return_value,
-        raw_data=preprocess_mock.return_value,
+        raw_data=extract_household_data_mock.return_value,
         originating_id=originating_id,
     )
 
