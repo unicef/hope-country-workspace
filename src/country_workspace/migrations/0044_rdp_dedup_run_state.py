@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
             model_name="rdp",
             name="dedup_run_state",
             field=models.CharField(
-                choices=[("NOT_RUN", "Not run yet"), ("IN_PROGRESS", "In progress"), ("APPROVED", "Approved")],
+                choices=[("NOT_RUN", "Not run yet"), ("IN_PROGRESS", "In progress"), ("FINISHED", "Finished")],
                 default="NOT_RUN",
                 help_text="Internal deduplication lifecycle.",
                 max_length=15,

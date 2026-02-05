@@ -6,7 +6,7 @@ from django.db import transaction, IntegrityError
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
-from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
+from country_workspace.contrib.dedup_engine.response import State as DedupResponseState
 
 
 from .processor import PushProcessor, DedupProcessor
@@ -14,6 +14,7 @@ from .config import CreateRdpConfig, PushWorkflowConfig
 from .repository import (
     individuals_by_pks,
     individuals_by_household_pks,
+    mark_rdp_dedup_finished,
     households,
     rdp_for_push,
     preflight_errors,
@@ -81,7 +82,19 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
         raise HopePushError({"errors": ["RDP: beneficiary_group is not set"]})
     if not job.config.get("pks"):
         raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
-
+    if job.program.biometric_deduplication_enabled:
+        dedup_errors: list[str] = []
+        with dedup_api(job.program.code, dedup_errors.append) as de:
+            has = de.has_deduplication_set(reference_pk=job.program.code, state=DedupResponseState.READY)
+            if has:
+                raise HopePushError(
+                    {
+                        "errors": [
+                            "DedupEngine: existing deduplication_set is still READY; "
+                            "cannot create new RDP until previous deduplication is active."
+                        ]
+                    }
+                )
     config: CreateRdpConfig = job.config
     errors = preflight_errors(
         pks=config["pks"],
@@ -120,13 +133,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             raise HopePushError(hope_processor.total)
 
     if rdp.program.biometric_deduplication_enabled:
-        with dedup_api(rdp.program.code, hope_processor._err) as de:
-            if (de_status := de.status()) is None:
-                raise HopePushError(hope_processor.total)
-            if de_status.status == DedupResponseStatus.SUCCESS:
-                if not de.approve():
-                    raise HopePushError(hope_processor.total)
-                Rdp.objects.filter(pk=rdp.pk).update(dedup_run_state=Rdp.DedupRunState.APPROVED)
+        mark_rdp_dedup_finished(rdp_id=rdp.pk)
 
     with transaction.atomic():
         updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, hope_processor.hope_rdi_id)

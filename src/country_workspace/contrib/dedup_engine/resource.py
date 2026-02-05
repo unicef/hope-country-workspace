@@ -26,6 +26,13 @@ class RetrieveMixin[T: TypedDict]:
         return result.json()
 
 
+class ListMixin[R: list[TypedDict]]:
+    def list(self: GenericResource) -> R:
+        result = self.session.get(str(self.endpoint))
+        result.raise_for_status()
+        return result.json()
+
+
 class ActionMixin[T]:
     def call(self: GenericResource, body: T) -> None:
         result = self.session.post(str(self.endpoint), json=body)
@@ -33,7 +40,9 @@ class ActionMixin[T]:
 
 
 class DeduplicationSetCollection(
-    GenericResource[endpoint.DeduplicationSets], CreateMixin[request.DeduplicationSet, response.DeduplicationSet]
+    GenericResource[endpoint.DeduplicationSets],
+    CreateMixin[request.DeduplicationSet, response.DeduplicationSet],
+    ListMixin[object],
 ):
     pass
 

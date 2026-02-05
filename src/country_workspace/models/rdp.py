@@ -18,7 +18,7 @@ class Rdp(BaseModel):
     class DedupRunState(models.TextChoices):
         NOT_RUN = "NOT_RUN", _("Not run yet")
         IN_PROGRESS = "IN_PROGRESS", _("In progress")
-        APPROVED = "APPROVED", _("Approved")
+        FINISHED = "FINISHED", _("Finished")
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")

@@ -239,8 +239,8 @@ class DedupProcessor(ProcessorBase):
         """Execute dedup workflow; collect errors in total."""
         if self.rdp.status != Rdp.PushStatus.PENDING:
             self._err(f"RDP: can not run dedup in status={self.rdp.status}")
-        if self.rdp.dedup_run_state == Rdp.DedupRunState.APPROVED:
-            self._err("RDP: can not run dedup after approval")
+        if self.rdp.dedup_run_state == Rdp.DedupRunState.FINISHED:
+            self._err("RDP: can not run dedup after it is already finished")
         if self.has_errors:
             return
 

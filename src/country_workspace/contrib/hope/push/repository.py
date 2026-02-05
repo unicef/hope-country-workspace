@@ -64,6 +64,11 @@ def rdp_for_push(*, pk: int) -> Rdp:
     return Rdp.objects.select_related("program__country_office", "program__beneficiary_group", "pushed_by").get(pk=pk)
 
 
+def mark_rdp_dedup_finished(*, rdp_id: int) -> None:
+    """Mark RDP dedup run as finished."""
+    Rdp.objects.filter(pk=rdp_id).update(dedup_run_state=Rdp.DedupRunState.FINISHED)
+
+
 def _with_rdp_pre(qs: QuerySet[Beneficiary], *, rdp_qs: QuerySet[Rdp]) -> QuerySet[Beneficiary]:
     """Prefetch related RDPs into `rdp_pre` attribute for preflight checks."""
     return qs.prefetch_related(Prefetch("rdp", queryset=rdp_qs, to_attr="rdp_pre"))
