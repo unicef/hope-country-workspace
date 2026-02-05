@@ -329,11 +329,10 @@ def test_reprocess_batch_queryset_prefetching(program, user: User, force_migrate
 
     with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
         reprocess_batch(job)
-
         is_master_detail = batch.program.is_master_detail
         calls = [c.kwargs for c in mock_create.call_args_list]
         if is_master_detail:
-            hh_call = next(c for c in calls if c.get("description", "").endswith(" - Households"))
+            hh_call = next(c for c in calls if c.get("description", "").endswith(str(batch.pk)))
             queryset = hh_call["queryset"]
             assert "members" in getattr(queryset, "_prefetch_related_lookups", ())
 
@@ -445,6 +444,7 @@ def test_apply_transformations_no_raw_data(program, user: User) -> None:
     hh.refresh_from_db()
     assert hh.flex_fields != {"field1": "value1"}
 
+
 def test_apply_transformations_successful(program, user: User) -> None:
     """Test _apply_transformations with only mapping (no transformer)."""
     from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
@@ -476,6 +476,7 @@ def test_apply_transformations_successful(program, user: User) -> None:
     assert hh.flex_fields["other_col"] == "value2"
     assert hh.last_checked is None
     assert hh.errors == {}
+
 
 def test_apply_transformations_with_mapping_then_transformer(program, user: User) -> None:
     """Test _apply_transformations with mapping first, then transformer - correct flow."""
@@ -544,6 +545,7 @@ def test_apply_transformations_with_transformer_only(program, user: User) -> Non
     assert hh.flex_fields["gender"] == "MALE"
     assert hh.flex_fields["status"] == "ACTIVE"
     assert hh.errors == {}
+
 
 def test_apply_transformations_with_neither_transformer_nor_mapping(program, user: User) -> None:
     """Test _apply_transformations with neither transformer nor mapping (both None)."""

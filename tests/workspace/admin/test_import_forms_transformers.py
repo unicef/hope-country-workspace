@@ -47,6 +47,7 @@ def test_base_import_form_pops_individual_mapping_when_no_individual_checker(hou
         beneficiary_group=BeneficiaryGroupFactory(master_detail=False),
         household_checker=household_checker,
         individual_checker=None,
+        beneficiary_group__master_detail=False,
     )
     TransformerFactory(office=program.country_office)
 
