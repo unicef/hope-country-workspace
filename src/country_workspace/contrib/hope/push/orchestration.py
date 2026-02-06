@@ -6,8 +6,6 @@ from django.db import transaction, IntegrityError
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
-from country_workspace.contrib.dedup_engine.response import State as DedupResponseState
-
 
 from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
@@ -85,16 +83,13 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     if job.program.biometric_deduplication_enabled:
         dedup_errors: list[str] = []
         with dedup_api(job.program.code, dedup_errors.append) as de:
-            has = de.has_deduplication_set(reference_pk=job.program.code, state=DedupResponseState.READY)
-            if has:
+            if (res := de.status()) is None:
+                raise HopePushError({"errors": dedup_errors})
+            if res is not de.DEDUPLICATION_SET_NOT_EXPOSED:
                 raise HopePushError(
-                    {
-                        "errors": [
-                            "DedupEngine: existing deduplication_set is still READY; "
-                            "cannot create new RDP until previous deduplication is active."
-                        ]
-                    }
+                    {"errors": ["DedupEngine: there is an existing non-inactive deduplication set for this program."]}
                 )
+
     config: CreateRdpConfig = job.config
     errors = preflight_errors(
         pks=config["pks"],

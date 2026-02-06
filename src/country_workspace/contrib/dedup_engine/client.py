@@ -73,34 +73,6 @@ class Client:
 
         return Status(status, duplicates_found)
 
-    def list_deduplication_sets(self) -> list[dict[str, Any]]:
-        collection = resource.DeduplicationSetCollection(self.session, self.api_root.deduplication_sets)
-        payload = collection.list()
-
-        try:
-            items = payload["results"]
-        except (TypeError, KeyError):
-            items = payload
-
-        if not isinstance(items, list):
-            raise TypeError("Unexpected /deduplication_sets payload shape")
-
-        return items
-
-    def has_deduplication_set(self, *, reference_pk: str, state: response.State) -> bool:
-        return any(
-            item.get("reference_pk") == reference_pk and self._parse_state(item.get("state")) == state
-            for item in self.list_deduplication_sets()
-            if isinstance(item, dict)
-        )
-
-    @staticmethod
-    def _parse_state(value: Any) -> response.State:
-        try:
-            return response.State(str(value).lower())
-        except (ValueError, TypeError):
-            return response.State.UNKNOWN
-
 
 @contextmanager
 def make_client(program_id: str) -> Generator[Client, None, None]:

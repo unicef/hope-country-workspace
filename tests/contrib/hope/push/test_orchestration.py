@@ -4,7 +4,6 @@ from collections.abc import Callable
 from functools import partial
 
 from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
 from country_workspace.models import Rdp, AsyncJob
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.push.config import Beneficiary
@@ -17,6 +16,7 @@ from country_workspace.contrib.hope.push.orchestration import (
     mark_rdp_beneficiaries_removed,
     steps,
 )
+from country_workspace.contrib.hope.push import repository
 
 
 @pytest.fixture
@@ -124,6 +124,57 @@ def test_create_rdp_core_preflight_errors(mocker: MockerFixture, create_job: Asy
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "case",
+    ["not_exposed", "status_none", "exists"],
+    ids=["not_exposed", "status_none", "exists"],
+)
+def test_create_rdp_core_dedup_guard(mocker: MockerFixture, create_job: AsyncJob, dedup_api_cm, case: str) -> None:
+    mod = "country_workspace.contrib.hope.push.orchestration"
+
+    create_job.program.biometric_deduplication_enabled = True
+
+    spy_preflight = mocker.patch(f"{mod}.preflight_errors", return_value=[])
+    fake_rdp = mocker.Mock(id=123)
+    fake_rdp.__str__ = mocker.Mock(return_value="rdp")
+    spy_create = mocker.patch(f"{mod}.create_rdp_records", return_value=fake_rdp)
+
+    de = mocker.MagicMock()
+    sentinel = object()
+    de.DEDUPLICATION_SET_NOT_EXPOSED = sentinel
+
+    def _dedup_api(program_code: str, err_cb):
+        if case == "status_none":
+            err_cb("boom")
+            de.status.return_value = None
+        else:
+            de.status.return_value = object() if case == "exists" else sentinel
+        return dedup_api_cm(de)
+
+    mock_dedup_api = mocker.patch(f"{mod}.dedup_api", side_effect=_dedup_api)
+
+    expected = {
+        "not_exposed": None,
+        "status_none": {"errors": ["boom"]},
+        "exists": {"errors": ["DedupEngine: there is an existing non-inactive deduplication set for this program."]},
+    }[case]
+
+    if expected is None:
+        assert create_rdp_core(create_job) == {"rdp_id": 123, "rdp_str": "rdp"}
+        spy_preflight.assert_called_once()
+        spy_create.assert_called_once()
+    else:
+        with pytest.raises(HopePushError) as exc:
+            create_rdp_core(create_job)
+        assert exc.value.args[0] == expected
+        spy_preflight.assert_not_called()
+        spy_create.assert_not_called()
+
+    mock_dedup_api.assert_called_once_with(create_job.program.code, mocker.ANY)
+    de.status.assert_called_once_with()
+
+
+@pytest.mark.django_db
 def test_create_rdp_core_success(mocker: MockerFixture, create_job: AsyncJob) -> None:
     mod = "country_workspace.contrib.hope.push.orchestration"
     mocker.patch(f"{mod}.preflight_errors", return_value=[])
@@ -172,20 +223,6 @@ def test_push_existing_rdp_core_success(mocker, job, is_duplicate):
         code="TEST" if is_duplicate else job.rdp.program.code,
     )
 
-    if is_duplicate:
-        job.rdp.program.code = "TEST"
-
-        de = mocker.MagicMock()
-        de.status.return_value = mocker.MagicMock(status=DedupResponseStatus.SUCCESS)
-        de.approve.return_value = True
-
-        mocker.patch(
-            f"{mod}.dedup_api",
-            return_value=mocker.MagicMock(
-                __enter__=mocker.Mock(return_value=de), __exit__=mocker.Mock(return_value=False)
-            ),
-        )
-
     cfg = {
         "pks": [1],
         "master_detail": job.program.beneficiary_group.master_detail,
@@ -202,6 +239,7 @@ def test_push_existing_rdp_core_success(mocker, job, is_duplicate):
 
     mock_complete = mocker.patch(f"{mod}.complete_rdp", return_value=job.rdp)
     mock_mark = mocker.patch(f"{mod}.mark_rdp_beneficiaries_removed")
+    mock_mark_dedup = mocker.patch(f"{mod}.mark_rdp_dedup_finished", wraps=repository.mark_rdp_dedup_finished)
 
     push_existing_rdp_core(job)
 
@@ -209,25 +247,27 @@ def test_push_existing_rdp_core_success(mocker, job, is_duplicate):
     mock_mark.assert_called_once()
 
     if is_duplicate:
+        mock_mark_dedup.assert_called_once_with(rdp_id=job.rdp.pk)
         job.rdp.refresh_from_db()
-        assert job.rdp.dedup_run_state == Rdp.DedupRunState.APPROVED
+        assert job.rdp.dedup_run_state == Rdp.DedupRunState.FINISHED
+    else:
+        mock_mark_dedup.assert_not_called()
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "case",
-    ["push_step_error", "dedup_status_none", "dedup_approve_false"],
-    ids=["push_step_error", "dedup_status_none", "dedup_approve_false"],
+    "is_duplicate",
+    [False, True],
+    ids=["no_deduplicate", "duplicate"],
 )
-def test_push_existing_rdp_core_failure(mocker: MockerFixture, job: AsyncJob, case: str) -> None:
+def test_push_existing_rdp_core_failure(mocker: MockerFixture, job: AsyncJob, is_duplicate: bool) -> None:
     mod = "country_workspace.contrib.hope.push.orchestration"
     hope_rdi_id = "test-rdi-123"
     job.config["rdp_id"] = job.rdp.id
 
-    deduplicate = case != "push_step_error"
     job.rdp.program.__class__.objects.filter(pk=job.rdp.program_id).update(
-        biometric_deduplication_enabled=deduplicate,
-        code="TEST" if deduplicate else job.rdp.program.code,
+        biometric_deduplication_enabled=is_duplicate,
+        code="TEST" if is_duplicate else job.rdp.program.code,
     )
 
     cfg = {
@@ -245,50 +285,20 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, job: AsyncJob, ca
 
     mock_complete = mocker.patch(f"{mod}.complete_rdp")
     mock_mark = mocker.patch(f"{mod}.mark_rdp_beneficiaries_removed")
+    mock_mark_dedup = mocker.patch(f"{mod}.mark_rdp_dedup_finished", wraps=repository.mark_rdp_dedup_finished)
 
-    if case == "push_step_error":
+    def _fail_step() -> None:
+        proc.total["errors"].append("boom")
+        proc.has_errors = True
 
-        def _fail_step() -> None:
-            proc.total["errors"].append("boom")
-            proc.has_errors = True
-
-        mocker.patch(f"{mod}.steps", return_value=iter((_fail_step,)))
-    else:
-        mocker.patch(f"{mod}.steps", return_value=iter((lambda: None,)))
-
-        de = mocker.MagicMock()
-        if case == "dedup_status_none":
-
-            def _status() -> None:
-                proc.total["errors"].append("DedupEngine: status() failed")
-
-            de.status.side_effect = _status
-        else:
-            de.status.return_value = mocker.MagicMock(status=DedupResponseStatus.SUCCESS)
-
-            def _approve() -> bool:
-                proc.total["errors"].append("DedupEngine: approve() failed")
-                return False
-
-            de.approve.side_effect = _approve
-
-        mocker.patch(
-            f"{mod}.dedup_api",
-            return_value=mocker.MagicMock(
-                __enter__=mocker.Mock(return_value=de),
-                __exit__=mocker.Mock(return_value=False),
-            ),
-        )
+    mocker.patch(f"{mod}.steps", return_value=iter((_fail_step,)))
 
     with pytest.raises(HopePushError):
         push_existing_rdp_core(job)
 
-    if case == "push_step_error":
-        mock_complete.assert_called_once_with(job.rdp.id, Rdp.PushStatus.FAILURE, hope_rdi_id)
-    else:
-        mock_complete.assert_not_called()
-
+    mock_complete.assert_called_once_with(job.rdp.id, Rdp.PushStatus.FAILURE, hope_rdi_id)
     mock_mark.assert_not_called()
+    mock_mark_dedup.assert_not_called()
 
 
 @pytest.mark.parametrize("master_detail", [True, False], ids=["md", "people_only"])

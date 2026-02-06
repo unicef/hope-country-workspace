@@ -8,17 +8,8 @@ class Status(StrEnum):
     PENDING = auto()
     FAILURE = auto()
     REVOKED = auto()
+    UNKNOWN = auto()
     NOT_SCHEDULED = auto()
-    UNKNOWN = auto()
-
-
-class State(StrEnum):
-    READY = auto()
-    MODIFIED = auto()
-    PROCESSING = auto()
-    FAILED = auto()
-    INACTIVE = auto()
-    UNKNOWN = auto()
 
 
 class DeduplicationSet(TypedDict):

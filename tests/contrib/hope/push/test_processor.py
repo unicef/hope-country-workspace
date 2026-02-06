@@ -384,7 +384,7 @@ def test_dedup_run_rejects_non_pending(mocker: MockerFixture, err_contains: Call
     assert "rdp_id" not in proc.total
 
 
-def test_dedup_run_rejects_after_approval(
+def test_dedup_run_rejects_after_finished(
     mocker: MockerFixture, err_contains: Callable[[list[str], str], bool]
 ) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
@@ -392,14 +392,14 @@ def test_dedup_run_rejects_after_approval(
         pk=1,
         program=mocker.MagicMock(code="PRG"),
         status=Rdp.PushStatus.PENDING,
-        dedup_run_state=Rdp.DedupRunState.APPROVED,
+        dedup_run_state=Rdp.DedupRunState.FINISHED,
     )
     mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
 
     proc = DedupProcessor(rdp_id=1)
     proc.run()
 
-    assert err_contains(proc.total["errors"], "can not run dedup after approval")
+    assert err_contains(proc.total["errors"], "already finished")
     assert "rdp_id" not in proc.total
 
 

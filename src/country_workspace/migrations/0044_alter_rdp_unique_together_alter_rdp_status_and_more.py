@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0042_alter_transformer_value_transformations"),
+        ("country_workspace", "0043_batch_status_and_kobo_page"),
     ]
 
     operations = [
