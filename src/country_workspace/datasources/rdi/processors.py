@@ -1,7 +1,6 @@
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
-from functools import partial
 from typing import Any, cast, Mapping
 
 from PIL import Image
@@ -13,9 +12,10 @@ from openpyxl.drawing.image import Image as RDIImage
 from country_workspace.context import batch_ctx
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.fields import clean_field_names, Record
+from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
+from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 from .config import Config, SheetName, Sheet
@@ -110,15 +110,12 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     mapping = {}
     household_mapping_id = config.get("household_mapping_id")
     household_transformer_id = config.get("household_transformer_id")
-    transform_row = compose(
-        clean_field_names,
-        partial(
-            job.program.apply_mapping_importer,
-            Household,
-            mapping_id=household_mapping_id,
-            transformer_id=household_transformer_id,
-        ),
-        partial(job.program.apply_default_fields, Household),
+    transform_row = build_import_processor(
+        program=job.program,
+        model=Household,
+        mapping_id=household_mapping_id,
+        transformer_id=household_transformer_id,
+        source=Batch.BatchSource.RDI,
     )
 
     for row in sheet:
@@ -151,15 +148,12 @@ def process_beneficiaries(
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
-    transform_row = compose(
-        clean_field_names,
-        partial(
-            job.program.apply_mapping_importer,
-            Individual,
-            mapping_id=individual_mapping_id,
-            transformer_id=individual_transformer_id,
-        ),
-        partial(job.program.apply_default_fields, Individual),
+    transform_row = build_import_processor(
+        program=job.program,
+        model=Individual,
+        mapping_id=individual_mapping_id,
+        transformer_id=individual_transformer_id,
+        source=Batch.BatchSource.RDI,
     )
 
     for row in sheet:

@@ -310,7 +310,7 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["batch_id"] == batch.pk
-            assert result.get("mapped_households", 0) == 0
+            assert result.get("mapped_households", 0) == result["households"]
 
     def test_reprocess_batch_individual_mapping_not_found(self, program, user: User, force_migrated_records) -> None:
         """Test reprocess_batch handles MappingImporter.DoesNotExist for individual mapping."""
@@ -336,12 +336,12 @@ class TestReprocessBatchTask:
             result = reprocess_batch(job)
 
             assert result["batch_id"] == batch.pk
-            assert result.get("mapped_individuals", 0) == 0
+            assert result.get("mapped_individuals", 0) == result["individuals"]
 
     def test_apply_transformations_no_raw_data(self, program, user: User) -> None:
         """Test _apply_transformations returns False when record has no raw_data."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
-        from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
+        from testutils.factories import CountryHouseholdFactory
 
         hh = CountryHouseholdFactory(
             batch__program=program,
@@ -350,9 +350,7 @@ class TestReprocessBatchTask:
         hh.raw_data = {}
         hh.save(update_fields=["raw_data"])
 
-        mapping = MappingImporterFactory(rules="col1=field1")
-
-        result = _apply_transformations(hh, mapping=mapping)
+        result = _apply_transformations(hh, lambda data: data)
 
         assert result is False
         # Record should not be modified
@@ -362,6 +360,8 @@ class TestReprocessBatchTask:
     def test_apply_transformations_successful(self, program, user: User) -> None:
         """Test _apply_transformations with only mapping (no transformer)."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from country_workspace.models import Batch, Household
+        from country_workspace.utils.import_processing import build_import_processor
         from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
 
         hh = CountryHouseholdFactory(
@@ -373,7 +373,13 @@ class TestReprocessBatchTask:
 
         mapping = MappingImporterFactory(rules="old_col=new_col")
 
-        result = _apply_transformations(hh, mapping=mapping)
+        processor = build_import_processor(
+            program=program,
+            model=Household,
+            mapping_id=mapping.pk,
+            source=Batch.BatchSource.RDI,
+        )
+        result = _apply_transformations(hh, processor)
 
         assert result is True
         hh.refresh_from_db()
@@ -389,6 +395,8 @@ class TestReprocessBatchTask:
     def test_apply_transformations_with_mapping_then_transformer(self, program, user: User) -> None:
         """Test _apply_transformations with mapping first, then transformer - correct flow."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from country_workspace.models import Batch, Household
+        from country_workspace.utils.import_processing import build_import_processor
         from testutils.factories import CountryHouseholdFactory, MappingImporterFactory, TransformerFactory
 
         hh = CountryHouseholdFactory(
@@ -405,7 +413,14 @@ class TestReprocessBatchTask:
             value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }"
         )
 
-        result = _apply_transformations(hh, mapping=mapping, transformer=transformer)
+        processor = build_import_processor(
+            program=program,
+            model=Household,
+            mapping_id=mapping.pk,
+            transformer_id=transformer.pk,
+            source=Batch.BatchSource.RDI,
+        )
+        result = _apply_transformations(hh, processor)
 
         assert result is True
         hh.refresh_from_db()
@@ -419,6 +434,8 @@ class TestReprocessBatchTask:
     def test_apply_transformations_with_transformer_only(self, program, user: User) -> None:
         """Test _apply_transformations with only transformer (no mapping)."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from country_workspace.models import Batch, Household
+        from country_workspace.utils.import_processing import build_import_processor
         from testutils.factories import CountryHouseholdFactory, TransformerFactory
 
         hh = CountryHouseholdFactory(
@@ -432,7 +449,14 @@ class TestReprocessBatchTask:
             value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; if(d['status']=='1') d['status']='ACTIVE'; return d; }",  # noqa: E501
         )
 
-        result = _apply_transformations(hh, transformer=transformer)
+        processor = build_import_processor(
+            program=program,
+            model=Household,
+            mapping_id=0,
+            transformer_id=transformer.pk,
+            source=Batch.BatchSource.RDI,
+        )
+        result = _apply_transformations(hh, processor)
 
         assert result is True
         hh.refresh_from_db()
@@ -444,6 +468,8 @@ class TestReprocessBatchTask:
     def test_apply_transformations_with_neither_transformer_nor_mapping(self, program, user: User) -> None:
         """Test _apply_transformations with neither transformer nor mapping (both None)."""
         from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+        from country_workspace.models import Batch, Household
+        from country_workspace.utils.import_processing import build_import_processor
         from testutils.factories import CountryHouseholdFactory
 
         hh = CountryHouseholdFactory(
@@ -453,7 +479,14 @@ class TestReprocessBatchTask:
             flex_fields={"existing": "data"},
         )
 
-        result = _apply_transformations(hh, transformer=None, mapping=None)
+        processor = build_import_processor(
+            program=program,
+            model=Household,
+            mapping_id=0,
+            transformer_id=None,
+            source=Batch.BatchSource.RDI,
+        )
+        result = _apply_transformations(hh, processor)
 
         assert result is True
         hh.refresh_from_db()

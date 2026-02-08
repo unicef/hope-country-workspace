@@ -1,7 +1,17 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
-from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual, Transformer
+from country_workspace.contrib.aurora.import_processing import (
+    build_household_transform as build_aurora_household_processor,
+    build_individual_transform as build_aurora_individual_processor,
+)
+from country_workspace.contrib.kobo.sync import (
+    build_household_processor as build_kobo_household_processor,
+    build_individual_processor as build_kobo_individual_processor,
+)
+from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual, Transformer, Program
+from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 logger = logging.getLogger(__name__)
@@ -9,26 +19,46 @@ logger = logging.getLogger(__name__)
 
 def _apply_transformations(
     record: Household | Individual,
-    mapping: MappingImporter | None = None,
-    transformer: Transformer | None = None,
+    processor: Callable[[Any], dict[str, Any]],
 ) -> bool:
     if not record.raw_data:
         logger.warning("Record %s has no raw data, skipping transformations", record)
         return False
 
-    data = record.raw_data.copy()
-
-    if mapping:
-        data = mapping.apply(data)
-
-    if transformer:
-        data = transformer.apply(data)
+    data = processor(record.raw_data)
 
     record.flex_fields = data
     record.last_checked = None
     record.errors = {}
     record.save(update_fields=["flex_fields", "last_checked", "errors"])
     return True
+
+
+def _build_processor(
+    *,
+    batch: Batch,
+    program: Program,
+    model: type[Household] | type[Individual],
+    mapping_id: int | None,
+    transformer_id: int | None,
+) -> Callable[[Any], dict[str, Any]]:
+    if batch.source == Batch.BatchSource.KOBO:
+        if model is Household:
+            return build_kobo_household_processor(program, mapping_id, transformer_id)
+        return build_kobo_individual_processor(program, mapping_id, transformer_id)
+
+    if batch.source == Batch.BatchSource.AURORA:
+        if model is Household:
+            return build_aurora_household_processor(program, mapping_id, transformer_id)
+        return build_aurora_individual_processor(program, mapping_id, transformer_id)
+
+    return build_import_processor(
+        program=program,
+        model=model,
+        mapping_id=mapping_id,
+        transformer_id=transformer_id,
+        source=batch.source,
+    )
 
 
 def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
@@ -57,6 +87,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             logger.info("Using household transformer: %s", household_transformer)
         except Transformer.DoesNotExist:
             logger.warning("Household transformer %s not found, skipping transformer", household_transformer_id)
+            household_transformer_id = None
 
     if individual_transformer_id:
         try:
@@ -64,6 +95,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             logger.info("Using individual transformer: %s", individual_transformer)
         except Transformer.DoesNotExist:
             logger.warning("Individual transformer %s not found, skipping transformer", individual_transformer_id)
+            individual_transformer_id = None
 
     if household_mapping_id:
         try:
@@ -71,6 +103,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             logger.info("Using household mapping: %s", household_mapping)
         except MappingImporter.DoesNotExist:
             logger.warning("Household mapping %s not found, skipping mapping", household_mapping_id)
+            household_mapping_id = None
 
     if individual_mapping_id:
         try:
@@ -78,6 +111,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             logger.info("Using individual mapping: %s", individual_mapping)
         except MappingImporter.DoesNotExist:
             logger.warning("Individual mapping %s not found, skipping mapping", individual_mapping_id)
+            individual_mapping_id = None
 
     total_households = batch.household_set.count()
     total_individuals = batch.individual_set.count()
@@ -102,7 +136,22 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     mapped_individuals = 0
     is_master_detail = batch.program.is_master_detail
 
-    if (household_transformer or household_mapping) and household_count > 0 and is_master_detail:
+    household_processor = _build_processor(
+        batch=batch,
+        program=batch.program,
+        model=Household,
+        mapping_id=household_mapping_id,
+        transformer_id=household_transformer_id,
+    )
+    individual_processor = _build_processor(
+        batch=batch,
+        program=batch.program,
+        model=Individual,
+        mapping_id=individual_mapping_id,
+        transformer_id=individual_transformer_id,
+    )
+
+    if household_count > 0 and is_master_detail:
         logger.info(
             "Applying household transformations to %d households (transformer: %s, mapping: %s)",
             household_count,
@@ -110,12 +159,12 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             household_mapping.name if household_mapping else None,
         )
         for household in households_to_process:
-            is_applied = _apply_transformations(household, household_mapping, household_transformer)
+            is_applied = _apply_transformations(household, household_processor)
             mapped_households += int(is_applied)
 
         logger.info("Applied transformations to %d households", mapped_households)
 
-    if (individual_transformer or individual_mapping) and individual_count > 0:
+    if individual_count > 0:
         logger.info(
             "Applying individual transformations to %d individuals (transformer: %s, mapping: %s)",
             individual_count,
@@ -123,7 +172,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             individual_mapping.name if individual_mapping else None,
         )
         for individual in individuals_to_process:
-            is_applied = _apply_transformations(individual, individual_mapping, individual_transformer)
+            is_applied = _apply_transformations(individual, individual_processor)
             mapped_individuals += int(is_applied)
 
         logger.info("Applied transformations to %d individuals", mapped_individuals)
