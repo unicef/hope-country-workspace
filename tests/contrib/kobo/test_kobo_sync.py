@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, Mock, MagicMock
 
 import pytest
 from constance.test.unittest import override_config
@@ -124,7 +124,9 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
-    processor_mock = Mock(return_value={"full_name": "Full Name"})
+    processor_result = MagicMock()
+    processor_result.get.return_value = "Full Name"
+    processor_mock = Mock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
 
     data = {
@@ -157,7 +159,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         flex_fields=processor_mock.return_value,
         originating_id=originating_id,
         household=household_mock,
-        name=processor_mock.return_value.get.return_value,
+        name=processor_result.get.return_value,
     )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
@@ -169,7 +171,8 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     )
     household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")  # noqa
     id_generator_mock = mocker.Mock(name="id_generator")
-    processor_mock = Mock(return_value={})
+    processor_result = MagicMock()
+    processor_mock = Mock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
     originating_id = "KOB#1#1"
     household = create_household(
@@ -186,11 +189,11 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
     processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
-    processor_mock.return_value.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
+    processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
 
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock,
-        flex_fields=processor_mock.return_value,
+        flex_fields=processor_result,
         raw_data=extract_household_data_mock.return_value,
         originating_id=originating_id,
     )

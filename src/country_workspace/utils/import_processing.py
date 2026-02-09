@@ -13,7 +13,7 @@ Processor = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def _split_ignored_fields(value: str | None) -> set[str]:
-    if not value:
+    if not value or not isinstance(value, str):
         return set()
     return {part.strip() for part in re.split(r"[,\n]", value) if part.strip()}
 
@@ -74,7 +74,7 @@ def process_import_record(  # noqa: PLR0913
     for processor in pre_processors or ():
         data = processor(data)
 
-    data = clean_field_names(data, fields_to_uppercase=fields_to_uppercase or TO_UPPERCASE_FIELDS)
+    data = dict(clean_field_names(data, fields_to_uppercase=fields_to_uppercase or TO_UPPERCASE_FIELDS))
     if apply_mapping:
         data = program.apply_mapping_importer(model, data, mapping_id=mapping_id, transformer_id=transformer_id)
 
