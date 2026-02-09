@@ -118,7 +118,7 @@ def create_individuals(
         )
         default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Individual))
         individual_fields = preprocess(
-            raw_individual_fields.copy(),
+            raw_individual.copy(),
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
             mapping_importer_callable,
             default_fields_callable,
@@ -131,7 +131,7 @@ def create_individuals(
                 name=individual_fields.get(fullname, "") if fullname else "",
                 originating_id=originating_id,
                 flex_fields=individual_fields,
-                raw_data=raw_individual_fields,
+                raw_data=raw_individual,
             ),
         )
     household.program.individuals.bulk_create(individuals)
