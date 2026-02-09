@@ -145,12 +145,11 @@ def create_individuals(
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
-        raw_individual_fields = dict(raw_individual)
         individual_fields = build_individual_processor(
             batch.program,
             individual_mapping_id,
             individual_transformer_id,
-        )(raw_individual_fields)
+        )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         individuals.append(
             Individual(
@@ -159,7 +158,7 @@ def create_individuals(
                 name=individual_fields.get(fullname, "") if fullname else "",
                 originating_id=originating_id,
                 flex_fields=individual_fields,
-                raw_data=raw_individual_fields,
+                raw_data=raw_individual,
             ),
         )
     household.program.individuals.bulk_create(individuals)
