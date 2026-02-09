@@ -743,16 +743,16 @@ def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config)
 
     build_household_processor_mock.assert_called_once_with(
         batch_mock.program,
-        None,
-        None,
+        mapping_id=None,
+        transformer_id=None,
         apply_defaults=False,
         apply_mapping=False,
         post_processors=(mapping_importer,),
     )
     build_individual_processor_mock.assert_called_once_with(
         batch_mock.program,
-        None,
-        None,
+        mapping_id=None,
+        transformer_id=None,
         apply_defaults=False,
         apply_mapping=False,
         post_processors=(mapping_importer,),
