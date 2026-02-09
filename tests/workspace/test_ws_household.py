@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 import pytest
+from pytest_mock import MockerFixture
 from django import forms
 from django.urls import reverse
 from strategy_field.utils import fqn
@@ -149,6 +150,38 @@ def test_hh_validate_single(app: "CWTestApp", household: "CountryHousehold") -> 
             res = res.click("Validate")
             res = res.follow()
             assert res.status_code == 200
+
+
+def test_hh_validate_single_runs_alien_check(
+    app: "CWTestApp", household: "CountryHousehold", mocker: MockerFixture
+) -> None:
+    mocker.patch(
+        "country_workspace.admin.household.validate_alien_fields",
+        side_effect=ValueError("Alien values found for: {'alien_field'}"),
+    )
+    with select_office(app, household.country_office, household.program):
+        with user_grant_permissions(app._user, ["workspaces.change_countryhousehold"], household.program):
+            url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
+            res = app.get(url)
+            res = res.click("Validate")
+            res = res.follow()
+            assert "Alien values found for" in res.text
+
+
+def test_individual_validate_single_runs_alien_check(
+    app: "CWTestApp", individual: "CountryIndividual", mocker: MockerFixture
+) -> None:
+    mocker.patch(
+        "country_workspace.admin.individual.validate_alien_fields",
+        side_effect=ValueError("Alien values found for: {'alien_field'}"),
+    )
+    with select_office(app, individual.country_office, individual.program):
+        with user_grant_permissions(app._user, ["workspaces.change_countryindividual"], individual.program):
+            url = reverse("workspace:workspaces_countryindividual_change", args=[individual.pk])
+            res = app.get(url)
+            res = res.click("Validate")
+            res = res.follow()
+            assert "Alien values found for" in res.text
 
 
 def test_hh_update_single(app: "CWTestApp", household: "CountryHousehold") -> None:
