@@ -156,7 +156,7 @@ def test_hh_validate_single_runs_alien_check(
     app: "CWTestApp", household: "CountryHousehold", mocker: MockerFixture
 ) -> None:
     validate_alien_mock = mocker.patch(
-        "country_workspace.admin.household.validate_alien_fields",
+        "country_workspace.workspaces.admin.hh_ind.validate_alien_fields",
         side_effect=ValueError("Alien values found for: {'alien_field'}"),
     )
     validate_checker_mock = mocker.patch(
@@ -178,7 +178,7 @@ def test_individual_validate_single_runs_alien_check(
     app: "CWTestApp", individual: "CountryIndividual", mocker: MockerFixture
 ) -> None:
     validate_alien_mock = mocker.patch(
-        "country_workspace.admin.individual.validate_alien_fields",
+        "country_workspace.workspaces.admin.hh_ind.validate_alien_fields",
         side_effect=ValueError("Alien values found for: {'alien_field'}"),
     )
     validate_checker_mock = mocker.patch(
