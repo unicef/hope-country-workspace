@@ -18,5 +18,8 @@ class Registration(BaseModel):
         help_text="Associates this registration with a project, as defined in the Aurora system.",
     )
 
+    class Meta:
+        permissions = (("sync_aurora_registration", "Can sync Aurora registration"),)
+
     def __str__(self) -> str:
         return self.name

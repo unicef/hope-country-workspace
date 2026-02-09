@@ -23,3 +23,4 @@ class Office(BaseModel):
 
     class Meta:
         ordering = ["name"]
+        permissions = (("sync_office", "Can sync office"),)

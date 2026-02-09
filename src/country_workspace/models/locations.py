@@ -16,6 +16,7 @@ class Country(BaseModel):
     class Meta:
         verbose_name_plural = "Countries"
         ordering = ("name",)
+        permissions = (("sync_country", "Can sync country"),)
 
     def __str__(self) -> str:
         return self.name
@@ -49,6 +50,7 @@ class AreaType(MPTTModel):
         indexes = [
             models.Index(fields=["country", "area_level"]),
         ]
+        permissions = (("sync_areatype", "Can sync area type"),)
 
     def __str__(self) -> str:
         return self.name
@@ -82,6 +84,7 @@ class Area(MPTTModel):
                 condition=~Q(p_code=""),
             ),
         ]
+        permissions = (("sync_area", "Can sync area"),)
 
     class MPTTMeta:
         order_insertion_by = ("name", "p_code")

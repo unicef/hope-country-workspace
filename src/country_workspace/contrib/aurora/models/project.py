@@ -15,5 +15,8 @@ class Project(BaseModel):
         help_text="Links this project to a specific Program within the CW system.",
     )
 
+    class Meta:
+        permissions = (("sync_aurora_project", "Can sync Aurora project"),)
+
     def __str__(self) -> str:
         return self.name

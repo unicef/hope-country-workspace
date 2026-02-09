@@ -14,6 +14,7 @@ class BeneficiaryGroup(models.Model):
         verbose_name = "Beneficiary Group"
         verbose_name_plural = "Beneficiary Groups"
         ordering = ("name",)
+        permissions = (("sync_beneficiarygroup", "Can sync beneficiary group"),)
 
     def __str__(self) -> str:
         return self.name
