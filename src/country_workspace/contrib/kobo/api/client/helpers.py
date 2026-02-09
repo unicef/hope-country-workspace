@@ -60,12 +60,13 @@ def handle_paginated_response[T, U](
     collection_mapper: Callable[[raw_common.ListResponse], list[T]],
     item_mapper: Callable[[T], U],
 ) -> Generator[U, None, None]:
-    while url:
-        response = data_getter(url)
+    next_url: str | None = url
+    while next_url:
+        response = data_getter(next_url)
         response.raise_for_status()
-        data: raw_common.ListResponse = response.json()
+        data = cast("raw_common.ListResponse", response.json())
         yield from map(item_mapper, collection_mapper(data))
-        url = data["next"]
+        next_url = cast("str | None", data["next"])
 
 
 def get_raw_asset_list(data: raw_common.ListResponse) -> list[raw_asset_list.Asset]:
@@ -83,7 +84,7 @@ def get_asset_list(data_getter: DataGetter, url: str) -> Generator[Asset, None, 
 def get_submission_list(data_getter: DataGetter, url: str, min_id: int | None = None) -> Iterable[Submission]:
     import json
 
-    query_params = {
+    query_params: dict[str, Any] = {
         START_PARAMETER_NAME: START_PARAMETER_VALUE,
         LIMIT_PARAMETER_NAME: LIMIT_PARAMETER_VALUE,
     }
@@ -92,14 +93,12 @@ def get_submission_list(data_getter: DataGetter, url: str, min_id: int | None = 
         query_params["query"] = json.dumps({"_id": {"$gt": min_id}})
 
     url_with_params = change_url(url, query=query_params)
-    return map(
-        partial(download_attachments, data_getter),
-        handle_paginated_response(data_getter, url_with_params, get_raw_submission_list, Submission),
-    )
+    downloader = partial(download_attachments, cast("Callable[[str], Any]", data_getter))
+    return map(downloader, handle_paginated_response(data_getter, url_with_params, get_raw_submission_list, Submission))
 
 
 def get_asset(data_getter: DataGetter, raw: raw_asset_list.Asset) -> Asset:
     response = data_getter(raw["url"])
     response.raise_for_status()
-    raw_asset_data: raw_asset.Asset = response.json()
+    raw_asset_data = cast("raw_asset.Asset", response.json())
     return Asset(raw_asset_data, partial(get_submission_list, data_getter, raw_asset_data["data"]))

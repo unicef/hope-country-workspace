@@ -13,6 +13,7 @@ class BatchFactory(AutoRegisterModelFactory):
     imported_by = factory.SubFactory(UserFactory)
     import_date = factory.LazyFunction(timezone.now)
     name = factory.Sequence(lambda n: f"Batch {n}")
+    status = Batch.BatchStatus.COMPLETE
 
     program = factory.SubFactory(ProgramFactory)
 

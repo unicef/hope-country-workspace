@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call
 
 import pytest
 from constance.test.unittest import override_config
@@ -28,13 +28,15 @@ from country_workspace.contrib.kobo.sync import (
     get_alien_fields,
     check_for_alien_fields,
 )
-from country_workspace.models import Program
+from country_workspace.models import Program, SyncLog
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
     FieldsetFactory,
     FlexFieldFactory,
+    HouseholdFactory,
+    IndividualFactory,
     SyncLogFactory,
 )
 from testutils.factories.smart_fields import DataCheckerFieldsetFactory
@@ -171,7 +173,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         default_fields_partial,
     )
 
-    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value)
+    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
         raw_data=preprocess_mock.return_value,
@@ -342,7 +344,7 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
         id_generator_mock,
     )
 
-    assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2)
+    assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2, completed=True)
 
     asset_mock.submissions.assert_called_once_with(min_id=100)
 
@@ -387,7 +389,67 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
 
+    asset_mock.submissions.assert_called_once_with(min_id=100)
     sync_log.refresh_from_db()
+    assert sync_log.last_id == "101"
+
+
+@pytest.mark.django_db
+def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, config: Config) -> None:
+    """
+    When import_asset fails on a later submission, earlier data are persisted:
+    each submission runs in its own transaction, so a failure rolls back only
+    that submission; we assert the first household (and its individuals) remain
+    in the DB and the watermark is updated for recovery.
+    """
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+
+    id_generator_mock = mocker.Mock(name="id_generator")
+
+    def create_household_real(batch, submission, config, id_generator, originating_id):
+        return HouseholdFactory(batch=batch, individuals=[])
+
+    def create_individuals_real(batch, household, submission, config, originating_id):
+        return [IndividualFactory(batch=batch, household=household)]
+
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.create_household",
+        side_effect=create_household_real,
+    )
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.create_individuals",
+        side_effect=create_individuals_real,
+    )
+    set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+    set_roles_and_relationships_mock.side_effect = [None, ValueError("fail on second")]
+
+    submission_1 = Mock(spec=dict)
+    submission_1.id = 101
+    submission_2 = Mock(spec=dict)
+    submission_2.id = 102
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+
+    with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
+        import_asset(batch, asset_mock, config, id_generator_mock)
+
+    batch.refresh_from_db()
+    assert batch.household_set.count() == 1
+    assert batch.household_set.first().members.count() == 1
+
+    sync_log = SyncLog.objects.get(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+    )
     assert sync_log.last_id == "101"
 
 
@@ -416,7 +478,7 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
         id_generator_mock,
     )
 
-    assert result == ImportResult(households=0, individuals=0)
+    assert result == ImportResult(households=0, individuals=0, completed=True)
 
     asset_mock.submissions.assert_called_once_with(min_id=100)
 
@@ -429,13 +491,22 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
     asset_mock.uid = config["project_id"]
     job_mock = Mock(name="job")
     job_mock.config = config
+    job_mock.program = Mock()
+    job_mock.program.country_office = Mock()
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.owner = Mock()
+    job_mock.batch_id = None
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
     make_client_mock.return_value.get_asset.return_value = asset_mock
     import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
     import_asset_mock.return_value = ImportResult(
-        households=(household_counter := 1), individuals=(individual_counter := 2)
+        households=(household_counter := 1), individuals=(individual_counter := 2), completed=True
     )
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
 
@@ -443,19 +514,164 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
 
     result = import_data(job_mock)
 
-    assert result == ImportResult(households=household_counter, individuals=individual_counter)
+    assert result == ImportResult(households=household_counter, individuals=individual_counter, completed=True)
     batch_class_mock.objects.create.assert_called_once_with(
         name=BATCH_NAME,
         program=job_mock.program,
         country_office=job_mock.program.country_office,
         imported_by=job_mock.owner,
         source=batch_class_mock.BatchSource.KOBO,
+        status=batch_class_mock.BatchStatus.LOADING,
     )
     make_client_mock.assert_called_once_with(job_mock.program.country_office.kobo_country_code)
-    import_asset_mock.assert_called_once_with(batch_mock, asset_mock, config, get_id_generator_mock.return_value)
+    import_asset_mock.assert_called_once_with(
+        batch_mock,
+        asset_mock,
+        config,
+        get_id_generator_mock.return_value,
+        timebox_seconds=300,
+    )
     get_id_generator_mock.assert_called_once()
 
     create_validation_jobs_mock.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(mocker: MockerFixture, config: Config) -> None:
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    SyncLogFactory(
+        name="kobo_test_asset_uid",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="0",
+    )
+
+    submission_1 = Mock(spec=dict)
+    submission_1.id = 1
+    submission_2 = Mock(spec=dict)
+    submission_2.id = 2
+
+    asset_mock = Mock()
+    asset_mock.uid = "test_asset_uid"
+    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+
+    create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
+    create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
+    create_individuals_mock.return_value = [Mock()]
+    mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
+
+    res = import_asset(
+        batch,
+        asset_mock,
+        config,
+        id_generator_mock := mocker.Mock(name="id_generator"),
+        timebox_seconds=0,
+    )
+
+    assert res == ImportResult(households=1, individuals=1, completed=False)
+    create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, ANY)
+    create_individuals_mock.assert_called_once()
+    assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"
+
+
+def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: Config) -> None:
+    asset_mock = Mock(name="asset")
+    asset_mock.uid = config["project_id"]
+    job_mock = Mock(name="job")
+    job_mock.config = config
+    job_mock.program = Mock()
+    job_mock.program.country_office = Mock()
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.owner = Mock()
+    job_mock.batch_id = None
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
+
+    batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
+    batch_mock = batch_class_mock.objects.create.return_value
+    batch_mock.BatchStatus.LOADING = "LOADING"
+
+    make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
+    make_client_mock.return_value.get_asset.return_value = asset_mock
+
+    import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
+    import_asset_mock.return_value = ImportResult(households=0, individuals=0, completed=False)
+
+    get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
+    create_validation_jobs_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+
+    new_job_mock = Mock()
+    async_create_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.AsyncJob.objects.create", return_value=new_job_mock
+    )
+
+    res = import_data(job_mock)
+
+    assert res == ImportResult(households=0, individuals=0, completed=False)
+    import_asset_mock.assert_called_once_with(
+        batch_mock,
+        asset_mock,
+        config,
+        get_id_generator_mock.return_value,
+        timebox_seconds=300,
+    )
+    create_validation_jobs_mock.assert_not_called()
+    async_create_mock.assert_called_once()
+    new_job_mock.queue.assert_called_once()
+    batch_class_mock.objects.select_for_update.return_value.filter.assert_not_called()
+
+
+def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Config) -> None:
+    """When job.batch_id is set, import_data uses select_for_update().get() and does not create a new batch."""
+    asset_mock = Mock(name="asset")
+    asset_mock.uid = config["project_id"]
+    job_mock = Mock(name="job")
+    job_mock.config = config
+    job_mock.program = Mock()
+    job_mock.program.country_office = Mock()
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.owner = Mock()
+    job_mock.batch_id = 42
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
+    job_mock.save = Mock()
+
+    batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
+    resumed_batch = Mock()
+    resumed_batch.pk = 42
+    resumed_batch.status = batch_class_mock.BatchStatus.LOADING
+    qs = batch_class_mock.objects.select_for_update.return_value
+    qs.select_related.return_value.get.return_value = resumed_batch
+
+    make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
+    make_client_mock.return_value.get_asset.return_value = asset_mock
+
+    import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
+    import_asset_mock.return_value = ImportResult(households=2, individuals=3, completed=True)
+
+    get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
+    create_validation_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+
+    result = import_data(job_mock)
+
+    assert result == ImportResult(households=2, individuals=3, completed=True)
+    batch_class_mock.objects.create.assert_not_called()
+    assert batch_class_mock.objects.select_for_update.call_count >= 1
+    qs.select_related.assert_called_once_with("program", "program__country_office")
+    qs.select_related.return_value.get.assert_called_once_with(pk=42)
+    import_asset_mock.assert_called_once_with(
+        resumed_batch,
+        asset_mock,
+        config,
+        get_id_generator_mock.return_value,
+        timebox_seconds=300,
+    )
+    create_validation_mock.assert_called_once()
 
 
 def test_get_fullname_key_key_exists() -> None:

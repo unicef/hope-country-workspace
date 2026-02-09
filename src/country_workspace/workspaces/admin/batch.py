@@ -91,13 +91,13 @@ class BatchReprocessForm(forms.Form):
 
 @register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ["name", "import_date", "imported_by", "source"]
+    list_display = ["name", "import_date", "imported_by", "source", "status"]
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
     ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
-    readonly_fields = fields = ("name", "source")
+    readonly_fields = fields = ("name", "source", "status")
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["modeladmin"] = self

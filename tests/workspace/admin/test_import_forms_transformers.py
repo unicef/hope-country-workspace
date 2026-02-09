@@ -7,8 +7,7 @@ from testutils.factories.program import BeneficiaryGroupFactory
 
 @pytest.mark.django_db
 def test_base_import_form_includes_transformers_when_program_provided() -> None:
-    program = CountryProgramFactory()
-    # Create transformers in the same office so they appear in the queryset
+    program = CountryProgramFactory(beneficiary_group=BeneficiaryGroupFactory(master_detail=True))
     t1 = TransformerFactory(office=program.country_office)
     t2 = TransformerFactory(office=program.country_office)
 
@@ -44,8 +43,8 @@ def test_base_import_form_hides_household_fields_for_people_program(household_ch
 
 @pytest.mark.django_db
 def test_base_import_form_pops_individual_mapping_when_no_individual_checker(household_checker) -> None:
-    """When program has no individual_checker, individual_mapping is removed; household fields remain."""
     program = CountryProgramFactory(
+        beneficiary_group=BeneficiaryGroupFactory(master_detail=False),
         household_checker=household_checker,
         individual_checker=None,
     )

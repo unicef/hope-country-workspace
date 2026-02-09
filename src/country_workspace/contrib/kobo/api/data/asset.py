@@ -1,4 +1,4 @@
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Iterable
 
 from country_workspace.contrib.kobo.api.data.common import Raw
 from country_workspace.contrib.kobo.api.data.submission import Submission
@@ -6,9 +6,7 @@ from country_workspace.contrib.kobo.api.raw import asset as raw_asset
 
 
 class Asset(Raw[raw_asset.Asset]):
-    def __init__(
-        self, raw: raw_asset.Asset, submissions: Callable[[int | None], Generator[Submission, None, None]]
-    ) -> None:
+    def __init__(self, raw: raw_asset.Asset, submissions: Callable[[int | None], Iterable[Submission]]) -> None:
         super().__init__(raw)
         self._submissions = submissions
 
@@ -20,7 +18,7 @@ class Asset(Raw[raw_asset.Asset]):
     def name(self) -> str:
         return self._raw["name"]
 
-    def submissions(self, min_id: int | None = None) -> Generator[Submission, None, None]:
+    def submissions(self, min_id: int | None = None) -> Iterable[Submission]:
         yield from self._submissions(min_id)
 
     def __str__(self) -> str:

@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
+from django.db import transaction
 from requests import Session
 from requests.adapters import HTTPAdapter
 
@@ -88,8 +89,10 @@ def preprocess(
     mapping_importer: Callable[[Raw], Raw],
     default_fields_applier: Callable[[Raw], Raw],
 ) -> Raw:
-    clean: Callable[[Raw], Raw] = partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
-    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)
+    clean: Callable[[Raw], Raw] = cast(
+        "Callable[[Raw], Raw]", partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
+    )
+    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)  # type: ignore[arg-type]
     return processor(raw)
 
 
@@ -104,18 +107,23 @@ def create_individuals(
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
-        individual_fields = preprocess(
-            raw_individual,
-            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        mapping_importer_callable = cast(
+            "Callable[[Raw], Raw]",
             partial(
                 batch.program.apply_mapping_importer,
                 Individual,
                 mapping_id=individual_mapping_id,
                 transformer_id=individual_transformer_id,
             ),
-            partial(batch.program.apply_default_fields, Individual),
         )
-        fullname = get_fullname_key(individual_fields)
+        default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Individual))
+        individual_fields = preprocess(
+            raw_individual,
+            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            mapping_importer_callable,
+            default_fields_callable,
+        )
+        fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         individuals.append(
             Individual(
                 batch=batch,
@@ -140,16 +148,21 @@ def create_household(
     household_mapping_id = config.get("household_mapping_id")
     household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(
-        raw_household_fields,
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    mapping_importer_callable = cast(
+        "Callable[[Raw], Raw]",
         partial(
             batch.program.apply_mapping_importer,
             Household,
             mapping_id=household_mapping_id,
             transformer_id=household_transformer_id,
         ),
-        partial(batch.program.apply_default_fields, Household),
+    )
+    default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Household))
+    household_fields = preprocess(
+        raw_household_fields,
+        HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        mapping_importer_callable,
+        default_fields_callable,
     )
     household_fields["household_id"] = id_generator()
     return cast(
@@ -166,6 +179,7 @@ def create_household(
 class ImportResult(TypedDict):
     households: int
     individuals: int
+    completed: bool
 
 
 def _is_primary_collector(individual: Individual) -> bool:
@@ -182,13 +196,13 @@ def _is_head_of_household(individual: Individual) -> bool:
 
 def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
-        household.flex_fields["primary_collector"] = primary_collector.id
+        household.flex_fields["primary_collector"] = getattr(primary_collector, "id", None)
 
     if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
-        household.flex_fields["alternate_collector"] = alternate_collector.id
+        household.flex_fields["alternate_collector"] = getattr(alternate_collector, "id", None)
 
     if head_of_household := next(filter(_is_head_of_household, individuals), None):
-        household.flex_fields["head_of_household"] = head_of_household.id
+        household.flex_fields["head_of_household"] = getattr(head_of_household, "id", None)
 
     household.save(update_fields=["flex_fields"])
 
@@ -197,7 +211,7 @@ def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
     """Get set of allowed field names from a DataChecker."""
     if not checker:
         return set()
-    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}
+    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}  # type: ignore[misc]
 
 
 def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
@@ -215,11 +229,12 @@ def check_for_alien_fields(
 ) -> None:
     """Check first submission for alien fields and raise if found."""
     default_fields_applier = lambda x: x
+
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(
+    household_fields = preprocess(  # type: ignore[arg-type]
         raw_household_fields,
         HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        partial(mapping_importer, Household),
+        mapping_importer,
         default_fields_applier,
     )
 
@@ -233,10 +248,10 @@ def check_for_alien_fields(
     individual_alien: set[str] = set()
     if individuals_data := submission.get(config["individual_records_field"]):
         first_individual = individuals_data[0]
-        individual_fields = preprocess(
+        individual_fields = preprocess(  # type: ignore[arg-type]
             first_individual,
             INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            partial(mapping_importer, Individual),
+            mapping_importer,
             default_fields_applier,
         )
         individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
@@ -250,9 +265,14 @@ def check_for_alien_fields(
         raise AlienFieldsError(household_alien, individual_alien)
 
 
-def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Callable[[], int]) -> ImportResult:
-    from django.db import transaction
-
+def import_asset(
+    batch: Batch,
+    asset: Asset,
+    config: Config,
+    id_generator: Callable[[], int],
+    *,
+    timebox_seconds: int | None = None,
+) -> ImportResult:
     household_counter = 0
     individual_counter = 0
     sync_log_name = get_kobo_sync_log_name(asset.uid)
@@ -264,12 +284,17 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
     last_successful_id = last_id
     current_submission = None
 
+    start_time = timezone.now()
+    time_exhausted = False
+
     submissions_iterator = asset.submissions(min_id=last_id)
 
     try:
         for submission in submissions_iterator:
             current_submission = submission
-            originating_id = get_kobo_originating_id(asset.uid, submission.id)
+            originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
+            # One transaction per submission: if this block fails, only this
+            # submission is rolled back; previously committed data stays.
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
                 individuals = create_individuals(batch, household, submission, config, originating_id)
@@ -279,6 +304,11 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
                 individual_counter += len(individuals)
 
             last_successful_id = submission.id
+            if timebox_seconds is not None:
+                elapsed_seconds = (timezone.now() - start_time).total_seconds()
+                if elapsed_seconds >= timebox_seconds:
+                    time_exhausted = True
+                    break
 
     except Exception as e:
         failed_id = current_submission.id if current_submission else "unknown (before first submission)"
@@ -291,6 +321,8 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
         raise ImportError(error_msg) from e
 
     finally:
+        # Persist watermark so the next run (or retry) resumes after the last
+        # successful submission; runs even when an exception is raised.
         if last_successful_id > last_id:
             SyncLog.objects.update_or_create(
                 name=sync_log_name,
@@ -299,7 +331,11 @@ def import_asset(batch: Batch, asset: Asset, config: Config, id_generator: Calla
                 defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
             )
 
-    return ImportResult(households=household_counter, individuals=individual_counter)
+    return ImportResult(
+        households=household_counter,
+        individuals=individual_counter,
+        completed=not time_exhausted,
+    )
 
 
 def get_id_generator() -> Callable[[], int]:
@@ -315,15 +351,44 @@ def get_id_generator() -> Callable[[], int]:
 
 
 def import_data(job: AsyncJob) -> ImportResult:
+    """
+    Import Kobo asset data for a job.
+
+    Transaction management:
+    - Batch setup (create or lock batch, set status to LOADING) runs in a single
+      atomic block so the batch is visible and locked before import starts.
+    - import_asset() runs outside that block; it commits each submission in its
+      own transaction (see import_asset). That way, partial progress is persisted
+      and the watermark (SyncLog) can be updated per submission.
+    - On success, batch status is updated to COMPLETE in a final atomic block.
+    - On incomplete (timebox or reschedule), a new AsyncJob is queued; no batch
+      status change until the run that completes.
+    """
     config: Config = job.config
 
-    batch = Batch.objects.create(
-        name=config["batch_name"],
-        program=job.program,
-        country_office=job.program.country_office,
-        imported_by=job.owner,
-        source=Batch.BatchSource.KOBO,
-    )
+    # Create or lock the batch and set status to LOADING in one transaction.
+    with transaction.atomic():
+        batch_id = getattr(job, "batch_id", None)
+        if batch_id:
+            batch = (
+                Batch.objects.select_for_update().select_related("program", "program__country_office").get(pk=batch_id)
+            )
+        else:
+            batch = Batch.objects.create(
+                name=config["batch_name"],
+                program=job.program,
+                country_office=job.program.country_office,
+                imported_by=job.owner,
+                source=Batch.BatchSource.KOBO,
+                status=Batch.BatchStatus.LOADING,
+            )
+            job.batch = batch
+            job.save(update_fields=["batch"])
+
+        if batch.status != Batch.BatchStatus.LOADING:
+            batch.status = Batch.BatchStatus.LOADING
+            batch.save(update_fields=["status"])
+
     id_generator = get_id_generator()
     client = make_client(job.program.country_office.kobo_country_code)
 
@@ -331,16 +396,47 @@ def import_data(job: AsyncJob) -> ImportResult:
     individual_counter = 0
 
     asset = client.get_asset(config["project_id"])
-    import_result = import_asset(batch, asset, config, id_generator)
-    household_counter += import_result["households"]
-    individual_counter += import_result["individuals"]
+    timebox_minutes = getattr(constance_config, "KOBO_IMPORT_TIMEBOX_MINUTES", 0) or 0
+    timebox_seconds = int(timebox_minutes * 60) if timebox_minutes > 0 else None
 
-    if config.get("validate_after_import"):
+    # import_asset commits each submission in its own transaction; on error it
+    # raises after updating the watermark so the next run can resume.
+    asset_import_result = import_asset(
+        batch,
+        asset,
+        config,
+        id_generator,
+        timebox_seconds=timebox_seconds,
+    )
+    household_counter += asset_import_result["households"]
+    individual_counter += asset_import_result["individuals"]
+
+    if asset_import_result["completed"] and config.get("validate_after_import"):
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=job.program,
-            queryset=batch.household_set.all().prefetch_related("members"),
+            queryset=batch.household_set.all().prefetch_related("members"),  # type: ignore[attr-defined]
         )
 
-    return ImportResult(households=household_counter, individuals=individual_counter)
+    if asset_import_result["completed"]:
+        # Mark batch complete in a dedicated transaction.
+        with transaction.atomic():
+            Batch.objects.select_for_update().filter(pk=batch.pk).update(status=Batch.BatchStatus.COMPLETE)
+    else:
+        AsyncJob.objects.create(
+            description=job.description,
+            type=job.type,
+            action=job.action,
+            file=getattr(job, "file", None),
+            program=job.program,
+            owner=job.owner,
+            config=config,
+            batch=batch,
+        ).queue()
+
+    return ImportResult(
+        households=household_counter,
+        individuals=individual_counter,
+        completed=asset_import_result["completed"],
+    )

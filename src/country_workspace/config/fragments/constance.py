@@ -53,6 +53,7 @@ CONSTANCE_CONFIG = {
     "KOBO_PROJECT_VIEW_ID": (KOBO_PROJECT_VIEW_ID, "Kobo Project View ID", str),
     "KOBO_KF_URL": (KOBO_KF_URL, "Kobo Server address", str),
     "KOBO_CACHE_TTL": (86400, "Kobo data cache TTL", int),
+    "KOBO_IMPORT_TIMEBOX_MINUTES": (5, "Max minutes before Kobo import reschedules itself", int),
     "CACHE_TIMEOUT": (86400, "Cache Redis TTL", int),
     "CACHE_BY_VERSION": (False, "Invalidate Cache on CW version change", bool),
     "CONCURRENCY_GUARD": (
@@ -114,6 +115,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "KOBO_FIELDS_TO_IGNORE",
         "KOBO_HH_FIELDS_TO_IGNORE",
         "KOBO_IND_FIELDS_TO_IGNORE",
+        "KOBO_IMPORT_TIMEBOX_MINUTES",
     ),
     "Remote System Settings - Aurora": (
         "AURORA_API_TOKEN",

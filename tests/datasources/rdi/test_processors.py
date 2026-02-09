@@ -487,6 +487,7 @@ def test_import_from_rdi(
         country_office=job.program.country_office,
         imported_by=job.owner,
         source=batch_class_mock.BatchSource.RDI,
+        status=batch_class_mock.BatchStatus.LOADING,
     )
 
 
