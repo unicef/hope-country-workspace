@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -134,6 +134,122 @@ class TestReprocessBatchTask:
             assert result["individuals"] == 1
             assert result["validation_jobs_created"] == 1
             mock_create.assert_called_once()
+
+    def test_build_processor_uses_kobo_builders(self, program, user: User) -> None:
+        from testutils.factories import CountryBatchFactory
+        from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+        from country_workspace.models import Household, Individual
+
+        batch = CountryBatchFactory(
+            program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO
+        )
+
+        with (
+            patch(
+                "country_workspace.workspaces.admin.batch_reprocessing.build_kobo_household_processor",
+                return_value=Mock(name="kobo_hh"),
+            ) as build_hh,
+            patch(
+                "country_workspace.workspaces.admin.batch_reprocessing.build_kobo_individual_processor",
+                return_value=Mock(name="kobo_ind"),
+            ) as build_ind,
+        ):
+            assert (
+                _build_processor(
+                    batch=batch,
+                    program=program,
+                    model=Household,
+                    mapping_id=1,
+                    transformer_id=2,
+                )
+                is build_hh.return_value
+            )
+            assert (
+                _build_processor(
+                    batch=batch,
+                    program=program,
+                    model=Individual,
+                    mapping_id=3,
+                    transformer_id=4,
+                )
+                is build_ind.return_value
+            )
+
+        build_hh.assert_called_once_with(program, 1, 2)
+        build_ind.assert_called_once_with(program, 3, 4)
+
+    def test_build_processor_uses_aurora_builders(self, program, user: User) -> None:
+        from testutils.factories import CountryBatchFactory
+        from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+        from country_workspace.models import Household, Individual
+
+        batch = CountryBatchFactory(
+            program=program, country_office=program.country_office, source=Batch.BatchSource.AURORA
+        )
+
+        with (
+            patch(
+                "country_workspace.workspaces.admin.batch_reprocessing.build_aurora_household_processor",
+                return_value=Mock(name="aurora_hh"),
+            ) as build_hh,
+            patch(
+                "country_workspace.workspaces.admin.batch_reprocessing.build_aurora_individual_processor",
+                return_value=Mock(name="aurora_ind"),
+            ) as build_ind,
+        ):
+            assert (
+                _build_processor(
+                    batch=batch,
+                    program=program,
+                    model=Household,
+                    mapping_id=5,
+                    transformer_id=6,
+                )
+                is build_hh.return_value
+            )
+            assert (
+                _build_processor(
+                    batch=batch,
+                    program=program,
+                    model=Individual,
+                    mapping_id=7,
+                    transformer_id=8,
+                )
+                is build_ind.return_value
+            )
+
+        build_hh.assert_called_once_with(program, 5, 6)
+        build_ind.assert_called_once_with(program, 7, 8)
+
+    def test_build_processor_uses_default_builder(self, program, user: User) -> None:
+        from testutils.factories import CountryBatchFactory
+        from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+        from country_workspace.models import Household
+
+        batch = CountryBatchFactory(
+            program=program, country_office=program.country_office, source=Batch.BatchSource.RDI
+        )
+
+        with patch(
+            "country_workspace.workspaces.admin.batch_reprocessing.build_import_processor",
+            return_value=Mock(name="default_processor"),
+        ) as build_default:
+            result = _build_processor(
+                batch=batch,
+                program=program,
+                model=Household,
+                mapping_id=9,
+                transformer_id=10,
+            )
+
+        assert result is build_default.return_value
+        build_default.assert_called_once_with(
+            program=program,
+            model=Household,
+            mapping_id=9,
+            transformer_id=10,
+            source=batch.source,
+        )
 
     def test_reprocess_batch_with_mixed_content(self, program, user: User, force_migrated_records) -> None:
         from testutils.factories import (
