@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import ANY, Mock, call
+from unittest.mock import ANY, Mock, MagicMock
 
 import pytest
 from constance.test.unittest import override_config
@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
     AlienFieldsError,
+    build_individual_processor,
     Config,
     ImportResult,
     create_household,
@@ -18,10 +19,7 @@ from country_workspace.contrib.kobo.sync import (
     import_data,
     is_submission_data_url,
     make_client,
-    INDIVIDUAL_FIELDS_TO_UPPERCASE,
-    preprocess,
     get_fullname_key,
-    HOUSEHOLD_FIELDS_TO_UPPERCASE,
     set_roles_and_relationships,
     get_id_generator,
     get_allowed_fields,
@@ -29,7 +27,6 @@ from country_workspace.contrib.kobo.sync import (
     check_for_alien_fields,
 )
 from country_workspace.models import Program, SyncLog
-from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
@@ -124,14 +121,13 @@ def test_extract_household_data() -> None:
 
 
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
-
-    mapping_importer_partial = Mock(name="mapping_importer_partial")
-    default_fields_partial = Mock(name="default_fields_partial")
-    partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
+    processor_result = MagicMock()
+    processor_result.get.return_value = "Full Name"
+    processor_mock = Mock(return_value=processor_result)
+    build_processor_mock.return_value = processor_mock
 
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
@@ -153,50 +149,31 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
     assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
 
-    partial_mock.assert_has_calls(
-        [
-            call(
-                batch_mock.program.apply_mapping_importer,
-                individual_class_mock,
-                mapping_id=None,
-                transformer_id=None,
-            ),
-            call(batch_mock.program.apply_default_fields, individual_class_mock),
-        ]
-    )
-    assert partial_mock.call_count == 2
+    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    processor_mock.assert_called_once_with(individual_data)
 
-    preprocess_mock.assert_called_once_with(
-        individual_data,
-        INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-        mapping_importer_partial,
-        default_fields_partial,
-    )
-
-    get_fullname_key_mock.assert_called_once_with(preprocess_mock.return_value.keys())
+    get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
         raw_data=individual_data,
-        flex_fields=preprocess_mock.return_value,
+        flex_fields=processor_mock.return_value,
         originating_id=originating_id,
         household=household_mock,
-        name=preprocess_mock.return_value.get.return_value,
+        name=processor_result.get.return_value,
     )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
     extract_household_data_mock = mocker.patch(
         "country_workspace.contrib.kobo.sync.extract_household_data", return_value={"field": "value"}
     )
-    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
+    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")  # noqa
     id_generator_mock = mocker.Mock(name="id_generator")
-
-    mapping_importer_partial = Mock(name="mapping_importer_partial")
-    default_fields_partial = Mock(name="default_fields_partial")
-    partial_mock.side_effect = [mapping_importer_partial, default_fields_partial]
+    processor_result = MagicMock()
+    processor_mock = Mock(return_value=processor_result)
+    build_processor_mock.return_value = processor_mock
     originating_id = "KOB#1#1"
     household = create_household(
         batch_mock := Mock(name="batch"),
@@ -209,39 +186,23 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
 
-    partial_mock.assert_has_calls(
-        [
-            call(batch_mock.program.apply_mapping_importer, household_class_mock, mapping_id=None, transformer_id=None),
-            call(batch_mock.program.apply_default_fields, household_class_mock),
-        ]
-    )
-    assert partial_mock.call_count == 2
-
-    preprocess_mock.assert_called_once_with(
-        extract_household_data_mock.return_value,
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        mapping_importer_partial,
-        default_fields_partial,
-    )
+    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
-    preprocess_mock.return_value.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
+    processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
 
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock,
-        flex_fields=preprocess_mock.return_value,
+        flex_fields=processor_result,
         raw_data=extract_household_data_mock.return_value,
         originating_id=originating_id,
     )
 
 
 def test_create_individuals_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
-    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess", return_value={})
-    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
-
-    mapping_partial = Mock(name="mapping_partial")
-    default_partial = Mock(name="default_partial")
-    partial_mock.side_effect = [mapping_partial, default_partial]
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
+    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")  # noqa
+    build_processor_mock.return_value = Mock(return_value={})
 
     config_with_transformer = {**config, "individual_transformer_id": 99}
     create_individuals(
@@ -252,36 +213,16 @@ def test_create_individuals_passes_transformer_id(mocker: MockerFixture, config:
         originating_id := "orig",  # noqa
     )
 
-    partial_mock.assert_has_calls(
-        [
-            call(
-                batch_mock.program.apply_mapping_importer,
-                individual_class_mock,
-                mapping_id=None,
-                transformer_id=99,
-            ),
-            call(batch_mock.program.apply_default_fields, individual_class_mock),
-        ]
-    )
-    preprocess_mock.assert_called_once_with(
-        {},
-        INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-        mapping_partial,
-        default_partial,
-    )
+    build_processor_mock.assert_called_once_with(batch_mock.program, None, 99)
 
 
 def test_create_household_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
-    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess", return_value={})
-    extract_household_data_mock = mocker.patch(
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
+    extract_household_data_mock = mocker.patch(  # noqa
         "country_workspace.contrib.kobo.sync.extract_household_data", return_value={}
     )
-    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")
-
-    mapping_partial = Mock(name="mapping_partial_hh")
-    default_partial = Mock(name="default_partial_hh")
-    partial_mock.side_effect = [mapping_partial, default_partial]
+    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")  # noqa
+    build_processor_mock.return_value = Mock(return_value={})
 
     config_with_transformer = {**config, "household_transformer_id": 77}
     create_household(
@@ -292,23 +233,7 @@ def test_create_household_passes_transformer_id(mocker: MockerFixture, config: C
         originating_id := "orig",  # noqa
     )
 
-    partial_mock.assert_has_calls(
-        [
-            call(
-                batch_mock.program.apply_mapping_importer,
-                household_class_mock,
-                mapping_id=None,
-                transformer_id=77,
-            ),
-            call(batch_mock.program.apply_default_fields, household_class_mock),
-        ]
-    )
-    preprocess_mock.assert_called_once_with(
-        extract_household_data_mock.return_value,
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        mapping_partial,
-        default_partial,
-    )
+    build_processor_mock.assert_called_once_with(batch_mock.program, None, 77)
 
 
 @pytest.mark.django_db
@@ -684,28 +609,31 @@ def test_get_fullname_key_key_does_not_exist() -> None:
     assert get_fullname_key(()) is None
 
 
-def test_preprocess(mocker: MockerFixture) -> None:
-    normalize_json_mock = mocker.patch("country_workspace.contrib.kobo.sync.normalize_json")
-    clean_field_names_mock = mocker.patch("country_workspace.contrib.kobo.sync.clean_field_names")
-    partial_mock = mocker.patch("country_workspace.contrib.kobo.sync.partial")
-    compose_mock = mocker.patch("country_workspace.contrib.kobo.sync.compose")
-    mapping_importer = Mock(name="mapping_importer")
-    default_fields_applier = Mock(name="default_fields_applier")
-    individual = Mock()
-    fields_to_uppercase = ("first", "second")
+def test_build_individual_processor() -> None:
+    from country_workspace.models import Individual
 
-    assert (
-        preprocess(individual, fields_to_uppercase, mapping_importer, default_fields_applier)
-        == compose_mock.return_value.return_value
-    )
-    partial_mock.assert_called_once_with(clean_field_names_mock, fields_to_uppercase=fields_to_uppercase)
-    compose_mock.assert_called_once_with(
-        normalize_json_mock,
-        partial_mock.return_value,
-        mapping_importer,
-        default_fields_applier,
-    )
-    compose_mock.return_value.assert_called_once_with(individual)
+    program_mock = Mock()
+    program_mock.apply_mapping_importer.side_effect = lambda model, data, mapping_id=None, transformer_id=None: {
+        **data,
+        "mapped": True,
+    }
+    program_mock.apply_default_fields.side_effect = lambda model, data: {**data, "defaulted": True}
+
+    processor = build_individual_processor(program_mock, mapping_id=1, transformer_id=2)
+    result = processor({"group/Field": "value", "relationship": "head"})
+
+    assert result["field"] == "value"
+    assert result["relationship"] == "HEAD"
+    assert result["mapped"] is True
+    assert result["defaulted"] is True
+
+    args, kwargs = program_mock.apply_mapping_importer.call_args
+    assert args[0] is Individual
+    assert kwargs["mapping_id"] == 1
+    assert kwargs["transformer_id"] == 2
+    program_mock.apply_default_fields.assert_called_once()
+    default_args, _ = program_mock.apply_default_fields.call_args
+    assert default_args[0] is Individual
 
 
 @pytest.mark.parametrize(
@@ -797,14 +725,40 @@ def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config)
     get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
     get_allowed_fields_mock.return_value = {"household_field", "individual_field"}
 
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    preprocess_mock.return_value = {"household_field": "value"}
+    household_processor = Mock(return_value={"household_field": "value"})
+    individual_processor = Mock(return_value={"individual_field": "value"})
+    build_household_processor_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+    )
+    build_individual_processor_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor", return_value=individual_processor
+    )
 
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"household_field": "value"}
 
     # Should not raise
-    check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+    mapping_importer = Mock()
+    check_for_alien_fields(batch_mock, submission_mock, config, mapping_importer)
+
+    build_household_processor_mock.assert_called_once_with(
+        batch_mock.program,
+        mapping_id=None,
+        transformer_id=None,
+        apply_defaults=False,
+        apply_mapping=False,
+        post_processors=(mapping_importer,),
+    )
+    build_individual_processor_mock.assert_called_once_with(
+        batch_mock.program,
+        mapping_id=None,
+        transformer_id=None,
+        apply_defaults=False,
+        apply_mapping=False,
+        post_processors=(mapping_importer,),
+    )
+    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
+    individual_processor.assert_called_once_with(submission_mock.get.return_value[0])
 
 
 def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, config: Config) -> None:
@@ -820,8 +774,10 @@ def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, con
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"known_field": "value", "alien_field": "value"}
 
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    preprocess_mock.return_value = {"known_field": "value", "alien_field": "value"}
+    household_processor = Mock(return_value={"known_field": "value", "alien_field": "value"})
+    build_household_processor_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+    )
 
     get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
     get_allowed_fields_mock.return_value = {"known_field"}
@@ -831,6 +787,8 @@ def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, con
 
     assert exc_info.value.household_alien_fields == {"alien_field"}
     assert exc_info.value.individual_alien_fields == set()
+    build_household_processor_mock.assert_called_once()
+    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
 
 
 def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, config: Config) -> None:
@@ -846,12 +804,14 @@ def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, co
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"household_field": "value"}
 
-    preprocess_mock = mocker.patch("country_workspace.contrib.kobo.sync.preprocess")
-    # First call for household, second for individual
-    preprocess_mock.side_effect = [
-        {"household_field": "value"},
-        {"known_field": "value", "alien_individual_field": "value"},
-    ]
+    household_processor = Mock(return_value={"household_field": "value"})
+    individual_processor = Mock(return_value={"known_field": "value", "alien_individual_field": "value"})
+    build_household_processor_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+    )
+    build_individual_processor_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor", return_value=individual_processor
+    )
 
     def get_allowed_fields_side_effect(checker):
         if checker == batch_mock.program.household_checker:
@@ -866,3 +826,7 @@ def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, co
 
     assert exc_info.value.household_alien_fields == set()
     assert exc_info.value.individual_alien_fields == {"alien_individual_field"}
+    build_household_processor_mock.assert_called_once()
+    build_individual_processor_mock.assert_called_once()
+    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
+    individual_processor.assert_called_once_with(submission_mock.get.return_value[0])

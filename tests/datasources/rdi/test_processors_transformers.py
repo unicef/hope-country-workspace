@@ -1,4 +1,4 @@
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 from pytest_mock import MockerFixture
 
@@ -15,8 +15,8 @@ def _base_config() -> dict:
 
 
 def test_process_households_uses_transformer_id(mocker: MockerFixture) -> None:
-    partial_mock = mocker.patch("country_workspace.datasources.rdi.processors.partial")
-    partial_mock.side_effect = [Mock(name="map_partial"), Mock(name="default_partial")]
+    build_processor_mock = mocker.patch("country_workspace.datasources.rdi.processors.build_import_processor")
+    build_processor_mock.return_value = Mock(name="processor")
 
     job = Mock()
     job.program = Mock()
@@ -30,22 +30,18 @@ def test_process_households_uses_transformer_id(mocker: MockerFixture) -> None:
 
     processors.process_households([], job, batch, config)
 
-    partial_mock.assert_has_calls(
-        [
-            call(
-                job.program.apply_mapping_importer,
-                processors.Household,
-                mapping_id=1,
-                transformer_id=2,
-            ),
-            call(job.program.apply_default_fields, processors.Household),
-        ]
+    build_processor_mock.assert_called_once_with(
+        program=job.program,
+        model=processors.Household,
+        mapping_id=1,
+        transformer_id=2,
+        source=processors.Batch.BatchSource.RDI,
     )
 
 
 def test_process_beneficiaries_uses_transformer_id(mocker: MockerFixture) -> None:
-    partial_mock = mocker.patch("country_workspace.datasources.rdi.processors.partial")
-    partial_mock.side_effect = [Mock(name="map_partial"), Mock(name="default_partial")]
+    build_processor_mock = mocker.patch("country_workspace.datasources.rdi.processors.build_import_processor")
+    build_processor_mock.return_value = Mock(name="processor")
 
     job = Mock()
     job.program = Mock()
@@ -61,14 +57,10 @@ def test_process_beneficiaries_uses_transformer_id(mocker: MockerFixture) -> Non
 
     processors.process_beneficiaries([], job, batch, config, household_mapping=None)
 
-    partial_mock.assert_has_calls(
-        [
-            call(
-                job.program.apply_mapping_importer,
-                processors.Individual,
-                mapping_id=5,
-                transformer_id=6,
-            ),
-            call(job.program.apply_default_fields, processors.Individual),
-        ]
+    build_processor_mock.assert_called_once_with(
+        program=job.program,
+        model=processors.Individual,
+        mapping_id=5,
+        transformer_id=6,
+        source=processors.Batch.BatchSource.RDI,
     )

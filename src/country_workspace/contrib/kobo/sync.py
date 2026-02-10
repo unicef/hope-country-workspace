@@ -1,6 +1,5 @@
 import re
 from collections.abc import Callable, Iterable
-from functools import partial
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from constance import config as constance_config
 from django.utils import timezone
@@ -20,9 +19,9 @@ from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.fields import clean_field_names, TO_UPPERCASE_FIELDS
-from country_workspace.utils.functional import compose
+from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
+from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
@@ -83,17 +82,56 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
 type Raw = dict[str, Any]
 
 
-def preprocess(
-    raw: Raw,
-    fields_to_uppercase: tuple[str, ...],
-    mapping_importer: Callable[[Raw], Raw],
-    default_fields_applier: Callable[[Raw], Raw],
-) -> Raw:
-    clean: Callable[[Raw], Raw] = cast(
-        "Callable[[Raw], Raw]", partial(clean_field_names, fields_to_uppercase=fields_to_uppercase)
+def build_household_processor(  # noqa: PLR0913
+    program: Program,
+    mapping_id: int | None,
+    transformer_id: int | None,
+    *,
+    apply_defaults: bool = True,
+    apply_mapping: bool = True,
+    post_processors: Iterable[Callable[[Raw], Raw]] | None = None,
+) -> Callable[[Raw], Raw]:
+    return cast(
+        "Callable[[Raw], Raw]",
+        build_import_processor(
+            program=program,
+            model=Household,
+            mapping_id=mapping_id,
+            transformer_id=transformer_id,
+            fields_to_uppercase=HOUSEHOLD_FIELDS_TO_UPPERCASE,
+            pre_processors=(normalize_json,),
+            post_processors=post_processors,
+            apply_defaults=apply_defaults,
+            apply_mapping=apply_mapping,
+            source=Batch.BatchSource.KOBO,
+        ),
     )
-    processor: Callable[[Raw], Raw] = compose(normalize_json, clean, mapping_importer, default_fields_applier)  # type: ignore[arg-type]
-    return processor(raw)
+
+
+def build_individual_processor(  # noqa: PLR0913
+    program: Program,
+    mapping_id: int | None,
+    transformer_id: int | None,
+    *,
+    apply_defaults: bool = True,
+    apply_mapping: bool = True,
+    post_processors: Iterable[Callable[[Raw], Raw]] | None = None,
+) -> Callable[[Raw], Raw]:
+    return cast(
+        "Callable[[Raw], Raw]",
+        build_import_processor(
+            program=program,
+            model=Individual,
+            mapping_id=mapping_id,
+            transformer_id=transformer_id,
+            fields_to_uppercase=INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+            pre_processors=(normalize_json,),
+            post_processors=post_processors,
+            apply_defaults=apply_defaults,
+            apply_mapping=apply_mapping,
+            source=Batch.BatchSource.KOBO,
+        ),
+    )
 
 
 def get_fullname_key(individual: Iterable[str]) -> str | None:
@@ -107,22 +145,11 @@ def create_individuals(
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
-        mapping_importer_callable = cast(
-            "Callable[[Raw], Raw]",
-            partial(
-                batch.program.apply_mapping_importer,
-                Individual,
-                mapping_id=individual_mapping_id,
-                transformer_id=individual_transformer_id,
-            ),
-        )
-        default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Individual))
-        individual_fields = preprocess(
-            raw_individual.copy(),
-            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            mapping_importer_callable,
-            default_fields_callable,
-        )
+        individual_fields = build_individual_processor(
+            batch.program,
+            individual_mapping_id,
+            individual_transformer_id,
+        )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         individuals.append(
             Individual(
@@ -148,22 +175,11 @@ def create_household(
     household_mapping_id = config.get("household_mapping_id")
     household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    mapping_importer_callable = cast(
-        "Callable[[Raw], Raw]",
-        partial(
-            batch.program.apply_mapping_importer,
-            Household,
-            mapping_id=household_mapping_id,
-            transformer_id=household_transformer_id,
-        ),
-    )
-    default_fields_callable = cast("Callable[[Raw], Raw]", partial(batch.program.apply_default_fields, Household))
-    household_fields = preprocess(
-        raw_household_fields.copy(),
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        mapping_importer_callable,
-        default_fields_callable,
-    )
+    household_fields = build_household_processor(
+        batch.program,
+        household_mapping_id,
+        household_transformer_id,
+    )(raw_household_fields)
     household_fields["household_id"] = id_generator()
     return cast(
         "Household",
@@ -228,15 +244,15 @@ def check_for_alien_fields(
     batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
 ) -> None:
     """Check first submission for alien fields and raise if found."""
-    default_fields_applier = lambda x: x
-
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = preprocess(  # type: ignore[arg-type]
-        raw_household_fields,
-        HOUSEHOLD_FIELDS_TO_UPPERCASE,
-        mapping_importer,
-        default_fields_applier,
-    )
+    household_fields = build_household_processor(
+        batch.program,
+        mapping_id=None,
+        transformer_id=None,
+        apply_defaults=False,
+        apply_mapping=False,
+        post_processors=(mapping_importer,),
+    )(raw_household_fields)
 
     household_allowed_fields = get_allowed_fields(batch.program.household_checker)
     household_alien = get_alien_fields(
@@ -248,12 +264,14 @@ def check_for_alien_fields(
     individual_alien: set[str] = set()
     if individuals_data := submission.get(config["individual_records_field"]):
         first_individual = individuals_data[0]
-        individual_fields = preprocess(  # type: ignore[arg-type]
-            first_individual,
-            INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            mapping_importer,
-            default_fields_applier,
-        )
+        individual_fields = build_individual_processor(
+            batch.program,
+            mapping_id=None,
+            transformer_id=None,
+            apply_defaults=False,
+            apply_mapping=False,
+            post_processors=(mapping_importer,),
+        )(first_individual)
         individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
         individual_alien = get_alien_fields(
             data=individual_fields,

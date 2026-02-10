@@ -27,7 +27,7 @@ from country_workspace.datasources.rdi.processors import (
     read_sheets,
 )
 from country_workspace.datasources.rdi.utils import datetime_to_date, date_to_iso_string
-from country_workspace.models import Household, Individual
+from country_workspace.models import Batch, Household, Individual
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 
 
@@ -234,43 +234,37 @@ def test_process_households(
     mock_create = mock_household_objects.create
     mock_create.return_value = Mock()
 
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    processor_mock = Mock(return_value={"processed": "value"})
+    build_processor_mock = mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor", return_value=processor_mock
+    )
     job = Mock()
     job.file.name = "uploads/rdi.xlsx"
     result = process_households(household_sheet, job := job, batch := Mock(), config)
 
     assert result == {row[config["household_id_column"]]: mock_create.return_value for row in household_sheet}
 
-    household_mapping_id = config.get("household_mapping_id")
-    job.program.apply_mapping_importer.assert_has_calls(
-        [
-            call(
-                Household,
-                clean_field_names_mock.return_value,
-                mapping_id=household_mapping_id,
-                transformer_id=config.get("household_transformer_id"),
-            )
-            for row in household_sheet
-        ]
+    build_processor_mock.assert_called_once_with(
+        program=job.program,
+        model=Household,
+        mapping_id=config.get("household_mapping_id"),
+        transformer_id=config.get("household_transformer_id"),
+        source=Batch.BatchSource.RDI,
     )
-    job.program.apply_default_fields.assert_has_calls(
-        [call(Household, job.program.apply_mapping_importer.return_value) for _ in household_sheet]
-    )
+    processor_mock.assert_has_calls([call(row) for row in household_sheet])
 
     mock_create.assert_has_calls(
         [
             call(
                 batch_id=batch.pk,
                 name=str(row[config["household_label"]]),
-                flex_fields=job.program.apply_default_fields.return_value,
+                flex_fields=processor_mock.return_value,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
             )
             for row in household_sheet
         ]
     )
-
-    clean_field_names_mock.assert_has_calls((call(row) for row in household_sheet))
 
 
 def test_process_households_failed_to_save_household(
@@ -299,7 +293,10 @@ def test_process_beneficiaries_with_households(
     mock_create.return_value = Mock()
     job_mock = Mock(name="job")
     job_mock.file.name = "uploads/rdi.xlsx"
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    processor_mock = Mock(return_value={"processed": "value"})
+    build_processor_mock = mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor", return_value=processor_mock
+    )
 
     result = process_beneficiaries(
         individual_sheet,
@@ -310,21 +307,14 @@ def test_process_beneficiaries_with_households(
     )
 
     assert len(result) == len(list(individual_sheet))
-    individual_mapping_id = config.get("individual_mapping_id")
-    job_mock.program.apply_mapping_importer.assert_has_calls(
-        [
-            call(
-                Individual,
-                clean_field_names_mock.return_value,
-                mapping_id=individual_mapping_id,
-                transformer_id=config.get("individual_transformer_id"),
-            )
-            for row in individual_sheet
-        ]
+    build_processor_mock.assert_called_once_with(
+        program=job_mock.program,
+        model=Individual,
+        mapping_id=config.get("individual_mapping_id"),
+        transformer_id=config.get("individual_transformer_id"),
+        source=Batch.BatchSource.RDI,
     )
-    job_mock.program.apply_default_fields.assert_has_calls(
-        [call(Individual, job_mock.program.apply_mapping_importer.return_value) for _ in individual_sheet]
-    )
+    processor_mock.assert_has_calls([call(row) for row in individual_sheet])
 
     mock_create.assert_has_calls(
         [
@@ -332,15 +322,13 @@ def test_process_beneficiaries_with_households(
                 batch_id=batch_mock.pk,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["household_id_column"]]],
-                flex_fields=job_mock.program.apply_default_fields.return_value,
+                flex_fields=processor_mock.return_value,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
             )
             for row in individual_sheet
         ]
     )
-
-    clean_field_names_mock.assert_has_calls([call(row) for row in individual_sheet])
 
 
 @patch("country_workspace.datasources.rdi.processors.Individual.objects")
@@ -350,7 +338,10 @@ def test_process_beneficiaries_people_only(
     mock_create = mock_individual_objects.create
     mock_create.return_value = Mock()
 
-    clean_field_names_mock = mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    processor_mock = Mock(return_value={"processed": "value"})
+    build_processor_mock = mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor", return_value=processor_mock
+    )
     job_mock = Mock(name="job")
     job_mock.file.name = "uploads/rdi.xlsx"
     result = process_beneficiaries(
@@ -362,34 +353,32 @@ def test_process_beneficiaries_people_only(
     )
 
     assert len(result) == len(list(people_sheet))
-    individual_mapping_id = config.get("individual_mapping_id")
-    expected_calls, expected_apply_mapping_calls, expected_apply_default_calls = [], [], []
+    build_processor_mock.assert_called_once_with(
+        program=job_mock.program,
+        model=Individual,
+        mapping_id=config.get("individual_mapping_id"),
+        transformer_id=config.get("individual_transformer_id"),
+        source=Batch.BatchSource.RDI,
+    )
+    expected_calls = []
     for __, row in enumerate(people_sheet, 1):
         prefix = config.get("people_prefix", "")
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
-        expected_apply_mapping_calls.append(
-            call(
-                Individual,
-                clean_field_names_mock.return_value,
-                mapping_id=individual_mapping_id,
-                transformer_id=config.get("individual_transformer_id"),
-            )
-        )
-        expected_apply_default_calls.append(call(Individual, job_mock.program.apply_mapping_importer.return_value))
         expected_calls.append(
             call(
                 batch_id=batch_mock.pk,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
-                flex_fields=job_mock.program.apply_default_fields.return_value,
+                flex_fields=processor_mock.return_value,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}",
             )
         )
 
     mock_create.assert_has_calls(expected_calls)
-    job_mock.program.apply_mapping_importer.assert_has_calls(expected_apply_mapping_calls)
-    job_mock.program.apply_default_fields.assert_has_calls(expected_apply_default_calls)
+    processor_mock.assert_has_calls(
+        [call({k.removeprefix(config.get("people_prefix", "")): v for k, v in row.items()}) for row in people_sheet]
+    )
 
 
 def test_process_beneficiaries_failed_to_create(
@@ -634,7 +623,10 @@ def test_duplicate_keys(
 ) -> None:
     mocker.patch("country_workspace.datasources.rdi.processors.Household.objects.create", return_value=Mock())
     mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create", return_value=Mock())
-    mocker.patch("country_workspace.datasources.rdi.processors.clean_field_names")
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor",
+        return_value=lambda row: row,
+    )
     job_mock = Mock()
     job_mock.file.name = "uploads/rdi.xlsx"
     if config["master_detail"]:

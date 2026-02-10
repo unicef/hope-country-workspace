@@ -1,8 +1,7 @@
 import logging
-from typing import Any, NamedTuple, NotRequired, Callable, cast
+from typing import Any, NamedTuple, NotRequired, Callable
 from itertools import chain
 from collections.abc import Mapping
-from functools import partial
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -12,8 +11,8 @@ from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.fields import clean_field_names
 from country_workspace.utils.imports import get_aurora_originating_id
+from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
 
 logger = logging.getLogger(__name__)
@@ -252,42 +251,26 @@ def make_full_name(row: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
 def build_individual_transform(
     program: Program, mapping_id: int | None = None, transformer_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    mapping_step = cast(
-        "Callable[[Mapping[str, Any]], dict[str, Any]]",
-        partial(program.apply_mapping_importer, Individual, mapping_id=mapping_id, transformer_id=transformer_id),
+    return build_import_processor(
+        program=program,
+        model=Individual,
+        mapping_id=mapping_id,
+        transformer_id=transformer_id,
+        pre_processors=(flatten_top2_prefixed,),
+        post_processors=(make_full_name,),
+        source=Batch.BatchSource.AURORA,
     )
-    default_step = cast(
-        "Callable[[dict[str, Any]], dict[str, Any]]",
-        partial(program.apply_default_fields, Individual),
-    )
-
-    def transform(row: Mapping[str, Any]) -> dict[str, Any]:
-        data = flatten_top2_prefixed(row)
-        data = clean_field_names(data)
-        data = mapping_step(data)
-        data = make_full_name(data)
-        return default_step(data)
-
-    return transform
 
 
 def build_household_transform(
     program: Program, mapping_id: int | None = None, transformer_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    mapping_step = cast(
-        "Callable[[Mapping[str, Any]], dict[str, Any]]",
-        partial(program.apply_mapping_importer, Household, mapping_id=mapping_id, transformer_id=transformer_id),
+    return build_import_processor(
+        program=program,
+        model=Household,
+        mapping_id=mapping_id,
+        transformer_id=transformer_id,
+        pre_processors=(flatten_top2_prefixed,),
+        post_processors=(make_full_name,),
+        source=Batch.BatchSource.AURORA,
     )
-    default_step = cast(
-        "Callable[[dict[str, Any]], dict[str, Any]]",
-        partial(program.apply_default_fields, Household),
-    )
-
-    def transform(row: Mapping[str, Any]) -> dict[str, Any]:
-        data = flatten_top2_prefixed(row)
-        data = clean_field_names(data)
-        data = mapping_step(data)
-        data = make_full_name(data)
-        return default_step(data)
-
-    return transform
