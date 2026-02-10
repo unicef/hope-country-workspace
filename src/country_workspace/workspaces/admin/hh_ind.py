@@ -19,6 +19,7 @@ from ...state import state
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from ...models import Batch
+from ...utils.imports import validate_alien_fields
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import Base64ImageField, get_checker_fields
@@ -162,6 +163,12 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: "Beneficiary" = self.get_object(request, pk)
+        try:
+            validate_alien_fields(obj)
+        except ValueError as exc:
+            self.message_user(request, str(exc), messages.ERROR)
+            return
+
         if obj.validate_with_checker():
             self.message_user(request, _("Validation successful!"), messages.SUCCESS)
         else:

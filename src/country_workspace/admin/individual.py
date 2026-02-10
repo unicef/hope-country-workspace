@@ -1,11 +1,14 @@
 from typing import TYPE_CHECKING
 
-from admin_extra_buttons.decorators import link
+from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import LinkedAutoCompleteFilter, AutoCompleteFilter
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.urls import reverse
+from django.utils.translation import gettext as _
+from django.http import HttpRequest, HttpResponse
 
 from ..models import Individual
+from ..utils.imports import validate_alien_fields
 from .actions import reprocess_records
 from .base import BaseModelAdmin
 from .filters import IsValidFilter
@@ -39,3 +42,17 @@ class IndividualAdmin(BaseModelAdmin):
             req = btn.context["request"]
             base = reverse("workspace:workspaces_countryindividual_changelist")
             btn.href = f"{base}?%s" % req.META["QUERY_STRING"]
+
+    @button(label=_("Validate"), enabled=lambda btn: btn.context["original"].checker)
+    def validate_single(self, request: HttpRequest, pk: str) -> HttpResponse:
+        obj: Individual = self.get_object(request, pk)
+        try:
+            validate_alien_fields(obj)
+        except ValueError as exc:
+            self.message_user(request, str(exc), messages.ERROR)
+            return
+
+        if obj.validate_with_checker():
+            self.message_user(request, _("Validation successful!"), messages.SUCCESS)
+        else:
+            self.message_user(request, _("Validation failed!"), messages.ERROR)

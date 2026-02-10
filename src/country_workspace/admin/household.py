@@ -7,6 +7,7 @@ from django.utils.translation import gettext as _
 from django.http import HttpRequest, HttpResponse
 
 from ..models import Household
+from ..utils.imports import validate_alien_fields
 from .actions import reprocess_records
 from .base import BaseModelAdmin
 from .filters import IsValidFilter
@@ -44,6 +45,12 @@ class HouseholdAdmin(BaseModelAdmin):
     @button(label=_("Validate"), enabled=lambda btn: btn.context["original"].checker)
     def validate_single(self, request: HttpRequest, pk: str) -> HttpResponse:
         obj: Household = self.get_object(request, pk)
+        try:
+            validate_alien_fields(obj)
+        except ValueError as exc:
+            self.message_user(request, str(exc), messages.ERROR)
+            return
+
         if obj.validate_with_checker():
             self.message_user(request, _("Validation successful!"), messages.SUCCESS)
         else:
