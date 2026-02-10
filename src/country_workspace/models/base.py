@@ -138,7 +138,8 @@ class Validable(Cachable, models.Model):
             self.flex_fields = cleaned
             # keep invalid values
             for field_name in new_errors:
-                self.flex_fields[field_name] = flex_fields[field_name]
+                if field_name in flex_fields:
+                    self.flex_fields[field_name] = flex_fields[field_name]
             update_fields.append("flex_fields")
 
         self.last_checked = timezone.now()
