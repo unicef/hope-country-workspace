@@ -120,14 +120,13 @@ def test_reprocess_batch_with_individuals_only(program, user: User, force_migrat
         assert result["individuals"] == 1
         mock_create.assert_called_once()
 
+
 def test_build_processor_uses_kobo_builders(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
     from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
     from country_workspace.models import Household, Individual
 
-    batch = CountryBatchFactory(
-        program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO
-    )
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO)
 
     with (
         patch(
@@ -163,14 +162,13 @@ def test_build_processor_uses_kobo_builders(program, user: User) -> None:
     build_hh.assert_called_once_with(program, 1, 2)
     build_ind.assert_called_once_with(program, 3, 4)
 
+
 def test_build_processor_uses_aurora_builders(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
     from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
     from country_workspace.models import Household, Individual
 
-    batch = CountryBatchFactory(
-        program=program, country_office=program.country_office, source=Batch.BatchSource.AURORA
-    )
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.AURORA)
 
     with (
         patch(
@@ -206,14 +204,13 @@ def test_build_processor_uses_aurora_builders(program, user: User) -> None:
     build_hh.assert_called_once_with(program, 5, 6)
     build_ind.assert_called_once_with(program, 7, 8)
 
+
 def test_build_processor_uses_default_builder(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
     from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
     from country_workspace.models import Household
 
-    batch = CountryBatchFactory(
-        program=program, country_office=program.country_office, source=Batch.BatchSource.RDI
-    )
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.RDI)
 
     with patch(
         "country_workspace.workspaces.admin.batch_reprocessing.build_import_processor",
@@ -426,6 +423,7 @@ def test_reprocess_batch_individual_mapping_not_found(program, user: User, force
         assert result["batch_id"] == batch.pk
         assert result.get("mapped_individuals", 0) == 1
 
+
 def test_apply_transformations_no_raw_data(program, user: User) -> None:
     """Test _apply_transformations returns False when record has no raw_data."""
     from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
@@ -512,6 +510,7 @@ def test_apply_transformations_with_mapping_then_transformer(program, user: User
     assert hh.flex_fields["age"] == 25
     assert "gender" not in hh.flex_fields
     assert hh.errors == {}
+
 
 def test_apply_transformations_with_transformer_only(program, user: User) -> None:
     """Test _apply_transformations with only transformer (no mapping)."""

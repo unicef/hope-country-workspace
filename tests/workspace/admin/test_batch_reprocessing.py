@@ -313,6 +313,7 @@ def test_reprocess_button_with_nonexistent_batch(app: "DjangoTestApp", batch_wit
         res = app.get(url, expect_errors=True)
         assert res.status_code in [404, 500]
 
+
 def test_reprocess_batch_form_hides_household_fields_for_people_program(household_checker, individual_checker) -> None:
     from testutils.factories import CountryProgramFactory
 
