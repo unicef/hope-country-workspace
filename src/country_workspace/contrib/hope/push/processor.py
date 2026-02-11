@@ -3,28 +3,53 @@ from contextlib import contextmanager
 from functools import cached_property
 from itertools import batched
 from typing import Any
+from uuid import UUID
 
 from django.db.models import QuerySet
 
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import Beneficiary, ROLE_FIELDS, Serializer, WorkflowConfig, ERROR_CONFIG
+from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
+from country_workspace.models import Rdp
+from .repository import individuals_for_rdp, rdp_for_dedup
+
+
+from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
-from .repository import (
-    households_for_preflight,
-    individuals_for_preflight_by_households,
-    individuals_for_preflight_by_pks,
-    rdp_pending_or_success,
-    serializer_for_program,
-)
-from .transport import HopeApi
+from .repository import serializer_for_program, preflight_errors
+from .transport import HopeApi, dedup_api
 
 
-class PushProcessor:
+class ProcessorBase:
+    """Shared processor primitives."""
+
+    def __init__(self) -> None:
+        self.total: dict[str, Any] = {"errors": []}
+
+    @property
+    def has_errors(self) -> bool:
+        """Return True when at least one error was collected."""
+        return bool(self.total["errors"])
+
+    def _err(self, msg: str) -> None:
+        """Append an error into total['errors']; truncate long text; cap the list with a marker."""
+        errors: list[str] = self.total["errors"]
+        if errors and errors[-1] == ERROR_CONFIG.MARKER:
+            return
+        if len(errors) >= ERROR_CONFIG.MAX_ERRORS - 1:
+            errors.append(ERROR_CONFIG.MARKER)
+            return
+        if len(msg) > ERROR_CONFIG.MAX_ERROR_LEN:
+            msg = f"{msg[: ERROR_CONFIG.MAX_ERROR_LEN - 1]}…"
+        errors.append(msg)
+
+
+class PushProcessor(ProcessorBase):
     """Push pipeline: validate, prepare, send and track results via Hope API."""
 
-    def __init__(self, config: WorkflowConfig) -> None:
+    def __init__(self, config: PushWorkflowConfig) -> None:
+        super().__init__()
         self.api = HopeApi(co_slug=config["co_slug"], err=self._err)
         self.batch_name: str = config["batch_name"]
         self.hope_rdi_id: str | None = None
@@ -35,7 +60,6 @@ class PushProcessor:
         self.program_hope_id: str = config["program_hope_id"]
         self.queryset: QuerySet | None = None
         self.rdp_id: int | None = config.get("rdp_id")
-        self.total: dict[str, Any] = {"errors": []}
 
     @cached_property
     def serializer(self) -> Serializer:
@@ -43,24 +67,9 @@ class PushProcessor:
         return serializer_for_program(self.program_hope_id)
 
     def preflight(self) -> None:
-        """Validate selected beneficiaries before the push."""
-
-        def check(qs: QuerySet[Beneficiary], tag: str) -> None:
-            for obj in qs.iterator(chunk_size=PUSH_BATCH_SIZE * 5):
-                base = f"{tag} #{obj.pk}"
-                if not obj.is_valid():
-                    self._err(f"{base} invalid")
-                if getattr(obj, "rdp_pre", []):
-                    self._err(f"{base} already in another RDP(s) (pending/success)")
-
-        if not self.pks:
-            return
-        rdp_qs = rdp_pending_or_success(exclude_id=self.rdp_id)
-        if self.master_detail:
-            check(households_for_preflight(pks=self.pks, rdp_qs=rdp_qs), "HH")
-            check(individuals_for_preflight_by_households(hh_pks=self.pks, rdp_qs=rdp_qs), "Ind")
-        else:
-            check(individuals_for_preflight_by_pks(pks=self.pks, rdp_qs=rdp_qs), "Ind")
+        """Validate selected beneficiaries before creating/pushing RDP."""
+        for msg in preflight_errors(pks=self.pks, master_detail=self.master_detail, exclude_rdp_id=self.rdp_id):
+            self._err(msg)
 
     def rdi_complete(self) -> None:
         """Finalize the remote RDI."""
@@ -106,18 +115,6 @@ class PushProcessor:
         with self._using_qs(qs):
             step()
 
-    def _err(self, msg: str) -> None:
-        """Append an error into total['errors']; truncate long text; cap the list with a marker."""
-        errors: list[str] = self.total["errors"]
-        if errors and errors[-1] == ERROR_CONFIG.MARKER:
-            return
-        if len(errors) >= ERROR_CONFIG.MAX_ERRORS - 1:
-            errors.append(ERROR_CONFIG.MARKER)
-            return
-        if len(msg) > ERROR_CONFIG.MAX_ERROR_LEN:
-            msg = f"{msg[: ERROR_CONFIG.MAX_ERROR_LEN - 1]}…"
-        errors.append(msg)
-
     def _prepare_households_batch(self, batch: Iterable[CountryHousehold]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a households batch: roles mapped, members resolved."""
         ids, rows = [], []
@@ -157,7 +154,7 @@ class PushProcessor:
             ):
                 self.total["households"] = self.total.get("households", 0) + a
             case _:
-                self._resp_unexpected("Households", response, batch_ids)
+                self._resp_unexpected("Households", batch_ids, response)
 
     def _process_individuals_response(self, response: dict | None, batch_ids: list[int]) -> None:
         """Update totals, refresh IND mapping or log errors based on individuals response."""
@@ -172,7 +169,7 @@ class PushProcessor:
                 self.total["individuals"] = self.total.get("individuals", 0) + a
                 self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
-                self._resp_unexpected("Individuals", response, batch_ids)
+                self._resp_unexpected("Individuals", batch_ids, response)
 
     def _process_people_response(self, response: dict | None, batch_ids: list[int]) -> None:
         """Update totals or log errors based on the people push response."""
@@ -185,7 +182,7 @@ class PushProcessor:
             ):
                 self.total["people"] = self.total.get("people", 0) + expected
             case _:
-                self._resp_unexpected("People", response, batch_ids)
+                self._resp_unexpected("People", batch_ids, response)
 
     def _push_batched(
         self,
@@ -228,3 +225,71 @@ class PushProcessor:
             yield
         finally:
             self.queryset = prev
+
+
+class DedupProcessor(ProcessorBase):
+    """Dedup pipeline: collect images, create set, upload and start processing."""
+
+    def __init__(self, *, rdp_id: int) -> None:
+        super().__init__()
+        self.rdp = rdp_for_dedup(pk=rdp_id)
+        self.program_code = self.rdp.program.code
+
+    def run(self) -> None:
+        """Execute dedup workflow; collect errors in total."""
+        if self.rdp.status != Rdp.PushStatus.PENDING:
+            self._err(f"RDP: can not run dedup in status={self.rdp.status}")
+        if self.rdp.dedup_run_state == Rdp.DedupRunState.FINISHED:
+            self._err("RDP: can not run dedup after it is already finished")
+        if self.has_errors:
+            return
+
+        self.total |= {"rdp_id": self.rdp.pk, "program": self.program_code}
+
+        images = self._collect_images()
+        self.total["images_sent"] = len(images)
+
+        if not images:
+            self.total["deduplication_set_id"] = None
+            return
+
+        ds_id = self._deduplicate(images)
+        self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
+
+    def _collect_images(self) -> list[dict[str, str]]:
+        """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
+        rows = individuals_for_rdp(rdp=self.rdp).values_list("originating_id", "flex_fields__photo")
+
+        images: list[dict[str, str]] = []
+        for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
+            if isinstance(photo, str) and (photo := photo.strip()):
+                images.append({"reference_pk": str(pk), "filename": photo})
+        return images
+
+    def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
+        """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
+        with dedup_api(self.program_code, self._err) as api:
+            if (raw := api.create_deduplication_set(settings={})) is None:
+                self._err("DedupEngine: create_deduplication_set() failed")
+                return None
+
+            try:
+                ds_id = UUID(str(raw))
+            except (TypeError, ValueError) as e:
+                self._err(f"DedupEngine: create_deduplication_set returned invalid UUID {raw!r}: {e}")
+                return None
+
+            Rdp.objects.filter(pk=self.rdp.pk).update(
+                deduplication_set_id=ds_id,
+                dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
+            )
+
+            if not api.create_images(images):
+                self._err("DedupEngine: create_images() failed")
+                return None
+
+            if not api.process():
+                self._err("DedupEngine: process() failed")
+                return None
+
+            return ds_id

@@ -57,7 +57,11 @@ def individuals(batch):
 
 @pytest.fixture
 def rdps(program):
-    return RdpFactory.create_batch(3, program=program)
+    return [
+        RdpFactory.create(program=program, status=Rdp.PushStatus.PENDING),
+        RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS),
+        RdpFactory.create(program=program, status=Rdp.PushStatus.FAILURE),
+    ]
 
 
 @pytest.fixture
@@ -165,7 +169,8 @@ def test_clean_program_data_does_not_affect_other_programs(job, batch, household
     other_program = ProgramFactory.create()
     other_batch = BatchFactory.create(program=other_program)
     HouseholdFactory.create_batch(5, individuals=[], batch=other_batch, removed=False)
-    RdpFactory.create_batch(2, program=other_program)
+    RdpFactory.create(program=other_program, status=Rdp.PushStatus.SUCCESS)
+    RdpFactory.create(program=other_program, status=Rdp.PushStatus.FAILURE)
     Rdi.objects.create(name="Other RDI 1", program=other_program, hhs=[], inds=[])
     Rdi.objects.create(name="Other RDI 2", program=other_program, hhs=[], inds=[])
     AsyncJobFactory.create_batch(3, program=other_program)

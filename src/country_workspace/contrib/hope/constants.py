@@ -1,6 +1,7 @@
 from typing import Final
 
 PUSH_BATCH_SIZE: Final[int] = 25
+IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE: Final[int] = 100
 
 # NEVER CHANGE THIS VALUES
 HOUSEHOLD_CHECKER_NAME: Final[str] = "HOPE Household core"

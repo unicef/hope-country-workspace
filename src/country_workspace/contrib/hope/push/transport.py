@@ -1,11 +1,14 @@
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Iterator
 from json import JSONDecodeError
 from typing import Any
+from contextlib import contextmanager
 
-from requests.exceptions import RequestException
-
+from requests.exceptions import HTTPError, RequestException
+from rest_framework.status import HTTP_404_NOT_FOUND
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.exceptions import RemoteError
+from country_workspace.contrib.dedup_engine.client import make_client
+
 
 from .config import ROUTES, Route
 
@@ -42,3 +45,38 @@ class HopeApi:
         except (RequestException, JSONDecodeError, RemoteError) as e:
             self.err(f"{error_msg}: {e}")
             return None
+
+
+DEDUPLICATION_SET_NOT_EXPOSED = object()
+
+
+@contextmanager
+def dedup_api(program_code: str, err: Callable[[str], None]) -> Iterator[Any]:
+    with make_client(program_code) as client:
+
+        class Proxy:
+            def __getattr__(self, name: str) -> Any:
+                attr = getattr(client, name)
+                if not callable(attr):
+                    return attr
+
+                def wrapped(*args: Any, **kwargs: Any) -> Any | None:
+                    try:
+                        result = attr(*args, **kwargs)
+                    except (RequestException, ValueError, KeyError, TypeError) as e:
+                        if (
+                            name == "status"
+                            and isinstance(e, HTTPError)
+                            and getattr(e, "response", None) is not None
+                            and e.response.status_code == HTTP_404_NOT_FOUND
+                        ):
+                            return DEDUPLICATION_SET_NOT_EXPOSED
+                        err(f"DedupEngine client.{name} failed: {e}")
+                        return None
+                    return True if result is None else result
+
+                return wrapped
+
+        proxy = Proxy()
+        proxy.DEDUPLICATION_SET_NOT_EXPOSED = DEDUPLICATION_SET_NOT_EXPOSED
+        yield proxy

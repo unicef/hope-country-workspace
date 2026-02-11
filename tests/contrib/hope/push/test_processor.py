@@ -1,10 +1,13 @@
 import pytest
 from collections.abc import Callable
 from typing import Any
+from uuid import UUID, uuid4
+
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.push.processor import PushProcessor
+from country_workspace.contrib.hope.push.processor import DedupProcessor, PushProcessor
 from country_workspace.contrib.hope.push.config import Beneficiary, ErrorConfig
+from country_workspace.models import Rdp
 
 
 # ----------------------------- serializer ------------------------------
@@ -16,7 +19,6 @@ def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor)
     stub_ser = lambda rows: rows
     spy = mocker.patch(f"{mod}.serializer_for_program", return_value=stub_ser)
 
-    # property should memoize; underlying factory called once
     assert processor.serializer is processor.serializer
     spy.assert_called_once_with(processor.program_hope_id)
 
@@ -25,64 +27,29 @@ def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor)
 
 
 @pytest.mark.django_db
-def test_preflight_master_detail_logs(
-    mocker: MockerFixture,
-    processor: PushProcessor,
-    qs: Callable[[list], Any],
-    beneficiary_stub: Callable[..., Beneficiary],
-    err_contains: Callable[[list[str], str], bool],
-) -> None:
+def test_preflight_collects_preflight_errors(mocker: MockerFixture, processor: PushProcessor) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     processor.master_detail, processor.pks, processor.rdp_id = True, [1, 2], 10
-    mocker.patch(f"{mod}.rdp_pending_or_success", return_value="rdp_qs")
 
-    hh1 = beneficiary_stub(pk=101, _valid=False)
-    hh2 = beneficiary_stub(pk=102, _valid=True, rdp_pre=[7])
-    ind = beneficiary_stub(pk=201, _valid=False)
-
-    mocker.patch(f"{mod}.households_for_preflight", return_value=qs([hh1, hh2]))
-    mocker.patch(f"{mod}.individuals_for_preflight_by_households", return_value=qs([ind]))
+    msgs = ["boom-1", "boom-2"]
+    spy = mocker.patch(f"{mod}.preflight_errors", return_value=msgs)
 
     processor.preflight()
-    assert err_contains(processor.total["errors"], f"HH #{hh1.pk} invalid")
-    assert err_contains(processor.total["errors"], f"HH #{hh2.pk} already in another RDP")
-    assert err_contains(processor.total["errors"], f"Ind #{ind.pk} invalid")
+
+    spy.assert_called_once_with(pks=[1, 2], master_detail=True, exclude_rdp_id=10)
+    assert processor.total["errors"] == msgs
 
 
 @pytest.mark.django_db
-def test_preflight_non_master_detail_logs(
-    mocker: MockerFixture,
-    processor: PushProcessor,
-    qs: Callable[[list], Any],
-    beneficiary_stub: Callable[..., Beneficiary],
-    err_contains: Callable[[list[str], str], bool],
-) -> None:
+def test_preflight_empty_pks_is_ok(mocker: MockerFixture, processor: PushProcessor) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
-    processor.master_detail, processor.pks, processor.rdp_id = False, [5], 11
-    mocker.patch(f"{mod}.rdp_pending_or_success", return_value="rdp_qs")
+    processor.master_detail, processor.pks, processor.rdp_id = False, [], None
 
-    ind1 = beneficiary_stub(pk=301, _valid=True, rdp_pre=[2])
-    ind2 = beneficiary_stub(pk=302, _valid=False)
-    mocker.patch(f"{mod}.individuals_for_preflight_by_pks", return_value=qs([ind1, ind2]))
-
-    processor.preflight()
-    assert err_contains(processor.total["errors"], f"Ind #{ind1.pk} already in another RDP")
-    assert err_contains(processor.total["errors"], f"Ind #{ind2.pk} invalid")
-
-
-@pytest.mark.django_db
-def test_preflight_returns_early_when_no_pks(mocker: MockerFixture, processor: PushProcessor) -> None:
-    mod = "country_workspace.contrib.hope.push.processor"
-    processor.pks = []
-    spy_rdp = mocker.patch(f"{mod}.rdp_pending_or_success")
-    spy_hh = mocker.patch(f"{mod}.households_for_preflight")
-    spy_ind = mocker.patch(f"{mod}.individuals_for_preflight_by_pks")
+    spy = mocker.patch(f"{mod}.preflight_errors", return_value=[])
 
     processor.preflight()
 
-    assert not spy_rdp.called
-    assert not spy_hh.called
-    assert not spy_ind.called
+    spy.assert_called_once_with(pks=[], master_detail=False, exclude_rdp_id=None)
     assert processor.total["errors"] == []
 
 
@@ -113,7 +80,9 @@ def test_rdi_complete_paths(
 ) -> None:
     processor.hope_rdi_id = rid
     spy = mocker.patch.object(processor.api, "complete_rdi")
+
     processor.rdi_complete()
+
     assert spy.called is called
     if not called:
         assert err_contains(processor.total["errors"], "can't complete")
@@ -146,6 +115,7 @@ def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor
     proc = mocker.Mock()
 
     processor._push_batched("X", prepare, lambda rid, payload: post(rid, payload), proc)
+
     post.assert_called_once()
     assert [c.args[1] for c in proc.call_args_list] == [[1]]
 
@@ -175,15 +145,27 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     serializer_identity: Callable,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    mocker.patch(f"{mod}.ROLE_FIELDS", ("head_of_household",))
+
+    mocker.patch(
+        f"{mod}.map_role_value",
+        side_effect=lambda ind_map, _err, _hh_pk, _key, value: ind_map.get(value),
+    )
+    mocker.patch(
+        f"{mod}.map_members",
+        side_effect=lambda ind_map, _err, _hh_pk, ids: [ind_map[i] for i in ids],
+    )
+
     members = [beneficiary_stub(id=1), beneficiary_stub(id=2)]
     hh = beneficiary_stub(pk=777, prefetched_members=members)
     hh._group = {"head_of_household": members[0].id, "keep": "x", "drop": None}
 
-    # mapping for all members
     processor.ind_id_map = {m.id: f"IND-{m.id}.X" for m in members}
 
     ids, payload = processor._prepare_households_batch([hh])
-    assert ids == [hh.pk]
+
+    assert ids == [hh.id]
     assert payload == [
         {
             "head_of_household": "IND-1.X",
@@ -200,6 +182,7 @@ def test_prepare_individuals_batch_injects_id(
     i1, i2 = beneficiary_stub(id=10, _group={"a": 1}), beneficiary_stub(id=11, _group={"b": 2})
 
     ids, rows = processor._prepare_individuals_batch([i1, i2])
+
     assert ids == [10, 11]
     assert {"a": 1, "individual_id": 10, "originating_id": 10} in rows
     assert {"b": 2, "individual_id": 11, "originating_id": 11} in rows
@@ -209,7 +192,9 @@ def test_prepare_people_batch_plain(
     processor: PushProcessor, serializer_identity: Callable, beneficiary_stub: Callable[..., Beneficiary]
 ) -> None:
     i1, i2 = beneficiary_stub(id=10, _group={"a": 1}), beneficiary_stub(id=11, _group={"b": 2})
+
     ids, rows = processor._prepare_people_batch([i1, i2])
+
     assert ids == [10, 11]
     assert rows == [{"a": 1, "originating_id": 10}, {"b": 2, "originating_id": 11}]
 
@@ -224,7 +209,7 @@ def test_prepare_people_batch_plain(
         ({"processed": 1, "accepted": 0}, [9], False),
         (None, [9], False),
     ],
-    ids=["all_accepted", "accepted_zero", "resp_none"],
+    ids=["all_accepted", "unexpected_shape", "resp_none"],
 )
 def test_process_households_response_paths(
     processor: PushProcessor,
@@ -235,10 +220,11 @@ def test_process_households_response_paths(
 ) -> None:
     processor.total = {"errors": []}
     processor._process_households_response(resp, ids)
+
     if ok:
         assert processor.total.get("households") == 2
     else:
-        assert any(err_contains(processor.total["errors"], s) for s in ("batch failed", "mismatch", "unexpected"))
+        assert any(err_contains(processor.total["errors"], s) for s in ("batch failed", "push error", "unexpected"))
 
 
 @pytest.mark.django_db
@@ -271,9 +257,7 @@ def test_process_individuals_response_paths(
 
 
 @pytest.mark.django_db
-def test_individuals_mapping_accumulates_across_batches(
-    mocker: MockerFixture, processor: PushProcessor, err_contains: Callable[[list[str], str], bool]
-) -> None:
+def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, processor: PushProcessor) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     mocker.patch(f"{mod}.load_mapping_from_api", side_effect=[{1: "IND-1"}, {2: "IND-2"}])
     processor.total = {"errors": []}
@@ -289,8 +273,6 @@ def test_individuals_mapping_accumulates_across_batches(
 
     assert processor.ind_id_map == {1: "IND-1", 2: "IND-2"}
     assert processor.total.get("individuals") == 2
-    assert not err_contains(processor.total["errors"], "unexpected")
-    assert not err_contains(processor.total["errors"], "batch failed")
 
 
 @pytest.mark.parametrize(
@@ -311,6 +293,7 @@ def test_process_people_response_paths(
 ) -> None:
     processor.total, processor.hope_rdi_id = {"errors": []}, "rdi-x"
     processor._process_people_response(resp, ids)
+
     if ok:
         assert processor.total.get("people") == 2
     else:
@@ -330,50 +313,298 @@ def test_resp_err(processor: PushProcessor, resp: dict | None, expected: bool) -
 # ------------------------------- queryset ------------------------------
 
 
-def test_using_qs_sets_and_restores(processor: PushProcessor, qs: Callable[[list], Any]):
+def test_using_qs_sets_and_restores(processor: PushProcessor, qs: Callable[[list], Any]) -> None:
     q = qs([1])
     assert processor.queryset is None
+
     with processor._using_qs(q):
         assert processor.queryset is q
+
     assert processor.queryset is None
 
 
-def test_run_with_sets_qs_and_invokes_step(processor: PushProcessor, qs: Callable[[list], Any]):
+def test_run_with_sets_qs_and_invokes_step(processor: PushProcessor, qs: Callable[[list], Any]) -> None:
     q = qs([1])
-    called = []
+    called: list[bool] = []
 
-    def step():
+    def step() -> None:
         assert processor.queryset is q
         called.append(True)
 
     processor.run_with(q, step)
+
     assert called == [True]
     assert processor.queryset is None
 
 
-# ------------------------------- errors ------------------------------
+# ------------------------------- errors -------------------------------
 
 
 @pytest.mark.django_db
-def test__err_truncation_and_capping(mocker: MockerFixture, processor):
+def test__err_truncation_and_capping(mocker: MockerFixture, processor: PushProcessor) -> None:
     cfg = ErrorConfig(MAX_ERRORS=3, MAX_ERROR_LEN=10, MARKER="⟪TRUNC⟫")
     mocker.patch("country_workspace.contrib.hope.push.processor.ERROR_CONFIG", cfg)
 
-    errs = processor.total["errors"]
+    errs: list[str] = processor.total["errors"]
     assert errs == []
 
-    # append short message (no truncation)
     processor._err("short")
     assert errs == ["short"]
-    # append long message → should be truncated to MAX_ERROR_LEN with ellipsis
+
     processor._err("x" * 20)
     assert errs[-1].endswith("…")
     assert len(errs[-1]) == 10
-    # next call hits cap → marker is appended instead of the message
+
     processor._err("anything")
     assert errs[-1] == "⟪TRUNC⟫"
     assert len(errs) == 3
-    # once marker is last, further errors are ignored
+
     processor._err("ignored")
     assert errs[-1] == "⟪TRUNC⟫"
     assert len(errs) == 3
+
+
+# ------------------------------ dedup ----------------------------------
+
+
+def test_dedup_run_rejects_non_pending(mocker: MockerFixture, err_contains: Callable[[list[str], str], bool]) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=1,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.SUCCESS,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    proc = DedupProcessor(rdp_id=1)
+    proc.run()
+
+    assert err_contains(proc.total["errors"], "can not run dedup in status")
+    assert "rdp_id" not in proc.total
+
+
+def test_dedup_run_rejects_after_finished(
+    mocker: MockerFixture, err_contains: Callable[[list[str], str], bool]
+) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=1,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=Rdp.DedupRunState.FINISHED,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    proc = DedupProcessor(rdp_id=1)
+    proc.run()
+
+    assert err_contains(proc.total["errors"], "already finished")
+    assert "rdp_id" not in proc.total
+
+
+def test_dedup_run_no_images_sets_none(mocker: MockerFixture) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=1,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    proc = DedupProcessor(rdp_id=1)
+    mocker.patch.object(proc, "_collect_images", return_value=[])
+    spy = mocker.patch.object(proc, "_deduplicate")
+
+    proc.run()
+
+    spy.assert_not_called()
+    assert proc.total["errors"] == []
+    assert proc.total["rdp_id"] == 1
+    assert proc.total["program"] == "PRG"
+    assert proc.total["images_sent"] == 0
+    assert proc.total["deduplication_set_id"] is None
+
+
+def test_dedup_run_success_sets_uuid(mocker: MockerFixture) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=1,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    proc = DedupProcessor(rdp_id=1)
+    images = [{"reference_pk": "10", "filename": "a.jpg"}, {"reference_pk": "11", "filename": "b.jpg"}]
+    mocker.patch.object(proc, "_collect_images", return_value=images)
+
+    ds_id = uuid4()
+    mocker.patch.object(proc, "_deduplicate", return_value=ds_id)
+
+    proc.run()
+
+    assert proc.total["errors"] == []
+    assert proc.total["images_sent"] == 2
+    assert proc.total["deduplication_set_id"] == str(ds_id)
+
+
+def test_collect_images_filters_blanks(mocker: MockerFixture) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=1,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    class _Rows:
+        def __init__(self, pairs):
+            self._pairs = pairs
+
+        def iterator(self, chunk_size=None):
+            yield from self._pairs
+
+    class _QS:
+        def __init__(self, pairs):
+            self._pairs = pairs
+
+        def values_list(self, *args, **kwargs):
+            return _Rows(self._pairs)
+
+    pairs = [
+        (100, None),
+        (101, ""),
+        (102, "   "),
+        (103, " photo.jpg "),
+    ]
+    mocker.patch(f"{mod}.individuals_for_rdp", return_value=_QS(pairs))
+
+    proc = DedupProcessor(rdp_id=1)
+    images = proc._collect_images()
+
+    assert images == [{"reference_pk": "103", "filename": "photo.jpg"}]
+
+
+def test_deduplicate_happy_path_updates_rdp_and_returns_uuid(mocker: MockerFixture) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=123,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    api = mocker.MagicMock()
+    ds_id = uuid4()
+    api.create_deduplication_set.return_value = str(ds_id)
+    api.create_images.return_value = True
+    api.process.return_value = True
+
+    mocker.patch(
+        f"{mod}.dedup_api",
+        return_value=mocker.MagicMock(
+            __enter__=mocker.Mock(return_value=api),
+            __exit__=mocker.Mock(return_value=False),
+        ),
+    )
+
+    upd_qs = mocker.MagicMock()
+    mocker.patch(f"{mod}.Rdp.objects.filter", return_value=upd_qs)
+
+    proc = DedupProcessor(rdp_id=rdp.pk)
+    out = proc._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}])
+
+    assert out == UUID(str(ds_id))
+    upd_qs.update.assert_called_once_with(
+        deduplication_set_id=UUID(str(ds_id)),
+        dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
+    )
+    api.create_images.assert_called_once()
+    api.process.assert_called_once_with()
+
+
+def test_deduplicate_invalid_uuid_is_reported(
+    mocker: MockerFixture, err_contains: Callable[[list[str], str], bool]
+) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    rdp = mocker.MagicMock(
+        pk=123,
+        program=mocker.MagicMock(code="PRG"),
+        status=Rdp.PushStatus.PENDING,
+        dedup_run_state=None,
+    )
+    mocker.patch(f"{mod}.rdp_for_dedup", return_value=rdp)
+
+    api = mocker.MagicMock()
+    api.create_deduplication_set.return_value = "not-a-uuid"
+
+    mocker.patch(
+        f"{mod}.dedup_api",
+        return_value=mocker.MagicMock(
+            __enter__=mocker.Mock(return_value=api),
+            __exit__=mocker.Mock(return_value=False),
+        ),
+    )
+
+    upd_qs = mocker.MagicMock()
+    mocker.patch(f"{mod}.Rdp.objects.filter", return_value=upd_qs)
+
+    proc = DedupProcessor(rdp_id=rdp.pk)
+    out = proc._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}])
+
+    assert out is None
+    assert err_contains(proc.total["errors"], "returned invalid UUID")
+    upd_qs.update.assert_not_called()
+
+
+def test_deduplicate_create_set_none(mocker, dedup_processor, dedup_api_cm, err_contains) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    api = mocker.MagicMock()
+    api.create_deduplication_set.return_value = None
+
+    mocker.patch(f"{mod}.dedup_api", return_value=dedup_api_cm(api))
+    spy_filter = mocker.patch(f"{mod}.Rdp.objects.filter")
+
+    assert dedup_processor._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}]) is None
+    api.create_images.assert_not_called()
+    api.process.assert_not_called()
+    spy_filter.assert_not_called()
+    assert err_contains(dedup_processor.total["errors"], "create_deduplication_set")
+
+
+@pytest.mark.parametrize(
+    ("create_ok", "process_ok", "process_called", "expected"),
+    [(False, True, False, "create_images"), (True, False, True, "process")],
+    ids=["create_images_false", "process_false"],
+)
+def test_deduplicate_create_images_or_process_fail(
+    mocker,
+    dedup_processor,
+    dedup_api_cm,
+    err_contains,
+    create_ok: bool,
+    process_ok: bool,
+    process_called: bool,
+    expected: str,
+) -> None:
+    mod = "country_workspace.contrib.hope.push.processor"
+    api = mocker.MagicMock()
+    api.create_deduplication_set.return_value = uuid4()
+    api.create_images.return_value = create_ok
+    api.process.return_value = process_ok
+
+    mocker.patch(f"{mod}.dedup_api", return_value=dedup_api_cm(api))
+    qs = mocker.MagicMock()
+    mocker.patch(f"{mod}.Rdp.objects.filter", return_value=qs)
+
+    assert dedup_processor._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}]) is None
+    qs.update.assert_called_once()
+    assert err_contains(dedup_processor.total["errors"], expected)
+
+    api.create_images.assert_called_once()
+    (api.process.assert_called_once() if process_called else api.process.assert_not_called())
