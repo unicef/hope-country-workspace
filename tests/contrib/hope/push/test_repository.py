@@ -316,6 +316,18 @@ def test_mark_rdp_dedup_finished_calls_update(mocker: MockerFixture, rdp_id: int
     qs.update.assert_called_once_with(dedup_run_state=repo.Rdp.DedupRunState.FINISHED)
 
 
+def test_set_rdp_push_status_sets_fields_and_saves(mocker: MockerFixture) -> None:
+    rdp = mocker.MagicMock()
+    status = repo.Rdp.PushStatus.SUCCESS
+    hope_rdi_id = "RID-1"
+
+    repo.set_rdp_push_status(rdp=rdp, status=status, hope_rdi_id=hope_rdi_id)
+
+    assert rdp.status == status
+    assert rdp.hope_rdi_id == hope_rdi_id
+    rdp.save.assert_called_once_with(update_fields=["status", "hope_rdi_id"])
+
+
 # --------------------------- preflight_errors -------------------------------
 
 

@@ -12,7 +12,6 @@ from country_workspace.contrib.hope.push.orchestration import (
     create_rdp_records,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
-    complete_rdp,
     mark_rdp_beneficiaries_removed,
     steps,
 )
@@ -62,20 +61,6 @@ def test_create_rdp_records_integrity_error(job, push_config_base, err_contains)
     with pytest.raises(HopePushError) as exc:
         create_rdp_records(push_config_base, job.id)
     assert err_contains(exc.value.args[0].get("errors", []), "RDP: can not create record")
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("rdp_exists", [True, False], ids=["exists", "not_exists"])
-def test_complete_rdp(job: AsyncJob, rdp_exists: bool) -> None:
-    rdp_id = job.rdp.id if rdp_exists else 999_999
-    hope_rdi_id = "test-rdi-123"
-
-    if rdp_exists:
-        r = complete_rdp(rdp_id, Rdp.PushStatus.SUCCESS, hope_rdi_id)
-        assert (r.status, r.hope_rdi_id) == (Rdp.PushStatus.SUCCESS, hope_rdi_id)
-    else:
-        with pytest.raises(Rdp.DoesNotExist):
-            complete_rdp(rdp_id, Rdp.PushStatus.SUCCESS, hope_rdi_id)
 
 
 @pytest.mark.django_db
@@ -237,13 +222,15 @@ def test_push_existing_rdp_core_success(mocker, job, is_duplicate):
     mocker.patch(f"{mod}.PushProcessor", return_value=proc)
     mocker.patch(f"{mod}.steps", return_value=iter((lambda: None,)))
 
-    mock_complete = mocker.patch(f"{mod}.complete_rdp", return_value=job.rdp)
+    mock_set_status = mocker.patch(f"{mod}.set_rdp_push_status")
     mock_mark = mocker.patch(f"{mod}.mark_rdp_beneficiaries_removed")
     mock_mark_dedup = mocker.patch(f"{mod}.mark_rdp_dedup_finished", wraps=repository.mark_rdp_dedup_finished)
 
     push_existing_rdp_core(job)
 
-    mock_complete.assert_called_once_with(job.rdp.id, Rdp.PushStatus.SUCCESS, hope_rdi_id)
+    mock_set_status.assert_called_once()
+    assert mock_set_status.call_args.kwargs["status"] == Rdp.PushStatus.SUCCESS
+    assert mock_set_status.call_args.kwargs["hope_rdi_id"] == hope_rdi_id
     mock_mark.assert_called_once()
 
     if is_duplicate:
@@ -283,7 +270,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, job: AsyncJob, is
     proc = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id=hope_rdi_id)
     mocker.patch(f"{mod}.PushProcessor", return_value=proc)
 
-    mock_complete = mocker.patch(f"{mod}.complete_rdp")
+    mock_set_status = mocker.patch(f"{mod}.set_rdp_push_status")
     mock_mark = mocker.patch(f"{mod}.mark_rdp_beneficiaries_removed")
     mock_mark_dedup = mocker.patch(f"{mod}.mark_rdp_dedup_finished", wraps=repository.mark_rdp_dedup_finished)
 
@@ -296,7 +283,9 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, job: AsyncJob, is
     with pytest.raises(HopePushError):
         push_existing_rdp_core(job)
 
-    mock_complete.assert_called_once_with(job.rdp.id, Rdp.PushStatus.FAILURE, hope_rdi_id)
+    mock_set_status.assert_called_once()
+    assert mock_set_status.call_args.kwargs["status"] == Rdp.PushStatus.FAILURE
+    assert mock_set_status.call_args.kwargs["hope_rdi_id"] == hope_rdi_id
     mock_mark.assert_not_called()
     mock_mark_dedup.assert_not_called()
 

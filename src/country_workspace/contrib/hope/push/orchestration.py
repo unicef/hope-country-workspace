@@ -12,10 +12,12 @@ from .config import CreateRdpConfig, PushWorkflowConfig
 from .repository import (
     individuals_by_pks,
     individuals_by_household_pks,
+    lock_rdp,
     mark_rdp_dedup_finished,
     households,
-    rdp_for_push,
     preflight_errors,
+    rdp_for_push,
+    set_rdp_push_status,
     workflow_config_for_rdp,
 )
 from .transport import dedup_api
@@ -37,16 +39,6 @@ def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
             return rdp
     except IntegrityError as e:
         raise HopePushError({"errors": [f"RDP: can not create record: {e}"]}) from e
-
-
-def complete_rdp(rdp_id: int, status: Rdp.PushStatus, hope_rdi_id: str) -> Rdp:
-    """Update RDP status and hope_rdi_id atomically and return the updated record."""
-    with transaction.atomic():
-        rdp = Rdp.objects.select_for_update().get(id=rdp_id)
-        rdp.status = status
-        rdp.hope_rdi_id = hope_rdi_id
-        rdp.save(update_fields=["status", "hope_rdi_id"])
-        return rdp
 
 
 def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
@@ -121,17 +113,24 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
     hope_processor = PushProcessor(config)
+
     for step in steps(hope_processor, config):
         step()
         if hope_processor.has_errors:
-            complete_rdp(rdp.id, Rdp.PushStatus.FAILURE, hope_processor.hope_rdi_id or "N/A")
+            with transaction.atomic():
+                locked = lock_rdp(pk=rdp.pk)
+                set_rdp_push_status(
+                    rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id=hope_processor.hope_rdi_id or "N/A"
+                )
             raise HopePushError(hope_processor.total)
 
-    if rdp.program.biometric_deduplication_enabled:
-        mark_rdp_dedup_finished(rdp_id=rdp.pk)
-
     with transaction.atomic():
-        updated = complete_rdp(rdp.id, Rdp.PushStatus.SUCCESS, hope_processor.hope_rdi_id)
-        mark_rdp_beneficiaries_removed(updated, config["master_detail"])
+        locked = lock_rdp(pk=rdp.pk)
+        mark_rdp_beneficiaries_removed(locked, config["master_detail"])
+
+        if locked.program.biometric_deduplication_enabled:
+            mark_rdp_dedup_finished(rdp_id=locked.pk)
+
+        set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id)
 
     return hope_processor.total

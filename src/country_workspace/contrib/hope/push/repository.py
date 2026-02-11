@@ -136,3 +136,15 @@ def households(*, pks: Iterable[int], prefetch_members: bool = True) -> QuerySet
             )
         )
     return qs
+
+
+def lock_rdp(*, pk: int) -> Rdp:
+    """Return RDP locked for update."""
+    return Rdp.objects.select_for_update().select_related("program").get(pk=pk)
+
+
+def set_rdp_push_status(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -> None:
+    """Persist push status fields for an already-locked RDP."""
+    rdp.status = status
+    rdp.hope_rdi_id = hope_rdi_id
+    rdp.save(update_fields=["status", "hope_rdi_id"])
