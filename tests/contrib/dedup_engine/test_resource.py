@@ -24,10 +24,11 @@ def test_retrieve_mixin(mocker: MockerFixture) -> None:
 
 
 def test_action_mixin(mocker: MockerFixture) -> None:
+    body_mock = mocker.Mock()
     mixin = ActionMixin()
     mixin.endpoint = (endpoint_mock := mocker.Mock())
     mixin.session = (session_mock := mocker.Mock())
-    mixin.call()
+    mixin.call(body_mock)
 
-    session_mock.post.assert_called_once_with(str(endpoint_mock))
+    session_mock.post.assert_called_once_with(str(endpoint_mock), json=body_mock)
     session_mock.post.return_value.raise_for_status.assert_called_once()

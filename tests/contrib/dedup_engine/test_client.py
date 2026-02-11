@@ -7,46 +7,83 @@ from country_workspace.contrib.dedup_engine.client import make_client, Client
 from country_workspace.contrib.dedup_engine.response import Status
 
 
-def test_client_deduplicate(mocker: MockerFixture) -> None:
+def test_client_create_deduplication_set(mocker: MockerFixture) -> None:
     program_id = "PROGRAM_ID"
     session_mock = mocker.Mock()
     api_root_mock = mocker.Mock()
-    images_mock = mocker.Mock()
     settings_mock = mocker.Mock()
 
     deduplication_set_collection_class_mock = mocker.patch(
         "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection"
     )
-    images_bulk_collection_class_mock = mocker.patch(
-        "country_workspace.contrib.dedup_engine.client.resource.ImagesBulkCollection"
-    )
-    process_deduplication_set_action_class_mock = mocker.patch(
-        "country_workspace.contrib.dedup_engine.client.resource.ProcessDeduplicationSetAction"
-    )
+    deduplication_set_data_mock = deduplication_set_collection_class_mock.return_value.create.return_value
+    deduplication_set_collection_mock = deduplication_set_collection_class_mock.return_value
 
     client = Client(program_id, session_mock, api_root_mock)
-    client.deduplicate(images_mock, settings_mock)
+    assert client.create_deduplication_set(settings_mock) == deduplication_set_data_mock["id"]
 
     deduplication_set_collection_class_mock.assert_called_once_with(session_mock, api_root_mock.deduplication_sets)
-    deduplication_set_collection_mock = deduplication_set_collection_class_mock.return_value
     deduplication_set_collection_mock.create.assert_called_once_with(
         {
             "reference_pk": program_id,
             "settings": settings_mock,
         }
     )
+
+
+def test_client_create_images(mocker: MockerFixture) -> None:
+    program_id = "PROGRAM_ID"
+    session_mock = mocker.Mock()
+    api_root_mock = mocker.Mock()
+    images_mock = mocker.Mock()
+
     deduplication_set_endpoint_mock = api_root_mock.deduplication_sets.deduplication_set
+    images_bulk_collection_class_mock = mocker.patch(
+        "country_workspace.contrib.dedup_engine.client.resource.ImagesBulkCollection"
+    )
+    images_bulk_collection_mock = images_bulk_collection_class_mock.return_value
+
+    client = Client(program_id, session_mock, api_root_mock)
+    client.create_images(images_mock)
+
     deduplication_set_endpoint_mock.assert_called_once_with(program_id)
     images_bulk_collection_class_mock.assert_called_once_with(
         session_mock, deduplication_set_endpoint_mock.return_value.images_bulk
     )
-    images_bulk_collection_mock = images_bulk_collection_class_mock.return_value
     images_bulk_collection_mock.create.assert_called_once_with(images_mock)
+
+
+def test_client_process(mocker: MockerFixture) -> None:
+    program_id = "PROGRAM_ID"
+    session_mock = mocker.Mock()
+    api_root_mock = mocker.Mock()
+
+    deduplication_set_endpoint_mock = api_root_mock.deduplication_sets.deduplication_set
+    process_deduplication_set_action_class_mock = mocker.patch(
+        "country_workspace.contrib.dedup_engine.client.resource.ProcessDeduplicationSetAction"
+    )
+
+    client = Client(program_id, session_mock, api_root_mock)
+    client.process()
+
+    deduplication_set_endpoint_mock.assert_called_once_with(program_id)
     process_deduplication_set_action_class_mock.assert_called_once_with(
         session_mock, deduplication_set_endpoint_mock.return_value.process
     )
     process_deduplication_set_action_mock = process_deduplication_set_action_class_mock.return_value
-    process_deduplication_set_action_mock.call.assert_called_once_with()
+    process_deduplication_set_action_mock.call.assert_called_once_with(None)
+
+
+def test_client_deduplicate(mocker: MockerFixture) -> None:
+    images_mock = mocker.Mock()
+    settings_mock = mocker.Mock()
+    instance_mock = mocker.Mock(spec=Client)
+
+    Client.deduplicate(instance_mock, images_mock, settings_mock)
+
+    instance_mock.create_deduplication_set.assert_called_once_with(settings_mock)
+    instance_mock.create_images.assert_called_once_with(images_mock)
+    instance_mock.process.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -97,17 +134,15 @@ def test_make_client(mocker: MockerFixture) -> None:
     with (
         override_config(DEDUP_API_URL=(url := "https://test.org")),
         override_config(DEDUP_API_TOKEN=(token := "token")),
+        make_client(program_id := "PROGRAM_ID") as client,
     ):
-        client = make_client(program_id := "PROGRAM_ID")
-
-    assert client is client_class_mock.return_value
+        assert client is client_class_mock.return_value
 
     session_class_mock.assert_called_once_with()
-    session_class_mock.return_value.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
-    assert session_class_mock.return_value.auth is auth_class_mock.return_value
+    session_mock = session_class_mock.return_value.__enter__.return_value
+    session_mock.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
+    assert session_mock.auth is auth_class_mock.return_value
     http_adapter_class_mock.assert_called_once_with(max_retries=3)
     auth_class_mock.assert_called_once_with(token)
     api_root_class_mock.assert_called_once_with(url)
-    client_class_mock.assert_called_once_with(
-        program_id, session_class_mock.return_value, api_root_class_mock.return_value
-    )
+    client_class_mock.assert_called_once_with(program_id, session_mock, api_root_class_mock.return_value)
