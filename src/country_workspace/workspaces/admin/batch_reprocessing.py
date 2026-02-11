@@ -177,25 +177,21 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
 
         logger.info("Applied transformations to %d individuals", mapped_individuals)
 
-    validation_jobs_created = 0
     if household_count > 0 and is_master_detail:
-        queryset = households_to_process.prefetch_related("members")
         create_validation_jobs(
-            description=f"Reprocess batch {batch.name} - Households",
+            description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=batch.program,
-            queryset=queryset,
+            queryset=households_to_process.prefetch_related("members"),
         )
-        validation_jobs_created += 1
 
-    if individual_count > 0:
+    elif individual_count > 0:
         create_validation_jobs(
-            description=f"Reprocess batch {batch.name} - Individuals",
+            description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=batch.program,
             queryset=individuals_to_process,
         )
-        validation_jobs_created += 1
 
     response = {
         "batch_id": batch_id,
@@ -203,7 +199,6 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         "individuals": individual_count,
         "skipped_individuals": skipped_individuals,
         "mapped_individuals": mapped_individuals,
-        "validation_jobs_created": validation_jobs_created,
     }
 
     if is_master_detail:
