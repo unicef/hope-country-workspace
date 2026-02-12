@@ -8,7 +8,7 @@ from django.utils.deprecation import MiddlewareMixin
 
 from country_workspace.cache.manager import cache_manager
 
-NOT_CACHABLE_METHODS = ("POST",)
+NOT_CACHABLE_METHODS = {"POST"}
 
 
 class UpdateCacheMiddleware(MiddlewareMixin):
@@ -18,28 +18,35 @@ class UpdateCacheMiddleware(MiddlewareMixin):
         self.page_timeout = 10
         self.manager = cache_manager
 
-    def _should_update_cache(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
-        return hasattr(request, "_cache_update_cache") and request._cache_update_cache
+    def _should_invalidate_cache(self, request: HttpRequest, response: HttpResponse) -> bool:
+        return any(
+            (
+                get_messages(request),
+                request.method == "POST" and response.status_code == 302,
+            )
+        )
 
-    def _invalidate_cache_for_request(self, request: HttpRequest) -> None:
+    def _should_update_cache(self, request: HttpRequest, response: HttpResponse) -> bool:
+        return all(
+            (
+                hasattr(request, "_cache_update_cache") and request._cache_update_cache,
+                not response.streaming,
+                response.status_code in (200, 304),
+                "private" not in response.get("Cache-Control", ""),
+                request.method not in NOT_CACHABLE_METHODS,
+                not get_messages(request),
+            )
+        )
+
+    def _invalidate_cache(self, request: HttpRequest) -> None:
         cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
         if cache_key:
             self.manager.cache.delete(cache_key)
 
-    def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
-        if not self._should_update_cache(request, response):
-            return response
-        if response.streaming or response.status_code not in (200, 304):
-            return response
-        if "private" in response.get("Cache-Control", ()):
-            return response
-        if request.method in NOT_CACHABLE_METHODS:
-            return response
-        if get_messages(request):
-            self._invalidate_cache_for_request(request)
-            return response
+    def _update_cache(self, request: HttpRequest, response: HttpResponse) -> None:
         timeout = self.page_timeout
         patch_response_headers(response, timeout)
+
         if response.status_code == 200:
             if "Etag" in response.headers:
                 cache_key = response.headers["Etag"]
@@ -50,6 +57,14 @@ class UpdateCacheMiddleware(MiddlewareMixin):
                 response.add_post_render_callback(lambda r: self.manager.store(cache_key, r))
             else:
                 self.manager.store(cache_key, response)
+
+    def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
+        if self._should_invalidate_cache(request, response):
+            self._invalidate_cache(request)
+
+        if self._should_update_cache(request, response):
+            self._update_cache(request, response)
+
         return response
 
 
