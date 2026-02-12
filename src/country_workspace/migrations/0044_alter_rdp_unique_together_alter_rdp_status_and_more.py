@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0043_batch_status_and_kobo_page"),
+        ("country_workspace", "0048_fix_rdp_with_pending_status"),
     ]
 
     operations = [
