@@ -58,7 +58,7 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
         if members_failed or ext_msgs:
             dct = self.errors.setdefault("dct", [])
             if members_failed:
-                dct.append("Some member did not validate")
+                dct.append("Some members did not validate")
             if ext_msgs:
                 dct.extend(ext_msgs)
             changed = True
