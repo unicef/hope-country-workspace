@@ -183,7 +183,11 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         program = state.program
-        queryset = program.households.all() if program.beneficiary_group.master_detail else program.individuals.all()
+        queryset = (
+            program.households.filter(removed=False).prefetch_related("members")
+            if program.beneficiary_group.master_detail
+            else program.individuals.filter(remove=False)
+        )
         create_validation_jobs(
             description="Validate Entire Programme",
             owner=request.user,

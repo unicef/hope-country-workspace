@@ -61,6 +61,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     return ImportResult(people=total_people, households=total_households)
 
 
+# TODO(Data): This function and related tests should be removed!
 def check_alien_fields(fields: dict, program: Program, transformer_id: int | None = None) -> None:
     if not program.individual_checker:
         return
