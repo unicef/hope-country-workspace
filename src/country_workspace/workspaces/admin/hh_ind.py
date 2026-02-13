@@ -186,7 +186,7 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         queryset = (
             program.households.filter(removed=False).prefetch_related("members")
             if program.beneficiary_group.master_detail
-            else program.individuals.filter(remove=False)
+            else program.individuals.filter(removed=False)
         )
         create_validation_jobs(
             description="Validate Entire Programme",
