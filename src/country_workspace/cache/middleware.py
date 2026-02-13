@@ -40,8 +40,18 @@ class UpdateCacheMiddleware(MiddlewareMixin):
 
     def _invalidate_cache(self, request: HttpRequest) -> None:
         cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
-        if cache_key:
-            self.manager.cache.delete(cache_key)
+        if request.method == "POST":
+            for verb in ("add", "change", "delete"):
+                if request.path.endswith(f"/{verb}/"):
+                    if verb == "add":
+                        sep = verb
+                    else:
+                        pk = request.resolver_match.kwargs.get("object_id", "")
+                        sep = f"{pk}{verb}"
+                    # last occurrence
+                    cache_key = "".join(cache_key.rsplit(sep, 1))
+                    break
+        self.manager.cache.delete(cache_key)
 
     def _update_cache(self, request: HttpRequest, response: HttpResponse) -> None:
         timeout = self.page_timeout
