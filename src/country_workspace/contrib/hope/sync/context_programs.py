@@ -33,7 +33,6 @@ BENEFICIARY_GROUP_FIELDS = (
     "member_label_plural",
     "master_detail",
 )
-Program_FIELDS = "name", "code", "status", "sector", "country_office", "beneficiary_group"
 
 HOPE_ID = "hope_id"
 BUSINESS_AREAS = "business-areas"
@@ -41,15 +40,10 @@ BENEFICIARY_GROUPS = "beneficiary-groups"
 PROGRAMS = "programs"
 
 
-def get_default_checkers() -> Mapping[str, DataChecker]:
-    return {
-        name: DataChecker.objects.filter(name=const_name).first()
-        for name, const_name in (
-            ("hh", HOUSEHOLD_CHECKER_NAME),
-            ("ind", INDIVIDUAL_CHECKER_NAME),
-            ("ppl", PEOPLE_CHECKER_NAME),
-        )
-    }
+def get_default_checkers() -> Mapping[str, DataChecker | None]:
+    target_to_checker_name = {"hh": HOUSEHOLD_CHECKER_NAME, "ind": INDIVIDUAL_CHECKER_NAME, "ppl": PEOPLE_CHECKER_NAME}
+    checker_by_name = {c.name: c for c in DataChecker.objects.filter(name__in=target_to_checker_name.values())}
+    return {k: checker_by_name.get(v) for k, v in target_to_checker_name.items()}
 
 
 def get_field_extractor(fields: tuple[str, ...]) -> Callable[[dict[str, Any]], dict[str, Any]]:
@@ -127,13 +121,13 @@ def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
         raise SkipRecordError("Beneficiary group not found") from e
 
     return {
-        "name": record["name"],
+        "beneficiary_group": bg,
+        "biometric_deduplication_enabled": record["biometric_deduplication_enabled"],
         "code": record["code"],
+        "country_office": office,
+        "name": record["name"],
         "status": record["status"],
         "sector": record["sector"],
-        "biometric_deduplication_enabled": record["biometric_deduplication_enabled"],
-        "country_office": office,
-        "beneficiary_group": bg,
     }
 
 
@@ -169,13 +163,12 @@ def post_process_program(program: Program, created: bool) -> None:
     default_checkers = get_default_checkers()
     update_fields: list[str] = []
 
-    if default_checkers:
-        program.household_checker = default_checkers.get("hh")
-        program.individual_checker = (
-            default_checkers.get("ind") if program.beneficiary_group.master_detail else default_checkers.get("ppl")
-        )
-        if program.household_checker or program.individual_checker:
-            update_fields.extend(["household_checker", "individual_checker"])
+    program.household_checker = default_checkers.get("hh")
+    program.individual_checker = (
+        default_checkers.get("ind") if program.beneficiary_group.master_detail else default_checkers.get("ppl")
+    )
+    if program.household_checker or program.individual_checker:
+        update_fields.extend(["household_checker", "individual_checker"])
 
     hh_ignored = get_default_ignored_fields("hh")
     if hh_ignored:
