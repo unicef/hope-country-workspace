@@ -5,6 +5,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from country_workspace.models.base import BaseManager, BaseModel
 from country_workspace.contrib.hope.client import HopeClient
@@ -67,6 +68,7 @@ class SyncLog(BaseModel):
                 name="unique_synclog_global_per_content_type",
             ),
         ]
+        permissions = [("can_synchronize", _("Can synchronize objects with HOPE"))]
 
     def refresh(self) -> None:
         if not (fd := self.content_object) or "remote_url" not in self.data:
