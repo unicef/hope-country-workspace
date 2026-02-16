@@ -31,11 +31,8 @@
                         <th>
                             new
                         </th>
-                        <th>
-                            type
-                        </th>
                     </tr>
-                    {% for pk, old, new, data_type in changes %}
+                    {% for pk, old, new, old_data_type, new_data_type in changes %}
                         <tr>
                             <td>
                                 {{ pk }}
@@ -47,7 +44,7 @@
                                 {{ new }}
                             </td>
                             <td>
-                                {{ data_type }}
+                                {{ old_data_type }} -> {{ new_data_type }}
                             </td>
                         </tr>
                     {% endfor %}
