@@ -45,18 +45,21 @@ class RegexUpdateForm(BaseActionForm):
 class UpdateResult(NamedTuple):
     original: Any
     updated: Any
-
+    data_type: str
 
 def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replacement: str) -> UpdateResult:
     original_value = json.get(key)
+    if isinstance(original_value, int):
+        data_type = "int"
+    elif isinstance(original_value, float):
+        data_type = "float"
+    else:
+        data_type = "str"
 
-    if not isinstance(original_value, str):
-        return UpdateResult(original_value, original_value)
-
-    updated_value = pattern.sub(replacement, original_value, 1)
+    updated_value = pattern.sub(replacement, str(original_value), 1)
     json[key] = updated_value
 
-    return UpdateResult(original_value, updated_value)
+    return UpdateResult(original_value, updated_value, data_type)
 
 
 def update_checksum(records: "QuerySet[Beneficiary]", initial_fields: set[str]) -> Iterable[str]:
