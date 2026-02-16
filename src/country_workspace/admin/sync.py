@@ -48,7 +48,7 @@ class Stats(TypedDict):
 class SyncAdminMixin(ExtraButtonsMixin):
     sync_config: SyncAdminConfig
 
-    @button()
+    @button(permission="country_workspace.can_synchronize")
     def sync(self, request: HttpRequest) -> None:
         AsyncJob.objects.create(
             description=(f"Sync {self.model._meta.verbose_name_plural}"),
@@ -62,7 +62,7 @@ class SyncAdminMixin(ExtraButtonsMixin):
         ).queue()
         self.message_user(request, _("Synchronization is scheduled."), level=messages.SUCCESS)
 
-    @button()
+    @button(permission="country_workspace.can_synchronize")
     def sync_delta(self, request: HttpRequest) -> None:
         config = SyncAdminConfig(
             targets=[TargetConfig(**config, args=TargetArgs(delta_sync=True)) for config in self.sync_config["targets"]]

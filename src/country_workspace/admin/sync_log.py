@@ -11,6 +11,6 @@ class SyncLogAdmin(BaseModelAdmin):
     list_display = ("content_type", "name", "content_object", "last_update_date", "last_id")
     search_fields = ("name", "content_type__model", "content_type__app_label")
 
-    @button()
+    @button(permission="country_workspace.can_synchronize")
     def sync_flex_fields(self, request: HttpRequest) -> "HttpResponse":
         SyncLog.objects.refresh()
