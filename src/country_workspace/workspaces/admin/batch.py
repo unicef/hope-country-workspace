@@ -16,7 +16,7 @@ from country_workspace.models import AsyncJob, MappingImporter, Program, Transfo
 from ...state import state
 from ..models import CountryBatch
 from ..options import WorkspaceModelAdmin
-from ..permissions import can_reprocess_batch
+from ..permissions import can_reprocess_batch, can_trigger_deduplication
 from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from .hh_ind import SelectedProgramMixin
@@ -190,3 +190,30 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
 
         return render(request, "workspace/admin_extra_buttons/reprocess_batch_form.html", context)
+
+    @button(
+        change_list=False,
+        permission=can_trigger_deduplication,
+        html_attrs={"title": "Push batch image references to Deduplication Engine and start matching"},
+    )
+    def trigger_deduplication(self, request: HttpRequest, pk: str) -> "HttpResponse":
+        obj: CountryBatch | None = self.get_object(request, pk)
+        if not obj:
+            return HttpResponse("Batch not found", status=404)
+
+        job = AsyncJob.objects.create(
+            description=f"Trigger deduplication: {obj.name}",
+            type=AsyncJob.JobType.TASK,
+            owner=request.user,
+            action=fqn("country_workspace.workspaces.admin.batch_deduplication.trigger_batch_deduplication"),
+            program=obj.program,
+            batch=obj,
+            config={"batch_id": obj.pk},
+        )
+        job.queue()
+        self.message_user(request, _("Deduplication task scheduled"), messages.SUCCESS)
+
+        namespace = self.admin_site.name
+        opts = self.model._meta
+        url_name = f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"
+        return HttpResponseRedirect(reverse(url_name))

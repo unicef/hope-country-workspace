@@ -48,6 +48,8 @@ CONSTANCE_CONFIG = {
     "AURORA_API_URL": (AURORA_API_URL, "Aurora API Server address", str),
     "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_text_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
+    "DEDUP_API_TOKEN": ("", "Deduplication Engine API Access Token", "write_only_text_input"),
+    "DEDUP_API_URL": ("", "Deduplication Engine API Server address", str),
     "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_text_input"),
     "KOBO_MASTER_API_TOKEN": (KOBO_MASTER_API_TOKEN, "Kobo API Master Access Token", "write_only_text_input"),
     "KOBO_PROJECT_VIEW_ID": (KOBO_PROJECT_VIEW_ID, "Kobo Project View ID", str),
@@ -127,6 +129,10 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "HOPE_API_TOKEN",
         "HOPE_API_URL",
     ),
+    "Remote System Settings - Deduplication Engine": (
+        "DEDUP_API_TOKEN",
+        "DEDUP_API_URL",
+    ),
     "Remote System Settings - Mailjet": (
         "MAILJET_API_KEY",
         "MAILJET_SECRET_KEY",
@@ -149,6 +155,7 @@ CONSTANCE_DEFAULTS_MASK = "***"
 CONSTANCE_MASKED_DEFAULTS = (
     "AURORA_API_TOKEN",
     "HOPE_API_TOKEN",
+    "DEDUP_API_TOKEN",
     "KOBO_API_TOKEN",
     "KOBO_MASTER_API_TOKEN",
     "MAILJET_SECRET_KEY",
