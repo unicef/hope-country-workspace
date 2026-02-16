@@ -1,4 +1,8 @@
 from django.conf import settings
-from storages.backends.azure_storage import AzureStorage
+from django.utils.module_loading import import_string
 
-MEDIA_STORAGE: AzureStorage = AzureStorage(**settings.STORAGES.get("media").get("OPTIONS"))
+
+backend = import_string(settings.STORAGES["media"]["BACKEND"])
+options = settings.STORAGES["media"]["OPTIONS"]
+
+MEDIA_STORAGE = backend(**options)

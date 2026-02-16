@@ -45,18 +45,26 @@ class RegexUpdateForm(BaseActionForm):
 class UpdateResult(NamedTuple):
     original: Any
     updated: Any
+    original_data_type: str
+    updated_data_type: str
+
+
+def get_json_type_label(value: Any) -> str:
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    return "str"
 
 
 def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replacement: str) -> UpdateResult:
     original_value = json.get(key)
+    data_type = get_json_type_label(original_value)
 
-    if not isinstance(original_value, str):
-        return UpdateResult(original_value, original_value)
-
-    updated_value = pattern.sub(replacement, original_value, 1)
+    updated_value = pattern.sub(replacement, str(original_value), 1)
     json[key] = updated_value
 
-    return UpdateResult(original_value, updated_value)
+    return UpdateResult(original_value, updated_value, data_type, get_json_type_label(updated_value))
 
 
 def update_checksum(records: "QuerySet[Beneficiary]", initial_fields: set[str]) -> Iterable[str]:
@@ -81,7 +89,9 @@ def regex_update_impl(
     with transaction.atomic():
         for record in records:
             result = update_json(record.flex_fields, field_name, config["regex"], config["subst"])
-            ret.append((record.id, result.original, result.updated))
+            ret.append(
+                (record.id, result.original, result.updated, result.original_data_type, result.updated_data_type)
+            )
 
         if save:
             fields = update_checksum(records, {"flex_fields"})
