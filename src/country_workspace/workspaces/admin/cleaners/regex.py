@@ -47,6 +47,7 @@ class UpdateResult(NamedTuple):
     updated: Any
     data_type: str
 
+
 def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replacement: str) -> UpdateResult:
     original_value = json.get(key)
     if isinstance(original_value, int):
