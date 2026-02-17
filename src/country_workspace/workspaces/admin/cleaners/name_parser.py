@@ -45,7 +45,7 @@ class NameParserForm(BaseActionForm):
         self.fields["middle_name_field"].choices = choices
         self.fields["family_name_field"].choices = choices
 
-        country_choices = [(c.iso_code2.lower(), c.name) for c in tenant.countries.all()]
+        country_choices = [(c.iso_code3.upper(), c.name) for c in tenant.countries.all()]
         self.fields["country_code"].choices = country_choices
         if len(country_choices) == 1:
             self.fields["country_code"].initial = country_choices[0][0]
