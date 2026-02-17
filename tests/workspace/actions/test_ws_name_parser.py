@@ -335,7 +335,8 @@ def test_name_parser_impl_only_sets_requested_fields():
 
 def test_name_parser_form_with_single_country():
     """Test that the form pre-selects country when only one is available."""
-    country = CountryFactory(iso_code2="US", name="United States")
+    country_code = "USA"
+    country = CountryFactory(iso_code3=country_code, name="United States")
     office = OfficeFactory()
     office.countries.add(country)
 
@@ -347,7 +348,7 @@ def test_name_parser_form_with_single_country():
 
     form = NameParserForm(checker=checker, tenant=office)
 
-    assert form.fields["country_code"].initial == "us"
+    assert form.fields["country_code"].initial == country_code
 
 
 def test_name_parser_form_with_multiple_countries():
