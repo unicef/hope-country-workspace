@@ -412,8 +412,8 @@ def _validate_integer(value: str, field: str, line_number: int, errors: dict) ->
 
 
 def validate_individual_reference_ids(row_data: dict, line_number: int, errors: dict) -> None:
-    required_fields = ("head_of_household", "primary_collector")
-    optional_fields = ("alternate_collector",)
+    required_fields = ("head_of_household_id", "primary_collector_id")
+    optional_fields = ("alternate_collector_id",)
 
     sheet_fields = row_data.keys()
     for field in required_fields:

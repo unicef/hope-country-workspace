@@ -71,12 +71,12 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
 
     @property
     def head(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("head_of_household")
+        return self.flex_fields.get("head_of_household_id", self.flex_fields.get("head_of_household"))
 
     @property
     def primary_collector(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("primary_collector")
+        return self.flex_fields.get("primary_collector_id", self.flex_fields.get("primary_collector"))
 
     @property
     def alternate_collector(self) -> "QuerySet[Individual]":
-        return self.flex_fields.get("alternate_collector")
+        return self.flex_fields.get("alternate_collector_id", self.flex_fields.get("alternate_collector"))

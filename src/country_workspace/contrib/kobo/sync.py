@@ -212,13 +212,13 @@ def _is_head_of_household(individual: Individual) -> bool:
 
 def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
-        household.flex_fields["primary_collector"] = getattr(primary_collector, "id", None)
+        household.flex_fields["primary_collector_id"] = getattr(primary_collector, "id", None)
 
     if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
-        household.flex_fields["alternate_collector"] = getattr(alternate_collector, "id", None)
+        household.flex_fields["alternate_collector_id"] = getattr(alternate_collector, "id", None)
 
     if head_of_household := next(filter(_is_head_of_household, individuals), None):
-        household.flex_fields["head_of_household"] = getattr(head_of_household, "id", None)
+        household.flex_fields["head_of_household_id"] = getattr(head_of_household, "id", None)
 
     household.save(update_fields=["flex_fields"])
 
