@@ -281,7 +281,7 @@ def test_import_bulk_update_file_with_individual_reference_validation_errors(
         {
             "id": str(test_data["valid_entity"].id),
             "version": str(test_data["valid_entity"].version),
-            "head_of_household": "not_a_number",
+            "head_of_household_id": "not_a_number",
         },
     ]
 
@@ -291,7 +291,7 @@ def test_import_bulk_update_file_with_individual_reference_validation_errors(
         with pytest.raises(BulkImportFileProcessingError) as exc:
             test_data["import_function"](job=job)
 
-    assert "Invalid data for head_of_household field. Must be of integer type" in str(exc.value)
+    assert "Invalid data for head_of_household_id field. Must be of integer type" in str(exc.value)
 
 
 def test_validate_individual_reference_ids():
@@ -301,27 +301,27 @@ def test_validate_individual_reference_ids():
     line_number = 1
 
     valid_row = {
-        "head_of_household": "123",
-        "primary_collector": "456",
-        "alternate_collector": "789",
+        "head_of_household_id": "123",
+        "primary_collector_id": "456",
+        "alternate_collector_id": "789",
     }
     validate_individual_reference_ids(valid_row, line_number, errors)
     assert not errors
 
-    empty_alternate = {**valid_row, "alternate_collector": None}
+    empty_alternate = {**valid_row, "alternate_collector_id": None}
     validate_individual_reference_ids(empty_alternate, line_number, errors)
     assert not errors
 
     invalid_row = {
-        "head_of_household": "not_a_number",
-        "primary_collector": "",
-        "alternate_collector": "456.78",
+        "head_of_household_id": "not_a_number",
+        "primary_collector_id": "",
+        "alternate_collector_id": "456.78",
     }
     validate_individual_reference_ids(invalid_row, line_number, errors)
 
-    assert "Invalid data for head_of_household field. Must be of integer type" in errors
-    assert "Invalid data. primary_collector field is required" in errors
-    assert "Invalid data for alternate_collector field. Must be of integer type" in errors
+    assert "Invalid data for head_of_household_id field. Must be of integer type" in errors
+    assert "Invalid data. primary_collector_id field is required" in errors
+    assert "Invalid data for alternate_collector_id field. Must be of integer type" in errors
 
 
 def test_write_country_choices_with_correct_data(worksheet_mock: MagicMock, countries):
