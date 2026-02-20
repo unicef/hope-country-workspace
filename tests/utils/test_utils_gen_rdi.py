@@ -144,7 +144,7 @@ def test_generate_households_and_individuals_linkage(
 ) -> None:
     hh_fields = {
         "household_id": forms.IntegerField(),
-        "head_of_household": forms.IntegerField(required=False),
+        "head_of_household_id": forms.IntegerField(required=False),
         "size": forms.IntegerField(required=False),
     }
     ind_fields = {"individual_id": forms.IntegerField(), "household_id": forms.IntegerField()}
@@ -167,29 +167,29 @@ def test_generate_households_and_individuals_linkage(
 
 
 def test_update_collectors_primary_and_alternate_valid(rng: random.Random) -> None:
-    households = [{"primary_collector": None, "alternate_collector": None} for _ in range(3)]
+    households = [{"primary_collector_id": None, "alternate_collector_id": None} for _ in range(3)]
     rdi.update_collectors(households, total_individuals=10, rng=rng)
     for hh in households:
         # primary in 1..total
-        assert 1 <= hh["primary_collector"] <= 10
+        assert 1 <= hh["primary_collector_id"] <= 10
         # alternate either None or != primary and in range 1..total
-        alt = hh["alternate_collector"]
-        assert (alt is None) or (1 <= alt <= 10 and alt != hh["primary_collector"])
+        alt = hh["alternate_collector_id"]
+        assert (alt is None) or (1 <= alt <= 10 and alt != hh["primary_collector_id"])
 
 
 def test_update_collectors_no_total_keeps_households_intact(rng: random.Random) -> None:
-    households = [{"primary_collector": None, "alternate_collector": None} for _ in range(2)]
+    households = [{"primary_collector_id": None, "alternate_collector_id": None} for _ in range(2)]
     snapshot = [h.copy() for h in households]
     rdi.update_collectors(households, total_individuals=0, rng=rng)
     assert households == snapshot  # no changes
 
 
 def test_update_collectors_sets_alternate_none_when_total_lt_2(rng: random.Random) -> None:
-    households = [{"primary_collector": None, "alternate_collector": None} for _ in range(3)]
+    households = [{"primary_collector_id": None, "alternate_collector_id": None} for _ in range(3)]
     rdi.update_collectors(households, total_individuals=1, rng=rng)
     for hh in households:
-        assert hh["primary_collector"] == 1  # only possible pick in [1..1]
-        assert hh["alternate_collector"] is None  # branch: total_individuals >= 2 is False
+        assert hh["primary_collector_id"] == 1  # only possible pick in [1..1]
+        assert hh["alternate_collector_id"] is None  # branch: total_individuals >= 2 is False
 
 
 # ---------- writing (cell/row/excel) ----------

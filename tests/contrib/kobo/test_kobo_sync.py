@@ -639,9 +639,9 @@ def test_build_individual_processor() -> None:
 @pytest.mark.parametrize(
     ("individual_flex_fields", "individual_key"),
     [
-        pytest.param({"role": "PRIMARY"}, "primary_collector", id="primary collector"),
-        pytest.param({"role": "ALTERNATE"}, "alternate_collector", id="alternate collector"),
-        pytest.param({"relationship": "HEAD"}, "head_of_household", id="head of household"),
+        pytest.param({"role": "PRIMARY"}, "primary_collector_id", id="primary collector"),
+        pytest.param({"role": "ALTERNATE"}, "alternate_collector_id", id="alternate collector"),
+        pytest.param({"relationship": "HEAD"}, "head_of_household_id", id="head of household"),
     ],
 )
 def test_set_roles_and_relationships(
