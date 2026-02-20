@@ -65,9 +65,6 @@ class ValidateMode(TextChoices):
 class BaseImportForm(forms.Form):
     batch_name = forms.CharField(required=False, help_text="Label for this batch")
     validate_after_import = forms.BooleanField(initial=True, required=False)
-    fail_if_alien = forms.BooleanField(
-        initial=True, required=False, help_text="Alien field will be checked on first record only"
-    )
     household_transformer = forms.ModelChoiceField(
         queryset=None,
         required=False,

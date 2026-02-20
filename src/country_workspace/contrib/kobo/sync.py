@@ -434,7 +434,7 @@ def import_data(job: AsyncJob) -> ImportResult:
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=job.program,
-            queryset=batch.household_set.all().prefetch_related("members"),  # type: ignore[attr-defined]
+            queryset=batch.household_set.filter(removed=False).prefetch_related("members"),  # type: ignore[attr-defined]
         )
 
     if asset_import_result["completed"]:
