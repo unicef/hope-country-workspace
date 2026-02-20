@@ -74,6 +74,18 @@ def test_update_json_does_not_change_non_string_values() -> None:
     assert result.updated == original_value
 
 
+def test_update_json_does_not_change_float_values() -> None:
+    json = {FIELD: 42.5}
+    original_value = 42.5
+
+    result = update_json(json, FIELD, re.compile(ANYTHING), NEW_VALUE)
+
+    assert result.original == original_value
+    assert result.updated == original_value
+    assert result.original_data_type == "float"
+    assert result.updated_data_type == "float"
+
+
 def test_regex_update_impl(household: "CountryHousehold") -> None:
     from country_workspace.models import Household
 
