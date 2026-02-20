@@ -162,9 +162,6 @@ def program(
             rules="\n".join(  # noqa: FLY002
                 [
                     "members_count=count",
-                    "head_of_household_id=head_of_household",
-                    "primary_collector_id=primary_collector",
-                    "alternate_collector_id=alternate_collector",
                     "",
                 ]
             ),
