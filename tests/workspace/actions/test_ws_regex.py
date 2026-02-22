@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -5,7 +6,7 @@ from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl
+from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl, update_json
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
