@@ -21,6 +21,7 @@ from tests.extras.testutils.factories import (
     HouseholdFactory,
     IndividualFactory,
     FieldsetFactory,
+    FlexFieldFactory,
 )
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
 from tests.extras.testutils.factories.smart_fields import DataCheckerFactory
@@ -134,6 +135,24 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker):
         rel.prefix = "p_"
         rel.save(update_fields=["prefix"])
         mocked.assert_called_once_with(dc=ind_datachecker)
+
+
+def test_datachecker_update_triggers_processing(hh_datachecker):
+    with patch("country_workspace.signals._process_datachecker_change") as mocked:
+        hh_datachecker.description = "Updated"
+        hh_datachecker.save(update_fields=["description"])
+        mocked.assert_called_once_with(dc=hh_datachecker)
+
+
+def test_flexfield_update_triggers_processing(hh_datachecker):
+    fs = FieldsetFactory.create()
+    hh_datachecker.fieldsets.add(fs)
+    ff = FlexFieldFactory.create(fieldset=fs)
+
+    with patch("country_workspace.signals._process_datachecker_change") as mocked:
+        ff.attrs = {"label": "Updated"}
+        ff.save(update_fields=["attrs"])
+        mocked.assert_called_once_with(dc=hh_datachecker)
 
 
 def _test_invalidation_on_checker_change(program, factory, checker_field):

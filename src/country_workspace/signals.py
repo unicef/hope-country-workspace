@@ -3,7 +3,7 @@ from typing import Any
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-from hope_flex_fields.models import Fieldset, DataCheckerFieldset, DataChecker
+from hope_flex_fields.models import DataChecker, DataCheckerFieldset, Fieldset, FlexField
 
 from country_workspace.models import Program
 from country_workspace.workspaces.models import CountryProgram
@@ -41,27 +41,32 @@ def _process_datachecker_change(dc: DataChecker) -> None:
 
 
 @receiver(post_save, sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
+@receiver(post_save, sender=FlexField, dispatch_uid="cw_on_flexfield_change")
+@receiver(post_save, sender=DataChecker, dispatch_uid="cw_on_datachecker_change")
 @receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
 @receiver(pre_save, sender=Program, dispatch_uid="cw_on_program_change")
 @receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_country_program_change")
-def invalidate_entities_on_datachecker_change(
-    sender: type[Fieldset | DataCheckerFieldset | Program],
-    instance: Fieldset | DataCheckerFieldset | Program,
+def invalidate_entities_on_datachecker_change(  # noqa: C901
+    sender: type[Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram],
+    instance: Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram,
     created: bool | None = None,
     **kwargs: Any,
 ) -> None:
-    if created:
-        return
-
     if isinstance(instance, Fieldset):
         dcs = instance.datachecker_set.all().distinct()
         for dc in dcs:
             _process_datachecker_change(dc=dc)
+    elif isinstance(instance, FlexField):
+        dcs = instance.fieldset.datachecker_set.all().distinct()
+        for dc in dcs:
+            _process_datachecker_change(dc=dc)
+    elif isinstance(instance, DataChecker):
+        _process_datachecker_change(dc=instance)
     elif isinstance(instance, DataCheckerFieldset):
         dc = instance.checker
         _process_datachecker_change(dc=dc)
 
-    elif isinstance(instance, Program):
+    elif isinstance(instance, Program | CountryProgram):
         if not instance.pk:
             return
 
