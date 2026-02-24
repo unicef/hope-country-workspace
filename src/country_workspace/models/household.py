@@ -63,6 +63,13 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
                 dct.extend(ext_msgs)
             changed = True
 
+        from country_workspace.utils.collision import check_identity_collision
+
+        errors_before = dict(self.errors)
+        check_identity_collision(self)
+        if self.errors != errors_before:
+            changed = True
+
         if changed:
             self.last_checked = timezone.now()
             self.save(update_fields=["errors", "last_checked"])

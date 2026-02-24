@@ -211,6 +211,10 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             else:
                 result = _import_people_only(job, batch, config)
 
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
+
+    detect_and_mark_collisions_for_batch(batch)
+
     job.ensure_not_cancelled(refresh=True)
     if not config.get("validate_after_import"):
         batch.status = Batch.BatchStatus.COMPLETE

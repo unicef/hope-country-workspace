@@ -2,6 +2,7 @@ import pghistory
 from typing import TYPE_CHECKING, Final
 from functools import cached_property
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from .base import BaseModel, Validable
@@ -41,3 +42,16 @@ class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
     @cached_property
     def country_office(self) -> "Office":
         return self.batch.program.country_office
+
+    def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        super().validate_with_checker(fail_if_alien=fail_if_alien)
+
+        from country_workspace.utils.collision import check_identity_collision
+
+        errors_before = dict(self.errors)
+        check_identity_collision(self)
+        if self.errors != errors_before:
+            self.last_checked = timezone.now()
+            self.save(update_fields=["errors", "last_checked"])
+
+        return not bool(self.errors)
