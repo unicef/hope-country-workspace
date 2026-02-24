@@ -52,6 +52,8 @@ class SyncConfig[T: Model](TypedDict):
         reference_id: The field name used as the system reference ID for the model.
         prepare_defaults: Function to map an API record into model defaults (required).
         should_process: Optional record-level filter predicate (truthy -> process).
+        m2m_hook: Optional hook to sync many-to-many relations using the current record.
+            It is called after update_or_create and before post_process.
         post_process: Optional hook after create/update; may raise to fail the sync.
 
     """
@@ -62,6 +64,7 @@ class SyncConfig[T: Model](TypedDict):
     reference_id: str
     should_process: NotRequired[Callable[[dict[str, Any]], bool] | None]
     prepare_defaults: Callable[[dict[str, Any]], dict[str, Any] | None]
+    m2m_hook: NotRequired[Callable[[T, dict[str, Any]], None] | None]
     post_process: NotRequired[Callable[[T, bool], None] | None]
 
 
@@ -153,6 +156,7 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
     """
     should_process = config.get("should_process")
     prepare_defaults = config.get("prepare_defaults")
+    m2m_hook = config.get("m2m_hook")
     post_process = config.get("post_process")
     reference_id = config.get("reference_id")
 
@@ -174,6 +178,8 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
                 instance, created = model.objects.update_or_create(
                     defaults=defaults, **{reference_id: reference_id_val}
                 )
+                if m2m_hook:
+                    m2m_hook(instance, record)
                 if post_process:
                     post_process(instance, created)
                 stats["add" if created else "upd"] += 1

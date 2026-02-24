@@ -19,7 +19,7 @@ from country_workspace.contrib.hope.sync.base import (
     sync_entity,
     build_endpoint,
 )
-from country_workspace.models import BeneficiaryGroup, Office, Program
+from country_workspace.models import BeneficiaryGroup, Country, Office, Program
 
 MODELS: Final[tuple[type[Model], ...]] = (Office, Program, BeneficiaryGroup)
 """List of models to synchronize."""
@@ -63,6 +63,27 @@ def should_process_office(record: dict[str, Any]) -> bool:
     return bool(record.get("active"))
 
 
+def make_office_countries_m2m_hook() -> Callable[[Office, dict[str, Any]], None]:
+    by_iso2 = {iso2.upper(): pk for iso2, pk in Country.objects.values_list("iso_code2", "pk")}
+
+    def m2m_hook(office: Office, record: dict[str, Any]) -> None:
+        if "countries" not in record:
+            return
+
+        if not (raw := record.get("countries") or []):
+            office.countries.clear()
+            return
+
+        pks = {
+            by_iso2.get((item.get("iso2") or item.get("iso_code2") or "").upper())
+            for item in raw
+            if isinstance(item, dict)
+        }
+        office.countries.set(pk for pk in pks if pk)
+
+    return m2m_hook
+
+
 def sync_offices(delta_sync: bool = False) -> Stats:
     return sync_entity(
         SyncConfig[Office](
@@ -71,6 +92,7 @@ def sync_offices(delta_sync: bool = False) -> Stats:
             endpoint=build_endpoint(BUSINESS_AREAS, Office, ParamDateName.UPDATED, delta_sync),
             prepare_defaults=get_field_extractor(OFFICE_FIELDS),
             should_process=should_process_office,
+            m2m_hook=make_office_countries_m2m_hook(),
             delta_sync=delta_sync,
         )
     )
