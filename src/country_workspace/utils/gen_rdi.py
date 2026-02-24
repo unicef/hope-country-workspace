@@ -89,7 +89,7 @@ class SheetSpec(NamedTuple):
 
 HOUSEHOLDS_SPEC = SheetSpec(
     name=SheetName.HOUSEHOLDS,
-    postfix="_h_c",
+    postfix="",
     plain_fields=("household_id", "head_of_household", "primary_collector", "alternate_collector"),
     id_key="household_id",
     parent_id_key=None,
@@ -98,7 +98,7 @@ HOUSEHOLDS_SPEC = SheetSpec(
 
 INDIVIDUALS_SPEC = SheetSpec(
     name=SheetName.INDIVIDUALS,
-    postfix="_i_c",
+    postfix="",
     plain_fields=("individual_id", "household_id"),
     id_key="individual_id",
     parent_id_key="household_id",
@@ -107,7 +107,7 @@ INDIVIDUALS_SPEC = SheetSpec(
 PEOPLE_SPEC = SheetSpec(
     name=SheetName.PEOPLE,
     prefix="pp_",
-    postfix="_i_c",
+    postfix="",
     id_key="index_id",
 )
 
