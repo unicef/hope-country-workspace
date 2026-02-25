@@ -246,10 +246,14 @@ def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
 
     for v in households_mapping.values():
         hh_flex_fields = v.flex_fields.copy()
-        hh_flex_fields["head_of_household"] = pk_mapping.get(v.flex_fields.get("head_of_household"))
-        hh_flex_fields["primary_collector"] = pk_mapping.get(v.flex_fields.get("primary_collector"))
-        if alt_id := v.flex_fields.get("alternate_collector"):  # is optional
-            hh_flex_fields["alternate_collector"] = pk_mapping.get(alt_id)
+        hh_flex_fields["head_of_household_id"] = pk_mapping.get(
+            v.flex_fields.get("head_of_household_id", v.flex_fields.get("head_of_household"))
+        )
+        hh_flex_fields["primary_collector_id"] = pk_mapping.get(
+            v.flex_fields.get("primary_collector_id", v.flex_fields.get("primary_collector"))
+        )
+        if alt_id := v.flex_fields.get("alternate_collector_id", v.flex_fields.get("alternate_collector")):
+            hh_flex_fields["alternate_collector_id"] = pk_mapping.get(alt_id)
 
         v.flex_fields = hh_flex_fields
         v.save(update_fields=["flex_fields"])

@@ -162,9 +162,6 @@ def program(
             rules="\n".join(  # noqa: FLY002
                 [
                     "members_count=count",
-                    "head_of_household_id=head_of_household",
-                    "primary_collector_id=primary_collector",
-                    "alternate_collector_id=alternate_collector",
                     "",
                 ]
             ),
@@ -187,9 +184,9 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
 @pytest.fixture
 def reference_field_names() -> tuple:
     return (
-        "head_of_household",
-        "primary_collector",
-        "alternate_collector",
+        "head_of_household_id",
+        "primary_collector_id",
+        "alternate_collector_id",
     )
 
 

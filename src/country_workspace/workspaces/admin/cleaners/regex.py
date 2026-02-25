@@ -61,7 +61,10 @@ def update_json(json: dict[str, Any], key: str, pattern: re.Pattern[str], replac
     original_value = json.get(key)
     data_type = get_json_type_label(original_value)
 
-    updated_value = pattern.sub(replacement, str(original_value), 1)
+    if isinstance(original_value, str):
+        updated_value = pattern.sub(replacement, original_value, 1)
+    else:
+        updated_value = original_value
     json[key] = updated_value
 
     return UpdateResult(original_value, updated_value, data_type, get_json_type_label(updated_value))

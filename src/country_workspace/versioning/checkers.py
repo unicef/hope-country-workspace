@@ -49,9 +49,12 @@ def create_hope_checkers() -> None:
         ("consent", defs["bool"], {}),
         ("country", defs["h_country"], {"label": "Country", "required": True}),
         ("country_origin", defs["h_country"], {}),
+        ("head_of_household_id", defs["char"], {"label": "Head of Household ID"}),
         ("household_id", defs["char"], {"label": "Household ID"}),
         ("name_enumerator", defs["char"], {"label": "Enumerator"}),
         ("org_enumerator", defs["char"], {}),
+        ("primary_collector_id", defs["char"], {"label": "Primary Collector ID"}),
+        ("alternate_collector_id", defs["char"], {"label": "Alternate Collector ID"}),
         ("registration_method", defs["char"], {}),
         ("residence_status", defs["h_residence"], {}),
         ("size", defs["int"], {}),
@@ -83,7 +86,6 @@ def create_hope_checkers() -> None:
 
     individual_fields_spec: list[FieldSpec] = [
         ("address", defs["char"], {}),
-        ("alternate_collector_id", defs["char"], {"label": "Alternative Collector for"}),
         ("birth_date", defs["date"], {"label": "Birth Date", "required": True}),
         ("disability", defs["i_disability"], {"label": "Disability"}),
         ("estimated_birth_date", defs["bool"], {"label": "Estimated Birth Date", "required": False}),
@@ -96,7 +98,6 @@ def create_hope_checkers() -> None:
         ("national_id_no", defs["char"], {}),
         ("national_id_photo", defs["char"], {}),
         ("phone_no", defs["char"], {}),
-        ("primary_collector_id", defs["char"], {"label": "Primary Collector for"}),
         ("relationship", defs["i_relationship"], {"label": "Relationship", "required": True}),
         ("role", defs["i_role"], {"label": "Role"}),
     ]
