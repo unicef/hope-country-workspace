@@ -13,6 +13,7 @@ from country_workspace.contrib.hope.constants import (
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
 from country_workspace.signals import (
     _process_datachecker_change,
+    invalidate_entities_on_datachecker_change,
 )
 from country_workspace.validators.registry import NoopValidator
 from tests.extras.testutils.factories import (
@@ -226,3 +227,12 @@ def test_no_invalidation_on_other_field_change(program):
     for hh in HouseholdFactory._meta.model.objects.all():
         hh.refresh_from_db()
         assert hh.errors == {"x": "1"}
+
+
+def test_signal_handler_ignores_unrecognised_instance_type():
+    class _Unrelated:
+        pass
+
+    with patch("country_workspace.signals._process_program") as mock_process:
+        invalidate_entities_on_datachecker_change(sender=_Unrelated, instance=_Unrelated())
+        mock_process.assert_not_called()
