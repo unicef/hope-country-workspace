@@ -74,11 +74,7 @@ def make_office_countries_m2m_hook() -> Callable[[Office, dict[str, Any]], None]
             office.countries.clear()
             return
 
-        pks = {
-            by_iso2.get((item.get("iso2") or item.get("iso_code2") or "").upper())
-            for item in raw
-            if isinstance(item, dict)
-        }
+        pks = {by_iso2.get((item.get("iso_code2") or "").upper()) for item in raw if isinstance(item, dict)}
         office.countries.set(pk for pk in pks if pk)
 
     return m2m_hook
