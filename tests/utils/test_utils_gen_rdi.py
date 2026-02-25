@@ -52,16 +52,17 @@ def test_sheet_spec_get_fields_excludes_runtime() -> None:
 
 
 def test__colname_prefix_postfix_and_ids() -> None:
-    spec = rdi.PEOPLE_SPEC  # prefix="pp_", postfix="", id_key="index_id"
+    spec = rdi.PEOPLE_SPEC  # prefix="pp_", postfix="_i_c", id_key="index_id"
     assert rdi._colname(spec, "index_id") == "pp_index_id"  # special case for ID field
-    assert rdi._colname(spec, "given_name") == "pp_given_name"  # general case
+    assert rdi._colname(spec, "given_name") == "pp_given_name_i_c"  # general case
+    assert rdi._colname(spec, "given_name", with_postfix=False) == "pp_given_name"  # no-postfix mode
 
 
 def test__effective_exclude_respects_protected_ids() -> None:
-    names = ["index_id", "pp_given_name", "pp_wallet_address"]
+    names = ["index_id", "pp_given_name_i_c", "pp_wallet_address_i_c"]
     out = rdi._effective_exclude(names, exclude_fields=["index_id", "wallet_address"], sheet=rdi.SheetName.PEOPLE)
     # protected id (index_id) is kept, wallet_address is excluded
-    assert out == ["index_id", "pp_given_name"]
+    assert out == ["index_id", "pp_given_name_i_c"]
 
 
 # ---------- choices / resolve / writers ----------
@@ -82,7 +83,7 @@ def test_pick_from_choices_single_and_multi(rng: random.Random) -> None:
 def test_resolve_field_value_prefers_choices_over_patterns(fake: Faker, rng: random.Random) -> None:
     fld = forms.BooleanField(required=False)
     # choices handler must be preferred over BooleanField pattern
-    got = rdi.resolve_field_value("consent", fld, fake, rng)
+    got = rdi.resolve_field_value("consent_i_c", fld, fake, rng)
     assert got in {True, False}
 
 
@@ -131,7 +132,7 @@ def test__get_sheet_specific_handler_count_branch(rng: random.Random) -> None:
 def test_generate_people_data_basic(
     fake: Faker, rng: random.Random, flexform_factory: Callable[[dict[str, forms.Field]], forms.Form]
 ) -> None:
-    fields = {"index_id": forms.IntegerField(), "pp_given_name": forms.CharField(required=False)}
+    fields = {"index_id": forms.IntegerField(), "pp_given_name_i_c": forms.CharField(required=False)}
     pp_form = flexform_factory(fields)
     cfg = rdi.GeneratorConfig(mode=rdi.GenerationMode.PEOPLE, people=3)
     rows = rdi.generate_people_data(pp_form, cfg, fake, rng)
@@ -227,7 +228,7 @@ def test_write_excel_skips_empty_and_persists_file(mocker: MockerFixture) -> Non
     m_open.return_value.__enter__.return_value = BytesIO()
     mocker.patch.object(rdi, "Workbook")
     spec = rdi.PEOPLE_SPEC
-    sheets = [(spec, [{"index_id": 1, "pp_given_name": "A"}])]
+    sheets = [(spec, [{"index_id": 1, "pp_given_name_i_c": "A"}])]
     rdi.write_excel(sheets, filename="file.xlsx")
     m_open.assert_called_once()
 
