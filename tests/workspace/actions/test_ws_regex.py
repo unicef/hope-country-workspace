@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -5,7 +6,7 @@ from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl
+from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl, update_json
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -61,6 +62,28 @@ def app(
     django_app.set_user(admin_user)
     django_app._user = admin_user
     return django_app
+
+
+def test_update_json_does_not_change_non_string_values() -> None:
+    json = {FIELD: 42}
+    original_value = 42
+
+    result = update_json(json, FIELD, re.compile(ANYTHING), NEW_VALUE)
+
+    assert result.original == original_value
+    assert result.updated == original_value
+
+
+def test_update_json_does_not_change_float_values() -> None:
+    json = {FIELD: 42.5}
+    original_value = 42.5
+
+    result = update_json(json, FIELD, re.compile(ANYTHING), NEW_VALUE)
+
+    assert result.original == original_value
+    assert result.updated == original_value
+    assert result.original_data_type == "float"
+    assert result.updated_data_type == "float"
 
 
 def test_regex_update_impl(household: "CountryHousehold") -> None:

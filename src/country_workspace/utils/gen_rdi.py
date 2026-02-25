@@ -90,7 +90,7 @@ class SheetSpec(NamedTuple):
 HOUSEHOLDS_SPEC = SheetSpec(
     name=SheetName.HOUSEHOLDS,
     postfix="_h_c",
-    plain_fields=("household_id", "head_of_household", "primary_collector", "alternate_collector"),
+    plain_fields=("household_id", "head_of_household_id", "primary_collector_id", "alternate_collector_id"),
     id_key="household_id",
     parent_id_key=None,
     exclude_from_export=("individuals_start", "individuals_count"),
@@ -378,7 +378,7 @@ def generate_households_data(hh_form: FlexForm, config: GeneratorConfig, fake: F
             {
                 "household_id": hh_id,
                 "size": individuals_count,
-                "head_of_household": ind_counter + rng.randint(0, individuals_count - 1),
+                "head_of_household_id": ind_counter + rng.randint(0, individuals_count - 1),
                 "individuals_start": ind_counter,
                 "individuals_count": individuals_count,
             }
@@ -394,16 +394,16 @@ def update_collectors(households: list[dict], total_individuals: int, rng: Rando
         return
 
     for hh_data in households:
-        if "primary_collector" in hh_data:
-            hh_data["primary_collector"] = rng.randint(1, total_individuals)
+        if "primary_collector_id" in hh_data:
+            hh_data["primary_collector_id"] = rng.randint(1, total_individuals)
 
-        if "alternate_collector" in hh_data:
-            primary = hh_data.get("primary_collector")
+        if "alternate_collector_id" in hh_data:
+            primary = hh_data.get("primary_collector_id")
             if total_individuals >= 2 and rng.randint(0, 1) == 1:
                 alt = rng.randint(1, total_individuals - 1)
-                hh_data["alternate_collector"] = alt if (primary is None or alt < primary) else alt + 1
+                hh_data["alternate_collector_id"] = alt if (primary is None or alt < primary) else alt + 1
             else:
-                hh_data["alternate_collector"] = None
+                hh_data["alternate_collector_id"] = None
 
 
 def write_cell(ws: "Worksheet", row: int, col: int, value: Any, *, date_fmt: Any) -> None:
