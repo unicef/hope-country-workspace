@@ -1,7 +1,6 @@
 import hashlib
 import re
 import time
-from json import JSONDecodeError
 from typing import TYPE_CHECKING, Any, Generator, Final
 
 import requests
@@ -32,6 +31,12 @@ class HopeClient:
         for scheme in ("http://", "https://"):
             self.session.mount(scheme, HTTPAdapter(max_retries=3))
 
+    def _err(self, method: str, url: str, *, err: str, response: requests.Response | None = None) -> str:
+        msg = f"HopeClient: {method} {url} failed: {err}"
+        if response is None:
+            return msg
+        return f"{msg}. Status: {response.status_code}. Response: {response.text}"
+
     def get_url(self, path: str) -> str:
         url = sanitize_url(f"{config.HOPE_API_URL}/{path}")
         if not url.endswith("/"):
@@ -40,37 +45,46 @@ class HopeClient:
 
     def get_lookup(self, path: str) -> "FlatJsonType":
         url = self.get_url(path)
-        ret = self.session.get(url, timeout=TIMEOUTS)  # nosec
+        try:
+            ret = self.session.get(url, timeout=TIMEOUTS)
+        except RequestException as e:
+            raise RemoteError(self._err("GET", url, err=str(e), response=getattr(e, "response", None))) from e
         if ret.status_code != 200:
-            raise RemoteError(f"Error {ret.status_code} fetching {url}")
-        return ret.json()
+            raise RemoteError(self._err("GET", url, err=f"unexpected status {ret.status_code}", response=ret))
+        try:
+            return ret.json()
+        except ValueError as e:
+            raise RemoteError(self._err("GET", url, err="invalid JSON response", response=ret)) from e
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> "Generator[FlatJsonType, None, None]":
-        url: "str|None" = self.get_url(path)
+        url: str | None = self.get_url(path)
         signature = hashlib.sha256(f"{url}{params}{time.perf_counter_ns()}".encode()).hexdigest()
         pages = 0
         hope_request_start.send(self.__class__, url=url, params=params, signature=signature)
+
         while url:
+            _url = url
             try:
-                ret = self.session.get(url, params=(params if pages == 0 else None), timeout=TIMEOUTS)  # nosec
-                if ret.status_code != 200:
-                    raise RemoteError(f"Error {ret.status_code} fetching {url}")
+                ret = self.session.get(_url, params=(params if pages == 0 else None), timeout=TIMEOUTS)
             except RequestException as e:
-                raise RemoteError(f"Remote Error fetching {url}") from e
+                raise RemoteError(self._err("GET", _url, err=str(e), response=getattr(e, "response", None))) from e
+
+            if ret.status_code != 200:
+                raise RemoteError(self._err("GET", _url, err=f"unexpected status {ret.status_code}", response=ret))
 
             pages += 1
             try:
                 data = ret.json()
-            except JSONDecodeError as e:
-                raise RemoteError(f"Wrong JSON response fetching {url}") from e
+            except ValueError as e:
+                raise RemoteError(self._err("GET", _url, err="invalid JSON response", response=ret)) from e
 
             try:
                 yield from data["results"]
                 url = data.get("next", None)
                 if url and not data.get("results"):
                     break  # fallback in case the results are missing but next url is fulfilled
-            except TypeError as e:
-                raise RemoteError(f"Malformed JSON fetching {url}") from e
+            except (TypeError, KeyError) as e:
+                raise RemoteError(self._err("GET", _url, err="malformed JSON response", response=ret)) from e
 
         hope_request_end.send(self.__class__, url=url, params=params, pages=pages, signature=signature)
 
@@ -80,28 +94,24 @@ class HopeClient:
         hope_request_start.send(self.__class__, url=url, data=data, signature=signature)
 
         try:
-            response = self.session.post(url, json=data, timeout=TIMEOUTS)  # nosec
+            response = self.session.post(url, json=data, timeout=TIMEOUTS)
 
             # people endpoint
             if response.status_code == 400 and path.endswith("/push/people/"):
-                return {"errors": True, "people": response.json()}
+                try:
+                    return {"errors": True, "people": response.json()}
+                except ValueError as e:
+                    raise RemoteError(self._err("POST", url, err="invalid JSON response", response=response)) from e
 
             response.raise_for_status()
             result = response.json()
 
-        except HTTPError as http_err:
-            resp = http_err.response
-            error_details = resp.text[:1000] + "..." if len(resp.text) > 1000 else resp.text
-            raise RemoteError(
-                f"HTTP error posting to {url}: {http_err}. Status: {resp.status_code}. Response Body: {error_details}"
-            ) from http_err
-        except JSONDecodeError as json_err:
-            response_text = response.text if response else "N/A"
-            raise RemoteError(
-                f"Wrong JSON response posting to {url}. Status: {response.status_code}. Response text: {response_text}"
-            ) from json_err
-        except RequestException as req_err:
-            raise RemoteError(f"Request failed for {url}: {req_err}") from req_err
+        except HTTPError as e:
+            raise RemoteError(self._err("POST", url, err=str(e), response=response)) from e
+        except ValueError as e:
+            raise RemoteError(self._err("POST", url, err="invalid JSON response", response=response)) from e
+        except RequestException as e:
+            raise RemoteError(self._err("POST", url, err=str(e), response=getattr(e, "response", None))) from e
 
         hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
         return result

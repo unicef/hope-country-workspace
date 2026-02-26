@@ -193,10 +193,10 @@ class PushProcessor(ProcessorBase):
     ) -> None:
         """Iterate over QuerySet batches -> prepare batch -> POST -> process response."""
         if not self.hope_rdi_id:
-            self._err(f"{name} - can't push: hope_rdi_id is not set")
+            self._err(f"{name} can't push: hope_rdi_id is not set")
             return
         if self.queryset is None:
-            self._err(f"{name} - can't push: queryset is not set")
+            self._err(f"{name} can't push: queryset is not set")
             return
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE * 5), PUSH_BATCH_SIZE):
             ids, payload = prepare(batch)
@@ -205,16 +205,37 @@ class PushProcessor(ProcessorBase):
                 process(resp, ids)
 
     def _resp_err(self, name: str, response: dict | None, batch_ids: list[int]) -> bool:
+        def result_errors(resp: dict) -> list[Any]:
+            res = resp.get("results")
+            if not isinstance(res, list):
+                return []
+            return [
+                (item.get("errors") or item.get("error"))
+                for item in res
+                if isinstance(item, dict) and (item.get("errors") or item.get("error"))
+            ]
+
         if response is None:
-            self._err(f"{name} - batch failed for {batch_ids}")
+            self._err(f"{name} batch failed for {batch_ids}")
             return True
+
         if isinstance(response, dict) and response.get("errors"):
-            self._err(f"{name} - push error for {batch_ids}: {response}")
+            errs = result_errors(response)
+            if errs:
+                self._err(f"{name} push result errors for {batch_ids}: {errs[:20]}")
+            else:
+                self._err(f"{name} push errors for {batch_ids}: {response.get('errors')}")
+            self._err(
+                f"{name} - response summary: "
+                f"{{'id': {response.get('id')!r}, 'processed': {response.get('processed')!r}, "
+                f"'accepted': {response.get('accepted')!r}, 'errors': {response.get('errors')!r}}}"
+            )
             return True
+
         return False
 
     def _resp_unexpected(self, name: str, batch_ids: list[int], response: object) -> None:
-        self._err(f"{name} - unexpected response for {batch_ids}: {response}")
+        self._err(f"{name}: unexpected response for {batch_ids}: {response}")
 
     @contextmanager
     def _using_qs(self, qs: QuerySet) -> Iterator[None]:
