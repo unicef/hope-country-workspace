@@ -15,6 +15,11 @@ class Command(BaseCommand):
         p.add_argument("-P", "--people", type=int, help="[People mode] Number of people records.")
         p.add_argument("-L", "--locale", help="Faker locale (e.g., en, es_CL).")
         p.add_argument("-S", "--seed", type=int, help="Random seed for reproducible output.")
+        p.add_argument(
+            "--without-postfix",
+            action="store_true",
+            help="Generate header columns without sheet postfixes (_h_c/_i_c).",
+        )
         p.add_argument("-o", "--filename", help="Output .xlsx name; if omitted, auto-generated.")
         p.add_argument(
             "-X",
@@ -62,6 +67,7 @@ class Command(BaseCommand):
             | ({"people": people_count} if people_count is not None else {})
             | ({"locale": opts.get("locale")} if opts.get("locale") else {})
             | ({"seed": opts.get("seed")} if opts.get("seed") is not None else {})
+            | ({"with_postfix": False} if opts.get("without_postfix") else {})
             | ({"exclude_fields": exclude} if exclude else {})
         )
 

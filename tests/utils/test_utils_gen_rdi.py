@@ -55,6 +55,7 @@ def test__colname_prefix_postfix_and_ids() -> None:
     spec = rdi.PEOPLE_SPEC  # prefix="pp_", postfix="_i_c", id_key="index_id"
     assert rdi._colname(spec, "index_id") == "pp_index_id"  # special case for ID field
     assert rdi._colname(spec, "given_name") == "pp_given_name_i_c"  # general case
+    assert rdi._colname(spec, "given_name", with_postfix=False) == "pp_given_name"  # no-postfix mode
 
 
 def test__effective_exclude_respects_protected_ids() -> None:

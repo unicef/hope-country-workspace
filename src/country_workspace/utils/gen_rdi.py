@@ -61,6 +61,7 @@ class GeneratorConfig(NamedTuple):
     people: int = 20
     filename: str | None = None
     seed: int | None = None
+    with_postfix: bool = True
     # these fields will be excluded by base name from sheet
     exclude_fields: tuple[str, ...] = ()
 
@@ -180,11 +181,12 @@ FIELDSET_PREFIXES_PATTERNS: dict[tuple[str, ...], dict[str, FieldGen]] = {
 NULLABLE_RATE: float = 0.25
 
 
-def _colname(spec: SheetSpec, field_name: str) -> str:
+def _colname(spec: SheetSpec, field_name: str, *, with_postfix: bool = True) -> str:
     """Return the column name using the sheet postfix unless it is an id/parent id key."""
     if field_name in {spec.id_key, spec.parent_id_key}:
         return f"{spec.prefix}{field_name}" if spec.prefix else field_name
-    return f"{spec.prefix}{field_name}{spec.postfix}"
+    postfix = spec.postfix if with_postfix else ""
+    return f"{spec.prefix}{field_name}{postfix}"
 
 
 def _generate_json_data(fake: Faker, rng: Random) -> Any:
@@ -433,7 +435,7 @@ def write_row(
             cell_writer(ws, r, c, get(name))
 
 
-def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str) -> None:
+def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str, *, with_postfix: bool = True) -> None:
     """Write sheets to Excel."""
     sheets = [(spec, rows) for spec, rows in sheets if rows]
     if not sheets:
@@ -447,7 +449,7 @@ def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str) -> No
         for spec, rows in sheets:
             fields = spec.get_fields(rows[0])
             ws = wb.add_worksheet(spec.name.value)
-            ws.write_row(0, 0, [_colname(spec, f) for f in fields])
+            ws.write_row(0, 0, [_colname(spec, f, with_postfix=with_postfix) for f in fields])
             write_row(ws, fields, rows, cell_writer=cell_writer)
 
     buff.seek(0)
@@ -483,6 +485,6 @@ def generate(config: GeneratorConfig = None) -> str:
     gen_data = partial(partial, config=config, fake=fake, rng=rng)
     sheets = config.mode.get_sheets(config, gen_data, rng)
     filename = config.filename or _build_filename(config)
-    write_excel(sheets, filename)
+    write_excel(sheets, filename, with_postfix=config.with_postfix)
 
     return filename
