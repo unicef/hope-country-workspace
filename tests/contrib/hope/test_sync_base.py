@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime, UTC
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 import pytest
 from django.db import DatabaseError
 from pytest_mock import MockerFixture
@@ -25,7 +25,7 @@ def test_safe_get_success(hope_client: HopeClient, records: list[dict]) -> None:
     stats = Stats(add=0, upd=0, errors=[])
     results = list(safe_get(hope_client, EndpointConfig(path="dummy_path"), stats))
     assert results == records
-    assert hope_client.get.call_args == ({"path": "dummy_path"},)
+    hope_client.get.assert_called_once_with(path="dummy_path")
     assert stats.get("errors") == []
 
 
@@ -121,60 +121,90 @@ def test_sync_entity_should_process(
     assert stats == {"add": 0, "upd": 0, "errors": []}
 
 
-def test_sync_entity_prepare_defaults_none(
-    mock_model: Mock, sync_entity_context: Callable[[list[dict], SyncConfig], Stats], records: list[dict]
+@pytest.mark.parametrize("defaults", [None, {}], ids=["none", "empty_dict"])
+def test_sync_entity_prepare_defaults_empty(
+    mock_model: Mock, sync_entity_context, records: list[dict], defaults
 ) -> None:
-    config = SyncConfig(model=mock_model, endpoint=EndpointConfig(path="dummy_path"), prepare_defaults=lambda r: None)
-    stats = sync_entity_context([records[0]], config)
-    assert stats == {"add": 0, "upd": 0, "errors": []}
+    config = SyncConfig(
+        model=mock_model,
+        endpoint=EndpointConfig(path="dummy_path"),
+        prepare_defaults=lambda r: defaults,
+    )
+    assert sync_entity_context([records[0]], config) == Stats(add=0, upd=0, errors=[])
+    mock_model.objects.update_or_create.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    ("exception", "expected_log", "expected_errors"),
+    ("exception", "expected_log", "raises", "expected_errors"),
     [
-        (SkipRecordError("Test skip"), "Skipped record '1'", []),
-        (DatabaseError("DB error"), "Failed to sync DB record '1'", ["Failed to sync DB record '1': DB error"]),
+        (SkipRecordError("Test skip"), "Skipped record '1'", False, []),
+        (DatabaseError("DB error"), "Failed to sync DB record '1'", True, ["Failed to sync DB record '1': DB error"]),
     ],
     ids=["skip_record", "database_error"],
 )
 def test_sync_entity_errors(
     mock_model: Mock,
-    sync_entity_context: Callable[[list[dict], SyncConfig], Stats],
+    sync_entity_context,
     out: Mock,
     records: list[dict],
     success_config: SyncConfig,
     exception: Exception,
     expected_log: str,
-    expected_errors: list[str] | None,
+    raises: bool,
+    expected_errors: list[str],
 ) -> None:
     mock_model.objects.update_or_create.side_effect = exception
-    if expected_errors:
+
+    if raises:
         with pytest.raises(HopeSyncError) as exc:
             sync_entity_context([records[0]], success_config)
         for e in expected_errors:
             assert e in str(exc.value)
     else:
-        stats = sync_entity_context([records[0]], success_config)
-        assert stats == {"add": 0, "upd": 0, "errors": expected_errors}
+        assert sync_entity_context([records[0]], success_config) == {"add": 0, "upd": 0, "errors": []}
+
     assert_stdout_contains(out, expected_log)
 
 
-def test_sync_entity_post_process(
+@pytest.mark.parametrize(
+    ("use_m2m", "use_post"),
+    [(True, False), (False, True), (True, True)],
+    ids=["m2m_only", "post_only", "both"],
+)
+def test_sync_entity_hooks(
     mock_model: Mock,
-    sync_entity_context: Callable[[list[dict], SyncConfig], Stats],
+    sync_entity_context,
     records: list[dict],
-    mocker: MockerFixture,
+    mocker,
+    use_m2m: bool,
+    use_post: bool,
 ) -> None:
-    post_process = mocker.Mock()
+    m2m_hook = mocker.Mock() if use_m2m else None
+    post_process = mocker.Mock() if use_post else None
+
     config = SyncConfig(
         model=mock_model,
         reference_id="reference_id",
         endpoint=EndpointConfig(path="dummy_path"),
         prepare_defaults=lambda r: {"key": r.get("value")},
-        post_process=post_process,
+        **({"m2m_hook": m2m_hook} if m2m_hook else {}),
+        **({"post_process": post_process} if post_process else {}),
     )
-    mock_model.objects.update_or_create.return_value = (Mock(), True)
-    stats = sync_entity_context([records[0]], config)
-    assert stats == {"add": 1, "upd": 0, "errors": []}
-    mock_model.objects.update_or_create.assert_called_once_with(reference_id="1", defaults={"key": "test"})
-    post_process.assert_called_once()
+
+    instance = Mock()
+    mock_model.objects.update_or_create.return_value = (instance, True)
+
+    tracker = Mock()
+    if m2m_hook:
+        tracker.attach_mock(m2m_hook, "m2m")
+    if post_process:
+        tracker.attach_mock(post_process, "post")
+
+    assert sync_entity_context([records[0]], config) == {"add": 1, "upd": 0, "errors": []}
+
+    expected_calls = []
+    if m2m_hook:
+        expected_calls.append(call.m2m(instance, records[0]))
+    if post_process:
+        expected_calls.append(call.post(instance, True))
+    assert tracker.mock_calls == expected_calls

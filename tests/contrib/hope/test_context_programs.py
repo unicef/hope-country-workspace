@@ -10,6 +10,7 @@ from country_workspace.contrib.hope.constants import (
     PEOPLE_CHECKER_NAME,
 )
 from country_workspace.contrib.hope.sync.base import SyncConfig, ParamDateName, EndpointConfig, SkipRecordError
+from country_workspace.contrib.hope.sync.context_programs import make_office_countries_m2m_hook
 from constance.test import override_config
 
 from country_workspace.contrib.hope.sync.context_programs import (
@@ -90,9 +91,13 @@ def test_sync_offices(
     should_process_office_mock = mocker.patch(
         "country_workspace.contrib.hope.sync.context_programs.should_process_office"
     )
+    make_m2m_hook_mock = mocker.patch(
+        "country_workspace.contrib.hope.sync.context_programs.make_office_countries_m2m_hook"
+    )
 
     sync_offices(delta_sync)
 
+    make_m2m_hook_mock.assert_called_once_with()
     sync_entity_mock.assert_called_once_with(
         SyncConfig(
             model=Office,
@@ -100,6 +105,7 @@ def test_sync_offices(
             endpoint=build_endpoint_mock.return_value,
             prepare_defaults=get_field_extractor_mock.return_value,
             should_process=should_process_office_mock,
+            m2m_hook=make_m2m_hook_mock.return_value,
             delta_sync=delta_sync,
         )
     )
@@ -343,3 +349,42 @@ def test_sync_programs(
     )
     build_endpoint_mock.assert_called_once_with(PROGRAMS, Program, ParamDateName.UPDATED, delta_sync)
     get_should_process_program_mock.assert_called_once_with(office)
+
+
+@pytest.mark.parametrize(
+    ("record", "expect_clear", "expect_pks"),
+    [
+        ({}, False, None),
+        ({"countries": []}, True, None),
+        ({"countries": [{"iso_code2": "aa"}, {"iso_code2": "BB"}, {"iso_code2": "cc"}]}, False, {11, 22}),
+    ],
+    ids=["missing_key", "empty_list_clears", "sets_by_iso_code2"],
+)
+def test_make_office_countries_m2m_hook(mocker: MockerFixture, record: dict, expect_clear: bool, expect_pks):
+    iso2_to_pk = {"AA": 11, "BB": 22}
+
+    mocker.patch(
+        "country_workspace.contrib.hope.sync.context_programs.Country.objects.values_list",
+        return_value=list(iso2_to_pk.items()),  # [("AA", 11), ("BB", 22)]
+    )
+    hook = make_office_countries_m2m_hook()
+
+    office = mocker.Mock()
+    office.countries = mocker.Mock()
+
+    hook(office, record)
+
+    if expect_clear:
+        office.countries.clear.assert_called_once_with()
+        office.countries.set.assert_not_called()
+        return
+
+    office.countries.clear.assert_not_called()
+
+    if expect_pks is None:
+        office.countries.set.assert_not_called()
+        return
+
+    office.countries.set.assert_called_once()
+    iterable = office.countries.set.call_args.args[0]
+    assert set(iterable) == expect_pks
