@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any
 from collections.abc import Iterable
 from enum import StrEnum
 
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.utils.translation import gettext as _
 from hope_flex_fields.models import DataChecker
@@ -147,6 +148,8 @@ class Program(BaseModel):
 
     @property
     def unicef_id(self) -> str:
+        if not self.code or not getattr(self.country_office, "slug", None):
+            raise ImproperlyConfigured("Program.unicef_id requires country_office.slug and Program.code")
         return f"{self.country_office.slug}-{self.code.lower()}"
 
     @staticmethod
