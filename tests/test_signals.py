@@ -13,6 +13,7 @@ from country_workspace.contrib.hope.constants import (
 from country_workspace.contrib.hope.validators import FullHouseholdValidator
 from country_workspace.signals import (
     _process_datachecker_change,
+    invalidate_entities_on_datachecker_change,
 )
 from country_workspace.validators.registry import NoopValidator
 from tests.extras.testutils.factories import (
@@ -21,6 +22,7 @@ from tests.extras.testutils.factories import (
     HouseholdFactory,
     IndividualFactory,
     FieldsetFactory,
+    FlexFieldFactory,
 )
 from tests.extras.testutils.factories.program import BeneficiaryGroupFactory
 from tests.extras.testutils.factories.smart_fields import DataCheckerFactory
@@ -136,6 +138,24 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker):
         mocked.assert_called_once_with(dc=ind_datachecker)
 
 
+def test_datachecker_update_triggers_processing(hh_datachecker):
+    with patch("country_workspace.signals._process_datachecker_change") as mocked:
+        hh_datachecker.description = "Updated"
+        hh_datachecker.save(update_fields=["description"])
+        mocked.assert_called_once_with(dc=hh_datachecker)
+
+
+def test_flexfield_update_triggers_processing(hh_datachecker):
+    fs = FieldsetFactory.create()
+    hh_datachecker.fieldsets.add(fs)
+    ff = FlexFieldFactory.create(fieldset=fs)
+
+    with patch("country_workspace.signals._process_datachecker_change") as mocked:
+        ff.attrs = {"label": "Updated"}
+        ff.save(update_fields=["attrs"])
+        mocked.assert_called_once_with(dc=hh_datachecker)
+
+
 def _test_invalidation_on_checker_change(program, factory, checker_field):
     new_checker = DataCheckerFactory()
     setattr(program, checker_field, new_checker)
@@ -207,3 +227,12 @@ def test_no_invalidation_on_other_field_change(program):
     for hh in HouseholdFactory._meta.model.objects.all():
         hh.refresh_from_db()
         assert hh.errors == {"x": "1"}
+
+
+def test_signal_handler_ignores_unrecognised_instance_type():
+    class _Unrelated:
+        pass
+
+    with patch("country_workspace.signals._process_program") as mock_process:
+        invalidate_entities_on_datachecker_change(sender=_Unrelated, instance=_Unrelated())
+        mock_process.assert_not_called()
