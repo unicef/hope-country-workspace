@@ -145,6 +145,10 @@ class Program(BaseModel):
     def is_master_detail(self) -> bool:
         return self.beneficiary_group is None or self.beneficiary_group.master_detail
 
+    @property
+    def unicef_id(self) -> str:
+        return f"{self.country_office.slug}-{self.code.lower()}"
+
     @staticmethod
     def _scope_for(m: type[Validable] | Validable) -> BeneficiaryScope:
         """Return 'household' or 'individual' for a given model class or instance."""
