@@ -12,9 +12,11 @@ from country_workspace.state import state
 from country_workspace.workspaces.admin.rdp import CountryRdpAdmin
 from country_workspace.workspaces.models import CountryRdp
 
-
 from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
 from country_workspace.workspaces.admin import rdp as rdp_admin_mod
+
+
+UNICEF_ID = "office-p"
 
 
 @pytest.fixture
@@ -127,7 +129,7 @@ def test_dedup_status_safe_returns_client_status(mocker: MockerFixture) -> None:
     mocker.patch.object(rdp_admin_mod, "make_client", return_value=cm)
     cap = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    assert rdp_admin_mod._dedup_status_safe("P") is expected
+    assert rdp_admin_mod._dedup_status_safe(UNICEF_ID) is expected
 
     client.status.assert_called_once_with()
     cap.assert_not_called()
@@ -141,7 +143,7 @@ def test_dedup_status_safe_returns_unknown_on_request_exception(mocker: MockerFi
     mocker.patch.object(rdp_admin_mod, "make_client", return_value=cm)
     cap = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    res = rdp_admin_mod._dedup_status_safe("P")
+    res = rdp_admin_mod._dedup_status_safe(UNICEF_ID)
 
     assert res.status == DedupResponseStatus.UNKNOWN
     assert res.duplicates_found == -1
@@ -192,16 +194,14 @@ def test_enabled_deduplicate(mocker: MockerFixture, dedup_enabled, dedup_state, 
         PushStatus=CountryRdp.PushStatus,
         DedupRunState=CountryRdp.DedupRunState,
         dedup_run_state=dedup_state,
-        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, code="P"),
+        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, unicef_id=UNICEF_ID),
     )
     if dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        mocker.patch.object(
-            rdp_admin_mod,
-            "_dedup_status_safe",
-            return_value=MagicMock(status=de_status),
-        )
+        m = mocker.patch.object(rdp_admin_mod, "_dedup_status_safe", return_value=MagicMock(status=de_status))
 
     assert rdp_admin_mod.enabled_deduplicate(_btn_for(obj)) is expected
+    if dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
+        m.assert_called_once_with(UNICEF_ID)
 
     obj.status = CountryRdp.PushStatus.SUCCESS
     assert rdp_admin_mod.enabled_deduplicate(_btn_for(obj)) is False
@@ -225,16 +225,14 @@ def test_enabled_push(mocker: MockerFixture, dedup_enabled, dedup_state, de_stat
         PushStatus=CountryRdp.PushStatus,
         DedupRunState=CountryRdp.DedupRunState,
         dedup_run_state=dedup_state,
-        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, code="P"),
+        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, unicef_id=UNICEF_ID),
     )
     if dedup_enabled and dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        mocker.patch.object(
-            rdp_admin_mod,
-            "_dedup_status_safe",
-            return_value=MagicMock(status=de_status),
-        )
+        m = mocker.patch.object(rdp_admin_mod, "_dedup_status_safe", return_value=MagicMock(status=de_status))
 
     assert rdp_admin_mod.enabled_push(_btn_for(obj)) is expected
+    if dedup_enabled and dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
+        m.assert_called_once_with(UNICEF_ID)
 
     obj.status = CountryRdp.PushStatus.SUCCESS
     assert rdp_admin_mod.enabled_push(_btn_for(obj)) is False

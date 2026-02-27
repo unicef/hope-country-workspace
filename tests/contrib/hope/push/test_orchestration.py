@@ -128,7 +128,7 @@ def test_create_rdp_core_dedup_guard(mocker: MockerFixture, create_job: AsyncJob
     sentinel = object()
     de.DEDUPLICATION_SET_NOT_EXPOSED = sentinel
 
-    def _dedup_api(program_code: str, err_cb):
+    def _dedup_api(program_unicef_id: str, err_cb):
         if case == "status_none":
             err_cb("boom")
             de.status.return_value = None
@@ -155,7 +155,7 @@ def test_create_rdp_core_dedup_guard(mocker: MockerFixture, create_job: AsyncJob
         spy_preflight.assert_not_called()
         spy_create.assert_not_called()
 
-    mock_dedup_api.assert_called_once_with(create_job.program.code, mocker.ANY)
+    mock_dedup_api.assert_called_once_with(create_job.program.unicef_id, mocker.ANY)
     de.status.assert_called_once_with()
 
 

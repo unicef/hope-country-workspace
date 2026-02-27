@@ -31,10 +31,10 @@ from .hh_ind import SelectedProgramMixin
 from admin_extra_buttons.buttons import ButtonWidget
 
 
-def _dedup_status_safe(program_code: str) -> DedupClientStatus:
+def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
     """Fetch DedupEngine status for admin UI; capture request failures in Sentry and degrade to UNKNOWN."""
     try:
-        with make_client(program_code) as client:
+        with make_client(program_unicef_id) as client:
             return client.status()
     except RequestException as e:
         sentry_sdk.capture_exception(e)
@@ -59,7 +59,7 @@ def enabled_deduplicate(btn: ButtonWidget) -> bool:
         case obj.DedupRunState.NOT_RUN:
             return True
         case obj.DedupRunState.IN_PROGRESS:
-            return _dedup_status_safe(obj.program.code).status in {
+            return _dedup_status_safe(obj.program.unicef_id).status in {
                 DedupResponseStatus.FAILURE,
                 DedupResponseStatus.REVOKED,
                 DedupResponseStatus.UNKNOWN,
@@ -79,7 +79,7 @@ def enabled_push(btn: ButtonWidget) -> bool:
 
     match obj.dedup_run_state:
         case obj.DedupRunState.IN_PROGRESS:
-            return _dedup_status_safe(obj.program.code).status == DedupResponseStatus.SUCCESS
+            return _dedup_status_safe(obj.program.unicef_id).status == DedupResponseStatus.SUCCESS
         case _:
             return False
 
@@ -148,7 +148,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         match obj.dedup_run_state:
             case obj.DedupRunState.IN_PROGRESS:
-                resp = _dedup_status_safe(obj.program.code)
+                resp = _dedup_status_safe(obj.program.unicef_id)
                 if resp.status == DedupResponseStatus.SUCCESS:
                     return f"{resp.status.value} with findings={resp.duplicates_found}"
                 return resp.status.value

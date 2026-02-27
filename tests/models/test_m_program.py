@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from django.core.exceptions import ImproperlyConfigured
 from tests.extras.testutils.factories import (
     ProgramFactory,
     IndividualFactory,
@@ -458,3 +459,21 @@ def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
 
         # Transformer should still be applied
         assert result["gender"] == "MALE"
+
+
+@pytest.mark.parametrize(
+    ("code", "slug", "expected"),
+    [
+        (None, "co", None),
+        ("P", None, None),
+        ("P", "co", "co-p"),
+    ],
+)
+def test_program_unicef_id(program: Program, code: str | None, slug: str | None, expected: str | None) -> None:
+    program.code = code
+    program.country_office.slug = slug
+    if expected is None:
+        with pytest.raises(ImproperlyConfigured):
+            _ = program.unicef_id
+    else:
+        assert program.unicef_id == expected

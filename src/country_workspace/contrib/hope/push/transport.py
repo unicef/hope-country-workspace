@@ -51,8 +51,8 @@ DEDUPLICATION_SET_NOT_EXPOSED = object()
 
 
 @contextmanager
-def dedup_api(program_code: str, err: Callable[[str], None]) -> Iterator[Any]:
-    with make_client(program_code) as client:
+def dedup_api(program_unicef_id: str, err: Callable[[str], None]) -> Iterator[Any]:
+    with make_client(program_unicef_id) as client:
 
         class Proxy:
             def __getattr__(self, name: str) -> Any:

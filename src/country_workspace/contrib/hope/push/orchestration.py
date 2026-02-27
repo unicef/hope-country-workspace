@@ -74,7 +74,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
         raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
     if job.program.biometric_deduplication_enabled:
         dedup_errors: list[str] = []
-        with dedup_api(job.program.code, dedup_errors.append) as de:
+        with dedup_api(job.program.unicef_id, dedup_errors.append) as de:
             if (res := de.status()) is None:
                 raise HopePushError({"errors": dedup_errors})
             if res is not de.DEDUPLICATION_SET_NOT_EXPOSED:
@@ -131,6 +131,6 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         if locked.program.biometric_deduplication_enabled:
             mark_rdp_dedup_finished(rdp_id=locked.pk)
 
-        set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id)
+        set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id or "N/A")
 
     return hope_processor.total

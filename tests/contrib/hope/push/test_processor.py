@@ -371,7 +371,7 @@ def test_dedup_run_rejects_non_pending(mocker: MockerFixture, err_contains: Call
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=1,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.SUCCESS,
         dedup_run_state=None,
     )
@@ -390,7 +390,7 @@ def test_dedup_run_rejects_after_finished(
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=1,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=Rdp.DedupRunState.FINISHED,
     )
@@ -407,7 +407,7 @@ def test_dedup_run_no_images_sets_none(mocker: MockerFixture) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=1,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=None,
     )
@@ -422,7 +422,7 @@ def test_dedup_run_no_images_sets_none(mocker: MockerFixture) -> None:
     spy.assert_not_called()
     assert proc.total["errors"] == []
     assert proc.total["rdp_id"] == 1
-    assert proc.total["program"] == "PRG"
+    assert proc.total["program"] == "CO-PRG"
     assert proc.total["images_sent"] == 0
     assert proc.total["deduplication_set_id"] is None
 
@@ -431,7 +431,7 @@ def test_dedup_run_success_sets_uuid(mocker: MockerFixture) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=1,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=None,
     )
@@ -455,7 +455,7 @@ def test_collect_images_filters_blanks(mocker: MockerFixture) -> None:
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=1,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=None,
     )
@@ -493,7 +493,7 @@ def test_deduplicate_happy_path_updates_rdp_and_returns_uuid(mocker: MockerFixtu
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=123,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=None,
     )
@@ -534,7 +534,7 @@ def test_deduplicate_invalid_uuid_is_reported(
     mod = "country_workspace.contrib.hope.push.processor"
     rdp = mocker.MagicMock(
         pk=123,
-        program=mocker.MagicMock(code="PRG"),
+        program=mocker.MagicMock(unicef_id="CO-PRG"),
         status=Rdp.PushStatus.PENDING,
         dedup_run_state=None,
     )

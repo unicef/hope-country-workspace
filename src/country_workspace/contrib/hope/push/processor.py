@@ -233,7 +233,7 @@ class DedupProcessor(ProcessorBase):
     def __init__(self, *, rdp_id: int) -> None:
         super().__init__()
         self.rdp = rdp_for_dedup(pk=rdp_id)
-        self.program_code = self.rdp.program.code
+        self.program_unicef_id = self.rdp.program.unicef_id
 
     def run(self) -> None:
         """Execute dedup workflow; collect errors in total."""
@@ -244,7 +244,7 @@ class DedupProcessor(ProcessorBase):
         if self.has_errors:
             return
 
-        self.total |= {"rdp_id": self.rdp.pk, "program": self.program_code}
+        self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
 
         images = self._collect_images()
         self.total["images_sent"] = len(images)
@@ -268,7 +268,7 @@ class DedupProcessor(ProcessorBase):
 
     def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
         """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
-        with dedup_api(self.program_code, self._err) as api:
+        with dedup_api(self.program_unicef_id, self._err) as api:
             if (raw := api.create_deduplication_set(settings={})) is None:
                 self._err("DedupEngine: create_deduplication_set() failed")
                 return None
