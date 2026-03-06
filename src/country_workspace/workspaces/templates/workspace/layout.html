@@ -39,7 +39,7 @@
             document.querySelectorAll('form').forEach(function (form) {
                 form.addEventListener('submit', function () {
                     form.querySelectorAll('input[type="submit"], button[type="submit"]').forEach(function (btn) {
-                        btn.disabled = true;
+                        btn.style.pointerEvents = 'none';
                         btn.style.opacity = '0.6';
                         btn.style.cursor = 'not-allowed';
                     });
