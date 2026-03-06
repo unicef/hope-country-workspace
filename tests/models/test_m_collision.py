@@ -262,6 +262,80 @@ def test_household_validate_with_checker_collision_cleared_on_revalidation():
     assert "identity" not in hh.errors
 
 
+def test_detect_and_mark_individual_checker_marks_incoming_individual():
+    """Branch: `if ind_field := get_identity_field_name(program.individual_checker)` is taken."""
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        ProgramFactory,
+    )
+
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(individual_checker=checker)
+
+    old_batch = CountryBatchFactory(program=program)
+    new_batch = CountryBatchFactory(program=program)
+
+    hh_old = CountryHouseholdFactory(batch=old_batch, individuals=0)
+    hh_new = CountryHouseholdFactory(batch=new_batch, individuals=0)
+
+    CountryIndividualFactory(batch=old_batch, household=hh_old, flex_fields={"uid": "IND-SHARED"})
+    incoming = CountryIndividualFactory(batch=new_batch, household=hh_new, flex_fields={"uid": "IND-SHARED"})
+
+    detect_and_mark_collisions_for_batch(new_batch)
+
+    incoming.refresh_from_db()
+    assert "identity" in incoming.errors
+    assert "IND-SHARED" in incoming.errors["identity"]
+
+
+def test_detect_and_mark_no_new_values_after_filtering_is_noop():
+    """Branch: `if not new_values: return` — all new records have blank identity values."""
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
+
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(household_checker=checker)
+
+    old_batch = CountryBatchFactory(program=program)
+    new_batch = CountryBatchFactory(program=program)
+
+    # Old batch has a real value; new batch records have the key present but value is falsy.
+    CountryHouseholdFactory(batch=old_batch, individuals=0, flex_fields={"uid": "OLD-KEY"})
+    # flex_fields has "uid" key but value is None — excluded by the queryset filter yet
+    # new_values list comprehension yields nothing (falsy guard).
+    incoming = CountryHouseholdFactory(batch=new_batch, individuals=0, flex_fields={"uid": None})
+
+    detect_and_mark_collisions_for_batch(new_batch)
+
+    incoming.refresh_from_db()
+    assert "identity" not in incoming.errors
+
+
+def test_check_identity_collision_value_not_in_existing_values_returns_false():
+    """Branch: `if value in existing_values` is False — no collision, error not set."""
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
+
+    from country_workspace.utils.collision import check_identity_collision
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(household_checker=checker)
+    batch = CountryBatchFactory(program=program)
+
+    # Two records with distinct values — neither collides.
+    CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "KEY-A"})
+    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "KEY-B"})
+
+    result = check_identity_collision(hh2)
+
+    assert result is False
+    assert "identity" not in hh2.errors
+
+
 def test_individual_validate_with_checker_collision_sets_and_saves_error():
     """Individual.validate_with_checker persists a collision error."""
     from testutils.factories import (
