@@ -39,7 +39,7 @@ def test_validate_alien_fields_with_invalid_instance_type() -> None:
 
 def test_validate_alien_fields_skips_when_program_check_disabled() -> None:
     instance = Mock()
-    instance.batch.program.alien_validation_enabled = False
+    instance.program.alien_validation_enabled = False
 
     from country_workspace.models import Household
 
