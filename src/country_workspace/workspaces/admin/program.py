@@ -90,6 +90,7 @@ class ProgramForm(forms.ModelForm):
             "status",
             "sector",
             "beneficiary_validator",
+            "alien_validation_enabled",
             "household_checker",
             "individual_checker",
             "household_search",
@@ -161,7 +162,16 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     ),
                 },
             ),
-            (_("Validators"), {"fields": ("beneficiary_validator", ("household_checker", "individual_checker"))}),
+            (
+                _("Validators"),
+                {
+                    "fields": (
+                        "beneficiary_validator",
+                        "alien_validation_enabled",
+                        ("household_checker", "individual_checker"),
+                    )
+                },
+            ),
             (
                 _("Columns"),
                 {
@@ -188,7 +198,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             ),
         )
         if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
-            fieldsets[1][1]["fields"] = ("beneficiary_validator", "individual_checker")
+            fieldsets[1][1]["fields"] = ("beneficiary_validator", "alien_validation_enabled", "individual_checker")
             fieldsets[2][1]["fields"] = ("individual_columns",)
 
         return fieldsets

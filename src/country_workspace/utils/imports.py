@@ -31,6 +31,10 @@ def _find_alien_fields(instance: Household | Individual) -> set[str]:
 
 
 def validate_alien_fields(instance: Household | Individual) -> None:
+    program = instance.program
+    if not program.alien_validation_enabled:
+        return
+
     if isinstance(instance, Household):
         hh_aliens = _find_alien_fields(instance)
         ind_aliens: set[str] = set()

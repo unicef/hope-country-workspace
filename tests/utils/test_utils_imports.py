@@ -37,6 +37,17 @@ def test_validate_alien_fields_with_invalid_instance_type() -> None:
     assert validate_alien_fields(instance) is None
 
 
+def test_validate_alien_fields_skips_when_program_check_disabled() -> None:
+    instance = Mock()
+    instance.batch.program.alien_validation_enabled = False
+
+    from country_workspace.models import Household
+
+    instance.__class__ = Household
+
+    assert validate_alien_fields(instance) is None
+
+
 def test_validate_alien_fields_with_mapping_no_errors() -> None:
     instance = Mock()
     instance.flex_fields = {"target_field1": "value1", "target_field2": "value2"}
