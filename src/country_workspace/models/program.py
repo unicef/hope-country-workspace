@@ -103,6 +103,10 @@ class Program(BaseModel):
     ind_alien_columns_to_ignore = models.TextField(
         blank=True, null=True, default=None, help_text="Alien fields to ignore"
     )
+    alien_validation_enabled = models.BooleanField(
+        default=True,
+        help_text="Should alien-field validation run for this programme?",
+    )
     extra_fields = models.JSONField(default=dict, blank=True, null=False)
     enabled = models.BooleanField(default=True, db_index=True, help_text="Is this program enabled in the workspace?")
     serializer = models.ForeignKey(DataSerializer, on_delete=models.SET_NULL, null=True, blank=True)
