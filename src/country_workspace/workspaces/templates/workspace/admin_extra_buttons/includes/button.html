@@ -1,7 +1,6 @@
 {% spaceless %}
     <li>
         <a href="{{ button.url }}{% if is_popup %}&_popup=1{% endif %}"
-           onclick="this.style.pointerEvents='none'; this.style.opacity='0.6';"
            {% include "admin_extra_buttons/includes/attrs.html" with button=button %}>
             {% if button.icon %}
                 <i class="{{ button.icon }}"></i> 
