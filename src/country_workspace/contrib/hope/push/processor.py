@@ -298,8 +298,8 @@ class PushProcessor(ProcessorBase):
                 )
 
             log_resp = {k: response.get(k) for k in ("id", "processed", "accepted", "errors")}
-            log_resp["_log_view"] = "errors_only"
             log_resp["results"] = [item for item in results if not looks_accepted(item)]
+            log_resp["_log_view"] = "errors_only"
 
         self.fail(name, "remote returned errors", ids=batch_ids, response=log_resp)
         return True
@@ -358,7 +358,7 @@ class DedupProcessor(ProcessorBase):
 
     def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
         """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
-        with dedup_api(self.program_code) as api:
+        with dedup_api(self.program_unicef_id) as api:
             raw = self.try_remote("create_deduplication_set", lambda: api.create_deduplication_set(settings={}))
             if raw is None:
                 return None
@@ -374,7 +374,7 @@ class DedupProcessor(ProcessorBase):
                 dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
             )
 
-            if not self.try_remote("create_images", lambda: api.create_images(images)):
+            if not self.try_remote("create_images", lambda images=images: api.create_images(images)):
                 return None
 
             if not self.try_remote("process", api.process):

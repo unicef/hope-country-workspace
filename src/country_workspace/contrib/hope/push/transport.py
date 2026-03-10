@@ -43,8 +43,8 @@ DEDUPLICATION_SET_NOT_EXPOSED = object()
 
 
 @contextmanager
-def dedup_api(program_code: str) -> Iterator[Any]:
-    with make_client(program_code) as client:
+def dedup_api(program_id: str) -> Iterator[Any]:
+    with make_client(program_id) as client:
 
         def _raise(name: str, e: Exception, resp: object | None) -> None:
             req = getattr(resp, "request", None) if resp else None
