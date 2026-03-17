@@ -359,7 +359,7 @@ class DedupProcessor(ProcessorBase):
     def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
         """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
         with dedup_api(self.program_unicef_id) as api:
-            raw = self.try_remote("create_deduplication_set", lambda: api.create_deduplication_set(settings={}))
+            raw = self.try_remote("create_deduplication_set", api.create_deduplication_set)
             if raw is None:
                 return None
 

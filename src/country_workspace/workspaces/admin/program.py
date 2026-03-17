@@ -22,7 +22,7 @@ from country_workspace.contrib.aurora.import_processing import (
 from country_workspace.contrib.dedup_engine.client import make_client as make_dedup_client
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
-from country_workspace.models import Household, Individual
+from country_workspace.models import Household, Individual, Rdp
 from country_workspace.models.base import Validable
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm, DedupSettingsForm
@@ -211,6 +211,13 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             fieldsets[2][1]["fields"] = ("individual_columns",)
 
         return fieldsets
+
+    @staticmethod
+    def _can_update_dedup_settings(program: CountryProgram) -> bool:
+        return not Rdp.objects.filter(
+            program=program,
+            status=Rdp.PushStatus.SUCCESS,
+        ).exists()
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_dedup_client(program_id=program.unicef_id) as client:
@@ -557,15 +564,29 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         return render(request, "workspace/actions/bulk_update_import.html", context)
 
     @button(
-        label="Update Dedup Settings",
+        label=_("Update Dedup Settings"),
+        permission=can_change_country_program,
+        enabled=lambda btn: (
+            btn.context.get("original") is not None
+            and CountryProgramAdmin._can_update_dedup_settings(btn.context["original"])
+        ),
         html_attrs={"title": "Update Deduplication settings on DedupEngine."},
     )
     def update_dedup_settings(self, request: HttpRequest, pk: str) -> HttpResponse:
         context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
         program: CountryProgram = context["original"]
+        can_update = self._can_update_dedup_settings(program)
         settings = self._get_dedup_settings(program)
 
         if request.method == "POST":
+            if not can_update:
+                self.message_user(
+                    request,
+                    _("Deduplication settings cannot be updated because the program already has a successful RDP."),
+                    messages.ERROR,
+                )
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+
             form = DedupSettingsForm(request.POST, settings=settings)
             if form.is_valid():
                 with make_dedup_client(program_id=program.unicef_id) as client:
@@ -576,6 +597,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = DedupSettingsForm(settings=settings)
 
         context["form"] = form
+        context["can_update_dedup_settings"] = can_update
         return render(request, "workspace/program/dedup_settings.html", context)
 
     @button(

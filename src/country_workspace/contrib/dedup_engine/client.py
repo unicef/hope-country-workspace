@@ -1,7 +1,7 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from constance import config
 from requests import Session
@@ -33,11 +33,11 @@ class Client:
     def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
         return self.api_root.deduplication_sets.deduplication_set(self.program_id)
 
-    def create_deduplication_set(self, settings: dict[str, Any]) -> str:
+    def create_deduplication_set(self) -> str:
         deduplication_set_collection = resource.DeduplicationSetCollection(
             self.session, self.api_root.deduplication_sets
         )
-        deduplication_set = deduplication_set_collection.create({"reference_pk": self.program_id, "settings": settings})
+        deduplication_set = deduplication_set_collection.create({"reference_pk": self.program_id})
         return deduplication_set["id"]
 
     def create_images(self, images: list[request.Image]) -> None:
@@ -57,11 +57,6 @@ class Client:
                 "reference_pks": [],
             }
         )
-
-    def deduplicate(self, images: list[request.Image], settings: dict[str, Any]) -> None:
-        self.create_deduplication_set(settings)
-        self.create_images(images)
-        self.process()
 
     def status(self) -> Status:
         deduplication_set_item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
