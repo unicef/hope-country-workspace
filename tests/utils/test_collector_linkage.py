@@ -1,5 +1,7 @@
 from unittest.mock import Mock
 
+import pytest
+
 from country_workspace.utils.collector_linkage import sync_collector_links
 
 
@@ -33,5 +35,6 @@ def test_sync_collector_links_skips_unknown_collector_reference(mocker) -> None:
     bulk_update.assert_not_called()
 
 
-def test_sync_collector_links_accepts_non_iterable_inputs() -> None:
-    assert sync_collector_links(Mock()) == 0
+def test_sync_collector_links_raises_on_non_iterable_inputs() -> None:
+    with pytest.raises(TypeError):
+        sync_collector_links(Mock())

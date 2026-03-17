@@ -134,7 +134,7 @@ def duplicate_people_sheet(config: Config) -> Sheet:
 
 @pytest.fixture
 def people_mapping(people_sheet: Sheet) -> Mapping[int, Mock]:
-    return {i: Mock() for i in range(len(list(people_sheet)))}
+    return {i: Mock(pk=i, flex_fields={}) for i in range(len(list(people_sheet)))}
 
 
 def test_column_configuration_error_format() -> None:

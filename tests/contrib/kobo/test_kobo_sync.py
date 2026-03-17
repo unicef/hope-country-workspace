@@ -572,6 +572,7 @@ def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Confi
     resumed_batch = Mock()
     resumed_batch.pk = 42
     resumed_batch.status = batch_class_mock.BatchStatus.LOADING
+    resumed_batch.individual_set.filter.return_value = []
     qs = batch_class_mock.objects.select_for_update.return_value
     qs.select_related.return_value.get.return_value = resumed_batch
 
