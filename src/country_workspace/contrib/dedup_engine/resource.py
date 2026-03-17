@@ -1,8 +1,6 @@
 from dataclasses import dataclass
-from typing import TypedDict
 
 from requests import Session
-
 
 from country_workspace.contrib.dedup_engine import endpoint, request, response
 
@@ -20,8 +18,8 @@ class CreateMixin[T, R]:
         return result.json()
 
 
-class RetrieveMixin[T: TypedDict]:
-    def retrieve(self: GenericResource) -> T:
+class RetrieveMixin[R]:
+    def retrieve(self: GenericResource) -> R:
         result = self.session.get(str(self.endpoint))
         result.raise_for_status()
         return result.json()
@@ -40,21 +38,50 @@ class DeduplicationSetCollection(
     pass
 
 
-class DeduplicationSetItem(GenericResource[endpoint.DeduplicationSet], RetrieveMixin[response.DeduplicationSet]):
+class DeduplicationSetItem(
+    GenericResource[endpoint.DeduplicationSet],
+    RetrieveMixin[response.DeduplicationSet],
+):
     pass
 
 
-class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[request.Image], None]):
+class ImagesBulkCollection(
+    GenericResource[endpoint.Images],
+    CreateMixin[list[request.Image], None],
+):
     pass
 
 
-class ProcessDeduplicationSetAction(GenericResource[endpoint.Process], ActionMixin[None]):
+class ProcessDeduplicationSetAction(
+    GenericResource[endpoint.Process],
+    ActionMixin[None],
+):
     pass
 
 
-class ApproveDeduplicationSetAction(GenericResource[endpoint.Approve], ActionMixin[request.Approve]):
+class ApproveDeduplicationSetAction(
+    GenericResource[endpoint.Approve],
+    ActionMixin[request.Approve],
+):
     pass
 
 
-class RejectDeduplicationSetAction(GenericResource[endpoint.Reject], ActionMixin[request.Reject]):
+class RejectDeduplicationSetAction(
+    GenericResource[endpoint.Reject],
+    ActionMixin[request.Reject],
+):
+    pass
+
+
+class DeduplicationSetGroupConfigItem(
+    GenericResource[endpoint.DeduplicationSetGroupConfig],
+    RetrieveMixin[response.DeduplicationSetGroupConfig],
+):
+    pass
+
+
+class DeduplicationSetGroupConfigAction(
+    GenericResource[endpoint.DeduplicationSetGroupConfig],
+    ActionMixin[request.DeduplicationSetGroupConfig],
+):
     pass

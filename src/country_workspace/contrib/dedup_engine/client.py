@@ -11,6 +11,13 @@ from country_workspace.contrib.dedup_engine import endpoint, resource, request, 
 from country_workspace.utils.auth import Auth
 
 
+_STUB_DEDUPLICATION_SET_GROUP_CONFIG: response.DeduplicationSetGroupConfig = {
+    "threshold_1": 0.1,
+    "threshold_2": 0.2,
+    "threshold_3": 0.3,
+}
+
+
 class Status(NamedTuple):
     status: response.Status
     duplicates_found: int
@@ -57,8 +64,7 @@ class Client:
         self.process()
 
     def status(self) -> Status:
-        deduplication_set_endpoint = self.api_root.deduplication_sets.deduplication_set(self.program_id)
-        deduplication_set_item = resource.DeduplicationSetItem(self.session, deduplication_set_endpoint)
+        deduplication_set_item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
         deduplication_set = deduplication_set_item.retrieve()
 
         try:
@@ -72,6 +78,16 @@ class Client:
             duplicates_found = -1
 
         return Status(status, duplicates_found)
+
+    def get_deduplication_set_group_config(self) -> response.DeduplicationSetGroupConfig:
+        return _STUB_DEDUPLICATION_SET_GROUP_CONFIG.copy()
+
+    def post_deduplication_set_group_config(self, payload: request.DeduplicationSetGroupConfig) -> None:
+        raise NotImplementedError(
+            "DedupEngine endpoint is not implemented yet: "
+            f"POST {self.api_root.deduplication_set_groups.config(self.program_id)}. "
+            f"Payload: {payload!r}"
+        )
 
 
 @contextmanager

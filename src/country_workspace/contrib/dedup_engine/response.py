@@ -1,5 +1,5 @@
 from enum import StrEnum, auto
-from typing import TypedDict
+from typing import Any, TypedDict
 
 
 class Status(StrEnum):
@@ -16,3 +16,6 @@ class DeduplicationSet(TypedDict):
     id: str
     status: str
     duplicates_found: int
+
+
+type DeduplicationSetGroupConfig = dict[str, Any]

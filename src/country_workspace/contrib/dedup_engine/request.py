@@ -1,4 +1,4 @@
-from typing import TypedDict, Any, Literal
+from typing import Any, Literal, TypedDict
 
 
 class DeduplicationSet(TypedDict):
@@ -21,3 +21,6 @@ class Approve(ReferencePks):
 
 class Reject(ReferencePks):
     action: Literal["reject"]
+
+
+type DeduplicationSetGroupConfig = dict[str, Any]

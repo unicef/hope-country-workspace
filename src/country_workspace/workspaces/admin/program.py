@@ -5,25 +5,27 @@ from admin_extra_buttons.buttons import ChoiceButton
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.admin import register
+from django.contrib.admin import display, register
 from django.db.models import QuerySet, Field
 from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
     import_data as import_from_aurora,
 )
+from country_workspace.contrib.dedup_engine.client import make_client as make_dedup_client
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm
+from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm, DedupSettingsForm
 from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -125,6 +127,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         "status",
         "sector",
         "name",
+        "dedup_settings",
     )
     form = ProgramForm
     ordering = ("name",)
@@ -196,12 +199,36 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     "fields": ("serializer",),
                 },
             ),
+            (
+                _("Deduplication Configuration"),
+                {
+                    "fields": ("dedup_settings",),
+                },
+            ),
         )
         if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
             fieldsets[1][1]["fields"] = ("beneficiary_validator", "alien_validation_enabled", "individual_checker")
             fieldsets[2][1]["fields"] = ("individual_columns",)
 
         return fieldsets
+
+    def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
+        with make_dedup_client(program_id=program.unicef_id) as client:
+            return client.get_deduplication_set_group_config()
+
+    @display(description=_("Settings"))
+    def dedup_settings(self, obj: CountryProgram) -> str:
+        if not (settings := self._get_dedup_settings(obj)):
+            return "-"
+
+        return format_html_join(
+            "\n",
+            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
+            "<span style='white-space:nowrap'>{}:</span>"
+            "<span>{}</span>"
+            "</div>",
+            ((key, value) for key, value in settings.items()),
+        )
 
     def formfield_for_dbfield(self, db_field: Field, request: HttpRequest, **kwargs: Any) -> Field | None:
         field = super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -528,6 +555,28 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
+
+    @button(
+        label="Update Dedup Settings",
+        html_attrs={"title": "Update Deduplication settings on DedupEngine."},
+    )
+    def update_dedup_settings(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
+        program: CountryProgram = context["original"]
+        settings = self._get_dedup_settings(program)
+
+        if request.method == "POST":
+            form = DedupSettingsForm(request.POST, settings=settings)
+            if form.is_valid():
+                with make_dedup_client(program_id=program.unicef_id) as client:
+                    client.post_deduplication_set_group_config(payload=form.get_payload())
+                self.message_user(request, _("Deduplication settings have been updated."), messages.SUCCESS)
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+        else:
+            form = DedupSettingsForm(settings=settings)
+
+        context["form"] = form
+        return render(request, "workspace/program/dedup_settings.html", context)
 
     @button(
         label=_("Import Data"),

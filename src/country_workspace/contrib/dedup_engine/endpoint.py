@@ -50,6 +50,10 @@ class Reject(Endpoint):
     pass
 
 
+class DeduplicationSetGroupConfig(Endpoint):
+    pass
+
+
 class DeduplicationSet(Endpoint):
     @property
     def images_bulk(self) -> Images:
@@ -73,7 +77,16 @@ class DeduplicationSets(Endpoint):
         return DeduplicationSet(url_join(self.url, str(id_)))
 
 
+class DeduplicationSetGroups(Endpoint):
+    def config(self, ref_id: Any) -> DeduplicationSetGroupConfig:
+        return DeduplicationSetGroupConfig(url_join(self.url, "config", str(ref_id)))
+
+
 class APIRoot(Endpoint):
     @property
     def deduplication_sets(self) -> DeduplicationSets:
         return DeduplicationSets(url_join(self.url, "deduplication_sets"))
+
+    @property
+    def deduplication_set_groups(self) -> DeduplicationSetGroups:
+        return DeduplicationSetGroups(url_join(self.url, "deduplication_set_groups"))
