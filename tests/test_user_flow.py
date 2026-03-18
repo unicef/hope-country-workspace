@@ -100,8 +100,9 @@ def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper", 
             res = res.click(hh.name)
         else:
             res = res.click(program.beneficiary_group.member_label_plural)
-            res = res.click("Show all")
-            individual = hh.members.order_by("?").first()
+            if "Show all" in res.text:
+                res = res.click("Show all")
+            individual = hh.members.order_by("pk").first()
             res = res.click(individual.name)
 
         res.click("Close", verbose=True)
