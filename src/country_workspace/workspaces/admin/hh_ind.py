@@ -107,8 +107,8 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
     def has_regex_update_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.regex_update_beneficiary")
 
-    def has_push_to_hope_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.push_beneficiary_to_hope")
+    def has_create_rdp_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("country_workspace.create_rdp")
 
     def has_calculate_checksum_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.calculate_checksum")

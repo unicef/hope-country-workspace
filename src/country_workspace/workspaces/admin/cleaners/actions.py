@@ -239,7 +239,7 @@ def calculate_checksum(
     return redirect(".")
 
 
-@admin.action(description="Create RDP", permissions=["push_to_hope"])
+@admin.action(description="Create RDP", permissions=["create_rdp"])
 def create_rdp(
     model_admin: "BeneficiaryBaseAdmin",
     request: HttpRequest,
