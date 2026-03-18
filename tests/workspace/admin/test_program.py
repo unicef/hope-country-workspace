@@ -189,3 +189,62 @@ def test_set_defaults_post(program_admin, mock_request, mock_program, mocker: Mo
     else:
         mock_program.save_default_fields_for.assert_not_called()
         assert response is render.return_value
+
+
+@pytest.mark.parametrize(("exists", "expected"), [(False, True), (True, False)])
+def test_can_update_dedup_settings(
+    program_admin,
+    mock_program,
+    mocker: MockerFixture,
+    exists: bool,
+    expected: bool,
+) -> None:
+    rdp_filter = mocker.patch("country_workspace.workspaces.admin.program.Rdp.objects.filter")
+    rdp_filter.return_value.exists.return_value = exists
+
+    assert program_admin._can_update_dedup_settings(mock_program) is expected
+
+
+def test_get_dedup_settings(program_admin, mock_program) -> None:
+    settings = {"threshold_1": 0.1}
+    mock_program.unicef_id = "prg-1"
+
+    with patch("country_workspace.workspaces.admin.program.make_dedup_client") as make_client:
+        client = MagicMock()
+        client.get_deduplication_set_group_config.return_value = settings
+        make_client.return_value.__enter__.return_value = client
+
+        result = program_admin._get_dedup_settings(mock_program)
+
+    make_client.assert_called_once_with(program_id="prg-1")
+    assert result == settings
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        ({}, "-"),
+        (
+            {"threshold_1": 0.1, "threshold_2": 0.2},
+            ("threshold_1", "0.1", "threshold_2", "0.2"),
+        ),
+    ],
+)
+def test_dedup_settings(
+    program_admin,
+    mock_program,
+    mocker: MockerFixture,
+    settings: dict[str, float],
+    expected: str | tuple[str, ...],
+) -> None:
+    mocker.patch.object(program_admin, "_get_dedup_settings", return_value=settings)
+
+    result = program_admin.dedup_settings(mock_program)
+
+    if expected == "-":
+        assert result == expected
+        return
+
+    result = str(result)
+    for part in expected:
+        assert part in result

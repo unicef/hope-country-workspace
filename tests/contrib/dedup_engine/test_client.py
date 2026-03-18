@@ -127,3 +127,46 @@ def test_make_client(mocker: MockerFixture) -> None:
     auth_class_mock.assert_called_once_with(token)
     api_root_class_mock.assert_called_once_with(url)
     client_class_mock.assert_called_once_with(program_id, session, api_root_class_mock.return_value)
+
+
+def test_client_get_deduplication_set_group_config(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    item_cls_mock = mocker.patch(
+        "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem"
+    )
+    item_cls_mock.return_value.retrieve.return_value = {"threshold_1": 0.1, "threshold_2": 0.2}
+    client, session, api_root = client_ctx
+
+    assert client.get_deduplication_set_group_config() == {
+        "threshold_1": 0.1,
+        "threshold_2": 0.2,
+    }
+
+    api_root.deduplication_set_groups.config.assert_called_once_with("PROGRAM_ID")
+    item_cls_mock.assert_called_once_with(
+        session,
+        api_root.deduplication_set_groups.config.return_value,
+    )
+    item_cls_mock.return_value.retrieve.assert_called_once_with()
+
+
+def test_client_post_deduplication_set_group_config(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    action_cls_mock = mocker.patch(
+        "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigAction"
+    )
+    client, session, api_root = client_ctx
+    payload = {"threshold_1": 0.5, "threshold_2": 0.7}
+
+    client.post_deduplication_set_group_config(payload)
+
+    api_root.deduplication_set_groups.config.assert_called_once_with("PROGRAM_ID")
+    action_cls_mock.assert_called_once_with(
+        session,
+        api_root.deduplication_set_groups.config.return_value,
+    )
+    action_cls_mock.return_value.call.assert_called_once_with(payload)

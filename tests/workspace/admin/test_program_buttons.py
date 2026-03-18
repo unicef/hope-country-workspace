@@ -2,6 +2,7 @@ import pytest
 from django.contrib.admin import AdminSite
 from django.urls import reverse
 from unittest.mock import MagicMock
+from pytest_mock import MockerFixture
 
 from country_workspace.workspaces.admin import CountryProgramAdmin
 from country_workspace.workspaces.models import CountryProgram
@@ -35,6 +36,27 @@ def country_program_md_true(country_program):
     country_program.beneficiary_group.master_detail = True
     country_program.save()
     return country_program
+
+
+@pytest.fixture
+def dedup_settings_data():
+    return {
+        "settings": {
+            "threshold_1": 0.1,
+            "threshold_2": 0.2,
+            "threshold_3": 0.3,
+        },
+        "post_data": {
+            "threshold_1": "0.11",
+            "threshold_2": "0.22",
+            "threshold_3": "0.33",
+        },
+        "payload": {
+            "threshold_1": 0.11,
+            "threshold_2": 0.22,
+            "threshold_3": 0.33,
+        },
+    }
 
 
 @pytest.mark.django_db  # ERA001
@@ -126,3 +148,106 @@ def test_group_choice_buttons_choices(
         getattr(admin, defaults_method),
         getattr(admin, ignore_method),
     ]
+
+
+@pytest.mark.django_db
+def test_update_dedup_settings_permissions(
+    user,
+    country_program_admin_instance,
+    country_program,
+    client,
+    mocker: MockerFixture,
+):
+    url = reverse("workspace:workspaces_countryprogram_update_dedup_settings", args=[country_program.pk])
+    mocker.patch.object(CountryProgramAdmin, "_get_dedup_settings", return_value={})
+    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=True)
+
+    client.force_login(user)
+    client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+    response = client.get(url)
+    assert response.status_code == 403
+
+    with user_grant_permissions(user, "workspaces.change_countryprogram", country_program):
+        client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+        response = client.get(url)
+        assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_update_dedup_settings_post_success(
+    user,
+    country_program_admin_instance,
+    country_program,
+    client,
+    mocker: MockerFixture,
+    dedup_settings_data,
+):
+    url = reverse("workspace:workspaces_countryprogram_update_dedup_settings", args=[country_program.pk])
+
+    mocker.patch.object(
+        CountryProgramAdmin,
+        "_get_dedup_settings",
+        return_value=dedup_settings_data["settings"],
+    )
+    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=True)
+
+    form = MagicMock()
+    form.is_valid.return_value = True
+    form.get_payload.return_value = dedup_settings_data["payload"]
+    form_cls = mocker.patch(
+        f"{CountryProgramAdmin.__module__}.DedupSettingsForm",
+        return_value=form,
+    )
+
+    dedup_client = MagicMock()
+    dedup_client_cm = MagicMock()
+    dedup_client_cm.__enter__.return_value = dedup_client
+    mocker.patch(
+        f"{CountryProgramAdmin.__module__}.make_dedup_client",
+        return_value=dedup_client_cm,
+    )
+
+    client.force_login(user)
+    with user_grant_permissions(user, "workspaces.change_countryprogram", country_program):
+        client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+        response = client.post(url, data=dedup_settings_data["post_data"])
+
+    assert response.status_code == 302
+    assert response.url == reverse("workspace:workspaces_countryprogram_change", args=[country_program.pk])
+
+    args, kwargs = form_cls.call_args
+    assert kwargs == {"settings": dedup_settings_data["settings"]}
+    assert args[0].dict() == dedup_settings_data["post_data"]
+
+    dedup_client.post_deduplication_set_group_config.assert_called_once_with(payload=dedup_settings_data["payload"])
+
+
+@pytest.mark.django_db
+def test_update_dedup_settings_post_blocked_for_successful_rdp(
+    user,
+    country_program_admin_instance,
+    country_program,
+    client,
+    mocker: MockerFixture,
+    dedup_settings_data,
+):
+    url = reverse("workspace:workspaces_countryprogram_update_dedup_settings", args=[country_program.pk])
+
+    mocker.patch.object(
+        CountryProgramAdmin,
+        "_get_dedup_settings",
+        return_value=dedup_settings_data["settings"],
+    )
+    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=False)
+    form_cls = mocker.patch(f"{CountryProgramAdmin.__module__}.DedupSettingsForm")
+    make_client = mocker.patch(f"{CountryProgramAdmin.__module__}.make_dedup_client")
+
+    client.force_login(user)
+    with user_grant_permissions(user, "workspaces.change_countryprogram", country_program):
+        client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
+        response = client.post(url, data=dedup_settings_data["post_data"])
+
+    assert response.status_code == 302
+    assert response.url == reverse("workspace:workspaces_countryprogram_change", args=[country_program.pk])
+    form_cls.assert_not_called()
+    make_client.assert_not_called()
