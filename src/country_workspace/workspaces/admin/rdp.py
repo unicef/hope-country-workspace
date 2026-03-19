@@ -2,7 +2,6 @@ from typing import Any
 
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.api import button, link
-from requests.exceptions import RequestException
 import sentry_sdk
 
 from django.contrib import messages
@@ -17,6 +16,7 @@ from strategy_field.utils import fqn
 from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
 from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
 from country_workspace.contrib.hope.push import PushExistingRdpConfig, dedup_existing_rdp_core, push_existing_rdp_core
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
 
 
@@ -36,7 +36,7 @@ def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
     try:
         with make_client(program_unicef_id) as client:
             return client.status()
-    except RequestException as e:
+    except RemoteError as e:
         sentry_sdk.capture_exception(e)
         return DedupClientStatus(DedupResponseStatus.UNKNOWN, -1)
 

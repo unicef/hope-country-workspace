@@ -3,7 +3,10 @@ from functools import partial
 from typing import Any
 from django.db import transaction, IntegrityError
 
+from country_workspace.contrib.dedup_engine.client import make_client as make_dedup_client
+from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
 from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryIndividual
 
@@ -20,7 +23,6 @@ from .repository import (
     set_rdp_push_status,
     workflow_config_for_rdp,
 )
-from .transport import dedup_api
 
 
 def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
@@ -73,14 +75,16 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     if not job.config.get("pks"):
         raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
     if job.program.biometric_deduplication_enabled:
-        dedup_errors: list[str] = []
-        with dedup_api(job.program.unicef_id) as de:
-            if (res := de.status()) is None:
-                raise HopePushError({"errors": dedup_errors})
-            if res is not de.DEDUPLICATION_SET_NOT_EXPOSED:
-                raise HopePushError(
-                    {"errors": ["DedupEngine: there is an existing non-inactive deduplication set for this program."]}
-                )
+        try:
+            with make_dedup_client(job.program.unicef_id) as client:
+                res = client.status()
+        except RemoteError as e:
+            raise HopePushError({"errors": [f"DedupEngine: {e}"]}) from e
+
+        if res.status is not DedupResponseStatus.NOT_SCHEDULED:
+            raise HopePushError(
+                {"errors": ["DedupEngine: there is an existing non-inactive deduplication set for this program."]}
+            )
 
     config: CreateRdpConfig = job.config
     errors = preflight_errors(

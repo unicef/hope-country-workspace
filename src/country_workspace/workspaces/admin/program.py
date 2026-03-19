@@ -19,11 +19,12 @@ from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
     import_data as import_from_aurora,
 )
-from country_workspace.contrib.dedup_engine.client import make_client as make_dedup_client
-from country_workspace.state import state
-from country_workspace.utils.fields import batch_name_default
+from country_workspace.contrib.dedup_engine.client import make_client
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import Household, Individual, Rdp
 from country_workspace.models.base import Validable
+from country_workspace.state import state
+from country_workspace.utils.fields import batch_name_default
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm, DedupSettingsForm
 from ..permissions import can_change_country_program, can_import_program_data
@@ -220,12 +221,17 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         ).exists()
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
-        with make_dedup_client(program_id=program.unicef_id) as client:
+        with make_client(program_id=program.unicef_id) as client:
             return client.get_deduplication_set_group_config()
 
     @display(description=_("Settings"))
     def dedup_settings(self, obj: CountryProgram) -> str:
-        if not (settings := self._get_dedup_settings(obj)):
+        try:
+            settings = self._get_dedup_settings(obj)
+        except RemoteError:
+            return "-"
+
+        if not settings:
             return "-"
 
         return format_html_join(
@@ -576,25 +582,49 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
         program: CountryProgram = context["original"]
         can_update = self._can_update_dedup_settings(program)
-        settings = self._get_dedup_settings(program)
+        change_url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
 
-        if request.method == "POST":
-            if not can_update:
+        if not can_update:
+            self.message_user(
+                request,
+                _("Deduplication settings cannot be updated because the program already has a successful RDP."),
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        try:
+            settings = self._get_dedup_settings(program)
+        except RemoteError:
+            self.message_user(
+                request,
+                _("Failed to fetch Deduplication settings from DedupEngine."),
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        form = (
+            DedupSettingsForm(request.POST, settings=settings)
+            if request.method == "POST"
+            else DedupSettingsForm(settings=settings)
+        )
+
+        if request.method == "POST" and form.is_valid():
+            try:
+                with make_client(program_id=program.unicef_id) as client:
+                    client.post_deduplication_set_group_config(payload=form.get_payload())
+            except RemoteError:
                 self.message_user(
                     request,
-                    _("Deduplication settings cannot be updated because the program already has a successful RDP."),
+                    _("Failed to update Deduplication settings on DedupEngine."),
                     messages.ERROR,
                 )
-                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
-
-            form = DedupSettingsForm(request.POST, settings=settings)
-            if form.is_valid():
-                with make_dedup_client(program_id=program.unicef_id) as client:
-                    client.post_deduplication_set_group_config(payload=form.get_payload())
-                self.message_user(request, _("Deduplication settings have been updated."), messages.SUCCESS)
-                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
-        else:
-            form = DedupSettingsForm(settings=settings)
+            else:
+                self.message_user(
+                    request,
+                    _("Deduplication settings have been updated."),
+                    messages.SUCCESS,
+                )
+                return HttpResponseRedirect(change_url)
 
         context["form"] = form
         context["can_update_dedup_settings"] = can_update

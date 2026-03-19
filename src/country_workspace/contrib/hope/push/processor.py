@@ -7,6 +7,7 @@ from uuid import UUID
 
 from django.db.models import QuerySet
 
+from country_workspace.contrib.dedup_engine.client import make_client as make_dedup_client
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
@@ -16,7 +17,7 @@ from country_workspace.models import Rdp
 from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import individuals_for_rdp, rdp_for_dedup, serializer_for_program, preflight_errors
-from .transport import HopeApi, dedup_api
+from .transport import HopeApi
 
 
 class ProcessorBase:
@@ -90,6 +91,20 @@ class ProcessorBase:
             self.fail(subject, f"request failed. {e}", ids=ids)
             return None
 
+    def run_remote(
+        self,
+        subject: str,
+        fn: Callable[[], object],
+        *,
+        ids: Sequence[int] | None = None,
+    ) -> bool:
+        try:
+            fn()
+        except RemoteError as e:
+            self.fail(subject, f"request failed. {e}", ids=ids)
+            return False
+        return True
+
 
 class PushProcessor(ProcessorBase):
     """Push pipeline: validate, prepare, send and track results via Hope API."""
@@ -123,7 +138,7 @@ class PushProcessor(ProcessorBase):
         if not self.hope_rdi_id:
             self.fail("RDI", "can't complete: hope_rdi_id is not set")
             return
-        self.try_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
+        self.run_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
 
     def rdi_create(self) -> None:
         payload = {
@@ -358,8 +373,8 @@ class DedupProcessor(ProcessorBase):
 
     def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
         """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
-        with dedup_api(self.program_unicef_id) as api:
-            raw = self.try_remote("create_deduplication_set", api.create_deduplication_set)
+        with make_dedup_client(self.program_unicef_id) as client:
+            raw = self.try_remote("create_deduplication_set", client.create_deduplication_set)
             if raw is None:
                 return None
 
@@ -374,10 +389,10 @@ class DedupProcessor(ProcessorBase):
                 dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
             )
 
-            if not self.try_remote("create_images", lambda images=images: api.create_images(images)):
+            if not self.run_remote("create_images", lambda images=images: client.create_images(images)):
                 return None
 
-            if not self.try_remote("process", api.process):
+            if not self.run_remote("process", client.process):
                 return None
 
             return ds_id
