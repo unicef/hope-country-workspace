@@ -348,7 +348,7 @@ class DedupProcessor(ProcessorBase):
 
     def _collect_images(self) -> list[dict[str, str]]:
         """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
-        rows = individuals_for_rdp(rdp=self.rdp).values_list("originating_id", "flex_fields__photo")
+        rows = individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
 
         images: list[dict[str, str]] = []
         for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
