@@ -18,6 +18,14 @@ def _make_identity_checker(field_name: str = "national_id"):
     return checker
 
 
+def test_identity_field_is_disabled():
+    """IdentityField must not be editable (disabled=True)."""
+    from hope_flex_fields.fields import IdentityField
+
+    field = IdentityField()
+    assert field.disabled is True
+
+
 def test_get_identity_field_name_no_checker():
     from country_workspace.utils.collision import get_identity_field_name
 
@@ -40,6 +48,11 @@ def test_get_identity_field_name_returns_field_name():
     assert get_identity_field_name(checker) == "passport_no"
 
 
+# ---------------------------------------------------------------------------
+# detect_and_mark_collisions_for_batch — household checker
+# ---------------------------------------------------------------------------
+
+
 def test_detect_and_mark_no_identity_field_is_noop():
     """When the program checker has no IdentityField, no records are marked."""
     from testutils.factories import CountryHouseholdFactory
@@ -48,7 +61,6 @@ def test_detect_and_mark_no_identity_field_is_noop():
 
     hh = CountryHouseholdFactory()
     batch = hh.batch
-    # No IdentityField on checkers — should complete without marking anything
     detect_and_mark_collisions_for_batch(batch)
     hh.refresh_from_db()
     assert "identity" not in hh.errors
@@ -134,132 +146,73 @@ def test_detect_and_mark_skips_empty_identity_values():
     assert "identity" not in incoming.errors
 
 
-def test_check_identity_collision_no_identity_field_clears_stale_error():
-    """When the checker has no IdentityField, any stale 'identity' error is cleared."""
-    from testutils.factories import CountryHouseholdFactory
-
-    from country_workspace.utils.collision import check_identity_collision
-
-    hh = CountryHouseholdFactory(individuals=0)
-    hh.errors = {"identity": "stale error"}
-    hh.save(update_fields=["errors"])
-
-    result = check_identity_collision(hh)
-
-    assert result is False
-    assert "identity" not in hh.errors
-
-
-def test_check_identity_collision_no_value_clears_stale_error():
-    """When the record has no value for the IdentityField, stale error is cleared."""
+def test_detect_and_mark_within_batch_duplicates():
+    """Two records in the same batch with the same IdentityField value are both marked."""
     from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
 
-    from country_workspace.utils.collision import check_identity_collision
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
 
     checker = _make_identity_checker("uid")
     program = ProgramFactory(household_checker=checker)
     batch = CountryBatchFactory(program=program)
 
-    hh = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={})
-    hh.errors = {"identity": "stale error"}
-    hh.save(update_fields=["errors"])
+    hh1 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP"})
+    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP"})
 
-    result = check_identity_collision(hh)
+    detect_and_mark_collisions_for_batch(batch)
 
-    assert result is False
-    assert "identity" not in hh.errors
-
-
-def test_check_identity_collision_detects_duplicate():
-    """Returns True and sets errors['identity'] when a duplicate exists."""
-    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
-
-    from country_workspace.utils.collision import check_identity_collision
-
-    checker = _make_identity_checker("uid")
-    program = ProgramFactory(household_checker=checker)
-    batch = CountryBatchFactory(program=program)
-
-    CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP-KEY"})
-    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP-KEY"})
-
-    result = check_identity_collision(hh2)
-
-    assert result is True
-    assert "identity" in hh2.errors
-    assert "DUP-KEY" in hh2.errors["identity"]
-
-
-def test_check_identity_collision_clears_error_when_no_longer_colliding():
-    """After a collision is resolved, the error is cleared and False returned."""
-    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
-
-    from country_workspace.utils.collision import check_identity_collision
-
-    checker = _make_identity_checker("uid")
-    program = ProgramFactory(household_checker=checker)
-    batch = CountryBatchFactory(program=program)
-
-    # Only one record — no collision
-    hh = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "SOLO-KEY"})
-    hh.errors = {"identity": "previous stale collision error"}
-    hh.save(update_fields=["errors"])
-
-    result = check_identity_collision(hh)
-
-    assert result is False
-    assert "identity" not in hh.errors
-
-
-def test_household_validate_with_checker_collision_sets_and_saves_error():
-    """validate_with_checker saves the record when a new identity error is added."""
-    from testutils.factories import (
-        CountryBatchFactory,
-        CountryHouseholdFactory,
-        CountryIndividualFactory,
-        ProgramFactory,
-    )
-
-    checker = _make_identity_checker("uid")
-    program = ProgramFactory(household_checker=checker)
-    batch = CountryBatchFactory(program=program)
-
-    hh1 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "MATCH"})
-    CountryIndividualFactory(batch=batch, household=hh1)
-
-    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "MATCH"})
-    CountryIndividualFactory(batch=batch, household=hh2)
-
-    result = hh2.validate_with_checker()
-
-    assert result is False
+    hh1.refresh_from_db()
     hh2.refresh_from_db()
+    assert "identity" in hh1.errors
     assert "identity" in hh2.errors
 
 
-def test_household_validate_with_checker_collision_cleared_on_revalidation():
-    """validate_with_checker clears the identity error once the collision is gone."""
-    from testutils.factories import (
-        CountryBatchFactory,
-        CountryHouseholdFactory,
-        CountryIndividualFactory,
-        ProgramFactory,
-    )
+def test_detect_and_mark_clears_stale_error_when_no_longer_colliding():
+    """When a collision is resolved and the batch is re-checked, the stale error is cleared."""
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
+
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
 
     checker = _make_identity_checker("uid")
     program = ProgramFactory(household_checker=checker)
     batch = CountryBatchFactory(program=program)
 
+    # Pre-set a stale identity error on a record that has a unique value in the batch.
     hh = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "SOLO"})
-    CountryIndividualFactory(batch=batch, household=hh)
-    hh.errors = {"identity": "stale"}
+    hh.errors = {"identity": "stale error from a previous import"}
     hh.save(update_fields=["errors"])
 
-    result = hh.validate_with_checker()
+    detect_and_mark_collisions_for_batch(batch)
 
-    assert result is True
     hh.refresh_from_db()
     assert "identity" not in hh.errors
+
+
+def test_detect_and_mark_no_new_values_after_filtering_is_noop():
+    """Branch: `if not new_values: return` — new records have no meaningful identity value."""
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
+
+    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(household_checker=checker)
+
+    old_batch = CountryBatchFactory(program=program)
+    new_batch = CountryBatchFactory(program=program)
+
+    CountryHouseholdFactory(batch=old_batch, individuals=0, flex_fields={"uid": "OLD-KEY"})
+    # flex_fields has "uid" key but value is None — falsy guard in new_values filters it out.
+    incoming = CountryHouseholdFactory(batch=new_batch, individuals=0, flex_fields={"uid": None})
+
+    detect_and_mark_collisions_for_batch(new_batch)
+
+    incoming.refresh_from_db()
+    assert "identity" not in incoming.errors
+
+
+# ---------------------------------------------------------------------------
+# detect_and_mark_collisions_for_batch — individual checker
+# ---------------------------------------------------------------------------
 
 
 def test_detect_and_mark_individual_checker_marks_incoming_individual():
@@ -292,52 +245,88 @@ def test_detect_and_mark_individual_checker_marks_incoming_individual():
     assert "IND-SHARED" in incoming.errors["identity"]
 
 
-def test_detect_and_mark_no_new_values_after_filtering_is_noop():
-    """Branch: `if not new_values: return` — all new records have blank identity values."""
-    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
-
-    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
-
-    checker = _make_identity_checker("uid")
-    program = ProgramFactory(household_checker=checker)
-
-    old_batch = CountryBatchFactory(program=program)
-    new_batch = CountryBatchFactory(program=program)
-
-    # Old batch has a real value; new batch records have the key present but value is falsy.
-    CountryHouseholdFactory(batch=old_batch, individuals=0, flex_fields={"uid": "OLD-KEY"})
-    # flex_fields has "uid" key but value is None — excluded by the queryset filter yet
-    # new_values list comprehension yields nothing (falsy guard).
-    incoming = CountryHouseholdFactory(batch=new_batch, individuals=0, flex_fields={"uid": None})
-
-    detect_and_mark_collisions_for_batch(new_batch)
-
-    incoming.refresh_from_db()
-    assert "identity" not in incoming.errors
+# ---------------------------------------------------------------------------
+# validate_with_checker — identity errors are preserved, never added by it
+# ---------------------------------------------------------------------------
 
 
-def test_check_identity_collision_value_not_in_existing_values_returns_false():
-    """Branch: `if value in existing_values` is False — no collision, error not set."""
-    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, ProgramFactory
-
-    from country_workspace.utils.collision import check_identity_collision
+def test_household_validate_with_checker_preserves_identity_error():
+    """validate_with_checker must not wipe an identity error set during import."""
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        ProgramFactory,
+    )
 
     checker = _make_identity_checker("uid")
     program = ProgramFactory(household_checker=checker)
     batch = CountryBatchFactory(program=program)
 
-    # Two records with distinct values — neither collides.
-    CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "KEY-A"})
-    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "KEY-B"})
+    hh = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "KEY"})
+    CountryIndividualFactory(batch=batch, household=hh)
+    hh.errors = {"identity": "Collision detected: 'uid' value 'KEY' already exists in this programme."}
+    hh.save(update_fields=["errors"])
 
-    result = check_identity_collision(hh2)
+    result = hh.validate_with_checker()
 
     assert result is False
+    hh.refresh_from_db()
+    assert "identity" in hh.errors
+
+
+def test_household_validate_with_checker_does_not_add_identity_error():
+    """validate_with_checker never introduces identity errors — only import does."""
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        ProgramFactory,
+    )
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(household_checker=checker)
+    batch = CountryBatchFactory(program=program)
+
+    hh1 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "SAME"})
+    CountryIndividualFactory(batch=batch, household=hh1)
+    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "SAME"})
+    CountryIndividualFactory(batch=batch, household=hh2)
+
+    # Call validate_with_checker WITHOUT first running detect_and_mark_collisions_for_batch.
+    hh2.validate_with_checker()
+
+    hh2.refresh_from_db()
     assert "identity" not in hh2.errors
 
 
-def test_individual_validate_with_checker_collision_sets_and_saves_error():
-    """Individual.validate_with_checker persists a collision error."""
+def test_individual_validate_with_checker_preserves_identity_error():
+    """Individual.validate_with_checker must not wipe an identity error set during import."""
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        ProgramFactory,
+    )
+
+    checker = _make_identity_checker("uid")
+    program = ProgramFactory(individual_checker=checker)
+    batch = CountryBatchFactory(program=program)
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    ind = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"uid": "IND-KEY"})
+    ind.errors = {"identity": "Collision detected: 'uid' value 'IND-KEY' already exists in this programme."}
+    ind.save(update_fields=["errors"])
+
+    result = ind.validate_with_checker()
+
+    assert result is False
+    ind.refresh_from_db()
+    assert "identity" in ind.errors
+
+
+def test_individual_validate_with_checker_does_not_add_identity_error():
+    """Individual.validate_with_checker never introduces identity errors."""
     from testutils.factories import (
         CountryBatchFactory,
         CountryHouseholdFactory,
@@ -353,36 +342,11 @@ def test_individual_validate_with_checker_collision_sets_and_saves_error():
     CountryIndividualFactory(batch=batch, household=hh, flex_fields={"uid": "IND-KEY"})
     ind2 = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"uid": "IND-KEY"})
 
-    result = ind2.validate_with_checker()
+    # Call validate_with_checker WITHOUT first running detect_and_mark_collisions_for_batch.
+    ind2.validate_with_checker()
 
-    assert result is False
     ind2.refresh_from_db()
-    assert "identity" in ind2.errors
-
-
-def test_individual_validate_with_checker_collision_cleared_on_revalidation():
-    """Individual.validate_with_checker clears the identity error when resolved."""
-    from testutils.factories import (
-        CountryBatchFactory,
-        CountryHouseholdFactory,
-        CountryIndividualFactory,
-        ProgramFactory,
-    )
-
-    checker = _make_identity_checker("uid")
-    program = ProgramFactory(individual_checker=checker)
-    batch = CountryBatchFactory(program=program)
-
-    hh = CountryHouseholdFactory(batch=batch, individuals=0)
-    ind = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"uid": "IND-SOLO"})
-    ind.errors = {"identity": "stale"}
-    ind.save(update_fields=["errors"])
-
-    result = ind.validate_with_checker()
-
-    assert result is True
-    ind.refresh_from_db()
-    assert "identity" not in ind.errors
+    assert "identity" not in ind2.errors
 
 
 def test_individual_validate_with_checker_no_collision_no_identity_error():

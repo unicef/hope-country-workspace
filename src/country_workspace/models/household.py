@@ -46,6 +46,9 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
 
     @override
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        # Identity collision errors are set at import time only — preserve them
+        # across re-validations since validate_with_checker replaces errors wholesale.
+        identity_error = self.errors.get("identity")
         super().validate_with_checker(fail_if_alien=fail_if_alien)
 
         members_failed = False
@@ -63,11 +66,8 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
                 dct.extend(ext_msgs)
             changed = True
 
-        from country_workspace.utils.collision import check_identity_collision
-
-        errors_before = dict(self.errors)
-        check_identity_collision(self)
-        if self.errors != errors_before:
+        if identity_error and "identity" not in self.errors:
+            self.errors["identity"] = identity_error
             changed = True
 
         if changed:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from django.utils import timezone
@@ -29,12 +30,15 @@ def get_identity_field_name(checker: "DataChecker | None") -> str | None:
 
 
 def detect_and_mark_collisions_for_batch(batch: "Batch") -> None:
-    """
-    Detect and mark collisions for a batch.
+    """Detect and mark identity collisions for all records in *batch*.
 
-    Mark records in *batch* whose IdentityField value collides with
-    an existing record from a *different* batch in the same programme.
-    Only the newly imported (incoming) records are marked invalid; pre-existing records are left untouched.
+    Marks records whose IdentityField value collides with any other record
+    in the same programme — either in a different batch (cross-batch) or
+    within the same batch (within-batch duplicates).  Only records in the
+    current batch are written to; pre-existing records in other batches are
+    never modified.
+
+    Stale identity errors on records that no longer collide are cleared.
     """
     from country_workspace.models import Household, Individual
 
@@ -66,7 +70,8 @@ def _mark_incoming_collisions(
     if not new_values:
         return
 
-    existing_values: set[str] = set(
+    # Cross-batch: values that already exist in other batches of the same programme.
+    cross_batch_values: set[str] = set(
         model_class.objects.filter(
             batch__program=program,
             removed=False,
@@ -76,47 +81,22 @@ def _mark_incoming_collisions(
         .values_list(f"flex_fields__{field_name}", flat=True)
     )
 
-    if not existing_values:
-        return
+    # Within-batch: values that appear more than once in the current batch.
+    within_batch_duplicates: set[str] = {v for v, count in Counter(new_values).items() if count > 1}
+
+    colliding_values = cross_batch_values | within_batch_duplicates
 
     now = timezone.now()
     for record in new_records:
         value = record.flex_fields.get(field_name)
-        if value in existing_values:
-            record.errors["identity"] = (
-                f"Collision detected: '{field_name}' value '{value}' already exists in this programme."
-            )
+        if value in colliding_values:
+            msg = f"Collision detected: '{field_name}' value '{value}' already exists in this programme."
+            if record.errors.get("identity") != msg:
+                record.errors["identity"] = msg
+                record.last_checked = now
+                record.save(update_fields=["errors", "last_checked"])
+        # Clear any stale identity error for records that no longer collide.
+        elif "identity" in record.errors:
+            record.errors.pop("identity")
             record.last_checked = now
             record.save(update_fields=["errors", "last_checked"])
-
-
-def check_identity_collision(record: "Household | Individual") -> bool:
-    field_name = get_identity_field_name(record.checker)
-
-    if not field_name:
-        record.errors.pop("identity", None)
-        return False
-
-    identity_value = record.flex_fields.get(field_name)
-    if not identity_value:
-        record.errors.pop("identity", None)
-        return False
-
-    collision = (
-        record.__class__.objects.filter(
-            batch__program=record.program,
-            removed=False,
-            **{f"flex_fields__{field_name}": identity_value},
-        )
-        .exclude(pk=record.pk)
-        .exists()
-    )
-
-    if collision:
-        record.errors["identity"] = (
-            f"Collision detected: '{field_name}' value '{identity_value}' already exists in this programme."
-        )
-        return True
-
-    record.errors.pop("identity", None)
-    return False
