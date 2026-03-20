@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from country_workspace.utils.collector_linkage import sync_collector_links
+from country_workspace.utils.collector_linkage import _normalize_reference, sync_collector_links
 
 
 def _individual(pk: int, flex_fields: dict) -> Mock:
@@ -38,3 +38,30 @@ def test_sync_collector_links_skips_unknown_collector_reference(mocker) -> None:
 def test_sync_collector_links_raises_on_non_iterable_inputs() -> None:
     with pytest.raises(TypeError):
         sync_collector_links(Mock())
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (True, None),
+        (False, None),
+        (0, "0"),
+        (42, "42"),
+        (2.0, "2"),
+        (2.5, "2.5"),
+        ("  abc  ", "abc"),
+        ("   ", None),
+        ("0", "0"),
+    ],
+)
+def test_normalize_reference_primitives(value, expected) -> None:
+    assert _normalize_reference(value) == expected
+
+
+def test_normalize_reference_fallback_object_string() -> None:
+    class Obj:
+        def __str__(self) -> str:
+            return "  x-ref  "
+
+    assert _normalize_reference(Obj()) == "x-ref"
