@@ -16,7 +16,13 @@ from country_workspace.exceptions import RemoteError
 from country_workspace.models import Rdp
 from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
-from .repository import individuals_for_rdp, rdp_for_dedup, serializer_for_program, preflight_errors
+from .repository import (
+    qs_individuals_for_rdp,
+    preflight_errors,
+    rdp_for_dedup,
+    serializer_for_program,
+    set_rdp_dedup_state,
+)
 from .transport import HopeApi
 
 
@@ -355,6 +361,7 @@ class DedupProcessor(ProcessorBase):
         self.total["images_sent"] = len(images)
 
         if not images:
+            self.fail("Images", "no valid photos found")
             self.total["deduplication_set_id"] = None
             return
 
@@ -363,7 +370,7 @@ class DedupProcessor(ProcessorBase):
 
     def _collect_images(self) -> list[dict[str, str]]:
         """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
-        rows = individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
+        rows = qs_individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
 
         images: list[dict[str, str]] = []
         for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
@@ -384,10 +391,7 @@ class DedupProcessor(ProcessorBase):
                 self.fail("create_deduplication_set", f"returned invalid UUID {raw!r}: {e}")
                 return None
 
-            Rdp.objects.filter(pk=self.rdp.pk).update(
-                deduplication_set_id=ds_id,
-                dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
-            )
+            set_rdp_dedup_state(rdp_id=self.rdp.pk, state=Rdp.DedupRunState.IN_PROGRESS, deduplication_set_id=ds_id)
 
             if not self.run_remote("create_images", lambda images=images: client.create_images(images)):
                 return None

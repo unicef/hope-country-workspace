@@ -54,6 +54,7 @@ class Rdp(BaseModel):
             ("reset_rdp", _("Can reset RDP")),
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("deduplicate_rdp", _("Can run RDP deduplication")),
+            ("reject_deduplication_set", _("Can reject deduplication set")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
         ]
         verbose_name = _("Registration Data Push")

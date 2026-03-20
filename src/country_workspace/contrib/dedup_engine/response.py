@@ -10,6 +10,8 @@ class Status(StrEnum):
     REVOKED = auto()
     UNKNOWN = auto()
     NOT_SCHEDULED = auto()
+    DS_NOT_EXPOSED = auto()
+    STATUS_UNAVAILABLE = auto()
 
 
 class DeduplicationSet(TypedDict):

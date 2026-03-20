@@ -13,13 +13,14 @@ from country_workspace.workspaces.models import CountryIndividual
 from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
 from .repository import (
-    individuals_by_pks,
-    individuals_by_household_pks,
+    qs_individuals_by_pks,
+    qs_individuals_by_household_pks,
     lock_rdp,
-    mark_rdp_dedup_finished,
-    households,
+    qs_households,
     preflight_errors,
+    rdp_for_dedup,
     rdp_for_push,
+    set_rdp_dedup_state,
     set_rdp_push_status,
     workflow_config_for_rdp,
 )
@@ -60,11 +61,11 @@ def steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Call
     yield processor.rdi_create
     if config["master_detail"]:
         yield from (
-            partial(processor.run_with, individuals_by_household_pks(pks), processor.rdi_push_individuals),
-            partial(processor.run_with, households(pks=pks), processor.rdi_push_households),
+            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
+            partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
         )
     else:
-        yield partial(processor.run_with, individuals_by_pks(pks), processor.rdi_push_people)
+        yield partial(processor.run_with, qs_individuals_by_pks(pks), processor.rdi_push_people)
     yield processor.rdi_complete
 
 
@@ -79,9 +80,9 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
             with make_dedup_client(job.program.unicef_id) as client:
                 res = client.status()
         except RemoteError as e:
-            raise HopePushError({"errors": [f"DedupEngine: {e}"]}) from e
+            raise HopePushError({"errors": [str(e)]}) from e
 
-        if res.status is not DedupResponseStatus.NOT_SCHEDULED:
+        if res.status is not DedupResponseStatus.DS_NOT_EXPOSED:
             raise HopePushError(
                 {"errors": ["DedupEngine: there is an existing non-inactive deduplication set for this program."]}
             )
@@ -106,6 +107,34 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     if processor.has_errors:
         raise HopePushError(processor.total)
     return processor.total
+
+
+def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Reject the active DedupEngine deduplication set for an existing RDP."""
+    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
+    if not rdp.program.biometric_deduplication_enabled:
+        raise HopePushError({"errors": ["DedupEngine: biometric deduplication is not enabled for this program."]})
+    if not rdp.deduplication_set_id:
+        raise HopePushError({"errors": ["DedupEngine: deduplication_set_id is not set for this RDP."]})
+
+    program_id, deduplication_set_id = rdp.program.unicef_id, str(rdp.deduplication_set_id)
+
+    try:
+        with make_dedup_client(program_id) as client:
+            status = client.status().status
+            rejected = status is not DedupResponseStatus.DS_NOT_EXPOSED
+            if rejected:
+                client.reject()
+    except RemoteError as e:
+        raise HopePushError({"errors": [str(e)]}) from e
+
+    return {
+        "rdp_id": rdp.pk,
+        "program": program_id,
+        "deduplication_set_id": deduplication_set_id,
+        "status": DedupResponseStatus.DS_NOT_EXPOSED.value if rejected else status.value,
+        "rejected": rejected,
+    }
 
 
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
@@ -133,7 +162,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         mark_rdp_beneficiaries_removed(locked, config["master_detail"])
 
         if locked.program.biometric_deduplication_enabled:
-            mark_rdp_dedup_finished(rdp_id=locked.pk)
+            set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupRunState.FINISHED)
 
         set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id or "N/A")
 

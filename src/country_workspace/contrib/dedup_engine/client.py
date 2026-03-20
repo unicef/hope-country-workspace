@@ -75,7 +75,7 @@ class Client:
         )
         self._request("process", lambda: process_action.call(None))
 
-    def approve(self) -> None:
+    def reject(self) -> None:
         reject_action = resource.RejectDeduplicationSetAction(
             self.session,
             self.deduplication_set_endpoint.reject,
@@ -84,19 +84,19 @@ class Client:
             "action": "reject",
             "reference_pks": [],
         }
-        self._request("approve", lambda: reject_action.call(payload))
+        self._request("reject", lambda: reject_action.call(payload))
 
     def status(self) -> Status:
-        deduplication_set_item = resource.DeduplicationSetItem(
-            self.session,
-            self.deduplication_set_endpoint,
-        )
+        deduplication_set_item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
+
         try:
             deduplication_set = deduplication_set_item.retrieve()
         except HTTPError as exc:
             response_obj = exc.response
+            # Treat 404 as "deduplication set is not exposed" for this group.
+            # This includes both "no set exists" and "only INACTIVE sets exist".
             if response_obj is not None and response_obj.status_code == HTTP_404_NOT_FOUND:
-                return Status(response.Status.NOT_SCHEDULED, -1)
+                return Status(response.Status.DS_NOT_EXPOSED, -1)
             raise self._err("status", exc, response_obj) from exc
         except (RequestException, ValueError, KeyError, TypeError) as exc:
             raise self._err("status", exc, getattr(exc, "response", None)) from exc

@@ -15,7 +15,12 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
 from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
-from country_workspace.contrib.hope.push import PushExistingRdpConfig, dedup_existing_rdp_core, push_existing_rdp_core
+from country_workspace.contrib.hope.push import (
+    PushExistingRdpConfig,
+    dedup_existing_rdp_core,
+    push_existing_rdp_core,
+    reject_deduplication_set_existing_rdp_core,
+)
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
 
@@ -32,19 +37,24 @@ from admin_extra_buttons.buttons import ButtonWidget
 
 
 def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
-    """Fetch DedupEngine status for admin UI; capture request failures in Sentry and degrade to UNKNOWN."""
     try:
         with make_client(program_unicef_id) as client:
             return client.status()
     except RemoteError as e:
         sentry_sdk.capture_exception(e)
-        return DedupClientStatus(DedupResponseStatus.UNKNOWN, -1)
+        return DedupClientStatus(DedupResponseStatus.STATUS_UNAVAILABLE, -1)
 
 
 def visible_workflow(btn: ButtonWidget) -> bool:
     if (obj := btn.original) is None:
         return False
     return obj.status == obj.PushStatus.PENDING
+
+
+def visible_reject_ds(btn: ButtonWidget) -> bool:
+    if (obj := btn.original) is None:
+        return False
+    return bool(obj.program.biometric_deduplication_enabled and obj.deduplication_set_id)
 
 
 def enabled_deduplicate(btn: ButtonWidget) -> bool:
@@ -62,11 +72,24 @@ def enabled_deduplicate(btn: ButtonWidget) -> bool:
             return _dedup_status_safe(obj.program.unicef_id).status in {
                 DedupResponseStatus.FAILURE,
                 DedupResponseStatus.REVOKED,
-                DedupResponseStatus.UNKNOWN,
-                DedupResponseStatus.NOT_SCHEDULED,
+                DedupResponseStatus.DS_NOT_EXPOSED,
             }
         case _:
             return False
+
+
+def enabled_reject_ds(btn: ButtonWidget) -> bool:
+    obj = btn.original
+    if obj is None:
+        return False
+
+    if not obj.program.biometric_deduplication_enabled or not obj.deduplication_set_id:
+        return False
+
+    return _dedup_status_safe(obj.program.unicef_id).status not in {
+        DedupResponseStatus.DS_NOT_EXPOSED,
+        DedupResponseStatus.STATUS_UNAVAILABLE,
+    }
 
 
 def enabled_push(btn: ButtonWidget) -> bool:
@@ -168,7 +191,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         permission="country_workspace.deduplicate_rdp",
         enabled=enabled_deduplicate,
         visible=visible_workflow,
-        html_attrs={"title": "Run Dedup on DedupEngine."},
+        html_attrs={"title": "Run Deduplication process on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
@@ -176,7 +199,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         job = AsyncJob.objects.create(
-            description="Dedup",
+            description="Run Deduplication process on DedupEngine",
             type=AsyncJob.JobType.TASK,
             owner=request.user,
             action=fqn(dedup_existing_rdp_core),
@@ -186,8 +209,35 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
         job.queue()
 
-        obj._meta.model.objects.filter(pk=obj.pk).update(dedup_run_state=obj.DedupRunState.IN_PROGRESS)
         messages.success(request, "Dedup task scheduled")
+        return redirect(self._change_url(obj))
+
+    @button(
+        label="Reject DS",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.reject_deduplication_set",
+        enabled=enabled_reject_ds,
+        visible=visible_reject_ds,
+        html_attrs={"title": "Reject the active DedupEngine deduplication set."},
+    )
+    def reject_ds(self, request: HttpRequest, pk: str) -> HttpResponse:
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        job = AsyncJob.objects.create(
+            description="Reject the active DedupEngine deduplication set",
+            type=AsyncJob.JobType.TASK,
+            owner=request.user,
+            action=fqn(reject_deduplication_set_existing_rdp_core),
+            program=obj.program,
+            rdp=obj,
+            config={"rdp_id": obj.pk},
+        )
+        job.queue()
+
+        messages.success(request, "Reject DS task scheduled")
         return redirect(self._change_url(obj))
 
     @button(
@@ -206,7 +256,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         config: PushExistingRdpConfig = {"rdp_id": obj.pk}
         job = AsyncJob.objects.create(
-            description="Push to HOPE",
+            description="Push beneficiaries to HOPE",
             type=AsyncJob.JobType.TASK,
             owner=request.user,
             action=fqn(push_existing_rdp_core),
