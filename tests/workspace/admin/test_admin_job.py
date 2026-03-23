@@ -79,6 +79,33 @@ def test_celery_check(rf, async_job, admin_site):
 
 
 @pytest.mark.django_db
+@patch("country_workspace.workspaces.admin.job.app.control.revoke")
+def test_celery_stop_requests_cancellation_and_revokes(mock_revoke, rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get(reverse("workspace:workspaces_countryasyncjob_changelist"))
+    request.user = MagicMock()
+    request.user.has_perm.return_value = True
+
+    async_job.curr_async_result_id = "task-id-123"
+    async_job.config = {}
+    async_job.save(update_fields=["config"])
+
+    def mock_get_object(request, object_id):
+        return async_job
+
+    admin.get_object = mock_get_object
+    handler = admin.celery_stop
+
+    handler.func(admin, request, str(async_job.pk))
+
+    async_job.refresh_from_db()
+    assert async_job.cancellation_requested is True
+    mock_revoke.assert_called_once_with("task-id-123", terminate=False)
+
+
+@pytest.mark.django_db
 def test_has_add_permission(rf, admin_site):
     from country_workspace.workspaces.admin.job import CountryJobAdmin
 

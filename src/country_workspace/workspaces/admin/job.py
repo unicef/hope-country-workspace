@@ -11,7 +11,7 @@ from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from .filters import ChoiceFilter, UserAutoCompleteFilter, WFailedFilter
 from ...state import state
-from ...admin.mixins import JobErrorDisplayMixin
+from ...admin.mixins import JobCancellationMixin, JobErrorDisplayMixin
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -19,7 +19,12 @@ if TYPE_CHECKING:
 
 
 @register(CountryAsyncJob, site=workspace)
-class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin, JobErrorDisplayMixin):
+class CountryJobAdmin(
+    CeleryTaskModelAdmin,
+    WorkspaceModelAdmin,
+    JobErrorDisplayMixin,
+    JobCancellationMixin,
+):
     queue_template = "workspace/celery_boost/queue.html"
 
     list_display = (

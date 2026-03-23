@@ -3,12 +3,14 @@ import logging
 from typing import Any, Generator
 
 import sentry_sdk
+from celery.exceptions import Ignore
 from django.core.cache import cache
 from django.db import transaction
 from redis_lock import Lock
 
 from country_workspace.config.celery import app
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi
+from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,8 @@ def lock_job(job: AsyncJob) -> Generator[Lock, None, None]:
         lock.release()
 
 
-@app.task()
-def sync_job_task(pk: int, version: int) -> dict[str, Any]:
+@app.task(bind=True)
+def sync_job_task(task: Any, pk: int, version: int) -> dict[str, Any]:
     try:
         job: AsyncJob = AsyncJob.objects.select_related("program", "program__country_office", "owner").get(
             pk=pk,
@@ -42,11 +44,16 @@ def sync_job_task(pk: int, version: int) -> dict[str, Any]:
     with lock_job(job):
         try:
             scope = sentry_sdk.get_current_scope()
+            job.ensure_not_cancelled(refresh=True)
             if job.program:
                 sentry_sdk.set_tag("business_area", job.program.country_office.slug)
                 sentry_sdk.set_tag("project", job.program.name)
             sentry_sdk.set_user({"id": job.owner.pk, "email": job.owner.email})
             return job.execute()
+        except GracefulJobCancellationError as exc:
+            logger.info("Task cancelled gracefully for AsyncJob #%s", job.pk)
+            task.update_state(state="REVOKED", meta={"reason": str(exc), "job_id": job.pk})
+            raise Ignore from exc
         finally:
             scope.clear()
 
@@ -57,6 +64,7 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 
 
 def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
+    job.ensure_not_cancelled(refresh=True)
     program_id = job.program.pk
     current_job_id = job.pk
     deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
@@ -66,6 +74,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
         return None
 
     for i in range(0, len(batch_ids), batch_size):
+        job.ensure_not_cancelled(refresh=True)
         chunk = batch_ids[i : i + batch_size]
         with transaction.atomic():
             _, counts = Batch.objects.filter(id__in=chunk).delete()
@@ -73,12 +82,15 @@ def clean_program_data(job: AsyncJob, batch_size: int = 1000) -> dict | None:
             deleted_counts["households"] += counts.get("country_workspace.Household", 0)
             deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
 
+    job.ensure_not_cancelled(refresh=True)
     _, counts = Rdp.objects.filter(program_id=program_id).delete()
     deleted_counts["rdps"] = counts.get("country_workspace.Rdp", 0)
 
+    job.ensure_not_cancelled(refresh=True)
     _, counts = Rdi.objects.filter(program_id=program_id).delete()
     deleted_counts["rdis"] = counts.get("country_workspace.Rdi", 0)
 
+    job.ensure_not_cancelled(refresh=True)
     _, counts = AsyncJob.objects.filter(program_id=program_id).exclude(id=current_job_id).delete()
     deleted_counts["jobs"] = counts.get("country_workspace.AsyncJob", 0)
 

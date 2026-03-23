@@ -2,6 +2,7 @@ import pytest
 
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
+from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.tasks import removed_expired_jobs, clean_program_data
 from tests.extras.testutils.factories import (
     ProgramFactory,
@@ -186,3 +187,16 @@ def test_clean_program_data_does_not_affect_other_programs(job, batch, household
     assert Rdp.objects.filter(program=other_program).count() == 2
     assert Rdi.objects.filter(program=other_program).count() == 2
     assert AsyncJob.objects.filter(program=other_program).count() == 3
+
+
+@pytest.mark.django_db
+def test_clean_program_data_stops_when_cancellation_requested(job, batch, households):
+    job.config = {"cancel_requested": True}
+    job.save(update_fields=["config"])
+
+    initial_batches = Batch.objects.filter(program=job.program).count()
+
+    with pytest.raises(GracefulJobCancellationError):
+        clean_program_data(job, batch_size=1)
+
+    assert Batch.objects.filter(program=job.program).count() == initial_batches
