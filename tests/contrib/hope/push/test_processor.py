@@ -19,7 +19,9 @@ MOD = "country_workspace.contrib.hope.push.processor"
 
 @pytest.mark.django_db
 def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor) -> None:
-    stub_ser = lambda rows: rows
+    def stub_ser(rows):
+        return rows
+
     spy = mocker.patch(f"{MOD}.serializer_for_program", return_value=stub_ser)
 
     assert processor.serializer is processor.serializer
@@ -126,7 +128,9 @@ def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor
     processor.hope_rdi_id = "rdi"
     processor.queryset = qs([1])
 
-    prepare = lambda batch: (list(batch), [{"n": i} for i in batch])
+    def prepare(batch):
+        return (list(batch), [{"n": i} for i in batch])
+
     post = mocker.MagicMock(return_value={"ok": True})
     proc = mocker.MagicMock()
 
@@ -553,7 +557,7 @@ def test_collect_images_filters_blanks(mocker: MockerFixture) -> None:
     proc = DedupProcessor(rdp_id=1)
     images = proc._collect_images()
 
-    qs.values_list.assert_called_once_with("originating_id", "flex_fields__photo")
+    qs.values_list.assert_called_once_with("id", "flex_fields__photo")
     assert images == [{"reference_pk": "103", "filename": "photo.jpg"}]
 
 
