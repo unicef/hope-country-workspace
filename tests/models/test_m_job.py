@@ -48,19 +48,28 @@ def test_job_info_with_exception(mock_async_result, program):
 
 
 @pytest.mark.django_db
-def test_request_cancellation_sets_job_config(program):
-    job = AsyncJobFactory(program=program, config={})
+def test_request_cancellation_sets_tracking_flag(program):
+    job = AsyncJobFactory(program=program)
+    job.curr_async_result_id = "task-id-123"
 
-    job.request_cancellation()
+    with patch.object(job, "set_tracking_info") as set_tracking_info:
+        result = job.request_cancellation()
 
-    job.refresh_from_db()
-    assert job.cancellation_requested is True
-    assert "cancel_requested_at" in job.config
+    assert result is True
+    set_tracking_info.assert_called_once_with("terminate_requested", "1")
 
 
 @pytest.mark.django_db
-def test_ensure_not_cancelled_raises_when_requested(program):
-    job = AsyncJobFactory(program=program, config={"cancel_requested": True})
+def test_request_cancellation_returns_false_without_task_id(program):
+    job = AsyncJobFactory(program=program)
+    assert job.request_cancellation() is False
 
-    with pytest.raises(GracefulJobCancellationError):
-        job.ensure_not_cancelled()
+
+@pytest.mark.django_db
+def test_ensure_not_cancelled_raises_when_termination_requested(program):
+    job = AsyncJobFactory(program=program)
+
+    with patch("country_workspace.models.AsyncJob.is_termination_requested", new_callable=PropertyMock) as requested:
+        requested.return_value = True
+        with pytest.raises(GracefulJobCancellationError):
+            job.ensure_not_cancelled()

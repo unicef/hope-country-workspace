@@ -3,7 +3,6 @@ from typing import Any, Callable
 import sentry_sdk
 from django.apps import apps
 from django.db import models
-from django.utils import timezone
 from django.utils.module_loading import import_string
 from django_celery_boost.models import CeleryTaskModel
 
@@ -15,9 +14,6 @@ class GracefulJobCancellationError(Exception):
 
 
 class AsyncJob(CeleryTaskModel, models.Model):
-    CANCELLATION_REQUESTED_KEY = "cancel_requested"
-    CANCELLATION_REQUESTED_AT_KEY = "cancel_requested_at"
-
     class JobType(models.TextChoices):
         FQN = "FQN", "Operation"
         ACTION = "ACTION", "Action"
@@ -63,21 +59,10 @@ class AsyncJob(CeleryTaskModel, models.Model):
             return result
         return "-"
 
-    @property
-    def cancellation_requested(self) -> bool:
-        return bool(self.config.get(self.CANCELLATION_REQUESTED_KEY))
-
-    def request_cancellation(self) -> None:
-        config = dict(self.config)
-        config[self.CANCELLATION_REQUESTED_KEY] = True
-        config[self.CANCELLATION_REQUESTED_AT_KEY] = timezone.now().isoformat()
-        self.config = config
-        self.save(update_fields=["config"])
-
     def ensure_not_cancelled(self, *, refresh: bool = False) -> None:
         if refresh:
             self.refresh_from_db(fields=["config"])
-        if self.cancellation_requested:
+        if self.is_termination_requested:
             raise GracefulJobCancellationError(f"Cancellation requested for job #{self.pk}")
 
     def execute(self) -> Any:

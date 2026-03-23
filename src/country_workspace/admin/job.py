@@ -9,7 +9,7 @@ from django_celery_results.models import TaskResult
 from ..models import AsyncJob
 from .base import BaseModelAdmin
 from .filters import FailedFilter
-from .mixins import JobCancellationMixin, JobErrorDisplayMixin
+from .mixins import JobErrorDisplayMixin
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -20,7 +20,6 @@ class AsyncJobAdmin(
     CeleryTaskModelAdmin,
     BaseModelAdmin,
     JobErrorDisplayMixin,
-    JobCancellationMixin,
 ):
     list_display = ("program", "type", "status", "owner")
     autocomplete_fields = ("program", "owner", "batch", "content_type", "rdp")

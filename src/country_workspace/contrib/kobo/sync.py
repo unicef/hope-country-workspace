@@ -24,6 +24,7 @@ from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+from country_workspace.models.jobs import GracefulJobCancellationError
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -138,13 +139,20 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
     return next((key for key in individual if key.startswith("full_name")), None)
 
 
-def create_individuals(
-    batch: Batch, household: Household, submission: Submission, config: Config, originating_id: str
+def create_individuals(  # noqa: PLR0913
+    batch: Batch,
+    household: Household,
+    submission: Submission,
+    config: Config,
+    originating_id: str,
+    job: AsyncJob | None = None,
 ) -> list[Individual]:
     individuals = []
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
     for raw_individual in submission.get(config["individual_records_field"], []):
+        if job:
+            job.ensure_not_cancelled(refresh=True)
         individual_fields = build_individual_processor(
             batch.program,
             individual_mapping_id,
@@ -283,12 +291,13 @@ def check_for_alien_fields(
         raise AlienFieldsError(household_alien, individual_alien)
 
 
-def import_asset(
+def import_asset(  # noqa: PLR0913
     batch: Batch,
     asset: Asset,
     config: Config,
     id_generator: Callable[[], int],
     *,
+    job: AsyncJob | None = None,
     timebox_seconds: int | None = None,
 ) -> ImportResult:
     household_counter = 0
@@ -309,13 +318,15 @@ def import_asset(
 
     try:
         for submission in submissions_iterator:
+            if job:
+                job.ensure_not_cancelled(refresh=True)
             current_submission = submission
             originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
             # One transaction per submission: if this block fails, only this
             # submission is rolled back; previously committed data stays.
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
-                individuals = create_individuals(batch, household, submission, config, originating_id)
+                individuals = create_individuals(batch, household, submission, config, originating_id, job=job)
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1
@@ -328,6 +339,8 @@ def import_asset(
                     time_exhausted = True
                     break
 
+    except GracefulJobCancellationError:
+        raise
     except Exception as e:
         failed_id = current_submission.id if current_submission else "unknown (before first submission)"
 
@@ -383,6 +396,7 @@ def import_data(job: AsyncJob) -> ImportResult:
       status change until the run that completes.
     """
     config: Config = job.config
+    job.ensure_not_cancelled(refresh=True)
 
     # Create or lock the batch and set status to LOADING in one transaction.
     with transaction.atomic():
@@ -424,12 +438,14 @@ def import_data(job: AsyncJob) -> ImportResult:
         asset,
         config,
         id_generator,
+        job=job,
         timebox_seconds=timebox_seconds,
     )
     household_counter += asset_import_result["households"]
     individual_counter += asset_import_result["individuals"]
 
     if asset_import_result["completed"] and config.get("validate_after_import"):
+        job.ensure_not_cancelled(refresh=True)
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
@@ -438,10 +454,12 @@ def import_data(job: AsyncJob) -> ImportResult:
         )
 
     if asset_import_result["completed"]:
+        job.ensure_not_cancelled(refresh=True)
         # Mark batch complete in a dedicated transaction.
         with transaction.atomic():
             Batch.objects.select_for_update().filter(pk=batch.pk).update(status=Batch.BatchStatus.COMPLETE)
     else:
+        job.ensure_not_cancelled(refresh=True)
         AsyncJob.objects.create(
             description=job.description,
             type=job.type,

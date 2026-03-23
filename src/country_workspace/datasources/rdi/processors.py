@@ -118,7 +118,9 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         source=Batch.BatchSource.RDI,
     )
 
+    job.ensure_not_cancelled(refresh=True)
     for row in sheet:
+        job.ensure_not_cancelled(refresh=True)
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
         originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), household_key)
@@ -156,7 +158,9 @@ def process_beneficiaries(
         source=Batch.BatchSource.RDI,
     )
 
+    job.ensure_not_cancelled(refresh=True)
     for row in sheet:
+        job.ensure_not_cancelled(refresh=True)
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
@@ -185,6 +189,7 @@ def process_beneficiaries(
 
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
+    job.ensure_not_cancelled(refresh=True)
     with atomic():
         config: Config = job.config
         batch = Batch.objects.create(
@@ -199,16 +204,19 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         job.save(update_fields=["batch"])
 
         with batch_ctx(batch.pk):
+            job.ensure_not_cancelled(refresh=True)
             if config["master_detail"]:
                 result = _import_master_detail(job, batch, config)
             else:
                 result = _import_people_only(job, batch, config)
 
+    job.ensure_not_cancelled(refresh=True)
     if not config.get("validate_after_import"):
         batch.status = Batch.BatchStatus.COMPLETE
         batch.save(update_fields=["status"])
         return result
 
+    job.ensure_not_cancelled(refresh=True)
     if job.config.get("master_detail"):
         queryset = batch.household_set.filter(removed=False).prefetch_related("members")
     else:

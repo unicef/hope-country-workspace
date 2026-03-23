@@ -28,6 +28,7 @@ from country_workspace.datasources.rdi.processors import (
 )
 from country_workspace.datasources.rdi.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Batch, Household, Individual
+from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 
 
@@ -478,6 +479,15 @@ def test_import_from_rdi(
         source=batch_class_mock.BatchSource.RDI,
         status=batch_class_mock.BatchStatus.LOADING,
     )
+
+
+def test_import_from_rdi_honors_cancellation_before_processing(config: Config) -> None:
+    job = Mock()
+    job.config = config
+    job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
+
+    with pytest.raises(GracefulJobCancellationError):
+        import_from_rdi(job)
 
 
 def test_image_location() -> None:

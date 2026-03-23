@@ -34,6 +34,7 @@ class ImportResult(NamedTuple):
 
 def import_data(job: AsyncJob) -> ImportResult:
     config: Config = job.config
+    job.ensure_not_cancelled(refresh=True)
     if not config.get("registration_reference_pk"):
         raise ImportError("registration_reference_pk is required for Aurora import")
 
@@ -52,10 +53,12 @@ def import_data(job: AsyncJob) -> ImportResult:
     total_households = 0
     client = AuroraClient()
     for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+        job.ensure_not_cancelled(refresh=True)
         imported = import_result(batch, result, config)
         total_people += imported.people
         total_households += imported.households
 
+    job.ensure_not_cancelled(refresh=True)
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])
     return ImportResult(people=total_people, households=total_households)
