@@ -5,9 +5,9 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest
 from django.urls import NoReverseMatch
 
-from requests.exceptions import RequestException
 from pytest_mock import MockerFixture
 
+from country_workspace.exceptions import RemoteError
 from country_workspace.state import state
 from country_workspace.workspaces.admin.rdp import CountryRdpAdmin
 from country_workspace.workspaces.models import CountryRdp
@@ -112,13 +112,19 @@ def test_country_rdp_admin_records_button(admin_instance, rdp, status, expected_
         assert f"rdp__exact={rdp.pk}" in btn.href
 
 
-def _btn_for(obj):
-    return MagicMock(original=obj)
+def _assert_job(create, job, *, action, owner, rdp):
+    create.assert_called_once()
+    kwargs = create.call_args.kwargs
+    assert kwargs["action"] == action
+    assert kwargs["owner"] == owner
+    assert kwargs["program"] == rdp.program
+    assert kwargs["rdp"] == rdp
+    assert kwargs["config"] == {"rdp_id": rdp.pk}
+    job.queue.assert_called_once_with()
 
 
 def test_dedup_status_safe_returns_client_status(mocker: MockerFixture) -> None:
     expected = mocker.Mock()
-
     client = mocker.MagicMock()
     client.status.return_value = expected
 
@@ -130,14 +136,13 @@ def test_dedup_status_safe_returns_client_status(mocker: MockerFixture) -> None:
     cap = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
     assert rdp_admin_mod._dedup_status_safe(UNICEF_ID) is expected
-
     client.status.assert_called_once_with()
     cap.assert_not_called()
 
 
-def test_dedup_status_safe_returns_unknown_on_request_exception(mocker: MockerFixture) -> None:
+def test_dedup_status_safe_returns_status_unavailable_on_remote_error(mocker: MockerFixture) -> None:
     cm = mocker.MagicMock()
-    cm.__enter__.side_effect = RequestException("boom")
+    cm.__enter__.side_effect = RemoteError("boom")
     cm.__exit__.return_value = False
 
     mocker.patch.object(rdp_admin_mod, "make_client", return_value=cm)
@@ -145,7 +150,7 @@ def test_dedup_status_safe_returns_unknown_on_request_exception(mocker: MockerFi
 
     res = rdp_admin_mod._dedup_status_safe(UNICEF_ID)
 
-    assert res.status == DedupResponseStatus.UNKNOWN
+    assert res.status == DedupResponseStatus.STATUS_UNAVAILABLE
     assert res.duplicates_found == -1
     cap.assert_called_once()
 
@@ -159,10 +164,59 @@ def test_dedup_status_safe_returns_unknown_on_request_exception(mocker: MockerFi
     ],
     ids=["pending", "success", "failure"],
 )
-def test_visible_workflow(status, expected):
-    obj = MagicMock(status=status, PushStatus=CountryRdp.PushStatus)
-    assert rdp_admin_mod.visible_workflow(_btn_for(obj)) is expected
-    assert rdp_admin_mod.visible_workflow(_btn_for(None)) is False
+def test_visible_workflow(mocker: MockerFixture, status, expected):
+    obj = mocker.MagicMock(status=status, PushStatus=CountryRdp.PushStatus)
+    assert rdp_admin_mod.visible_workflow(mocker.MagicMock(original=obj)) is expected
+    assert rdp_admin_mod.visible_workflow(mocker.MagicMock(original=None)) is False
+
+
+def test_visible_reject_ds(mocker: MockerFixture) -> None:
+    btn = mocker.MagicMock()
+    btn.original = mocker.MagicMock()
+    btn.original.program.biometric_deduplication_enabled = True
+    btn.original.deduplication_set_id = "DS-1"
+
+    assert rdp_admin_mod.visible_reject_ds(btn) is True
+
+    btn.original.program.biometric_deduplication_enabled = False
+    assert rdp_admin_mod.visible_reject_ds(btn) is False
+
+    btn.original.program.biometric_deduplication_enabled = True
+    btn.original.deduplication_set_id = ""
+    assert rdp_admin_mod.visible_reject_ds(btn) is False
+    assert rdp_admin_mod.visible_reject_ds(mocker.MagicMock(original=None)) is False
+
+
+@pytest.mark.parametrize(
+    ("dedup_enabled", "set_id", "de_status", "expected"),
+    [
+        (False, "DS-1", None, False),
+        (True, "", None, False),
+        (True, "DS-1", DedupResponseStatus.SUCCESS, True),
+        (True, "DS-1", DedupResponseStatus.DS_NOT_EXPOSED, False),
+        (True, "DS-1", DedupResponseStatus.STATUS_UNAVAILABLE, False),
+    ],
+    ids=["dedup_off", "no_set_id", "success", "ds_not_exposed", "status_unavailable"],
+)
+def test_enabled_reject_ds(mocker: MockerFixture, dedup_enabled, set_id, de_status, expected):
+    btn = mocker.MagicMock()
+    btn.original = mocker.MagicMock()
+    btn.original.program.biometric_deduplication_enabled = dedup_enabled
+    btn.original.program.unicef_id = UNICEF_ID
+    btn.original.deduplication_set_id = set_id
+
+    safe = mocker.patch.object(
+        rdp_admin_mod,
+        "_dedup_status_safe",
+        return_value=mocker.MagicMock(status=de_status),
+    )
+
+    assert rdp_admin_mod.enabled_reject_ds(btn) is expected
+    if dedup_enabled and set_id:
+        safe.assert_called_once_with(UNICEF_ID)
+    else:
+        safe.assert_not_called()
+    assert rdp_admin_mod.enabled_reject_ds(mocker.MagicMock(original=None)) is False
 
 
 @pytest.mark.parametrize(
@@ -173,8 +227,8 @@ def test_visible_workflow(status, expected):
         (True, CountryRdp.DedupRunState.FINISHED, None, False),
         (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.FAILURE, True),
         (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.REVOKED, True),
-        (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.UNKNOWN, True),
-        (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.NOT_SCHEDULED, True),
+        (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.DS_NOT_EXPOSED, True),
+        (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.STATUS_UNAVAILABLE, False),
         (True, CountryRdp.DedupRunState.IN_PROGRESS, DedupResponseStatus.SUCCESS, False),
     ],
     ids=[
@@ -183,29 +237,36 @@ def test_visible_workflow(status, expected):
         "finished",
         "in_progress_failure",
         "in_progress_revoked",
-        "in_progress_unknown",
-        "in_progress_not_scheduled",
+        "in_progress_ds_not_exposed",
+        "in_progress_status_unavailable",
         "in_progress_success",
     ],
 )
 def test_enabled_deduplicate(mocker: MockerFixture, dedup_enabled, dedup_state, de_status, expected):
-    obj = MagicMock(
-        status=CountryRdp.PushStatus.PENDING,
-        PushStatus=CountryRdp.PushStatus,
-        DedupRunState=CountryRdp.DedupRunState,
-        dedup_run_state=dedup_state,
-        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, unicef_id=UNICEF_ID),
+    btn = mocker.MagicMock()
+    btn.original = mocker.MagicMock()
+    btn.original.status = CountryRdp.PushStatus.PENDING
+    btn.original.PushStatus = CountryRdp.PushStatus
+    btn.original.DedupRunState = CountryRdp.DedupRunState
+    btn.original.dedup_run_state = dedup_state
+    btn.original.program.biometric_deduplication_enabled = dedup_enabled
+    btn.original.program.unicef_id = UNICEF_ID
+
+    safe = mocker.patch.object(
+        rdp_admin_mod,
+        "_dedup_status_safe",
+        return_value=mocker.MagicMock(status=de_status),
     )
-    if dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        m = mocker.patch.object(rdp_admin_mod, "_dedup_status_safe", return_value=MagicMock(status=de_status))
 
-    assert rdp_admin_mod.enabled_deduplicate(_btn_for(obj)) is expected
-    if dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        m.assert_called_once_with(UNICEF_ID)
+    assert rdp_admin_mod.enabled_deduplicate(btn) is expected
+    if dedup_enabled and dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
+        safe.assert_called_once_with(UNICEF_ID)
+    else:
+        safe.assert_not_called()
 
-    obj.status = CountryRdp.PushStatus.SUCCESS
-    assert rdp_admin_mod.enabled_deduplicate(_btn_for(obj)) is False
-    assert rdp_admin_mod.enabled_deduplicate(_btn_for(None)) is False
+    btn.original.status = CountryRdp.PushStatus.SUCCESS
+    assert rdp_admin_mod.enabled_deduplicate(btn) is False
+    assert rdp_admin_mod.enabled_deduplicate(mocker.MagicMock(original=None)) is False
 
 
 @pytest.mark.parametrize(
@@ -220,23 +281,30 @@ def test_enabled_deduplicate(mocker: MockerFixture, dedup_enabled, dedup_state, 
     ids=["dedup_off", "not_run", "finished", "in_progress_success", "in_progress_failure"],
 )
 def test_enabled_push(mocker: MockerFixture, dedup_enabled, dedup_state, de_status, expected):
-    obj = MagicMock(
-        status=CountryRdp.PushStatus.PENDING,
-        PushStatus=CountryRdp.PushStatus,
-        DedupRunState=CountryRdp.DedupRunState,
-        dedup_run_state=dedup_state,
-        program=MagicMock(biometric_deduplication_enabled=dedup_enabled, unicef_id=UNICEF_ID),
+    btn = mocker.MagicMock()
+    btn.original = mocker.MagicMock()
+    btn.original.status = CountryRdp.PushStatus.PENDING
+    btn.original.PushStatus = CountryRdp.PushStatus
+    btn.original.DedupRunState = CountryRdp.DedupRunState
+    btn.original.dedup_run_state = dedup_state
+    btn.original.program.biometric_deduplication_enabled = dedup_enabled
+    btn.original.program.unicef_id = UNICEF_ID
+
+    safe = mocker.patch.object(
+        rdp_admin_mod,
+        "_dedup_status_safe",
+        return_value=mocker.MagicMock(status=de_status),
     )
-    if dedup_enabled and dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        m = mocker.patch.object(rdp_admin_mod, "_dedup_status_safe", return_value=MagicMock(status=de_status))
 
-    assert rdp_admin_mod.enabled_push(_btn_for(obj)) is expected
+    assert rdp_admin_mod.enabled_push(btn) is expected
     if dedup_enabled and dedup_state == CountryRdp.DedupRunState.IN_PROGRESS:
-        m.assert_called_once_with(UNICEF_ID)
+        safe.assert_called_once_with(UNICEF_ID)
+    else:
+        safe.assert_not_called()
 
-    obj.status = CountryRdp.PushStatus.SUCCESS
-    assert rdp_admin_mod.enabled_push(_btn_for(obj)) is False
-    assert rdp_admin_mod.enabled_push(_btn_for(None)) is False
+    btn.original.status = CountryRdp.PushStatus.SUCCESS
+    assert rdp_admin_mod.enabled_push(btn) is False
+    assert rdp_admin_mod.enabled_push(mocker.MagicMock(original=None)) is False
 
 
 @pytest.mark.parametrize(
@@ -262,7 +330,14 @@ def test_enabled_push(mocker: MockerFixture, dedup_enabled, dedup_state, de_stat
     ids=["not_pending", "pending_not_in_progress", "pending_in_progress_failure", "pending_in_progress_success"],
 )
 def test_country_rdp_admin_dedup_engine_state(
-    mocker: MockerFixture, admin_instance, rdp, rdp_status, dedup_state, de_status, findings, expected
+    mocker: MockerFixture,
+    admin_instance,
+    rdp,
+    rdp_status,
+    dedup_state,
+    de_status,
+    findings,
+    expected,
 ):
     rdp.status = rdp_status
     rdp.dedup_run_state = dedup_state
@@ -270,82 +345,58 @@ def test_country_rdp_admin_dedup_engine_state(
     mocker.patch.object(
         rdp_admin_mod,
         "_dedup_status_safe",
-        return_value=MagicMock(status=de_status, duplicates_found=findings),
+        return_value=mocker.MagicMock(status=de_status, duplicates_found=findings),
     )
 
     assert admin_instance.dedup_engine_state(rdp) == expected
 
 
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [
+        ("deduplicate", rdp_admin_mod.fqn(rdp_admin_mod.dedup_existing_rdp_core)),
+        ("reject_ds", rdp_admin_mod.fqn(rdp_admin_mod.reject_deduplication_set_existing_rdp_core)),
+        ("push", rdp_admin_mod.fqn(rdp_admin_mod.push_existing_rdp_core)),
+    ],
+    ids=["deduplicate", "reject_ds", "push"],
+)
 @pytest.mark.django_db
-def test_country_rdp_admin_deduplicate_schedules_job_and_updates_state(
-    mocker: MockerFixture, admin_instance, mock_request, rdp
+def test_country_rdp_admin_workflow_buttons_schedule_jobs(
+    mocker: MockerFixture,
+    admin_instance,
+    mock_request,
+    rdp,
+    method,
+    action,
 ):
     admin_instance.get_object = mocker.Mock(return_value=rdp)
     admin_instance._change_url = mocker.Mock(return_value="/x")
 
-    msg_success = mocker.patch.object(rdp_admin_mod.messages, "success")
-    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value=MagicMock())
-
+    mocker.patch.object(rdp_admin_mod.messages, "success")
+    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value=mocker.Mock())
     job = mocker.MagicMock()
     create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create", return_value=job)
 
-    qs = mocker.MagicMock()
-    mocker.patch.object(rdp._meta.model.objects, "filter", return_value=qs)
+    resp = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
 
-    resp = admin_instance.deduplicate.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    create.assert_called_once()
-    job.queue.assert_called_once()
-    qs.update.assert_called_once_with(dedup_run_state=rdp.DedupRunState.IN_PROGRESS)
-    msg_success.assert_called_once()
+    _assert_job(create, job, action=action, owner=mock_request.user, rdp=rdp)
     redirect.assert_called_once_with("/x")
     assert resp is redirect.return_value
 
 
+@pytest.mark.parametrize("method", ["deduplicate", "push"], ids=["deduplicate", "push"])
 @pytest.mark.django_db
-def test_country_rdp_admin_push_schedules_job(mocker: MockerFixture, admin_instance, mock_request, rdp):
-    admin_instance.get_object = mocker.Mock(return_value=rdp)
-    admin_instance._change_url = mocker.Mock(return_value="/x")
-
-    msg_success = mocker.patch.object(rdp_admin_mod.messages, "success")
-    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value=MagicMock())
-
-    job = mocker.MagicMock()
-    create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create", return_value=job)
-
-    resp = admin_instance.push.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    create.assert_called_once()
-    job.queue.assert_called_once()
-    msg_success.assert_called_once()
-    redirect.assert_called_once_with("/x")
-    assert resp is redirect.return_value
-
-
-@pytest.mark.django_db
-def test_country_rdp_admin_deduplicate_when_not_found_redirects(mocker: MockerFixture, admin_instance, mock_request):
-    mod = rdp_admin_mod
-
+def test_country_rdp_admin_workflow_buttons_redirect_when_not_found(
+    mocker: MockerFixture,
+    admin_instance,
+    mock_request,
+    method,
+):
     admin_instance.get_object = mocker.Mock(return_value=None)
-    msg_error = mocker.patch.object(mod.messages, "error")
-    redirect = mocker.patch.object(mod, "redirect", return_value=mocker.Mock())
+    msg_error = mocker.patch.object(rdp_admin_mod.messages, "error")
+    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value=mocker.Mock())
 
-    resp = admin_instance.deduplicate.func(admin_instance, mock_request, pk="999")
-
-    msg_error.assert_called_once_with(mock_request, "RDP not found")
-    redirect.assert_called_once_with("workspace:workspaces_countryrdp_changelist")
-    assert resp is redirect.return_value
-
-
-@pytest.mark.django_db
-def test_country_rdp_admin_push_when_not_found_redirects(mocker: MockerFixture, admin_instance, mock_request):
-    mod = rdp_admin_mod
-
-    admin_instance.get_object = mocker.Mock(return_value=None)
-    msg_error = mocker.patch.object(mod.messages, "error")
-    redirect = mocker.patch.object(mod, "redirect", return_value=mocker.Mock())
-
-    resp = admin_instance.push.func(admin_instance, mock_request, pk="999")
+    resp = getattr(admin_instance, method).func(admin_instance, mock_request, pk="999")
 
     msg_error.assert_called_once_with(mock_request, "RDP not found")
     redirect.assert_called_once_with("workspace:workspaces_countryrdp_changelist")

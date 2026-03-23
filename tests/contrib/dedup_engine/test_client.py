@@ -59,14 +59,14 @@ def test_client_process(
     action_cls.return_value.call.assert_called_once_with(None)
 
 
-def test_client_approve(
+def test_client_reject(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
     action_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.RejectDeduplicationSetAction")
     client, session, api_root = client_ctx
 
-    client.approve()
+    client.reject()
 
     endpoint = api_root.deduplication_sets.deduplication_set
     endpoint.assert_called_once_with("PROGRAM_ID")

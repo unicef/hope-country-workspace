@@ -10,6 +10,7 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.kobo.forms import ImportKoboForm
 from tests.extras.testutils.factories import OfficeFactory
 from country_workspace.workspaces.admin import CountryProgramAdmin
+from country_workspace.exceptions import RemoteError
 from country_workspace.workspaces.admin.program import KOBO_IMPORT_JOB_DESCRIPTION
 from country_workspace.workspaces.models import CountryProgram
 
@@ -205,16 +206,14 @@ def test_can_update_dedup_settings(
     assert program_admin._can_update_dedup_settings(mock_program) is expected
 
 
-def test_get_dedup_settings(program_admin, mock_program) -> None:
+def test_get_dedup_settings(program_admin, mock_program, mocker: MockerFixture) -> None:
     settings = {"threshold_1": 0.1}
     mock_program.unicef_id = "prg-1"
 
-    with patch("country_workspace.workspaces.admin.program.make_dedup_client") as make_client:
-        client = MagicMock()
-        client.get_deduplication_set_group_config.return_value = settings
-        make_client.return_value.__enter__.return_value = client
+    make_client = mocker.patch("country_workspace.workspaces.admin.program.make_client")
+    make_client.return_value.__enter__.return_value.get_deduplication_set_group_config.return_value = settings
 
-        result = program_admin._get_dedup_settings(mock_program)
+    result = program_admin._get_dedup_settings(mock_program)
 
     make_client.assert_called_once_with(program_id="prg-1")
     assert result == settings
@@ -224,6 +223,7 @@ def test_get_dedup_settings(program_admin, mock_program) -> None:
     ("settings", "expected"),
     [
         ({}, "-"),
+        (RemoteError("boom"), "-"),
         (
             {"threshold_1": 0.1, "threshold_2": 0.2},
             ("threshold_1", "0.1", "threshold_2", "0.2"),
@@ -234,10 +234,11 @@ def test_dedup_settings(
     program_admin,
     mock_program,
     mocker: MockerFixture,
-    settings: dict[str, float],
+    settings: dict[str, float] | RemoteError,
     expected: str | tuple[str, ...],
 ) -> None:
-    mocker.patch.object(program_admin, "_get_dedup_settings", return_value=settings)
+    patch_kwargs = {"side_effect": settings} if isinstance(settings, RemoteError) else {"return_value": settings}
+    mocker.patch.object(program_admin, "_get_dedup_settings", **patch_kwargs)
 
     result = program_admin.dedup_settings(mock_program)
 

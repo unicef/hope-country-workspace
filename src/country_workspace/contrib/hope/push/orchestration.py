@@ -15,7 +15,7 @@ from .config import CreateRdpConfig, PushWorkflowConfig
 from .repository import (
     qs_individuals_by_pks,
     qs_individuals_by_household_pks,
-    lock_rdp,
+    lock_rdp_for_update,
     qs_households,
     preflight_errors,
     rdp_for_dedup,
@@ -151,14 +151,14 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         step()
         if hope_processor.has_errors:
             with transaction.atomic():
-                locked = lock_rdp(pk=rdp.pk)
+                locked = lock_rdp_for_update(pk=rdp.pk)
                 set_rdp_push_status(
                     rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id=hope_processor.hope_rdi_id or "N/A"
                 )
             raise HopePushError(hope_processor.total)
 
     with transaction.atomic():
-        locked = lock_rdp(pk=rdp.pk)
+        locked = lock_rdp_for_update(pk=rdp.pk)
         mark_rdp_beneficiaries_removed(locked, config["master_detail"])
 
         if locked.program.biometric_deduplication_enabled:

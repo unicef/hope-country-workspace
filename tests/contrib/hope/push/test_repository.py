@@ -1,19 +1,21 @@
+from unittest.mock import MagicMock
+from uuid import UUID
+
 import pytest
 from pytest_mock import MockerFixture
+
 import country_workspace.contrib.hope.push.repository as repo
 from country_workspace.models import Rdp as RdpModel
 from testutils.factories import (
-    CountryProgramFactory,
-    CountryRdpFactory,
     CountryHouseholdFactory,
     CountryIndividualFactory,
+    CountryProgramFactory,
+    CountryRdpFactory,
     DataSerializerFactory,
     UserFactory,
 )
 
 pytestmark = pytest.mark.django_db
-
-# --------------------------- fixtures (factories) ---------------------------
 
 
 @pytest.fixture
@@ -38,15 +40,14 @@ def rdp_qs(rdp):
 
 @pytest.fixture
 def rdp_pair(program_with_serializer):
-    """One PENDING and one SUCCESS RDP for filter/exclude test."""
-    r1 = CountryRdpFactory(program=program_with_serializer, status=repo.Rdp.PushStatus.PENDING)
-    r2 = CountryRdpFactory(program=program_with_serializer, status=repo.Rdp.PushStatus.SUCCESS)
-    return r1, r2
+    return (
+        CountryRdpFactory(program=program_with_serializer, status=repo.Rdp.PushStatus.PENDING),
+        CountryRdpFactory(program=program_with_serializer, status=repo.Rdp.PushStatus.SUCCESS),
+    )
 
 
 @pytest.fixture
 def hh_with_members():
-    """Household with at least two members."""
     hh = CountryHouseholdFactory()
     if not hh.members.exists():
         CountryIndividualFactory.create_batch(2, household=hh)
@@ -55,7 +56,6 @@ def hh_with_members():
 
 @pytest.fixture
 def hh_all_members_with_rdp(hh_with_members, rdp):
-    """Attach the same RDP to all members of the household."""
     for ind in hh_with_members.members.all():
         ind.rdp.add(rdp)
     return hh_with_members
@@ -63,35 +63,29 @@ def hh_all_members_with_rdp(hh_with_members, rdp):
 
 @pytest.fixture
 def two_hhs_with_rdp(rdp):
-    """Two households, each linked to the same RDP."""
-    h1 = CountryHouseholdFactory(rdps=rdp)
-    h2 = CountryHouseholdFactory(rdps=rdp)
-    return h1, h2
+    return CountryHouseholdFactory(rdps=rdp), CountryHouseholdFactory(rdps=rdp)
 
 
 @pytest.fixture
 def inds3():
-    """Three individuals not linked to any HH by default."""
-    return [CountryIndividualFactory(), CountryIndividualFactory(), CountryIndividualFactory()]
+    return [CountryIndividualFactory() for _ in range(3)]
 
 
 @pytest.fixture
 def inds2_with_rdp(inds3, rdp):
-    """Pick two individuals, attach RDP to both, and return them."""
-    i1, i2 = inds3[0], inds3[1]
-    i1.rdp.add(rdp)
-    i2.rdp.add(rdp)
-    return i1, i2
+    selected = inds3[:2]
+    for ind in selected:
+        ind.rdp.add(rdp)
+    return tuple(selected)
 
 
 @pytest.fixture
 def rdp_with_individual_links(program_with_serializer):
     rdp = CountryRdpFactory(program=program_with_serializer)
-    i1 = CountryIndividualFactory()
-    i2 = CountryIndividualFactory()
-    i1.rdp.add(rdp)
-    i2.rdp.add(rdp)
-    return rdp, (i1, i2)
+    individuals = CountryIndividualFactory(), CountryIndividualFactory()
+    for ind in individuals:
+        ind.rdp.add(rdp)
+    return rdp, individuals
 
 
 @pytest.fixture
@@ -118,181 +112,164 @@ def rdp_id():
     return 123
 
 
-# --------------------------- serializer_for_program -------------------------
+@pytest.fixture
+def rdp_filter_qs(mocker: MockerFixture):
+    qs = MagicMock()
+    mock = mocker.patch.object(repo.Rdp.objects, "filter", return_value=qs)
+    return mock, qs
+
+
+@pytest.fixture
+def locked_rdp_chain(mocker: MockerFixture):
+    qs = MagicMock()
+    locked_qs = MagicMock()
+    rdp = MagicMock()
+    select_for_update = mocker.patch.object(repo.Rdp.objects, "select_for_update", return_value=qs)
+    qs.select_related.return_value = locked_qs
+    locked_qs.get.return_value = rdp
+    return select_for_update, qs, locked_qs, rdp
+
+
+@pytest.fixture
+def preflight_spies(mocker: MockerFixture):
+    return (
+        mocker.patch.object(repo, "qs_rdp_pending_or_success"),
+        mocker.patch.object(repo, "qs_households_for_preflight"),
+        mocker.patch.object(repo, "qs_individuals_for_preflight_by_households"),
+        mocker.patch.object(repo, "qs_individuals_for_preflight_by_pks"),
+    )
 
 
 def test_serializer_for_program_identity_when_none(program_no_serializer):
-    f = repo.serializer_for_program(program_no_serializer.hope_id)
     data = {"a": 1}
-    assert f(data) == data  # identity when serializer is missing
+    assert repo.serializer_for_program(program_no_serializer.hope_id)(data) == data
 
 
 def test_serializer_for_program_uses_serializer(program_with_serializer):
-    f = repo.serializer_for_program(program_with_serializer.hope_id)
-    data = {"x": 1}  # factory serializer returns data as-is in this setup
-    assert f(data) == data
+    data = {"x": 1}
+    assert repo.serializer_for_program(program_with_serializer.hope_id)(data) == data
 
 
-# --------------------------- rdp_pending_or_success -------------------------
-
-
-def test_rdp_pending_or_success_filters_and_excludes(rdp_pair):
-    r1, r2 = rdp_pair
-    got = list(repo.rdp_pending_or_success(exclude_id=r1.id).values_list("id", flat=True))
-    assert r2.id in got
-    assert r1.id not in got
-
-
-# --------------------------- individuals helpers ----------------------------
+def test_qs_rdp_pending_or_success_filters_and_excludes(rdp_pair):
+    excluded, kept = rdp_pair
+    got = set(repo.qs_rdp_pending_or_success(exclude_id=excluded.id).values_list("id", flat=True))
+    assert got == {kept.id}
 
 
 @pytest.mark.parametrize(
-    ("builder", "arg_name", "expected_ids"),
+    ("builder", "pks_getter", "expected_getter"),
     [
-        # by household: all HH members ordered asc
         (
-            repo.individuals_by_household_pks,
-            "hh_pks",
-            lambda hh, __: list(hh.members.order_by("id").values_list("id", flat=True)),
+            repo.qs_individuals_by_household_pks,
+            lambda hh, inds: [hh.id],
+            lambda hh, inds: list(hh.members.order_by("id").values_list("id", flat=True)),
         ),
-        # by explicit pks: only chosen individuals ordered asc
         (
-            repo.individuals_by_pks,
-            "pks",
-            lambda __, inds: sorted([inds[0].id, inds[2].id]),
+            repo.qs_individuals_by_pks,
+            lambda hh, inds: [inds[2].id, inds[0].id],
+            lambda hh, inds: sorted([inds[0].id, inds[2].id]),
         ),
     ],
     ids=["by_hh", "by_pks"],
 )
-def test_individuals_filters_and_ordering(builder, arg_name, expected_ids, hh_with_members, inds3):
-    if arg_name == "hh_pks":
-        got = list(builder([hh_with_members.id]).values_list("id", flat=True))
-    else:
-        # choose i1 and i3
-        got = list(builder([inds3[2].id, inds3[0].id]).values_list("id", flat=True))
-    assert got == expected_ids(hh_with_members, inds3)
-
-
-# --------------------------- households (prefetch members) ------------------
+def test_qs_individuals_filters_and_ordering(builder, pks_getter, expected_getter, hh_with_members, inds3):
+    got = list(builder(pks_getter(hh_with_members, inds3)).values_list("id", flat=True))
+    assert got == expected_getter(hh_with_members, inds3)
 
 
 @pytest.mark.parametrize("prefetch_members", [True, False], ids=["prefetch", "noprefetch"])
-def test_households_prefetch_members_toggle(hh_with_members, prefetch_members):
-    qs = repo.households(pks=[hh_with_members.id], prefetch_members=prefetch_members)
-    items = list(qs)
-    if prefetch_members:
-        assert all(hasattr(h, "prefetched_members") and h.prefetched_members for h in items)
-    else:
-        assert all(not hasattr(h, "prefetched_members") for h in items)
+def test_qs_households_prefetch_members_toggle(hh_with_members, prefetch_members):
+    items = list(repo.qs_households(pks=[hh_with_members.id], prefetch_members=prefetch_members))
+    assert all(hasattr(h, "prefetched_members") is prefetch_members for h in items)
 
 
-# --------------------------- preflight builders (Prefetch RDP) --------------
-
-
-def test_individuals_for_preflight_by_pks_prefetches_rdp(inds2_with_rdp, rdp_qs, rdp):
-    i1, i2 = inds2_with_rdp
-    qs = repo.individuals_for_preflight_by_pks(pks=[i1.id, i2.id], rdp_qs=rdp_qs)
-    rows = list(qs)
+@pytest.mark.parametrize(
+    ("builder", "kwargs"),
+    [
+        (repo.qs_individuals_for_preflight_by_pks, lambda src, rdp_qs: {"pks": [i.id for i in src], "rdp_qs": rdp_qs}),
+        (
+            repo.qs_individuals_for_preflight_by_households,
+            lambda src, rdp_qs: {"hh_pks": [src.id], "rdp_qs": rdp_qs},
+        ),
+        (repo.qs_households_for_preflight, lambda src, rdp_qs: {"pks": [h.id for h in src], "rdp_qs": rdp_qs}),
+    ],
+    ids=["inds_by_pks", "inds_by_hhs", "hhs"],
+)
+def test_preflight_query_builders_prefetch_rdp(
+    builder, kwargs, inds2_with_rdp, hh_all_members_with_rdp, two_hhs_with_rdp, rdp_qs, rdp
+):
+    source = {
+        repo.qs_individuals_for_preflight_by_pks: inds2_with_rdp,
+        repo.qs_individuals_for_preflight_by_households: hh_all_members_with_rdp,
+        repo.qs_households_for_preflight: two_hhs_with_rdp,
+    }[builder]
+    rows = list(builder(**kwargs(source, rdp_qs)))
     assert rows
-    assert all(hasattr(rw, "rdp_pre") and [x.pk for x in rw.rdp_pre] == [rdp.pk] for rw in rows)
-
-
-def test_individuals_for_preflight_by_households_prefetches_rdp(hh_all_members_with_rdp, rdp_qs, rdp):
-    qs = repo.individuals_for_preflight_by_households(hh_pks=[hh_all_members_with_rdp.id], rdp_qs=rdp_qs)
-    rows = list(qs)
-    assert rows
-    assert all(hasattr(rw, "rdp_pre") and [x.pk for x in rw.rdp_pre] == [rdp.pk] for rw in rows)
-
-
-def test_households_for_preflight_prefetches_rdp(two_hhs_with_rdp, rdp_qs, rdp):
-    h1, h2 = two_hhs_with_rdp
-    qs = repo.households_for_preflight(pks=[h1.id, h2.id], rdp_qs=rdp_qs)
-    rows = list(qs)
-    assert rows
-    assert all(hasattr(h, "rdp_pre") and [x.pk for x in h.rdp_pre] == [rdp.pk] for h in rows)
-
-
-# --------------------------- rdp_selection / individuals_for_rdp ------------
+    assert all([x.pk for x in row.rdp_pre] == [rdp.pk] for row in rows)
 
 
 def test_rdp_selection_prefers_households(two_hhs_with_rdp):
     h1, h2 = two_hhs_with_rdp
-    rdp = h1.rdp.first()
-    master_detail, pks = repo.rdp_selection(rdp=rdp)
-    assert master_detail is True
-    assert set(pks) == {h1.pk, h2.pk}
+    assert repo.rdp_selection(rdp=h1.rdp.first()) == (True, [h1.pk, h2.pk])
 
 
 def test_rdp_selection_falls_back_to_individuals(rdp_with_individual_links):
     rdp, (i1, i2) = rdp_with_individual_links
-    master_detail, pks = repo.rdp_selection(rdp=rdp)
-    assert master_detail is False
-    assert set(pks) == {i1.pk, i2.pk}
+    assert repo.rdp_selection(rdp=rdp) == (False, [i1.pk, i2.pk])
 
 
 @pytest.mark.parametrize(
-    ("fixture_name", "builder"),
+    ("fixture_name", "expected_getter"),
     [
-        ("rdp_with_household_link", repo.individuals_by_household_pks),
-        ("rdp_with_individual_links", repo.individuals_by_pks),
+        (
+            "rdp_with_household_link",
+            lambda selection: list(repo.qs_individuals_by_household_pks([selection.pk]).values_list("id", flat=True)),
+        ),
+        (
+            "rdp_with_individual_links",
+            lambda selection: list(
+                repo.qs_individuals_by_pks([selection[0].pk, selection[1].pk]).values_list("id", flat=True)
+            ),
+        ),
     ],
     ids=["by_households", "by_pks"],
 )
-def test_individuals_for_rdp_uses_selection(request: pytest.FixtureRequest, fixture_name, builder):
+def test_qs_individuals_for_rdp_uses_selection(request: pytest.FixtureRequest, fixture_name, expected_getter):
     rdp, selection = request.getfixturevalue(fixture_name)
-
-    if builder is repo.individuals_by_household_pks:
-        hh = selection
-        expected = list(builder([hh.pk]).values_list("id", flat=True))
-    else:
-        i1, i2 = selection
-        expected = list(builder([i1.pk, i2.pk]).values_list("id", flat=True))
-
-    got = list(repo.individuals_for_rdp(rdp=rdp).values_list("id", flat=True))
-    assert got == expected
-
-
-# --------------------------- workflow_config_for_rdp ------------------------
+    assert list(repo.qs_individuals_for_rdp(rdp=rdp).values_list("id", flat=True)) == expected_getter(selection)
 
 
 @pytest.mark.parametrize(
-    ("fixture_name", "master_detail"),
+    ("fixture_name", "master_detail", "expected_pks"),
     [
-        ("rdp_with_household_link", True),
-        ("rdp_with_individual_links", False),
+        ("rdp_with_household_link", True, lambda selection: [selection.pk]),
+        ("rdp_with_individual_links", False, lambda selection: [selection[0].pk, selection[1].pk]),
     ],
     ids=["master_detail", "people_only"],
 )
 def test_workflow_config_for_rdp_builds_expected(
-    request: pytest.FixtureRequest, fixture_name: str, master_detail: bool
+    request: pytest.FixtureRequest,
+    fixture_name: str,
+    master_detail: bool,
+    expected_pks,
 ):
     rdp, selection = request.getfixturevalue(fixture_name)
     imported_by_email = "u@example.com"
 
-    cfg = repo.workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
-
-    assert cfg["batch_name"] == rdp.name
-    assert cfg["co_slug"] == rdp.program.country_office.slug
-    assert cfg["imported_by_email"] == imported_by_email
-    assert cfg["master_detail"] is master_detail
-    assert cfg["program_hope_id"] == rdp.program.hope_id
-    assert cfg["rdp_id"] == rdp.pk
-
-    if master_detail:
-        expected_pks = [selection.pk]
-    else:
-        i1, i2 = selection
-        expected_pks = [i1.pk, i2.pk]
-    assert set(cfg["pks"]) == set(expected_pks)
-
-
-# --------------------------- rdp_for_* loaders ------------------------------
+    assert repo.workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email) == {
+        "batch_name": rdp.name,
+        "co_slug": rdp.program.country_office.slug,
+        "imported_by_email": imported_by_email,
+        "master_detail": master_detail,
+        "pks": expected_pks(selection),
+        "program_hope_id": rdp.program.hope_id,
+        "rdp_id": rdp.pk,
+    }
 
 
 def test_rdp_for_dedup_returns_rdp_with_program(rdp):
     obj = repo.rdp_for_dedup(pk=rdp.pk)
-    assert obj.pk == rdp.pk
-    assert obj.program.pk == rdp.program.pk
+    assert (obj.pk, obj.program.pk) == (rdp.pk, rdp.program.pk)
 
 
 def test_rdp_for_push_returns_rdp_with_required_relations(rdp_with_pushed_by, pushed_by_user):
@@ -303,65 +280,74 @@ def test_rdp_for_push_returns_rdp_with_required_relations(rdp_with_pushed_by, pu
     assert obj.pushed_by.pk == pushed_by_user.pk
 
 
-# --------------------------- dedup state helpers ----------------------------
+def test_lock_rdp_for_update_locks_rdp_with_program(locked_rdp_chain, rdp_id: int) -> None:
+    select_for_update, qs, locked_qs, rdp = locked_rdp_chain
+
+    assert repo.lock_rdp_for_update(pk=rdp_id) is rdp
+    select_for_update.assert_called_once_with()
+    qs.select_related.assert_called_once_with("program")
+    locked_qs.get.assert_called_once_with(pk=rdp_id)
 
 
-def test_mark_rdp_dedup_finished_calls_update(mocker: MockerFixture, rdp_id: int) -> None:
-    qs = mocker.MagicMock()
-    mock_filter = mocker.patch.object(repo.Rdp.objects, "filter", return_value=qs)
+@pytest.mark.parametrize(
+    "deduplication_set_id",
+    [None, UUID("11111111-1111-1111-1111-111111111111")],
+    ids=["without_set_id", "with_set_id"],
+)
+def test_set_rdp_dedup_state_updates_expected_fields(
+    rdp_filter_qs,
+    rdp_id: int,
+    deduplication_set_id: UUID | None,
+) -> None:
+    mock_filter, qs = rdp_filter_qs
+    expected = {"dedup_run_state": repo.Rdp.DedupRunState.FINISHED}
+    if deduplication_set_id is not None:
+        expected["deduplication_set_id"] = deduplication_set_id
 
-    repo.mark_rdp_dedup_finished(rdp_id=rdp_id)
+    repo.set_rdp_dedup_state(
+        rdp_id=rdp_id,
+        state=repo.Rdp.DedupRunState.FINISHED,
+        deduplication_set_id=deduplication_set_id,
+    )
 
     mock_filter.assert_called_once_with(pk=rdp_id)
-    qs.update.assert_called_once_with(dedup_run_state=repo.Rdp.DedupRunState.FINISHED)
+    qs.update.assert_called_once_with(**expected)
 
 
-def test_set_rdp_push_status_sets_fields_and_saves(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock()
-    status = repo.Rdp.PushStatus.SUCCESS
-    hope_rdi_id = "RID-1"
+def test_set_rdp_push_status_sets_fields_and_saves() -> None:
+    rdp = MagicMock()
 
-    repo.set_rdp_push_status(rdp=rdp, status=status, hope_rdi_id=hope_rdi_id)
+    repo.set_rdp_push_status(
+        rdp=rdp,
+        status=repo.Rdp.PushStatus.SUCCESS,
+        hope_rdi_id="RID-1",
+    )
 
-    assert rdp.status == status
-    assert rdp.hope_rdi_id == hope_rdi_id
+    assert (rdp.status, rdp.hope_rdi_id) == (repo.Rdp.PushStatus.SUCCESS, "RID-1")
     rdp.save.assert_called_once_with(update_fields=["status", "hope_rdi_id"])
 
 
-# --------------------------- preflight_errors -------------------------------
-
-
-def test_preflight_errors_empty_pks_returns_empty(mocker: MockerFixture):
-    spy_rdp_qs = mocker.patch.object(repo, "rdp_pending_or_success")
-    spy_hh = mocker.patch.object(repo, "households_for_preflight")
-    spy_ind_hh = mocker.patch.object(repo, "individuals_for_preflight_by_households")
-    spy_ind = mocker.patch.object(repo, "individuals_for_preflight_by_pks")
-
+def test_preflight_errors_empty_pks_returns_empty(preflight_spies):
     assert repo.preflight_errors(pks=[], master_detail=True, exclude_rdp_id=None) == []
-
-    spy_rdp_qs.assert_not_called()
-    spy_hh.assert_not_called()
-    spy_ind_hh.assert_not_called()
-    spy_ind.assert_not_called()
+    for spy in preflight_spies:
+        spy.assert_not_called()
 
 
 def test_preflight_errors_master_detail_collects_errors(mocker: MockerFixture, qs, beneficiary_stub):
-    hh = beneficiary_stub(pk=1, _valid=False, rdp_pre=[object()])
-    ind = beneficiary_stub(pk=2, _valid=True, rdp_pre=[object()])
+    mocker.patch.object(repo, "qs_rdp_pending_or_success", return_value=object())
+    spy_hh = mocker.patch.object(
+        repo,
+        "qs_households_for_preflight",
+        return_value=qs([beneficiary_stub(pk=1, _valid=False, rdp_pre=[object()])]),
+    )
+    spy_ind_hh = mocker.patch.object(
+        repo,
+        "qs_individuals_for_preflight_by_households",
+        return_value=qs([beneficiary_stub(pk=2, _valid=True, rdp_pre=[object()])]),
+    )
+    spy_ind = mocker.patch.object(repo, "qs_individuals_for_preflight_by_pks")
 
-    sentinel_rdp_qs = object()
-    mocker.patch.object(repo, "rdp_pending_or_success", return_value=sentinel_rdp_qs)
-
-    hh_qs = qs([hh])
-    ind_qs = qs([ind])
-
-    spy_hh = mocker.patch.object(repo, "households_for_preflight", return_value=hh_qs)
-    spy_ind_hh = mocker.patch.object(repo, "individuals_for_preflight_by_households", return_value=ind_qs)
-    spy_ind = mocker.patch.object(repo, "individuals_for_preflight_by_pks")
-
-    errors = repo.preflight_errors(pks=[10], master_detail=True, exclude_rdp_id=123)
-
-    assert errors == [
+    assert repo.preflight_errors(pks=[10], master_detail=True, exclude_rdp_id=123) == [
         "HH #1 invalid",
         "HH #1 already in another RDP(s) (pending/success)",
         "Ind #2 already in another RDP(s) (pending/success)",
@@ -372,18 +358,16 @@ def test_preflight_errors_master_detail_collects_errors(mocker: MockerFixture, q
 
 
 def test_preflight_errors_people_only_collects_errors(mocker: MockerFixture, qs, beneficiary_stub):
-    ind = beneficiary_stub(pk=7, _valid=False, rdp_pre=[object()])
+    mocker.patch.object(repo, "qs_rdp_pending_or_success", return_value=object())
+    spy_hh = mocker.patch.object(repo, "qs_households_for_preflight")
+    spy_ind_hh = mocker.patch.object(repo, "qs_individuals_for_preflight_by_households")
+    spy_ind = mocker.patch.object(
+        repo,
+        "qs_individuals_for_preflight_by_pks",
+        return_value=qs([beneficiary_stub(pk=7, _valid=False, rdp_pre=[object()])]),
+    )
 
-    sentinel_rdp_qs = object()
-    mocker.patch.object(repo, "rdp_pending_or_success", return_value=sentinel_rdp_qs)
-
-    spy_hh = mocker.patch.object(repo, "households_for_preflight")
-    spy_ind_hh = mocker.patch.object(repo, "individuals_for_preflight_by_households")
-    spy_ind = mocker.patch.object(repo, "individuals_for_preflight_by_pks", return_value=qs([ind]))
-
-    errors = repo.preflight_errors(pks=[7], master_detail=False, exclude_rdp_id=None)
-
-    assert errors == [
+    assert repo.preflight_errors(pks=[7], master_detail=False, exclude_rdp_id=None) == [
         "Ind #7 invalid",
         "Ind #7 already in another RDP(s) (pending/success)",
     ]

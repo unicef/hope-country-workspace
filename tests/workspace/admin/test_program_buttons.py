@@ -191,7 +191,7 @@ def test_update_dedup_settings_post_success(
     )
     mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=True)
 
-    form = MagicMock()
+    form = mocker.MagicMock()
     form.is_valid.return_value = True
     form.get_payload.return_value = dedup_settings_data["payload"]
     form_cls = mocker.patch(
@@ -199,11 +199,11 @@ def test_update_dedup_settings_post_success(
         return_value=form,
     )
 
-    dedup_client = MagicMock()
-    dedup_client_cm = MagicMock()
+    dedup_client = mocker.MagicMock()
+    dedup_client_cm = mocker.MagicMock()
     dedup_client_cm.__enter__.return_value = dedup_client
     mocker.patch(
-        f"{CountryProgramAdmin.__module__}.make_dedup_client",
+        f"{CountryProgramAdmin.__module__}.make_client",
         return_value=dedup_client_cm,
     )
 
@@ -240,7 +240,7 @@ def test_update_dedup_settings_post_blocked_for_successful_rdp(
     )
     mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=False)
     form_cls = mocker.patch(f"{CountryProgramAdmin.__module__}.DedupSettingsForm")
-    make_client = mocker.patch(f"{CountryProgramAdmin.__module__}.make_dedup_client")
+    make_client = mocker.patch(f"{CountryProgramAdmin.__module__}.make_client")
 
     client.force_login(user)
     with user_grant_permissions(user, "workspaces.change_countryprogram", country_program):

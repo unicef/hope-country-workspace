@@ -1,7 +1,7 @@
 import pytest
 from collections.abc import Callable
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
@@ -530,27 +530,13 @@ def test_dedup_run_success_sets_uuid(mocker: MockerFixture) -> None:
     assert proc.total["deduplication_set_id"] == str(ds_id)
 
 
-def test_collect_images_filters_blanks(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock(
-        pk=1,
-        program=mocker.MagicMock(unicef_id="CO-PRG"),
-        status=Rdp.PushStatus.PENDING,
-        dedup_run_state=None,
-    )
-    mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-
-    pairs = [
-        (100, None),
-        (101, ""),
-        (102, "   "),
-        (103, " photo.jpg "),
-    ]
-
+def test_collect_images_filters_blanks(mocker: MockerFixture, dedup_processor) -> None:
     rows = mocker.MagicMock()
-    rows.iterator.return_value = iter(pairs)
+    rows.iterator.return_value = iter([(100, None), (101, ""), (102, "   "), (103, " photo.jpg ")])
 
     qs = mocker.MagicMock()
     qs.values_list.return_value = rows
+    mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
 
     mocker.patch(f"{MOD}.individuals_for_rdp", return_value=qs)
 
@@ -561,119 +547,87 @@ def test_collect_images_filters_blanks(mocker: MockerFixture) -> None:
     assert images == [{"reference_pk": "103", "filename": "photo.jpg"}]
 
 
-def test_deduplicate_happy_path_updates_rdp_and_returns_uuid(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock(
-        pk=123,
-        program=mocker.MagicMock(unicef_id="CO-PRG"),
-        status=Rdp.PushStatus.PENDING,
-        dedup_run_state=None,
-    )
-    mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-
+def test_deduplicate_happy_path_sets_state_and_returns_uuid(
+    mocker: MockerFixture,
+    dedup_processor,
+    dedup_api_cm,
+) -> None:
     api = mocker.MagicMock()
     ds_id = uuid4()
     api.create_deduplication_set.return_value = str(ds_id)
-    api.create_images.return_value = True
-    api.process.return_value = True
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(api))
+    spy_state = mocker.patch(f"{MOD}.set_rdp_dedup_state")
 
-    mocker.patch(
-        f"{MOD}.dedup_api",
-        return_value=mocker.MagicMock(
-            __enter__=mocker.MagicMock(return_value=api),
-            __exit__=mocker.MagicMock(return_value=False),
-        ),
+    images = [{"reference_pk": "1", "filename": "a.jpg"}]
+
+    assert dedup_processor._deduplicate(images) == ds_id
+    spy_state.assert_called_once_with(
+        rdp_id=dedup_processor.rdp.pk,
+        state=Rdp.DedupRunState.IN_PROGRESS,
+        deduplication_set_id=ds_id,
     )
-
-    upd_qs = mocker.MagicMock()
-    mocker.patch(f"{MOD}.Rdp.objects.filter", return_value=upd_qs)
-
-    proc = DedupProcessor(rdp_id=rdp.pk)
-    out = proc._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}])
-
-    assert out == UUID(str(ds_id))
-    upd_qs.update.assert_called_once_with(
-        deduplication_set_id=UUID(str(ds_id)),
-        dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
-    )
-    api.create_images.assert_called_once()
+    api.create_images.assert_called_once_with(images)
     api.process.assert_called_once_with()
 
 
 def test_deduplicate_invalid_uuid_is_reported(
-    mocker: MockerFixture, err_contains: Callable[[list[str], str], bool]
+    mocker: MockerFixture,
+    dedup_processor,
+    dedup_api_cm,
+    err_contains: Callable[[list[str], str], bool],
 ) -> None:
-    rdp = mocker.MagicMock(
-        pk=123,
-        program=mocker.MagicMock(unicef_id="CO-PRG"),
-        status=Rdp.PushStatus.PENDING,
-        dedup_run_state=None,
-    )
-    mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-
     api = mocker.MagicMock()
     api.create_deduplication_set.return_value = "not-a-uuid"
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(api))
+    spy_state = mocker.patch(f"{MOD}.set_rdp_dedup_state")
 
-    mocker.patch(
-        f"{MOD}.dedup_api",
-        return_value=mocker.MagicMock(
-            __enter__=mocker.MagicMock(return_value=api),
-            __exit__=mocker.MagicMock(return_value=False),
-        ),
-    )
-
-    upd_qs = mocker.MagicMock()
-    mocker.patch(f"{MOD}.Rdp.objects.filter", return_value=upd_qs)
-
-    proc = DedupProcessor(rdp_id=rdp.pk)
-    out = proc._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}])
-
-    assert out is None
-    assert err_contains(proc.total["errors"], "returned invalid UUID")
-    upd_qs.update.assert_not_called()
+    assert dedup_processor._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}]) is None
+    assert err_contains(dedup_processor.total["errors"], "returned invalid UUID")
+    spy_state.assert_not_called()
 
 
 def test_deduplicate_create_set_none(mocker: MockerFixture, dedup_processor, dedup_api_cm) -> None:
-    api = mocker.MagicMock()
-    api.create_deduplication_set.return_value = None
-
-    mocker.patch(f"{MOD}.dedup_api", return_value=dedup_api_cm(api))
-    spy_filter = mocker.patch(f"{MOD}.Rdp.objects.filter")
+    api = mocker.MagicMock(create_deduplication_set=mocker.Mock(return_value=None))
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(api))
+    spy_state = mocker.patch(f"{MOD}.set_rdp_dedup_state")
 
     assert dedup_processor._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}]) is None
     api.create_images.assert_not_called()
     api.process.assert_not_called()
-    spy_filter.assert_not_called()
+    spy_state.assert_not_called()
     assert dedup_processor.total["errors"] == []
 
 
 @pytest.mark.parametrize(
-    ("create_ok", "process_ok", "process_called"),
-    [(False, True, False), (True, False, True)],
-    ids=["create_images_false", "process_false"],
+    ("method", "process_called"),
+    [("create_images", False), ("process", True)],
+    ids=["create_images_error", "process_error"],
 )
-def test_deduplicate_create_images_or_process_fail(
+def test_deduplicate_remote_failures(
     mocker: MockerFixture,
     dedup_processor,
     dedup_api_cm,
-    create_ok: bool,
-    process_ok: bool,
+    err_contains: Callable[[list[str], str], bool],
+    method: str,
     process_called: bool,
 ) -> None:
     api = mocker.MagicMock()
-    api.create_deduplication_set.return_value = uuid4()
-    api.create_images.return_value = create_ok
-    api.process.return_value = process_ok
+    ds_id = uuid4()
+    api.create_deduplication_set.return_value = ds_id
+    getattr(api, method).side_effect = RemoteError("boom")
 
-    mocker.patch(f"{MOD}.dedup_api", return_value=dedup_api_cm(api))
-    qs = mocker.MagicMock()
-    mocker.patch(f"{MOD}.Rdp.objects.filter", return_value=qs)
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(api))
+    spy_state = mocker.patch(f"{MOD}.set_rdp_dedup_state")
 
     assert dedup_processor._deduplicate([{"reference_pk": "1", "filename": "a.jpg"}]) is None
-    qs.update.assert_called_once()
-    assert dedup_processor.total["errors"] == []
-
+    assert err_contains(dedup_processor.total["errors"], "request failed. boom")
+    spy_state.assert_called_once_with(
+        rdp_id=dedup_processor.rdp.pk,
+        state=Rdp.DedupRunState.IN_PROGRESS,
+        deduplication_set_id=ds_id,
+    )
     api.create_images.assert_called_once()
     if process_called:
-        api.process.assert_called_once()
+        api.process.assert_called_once_with()
     else:
         api.process.assert_not_called()

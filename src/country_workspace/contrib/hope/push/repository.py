@@ -10,7 +10,7 @@ from .config import Serializer, PushWorkflowConfig, Beneficiary
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 
 
-def lock_rdp(*, pk: int) -> Rdp:
+def lock_rdp_for_update(*, pk: int) -> Rdp:
     """Return RDP locked for update."""
     return Rdp.objects.select_for_update().select_related("program").get(pk=pk)
 
@@ -27,10 +27,10 @@ def rdp_for_push(*, pk: int) -> Rdp:
 
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     """Return (master_detail, pks) based on actual RDP links."""
-    hh_pks = list(rdp.households.values_list("pk", flat=True))
+    hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))
     if hh_pks:
         return True, hh_pks
-    return False, list(rdp.individuals.values_list("pk", flat=True))
+    return False, list(rdp.individuals.order_by("pk").values_list("pk", flat=True))
 
 
 def serializer_for_program(hope_id: str) -> Serializer:
