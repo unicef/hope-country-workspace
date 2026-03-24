@@ -538,8 +538,6 @@ def test_collect_images_filters_blanks(mocker: MockerFixture, dedup_processor) -
     qs.values_list.return_value = rows
     mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
 
-    mocker.patch(f"{MOD}.individuals_for_rdp", return_value=qs)
-
     proc = DedupProcessor(rdp_id=1)
     images = proc._collect_images()
 

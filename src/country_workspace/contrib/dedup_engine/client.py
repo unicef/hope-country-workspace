@@ -80,10 +80,7 @@ class Client:
             self.session,
             self.deduplication_set_endpoint.reject,
         )
-        payload: request.Reject = {
-            "action": "reject",
-            "reference_pks": [],
-        }
+        payload: request.Reject = {"action": "reject"}
         self._request("reject", lambda: reject_action.call(payload))
 
     def status(self) -> Status:

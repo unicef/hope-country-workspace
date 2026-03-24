@@ -10,15 +10,11 @@ class Image(TypedDict):
     filename: str
 
 
-class ReferencePks(TypedDict):
-    reference_pks: list[str]
-
-
-class Approve(ReferencePks):
+class Approve(TypedDict):
     action: Literal["approve"]
 
 
-class Reject(ReferencePks):
+class Reject(TypedDict):
     action: Literal["reject"]
 
 
