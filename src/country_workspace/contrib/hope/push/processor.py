@@ -357,46 +357,70 @@ class DedupProcessor(ProcessorBase):
 
         self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
 
-        images = self._collect_images()
-        self.total["images_sent"] = len(images)
-
-        if not images:
+        image_batches = (list(batch) for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE))
+        first_batch = next(image_batches, None)
+        if first_batch is None:
             self.fail("Images", "no valid photos found")
+            self.total["images_sent"] = 0
             self.total["deduplication_set_id"] = None
             return
 
-        ds_id = self._deduplicate(images)
+        ds_id, images_sent = self.deduplicate(first_batch, image_batches)
+        self.total["images_sent"] = images_sent
         self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
 
-    def _collect_images(self) -> list[dict[str, str]]:
-        """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
+    def _iter_images(self) -> Iterator[dict[str, str]]:
+        """Yield DedupEngine images payload from RDP individuals."""
         rows = qs_individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
-
-        images: list[dict[str, str]] = []
         for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
             if isinstance(photo, str) and (photo := photo.strip()):
-                images.append({"reference_pk": str(pk), "filename": photo})
-        return images
+                yield {"reference_pk": str(pk), "filename": photo}
 
-    def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
-        """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
+    def create_deduplication_set(self, client: Any) -> UUID | None:
+        """Create DedupEngine set and return its UUID."""
+        raw = self.try_remote("create_deduplication_set", client.create_deduplication_set)
+        if raw is None:
+            return None
+
+        try:
+            return UUID(str(raw))
+        except (TypeError, ValueError) as e:
+            self.fail("create_deduplication_set", f"returned invalid UUID {raw!r}: {e}")
+            return None
+
+    def upload_images(
+        self, client: Any, first_batch: list[dict[str, str]], image_batches: Iterator[list[dict[str, str]]]
+    ) -> tuple[bool, int]:
+        """Upload image batches and return success flag with sent images count."""
+
+        def batches() -> Iterator[list[dict[str, str]]]:
+            yield first_batch
+            yield from image_batches
+
+        images_sent = 0
+        for batch in batches():
+            if not self.run_remote("create_images", lambda batch=batch: client.create_images(batch)):
+                return False, images_sent
+            images_sent += len(batch)
+
+        return True, images_sent
+
+    def deduplicate(
+        self, first_batch: list[dict[str, str]], image_batches: Iterator[list[dict[str, str]]]
+    ) -> tuple[UUID | None, int]:
+        """Run remote DedupEngine steps and return deduplication_set_id with sent images count."""
         with make_dedup_client(self.program_unicef_id) as client:
-            raw = self.try_remote("create_deduplication_set", client.create_deduplication_set)
-            if raw is None:
-                return None
-
-            try:
-                ds_id = UUID(str(raw))
-            except (TypeError, ValueError) as e:
-                self.fail("create_deduplication_set", f"returned invalid UUID {raw!r}: {e}")
-                return None
+            ds_id = self.create_deduplication_set(client)
+            if ds_id is None:
+                return None, 0
 
             set_rdp_dedup_state(rdp_id=self.rdp.pk, state=Rdp.DedupRunState.IN_PROGRESS, deduplication_set_id=ds_id)
 
-            if not self.run_remote("create_images", lambda images=images: client.create_images(images)):
-                return None
+            uploaded, images_sent = self.upload_images(client, first_batch, image_batches)
+            if not uploaded:
+                return ds_id, images_sent
 
             if not self.run_remote("process", client.process):
-                return None
+                return ds_id, images_sent
 
-            return ds_id
+            return ds_id, images_sent
