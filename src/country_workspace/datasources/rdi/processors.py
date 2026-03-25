@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as RDIImage
 
 from country_workspace.context import batch_ctx
+from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
@@ -210,8 +211,6 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
                 result = _import_master_detail(job, batch, config)
             else:
                 result = _import_people_only(job, batch, config)
-
-    from country_workspace.utils.collision import detect_and_mark_collisions_for_batch
 
     detect_and_mark_collisions_for_batch(batch)
 
