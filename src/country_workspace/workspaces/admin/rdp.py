@@ -54,7 +54,11 @@ def visible_workflow(btn: ButtonWidget) -> bool:
 def visible_reject_ds(btn: ButtonWidget) -> bool:
     if (obj := btn.original) is None:
         return False
-    return bool(obj.program.biometric_deduplication_enabled and obj.deduplication_set_id)
+    return bool(
+        obj.status == obj.PushStatus.PENDING
+        and obj.program.biometric_deduplication_enabled
+        and obj.deduplication_set_id
+    )
 
 
 def enabled_deduplicate(btn: ButtonWidget) -> bool:
@@ -83,7 +87,11 @@ def enabled_reject_ds(btn: ButtonWidget) -> bool:
     if obj is None:
         return False
 
-    if not obj.program.biometric_deduplication_enabled or not obj.deduplication_set_id:
+    if not (
+        obj.status == obj.PushStatus.PENDING
+        and obj.program.biometric_deduplication_enabled
+        and obj.deduplication_set_id
+    ):
         return False
 
     return _dedup_status_safe(obj.program.unicef_id).status not in {
@@ -96,13 +104,18 @@ def enabled_push(btn: ButtonWidget) -> bool:
     obj = btn.original
     if obj is None or obj.status != obj.PushStatus.PENDING:
         return False
-
     if not obj.program.biometric_deduplication_enabled:
         return True
 
     match obj.dedup_run_state:
+        case obj.DedupRunState.NOT_RUN | obj.DedupRunState.FINISHED:
+            return True
         case obj.DedupRunState.IN_PROGRESS:
-            return _dedup_status_safe(obj.program.unicef_id).status == DedupResponseStatus.SUCCESS
+            return _dedup_status_safe(obj.program.unicef_id).status not in {
+                DedupResponseStatus.STARTED,
+                DedupResponseStatus.PENDING,
+                DedupResponseStatus.STATUS_UNAVAILABLE,
+            }
         case _:
             return False
 

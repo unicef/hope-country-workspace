@@ -128,6 +128,15 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     except RemoteError as e:
         raise HopePushError({"errors": [str(e)]}) from e
 
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp.pk)
+        set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupRunState.FINISHED)
+        set_rdp_push_status(
+            rdp=locked,
+            status=Rdp.PushStatus.CANCELLED if rejected else locked.status,
+            hope_rdi_id=locked.hope_rdi_id or "N/A",
+        )
+
     return {
         "rdp_id": rdp.pk,
         "program": program_id,
