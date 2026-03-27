@@ -50,7 +50,12 @@ class Rdp(BaseModel):
                 violation_error_message=_("There is already an active (PENDING) RDP for this program."),
             ),
         ]
-        permissions = [("reset_rdp", _("Can reset RDP"))]
+        permissions = [
+            ("reset_rdp", _("Can reset RDP")),
+            ("create_rdp", _("Can create RDP from selected beneficiaries")),
+            ("deduplicate_rdp", _("Can run RDP deduplication")),
+            ("push_rdp_to_hope", _("Can push RDP to HOPE")),
+        ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")
 

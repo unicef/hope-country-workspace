@@ -58,6 +58,7 @@ ROUTES: Final[dict[Route, str]] = {
 class ErrorConfig(NamedTuple):
     MAX_ERRORS: int = 300
     MAX_ERROR_LEN: int = 2000
+    MAX_IDS_HINT: int = 5
     MARKER: str = "… further errors truncated …"
 
 

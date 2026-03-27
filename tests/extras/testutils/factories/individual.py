@@ -24,7 +24,7 @@ def get_ind_fields(individual: "CountryIndividual"):
         "full_name": f"{individual.name} {fname}",
         "sex": choice(["MALE", "FEMALE"]),
         "given_name": "",
-        "household_id": hh.flex_fields["household_id"] if hh else None,
+        "household_id": hh.flex_fields.get("household_id") if hh else None,
         "middle_name": "",
         "photo": "",
         "relationship": choice(["HEAD", "SON_DAUGHTER", "BROTHER_SISTER", "FOSTER_CHILD"]),
