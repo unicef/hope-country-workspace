@@ -47,18 +47,24 @@ zlib1g-dev  \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gnupg wget curl unzip && \
-    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list && \
-    apt-get update -y && \
-    apt-get install -y --no-install-recommends google-chrome-stable && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/* && \
-    CHROME_VERSION=$(google-chrome --product-version) && \
-    wget -q --continue -P /chromedriver "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip" && \
-    unzip /chromedriver/chromedriver* -d /usr/local/bin/ && \
-    rm -rf /chromedriver
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl wget gnupg unzip; \
+    install -d -m 0755 /etc/apt/keyrings; \
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | \
+    gpg --dearmor -o /etc/apt/keyrings/google-linux.gpg; \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+    > /etc/apt/sources.list.d/google-chrome.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends google-chrome-stable; \
+    CHROME_BUILD="$(google-chrome --product-version | cut -d. -f1-3)"; \
+    DRIVER_VERSION="$(curl -fsSL "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${CHROME_BUILD}")"; \
+    curl -fsSL \
+    "https://storage.googleapis.com/chrome-for-testing-public/${DRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
+    -o /tmp/chromedriver.zip; \
+    unzip -q /tmp/chromedriver.zip -d /tmp; \
+    install -m 0755 /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver; \
+    rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64 /var/lib/apt/lists/*
 
 RUN pip install uv uwsgi
 
