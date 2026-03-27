@@ -63,6 +63,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
         if refresh:
             self.refresh_from_db(fields=["config"])
         if self.is_termination_requested:
+            self.cancel()
             raise GracefulJobCancellationError(f"Cancellation requested for job #{self.pk}")
 
     def execute(self) -> Any:
