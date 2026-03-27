@@ -22,8 +22,18 @@ class RdpAdmin(BaseModelAdmin):
         ("pushed_by", AutoCompleteFilter),
         ("status"),
     )
-    fields = ("name", "country_office", "program", "pushed_by", "push_date", "status", "hope_rdi_id", "related_job")
-    readonly_fields = ("country_office", "program", "related_job", "push_date", "hope_rdi_id")
+    fields = (
+        "name",
+        "parent",
+        "country_office",
+        "program",
+        "pushed_by",
+        "push_date",
+        "status",
+        "hope_rdi_id",
+        "related_job",
+    )
+    readonly_fields = ("parent", "country_office", "program", "related_job", "push_date", "hope_rdi_id")
     search_fields = ("name",)
     ordering = ("-push_date",)
 
@@ -46,7 +56,8 @@ class RdpAdmin(BaseModelAdmin):
             obj.households if obj.program.beneficiary_group.master_detail else obj.individuals
         ).model._meta.model_name
         base = reverse(f"admin:country_workspace_{item}_changelist")
-        button.href = f"{base}?rdp__exact={obj.pk}"
+        owner = obj.parent if obj.parent_id else obj
+        button.href = f"{base}?rdp__exact={owner.pk}"
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: LinkButton) -> None:

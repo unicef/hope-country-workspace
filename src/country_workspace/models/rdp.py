@@ -36,6 +36,14 @@ class Rdp(BaseModel):
         help_text=_("Internal deduplication lifecycle."),
     )
     deduplication_set_id = models.UUIDField(blank=True, null=True)
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="children",
+        help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
+    )
 
     class Meta:
         constraints = [

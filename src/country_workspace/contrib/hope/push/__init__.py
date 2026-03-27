@@ -1,5 +1,6 @@
 from .config import CreateRdpConfig, PushExistingRdpConfig
 from .orchestration import (
+    clone_rdp_core,
     create_rdp_core,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
@@ -9,6 +10,7 @@ from .orchestration import (
 __all__ = [
     "CreateRdpConfig",
     "PushExistingRdpConfig",
+    "clone_rdp_core",
     "create_rdp_core",
     "dedup_existing_rdp_core",
     "push_existing_rdp_core",

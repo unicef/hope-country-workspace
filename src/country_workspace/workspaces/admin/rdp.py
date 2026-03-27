@@ -8,21 +8,25 @@ from django.contrib import messages
 from django.contrib.admin import register
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
 from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
+from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
     PushExistingRdpConfig,
+    clone_rdp_core,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
 )
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob
+from country_workspace.utils.fields import rdi_name_default
 
 
 from ...state import state
@@ -34,6 +38,17 @@ from .hh_ind import SelectedProgramMixin
 
 
 from admin_extra_buttons.buttons import ButtonWidget
+
+
+def visible_clone_rdp(btn: ButtonWidget) -> bool:
+    if (obj := btn.original) is None:
+        return False
+    return obj.parent_id is None
+
+
+def enabled_clone_rdp(btn: ButtonWidget) -> bool:
+    obj = btn.original
+    return bool(obj and obj.parent_id is None)
 
 
 def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
@@ -126,6 +141,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_filter = (("status", ChoiceFilter),)
     readonly_fields = fields = (
         "name",
+        "parent",
         "push_date",
         "status",
         "biometric_deduplication_enabled",
@@ -254,6 +270,55 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
+        label="Clone RDP",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.create_rdp",
+        visible=visible_clone_rdp,
+        enabled=enabled_clone_rdp,
+        html_attrs={"title": "Create a child RDP that reuses the parent selection."},
+    )
+    def clone_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Create a child RDP without copying beneficiary M2M links."""
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        if request.method == "POST" and "_clone" in request.POST:
+            if (form := CreateRDPForm(request.POST)).is_valid():
+                try:
+                    cloned = clone_rdp_core(
+                        source=obj,
+                        batch_name=form.cleaned_data["batch_name"] or rdi_name_default(),
+                        pushed_by_id=request.user.id,
+                    )
+                except HopePushError as e:
+                    messages.error(request, str(e))
+                else:
+                    messages.success(request, "RDP cloned")
+                    return redirect(self._change_url(cloned))
+        else:
+            form = CreateRDPForm(
+                initial={
+                    "action": "clone_rdp",
+                    "select_across": False,
+                    "_selected_action": [str(obj.pk)],
+                },
+            )
+        ctx = self.get_common_context(
+            request,
+            title="Clone RDP",
+            form=form,
+            original=obj,
+            changelist_url=reverse("workspace:workspaces_countryrdp_changelist"),
+            original_change_url=self._change_url(obj),
+            intro_text="A new RDP will be created using the parent RDP beneficiary selection.",
+            submit_label="Clone RDP",
+            submit_name="_clone",
+        )
+        return render(request, "workspace/actions/create_rdp.html", ctx)
+
+    @button(
         label="Push to HOPE",
         change_form=True,
         change_list=False,
@@ -290,4 +355,5 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return
         item = "countryhousehold" if obj.program.beneficiary_group.master_detail else "countryindividual"
         base = reverse(f"workspace:workspaces_{item}_changelist")
-        btn.href = f"{base}?rdp__exact={obj.pk}"
+        owner = obj.parent if obj.parent_id else obj
+        btn.href = f"{base}?rdp__exact={owner.pk}"

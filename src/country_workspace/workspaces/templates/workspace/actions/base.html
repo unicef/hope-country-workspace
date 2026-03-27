@@ -1,7 +1,11 @@
 {% extends "workspace/action_page.html" %}
-{% load i18n workspace_modify workspace_urls %}
+{% load i18n workspace_modify workspace_urls admin_urls %}
 {% block page-title %}
-    &rsaquo; <a href="">{{ modeladmin.title_plural }}</a>{% admin_url modeladmin %}
+    {% if original %}
+        &rsaquo; <a href="{{ original_change_url }}">{{ original }}</a>
+    {% else %}
+        &rsaquo; <a href="">{{ modeladmin.title_plural }}</a>{% admin_url modeladmin %}
+    {% endif %}
     &rsaquo; {{ title }}
 {% endblock page-title %}
 {% block content %}

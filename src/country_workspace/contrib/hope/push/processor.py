@@ -19,6 +19,7 @@ from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
     qs_individuals_for_rdp,
     preflight_errors,
+    preflight_exclude_rdp_ids,
     rdp_for_dedup,
     serializer_for_program,
     set_rdp_dedup_state,
@@ -137,7 +138,11 @@ class PushProcessor(ProcessorBase):
 
     def preflight(self) -> None:
         """Validate selected beneficiaries before creating/pushing RDP."""
-        for msg in preflight_errors(pks=self.pks, master_detail=self.master_detail, exclude_rdp_id=self.rdp_id):
+        for msg in preflight_errors(
+            pks=self.pks,
+            master_detail=self.master_detail,
+            exclude_rdp_ids=preflight_exclude_rdp_ids(rdp_id=self.rdp_id),
+        ):
             self.fail("Preflight", msg)
 
     def rdi_complete(self) -> None:

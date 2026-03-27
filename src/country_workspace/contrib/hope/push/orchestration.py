@@ -8,7 +8,6 @@ from country_workspace.contrib.dedup_engine.response import Status as DedupRespo
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp
-from country_workspace.workspaces.models import CountryIndividual
 
 from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
@@ -20,6 +19,7 @@ from .repository import (
     preflight_errors,
     rdp_for_dedup,
     rdp_for_push,
+    selection_owner_for_rdp,
     set_rdp_dedup_state,
     set_rdp_push_status,
     workflow_config_for_rdp,
@@ -45,12 +45,16 @@ def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
 
 
 def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
-    """Mark RDP-related beneficiaries as removed."""
+    """Mark selection-owner beneficiaries as removed."""
+    owner = selection_owner_for_rdp(rdp=rdp)
     if is_master_detail:
-        rdp.households.update(removed=True)
-        CountryIndividual.objects.filter(household__rdp=rdp).update(removed=True)
-    else:
-        rdp.individuals.update(removed=True)
+        hh_ids = list(owner.households.values_list("pk", flat=True))
+        if not hh_ids:
+            return
+        owner.households.update(removed=True)
+        qs_individuals_by_household_pks(hh_ids).update(removed=True)
+        return
+    owner.individuals.update(removed=True)
 
 
 def steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
@@ -91,13 +95,39 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     errors = preflight_errors(
         pks=config["pks"],
         master_detail=config["master_detail"],
-        exclude_rdp_id=None,
+        exclude_rdp_ids=(),
     )
     if errors:
         raise HopePushError({"errors": errors})
 
     rdp = create_rdp_records(config, job.id)
     return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
+
+
+def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
+    """Create a direct child RDP that reuses the parent's beneficiary selection."""
+    if source.parent_id is not None:
+        raise HopePushError({"errors": ["RDP: cloning from a child RDP is not allowed"]})
+
+    try:
+        with transaction.atomic():
+            source = lock_rdp_for_update(pk=source.pk)
+            if source.parent_id is not None:
+                raise HopePushError({"errors": ["RDP: cloning from a child RDP is not allowed"]})
+
+            return Rdp.objects.create(
+                country_office_id=source.country_office_id,
+                program_id=source.program_id,
+                pushed_by_id=pushed_by_id,
+                name=batch_name,
+                parent=source,
+                status=Rdp.PushStatus.PENDING,
+                dedup_run_state=Rdp.DedupRunState.NOT_RUN,
+                deduplication_set_id=None,
+                hope_rdi_id="",
+            )
+    except IntegrityError as e:
+        raise HopePushError({"errors": [f"RDP: can not clone record: {e}"]}) from e
 
 
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:

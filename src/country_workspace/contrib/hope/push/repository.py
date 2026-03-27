@@ -1,13 +1,13 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from django.db.models import QuerySet, Prefetch
+from django.db.models import Prefetch, QuerySet
+
+from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Program, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-
-from .config import Serializer, PushWorkflowConfig, Beneficiary
-from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
+from .config import Beneficiary, PushWorkflowConfig, Serializer
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -17,20 +17,38 @@ def lock_rdp_for_update(*, pk: int) -> Rdp:
 
 def rdp_for_dedup(*, pk: int) -> Rdp:
     """Return RDP with related Program loaded for dedup workflow."""
-    return Rdp.objects.select_related("program").get(pk=pk)
+    return Rdp.objects.select_related("program", "parent").get(pk=pk)
 
 
 def rdp_for_push(*, pk: int) -> Rdp:
     """Return RDP with relations required for push workflow."""
-    return Rdp.objects.select_related("program__country_office", "program__beneficiary_group", "pushed_by").get(pk=pk)
+    return Rdp.objects.select_related(
+        "parent", "program__country_office", "program__beneficiary_group", "pushed_by"
+    ).get(pk=pk)
+
+
+def selection_owner_for_rdp(*, rdp: Rdp) -> Rdp:
+    """Return the RDP that owns the beneficiary selection."""
+    return rdp.parent if rdp.parent_id else rdp
+
+
+def preflight_exclude_rdp_ids(*, rdp_id: int | None = None, rdp: Rdp | None = None) -> tuple[int, ...]:
+    """Return RDP ids excluded from preflight for the RDP and its parent."""
+    if rdp is None:
+        if rdp_id is None:
+            return ()
+        rdp = Rdp.objects.only("id", "parent_id").get(pk=rdp_id)
+
+    return (rdp.pk, rdp.parent_id) if rdp.parent_id else (rdp.pk,)
 
 
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     """Return (master_detail, pks) based on actual RDP links."""
-    hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))
+    owner = selection_owner_for_rdp(rdp=rdp)
+    hh_pks = list(owner.households.order_by("pk").values_list("pk", flat=True))
     if hh_pks:
         return True, hh_pks
-    return False, list(rdp.individuals.order_by("pk").values_list("pk", flat=True))
+    return False, list(owner.individuals.order_by("pk").values_list("pk", flat=True))
 
 
 def serializer_for_program(hope_id: str) -> Serializer:
@@ -78,10 +96,11 @@ def qs_individuals_by_pks(pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     return CountryIndividual.objects.filter(pk__in=pks).order_by("id")
 
 
-def qs_rdp_pending_or_success(*, exclude_id: int | None = None) -> QuerySet[Rdp]:
-    """Return RDPs in PENDING or SUCCESS status; optionally exclude one RDP."""
+def qs_rdp_pending_or_success(*, exclude_ids: Iterable[int] = ()) -> QuerySet[Rdp]:
+    """Return RDPs in PENDING or SUCCESS status; optionally exclude multiple RDPs."""
     qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
-    return qs.exclude(pk=exclude_id) if exclude_id is not None else qs
+    exclude_ids = list(exclude_ids)
+    return qs.exclude(pk__in=exclude_ids) if exclude_ids else qs
 
 
 def qs_rdp_pre(qs: QuerySet[Beneficiary], *, rdp_qs: QuerySet[Rdp]) -> QuerySet[Beneficiary]:
@@ -112,7 +131,11 @@ def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     return qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
 
 
-def preflight_errors(pks: list[int], master_detail: bool, exclude_rdp_id: int | None) -> list[str]:
+def preflight_errors(
+    pks: list[int],
+    master_detail: bool,
+    exclude_rdp_ids: Iterable[int] = (),
+) -> list[str]:
     """Return preflight validation errors for the given selection."""
     if not pks:
         return []
@@ -130,7 +153,7 @@ def preflight_errors(pks: list[int], master_detail: bool, exclude_rdp_id: int | 
             if getattr(obj, "rdp_pre", []):
                 add(f"{base} already in another RDP(s) (pending/success)")
 
-    rdp_qs = qs_rdp_pending_or_success(exclude_id=exclude_rdp_id)
+    rdp_qs = qs_rdp_pending_or_success(exclude_ids=exclude_rdp_ids)
     if master_detail:
         check(qs_households_for_preflight(pks=pks, rdp_qs=rdp_qs), "HH")
         check(qs_individuals_for_preflight_by_households(hh_pks=pks, rdp_qs=rdp_qs), "Ind")
