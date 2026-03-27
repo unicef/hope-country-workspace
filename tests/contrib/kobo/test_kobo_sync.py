@@ -344,7 +344,7 @@ def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, con
     def create_household_real(batch, submission, config, id_generator, originating_id):
         return HouseholdFactory(batch=batch, individuals=[])
 
-    def create_individuals_real(batch, household, submission, config, originating_id):
+    def create_individuals_real(batch, household, submission, config, originating_id, job=None):
         return [IndividualFactory(batch=batch, household=household)]
 
     mocker.patch(
