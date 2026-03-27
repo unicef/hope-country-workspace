@@ -1,10 +1,12 @@
 import pytest
 from unittest.mock import patch, PropertyMock
 
+from celery.exceptions import Ignore
+
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
-from country_workspace.tasks import removed_expired_jobs, clean_program_data
+from country_workspace.tasks import removed_expired_jobs, clean_program_data, sync_job_task
 from tests.extras.testutils.factories import (
     ProgramFactory,
     BatchFactory,
@@ -201,5 +203,26 @@ def test_clean_program_data_stops_when_cancellation_requested(job, batch, househ
         requested.return_value = True
         with pytest.raises(GracefulJobCancellationError):
             clean_program_data(job, batch_size=1)
+
+    assert Batch.objects.filter(program=job.program).count() == initial_batches
+
+
+@pytest.mark.django_db
+def test_sync_job_task_handles_graceful_cancellation(mocker, job):
+    initial_batches = Batch.objects.filter(program=job.program).count()
+
+    mocker.patch.object(AsyncJob, "ensure_not_cancelled")
+    mocker.patch.object(AsyncJob, "execute", side_effect=GracefulJobCancellationError("cancel requested"))
+    cancel_mock = mocker.patch.object(AsyncJob, "cancel")
+    update_state_mock = mocker.patch.object(sync_job_task, "update_state")
+
+    with pytest.raises(Ignore):
+        sync_job_task.run(job.pk, job.version)
+
+    cancel_mock.assert_called_once()
+    update_state_mock.assert_called_once_with(
+        state="REVOKED",
+        meta={"reason": "Cancellation requested for job #" + str(job.pk), "job_id": job.pk},
+    )
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches

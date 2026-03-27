@@ -628,6 +628,22 @@ def test_import_asset_re_raises_graceful_cancellation(mocker: MockerFixture, con
         import_asset(batch, asset, config, id_generator=Mock(), job=job)
 
 
+@pytest.mark.django_db
+def test_create_individuals_checks_cancellation_per_individual(config: Config) -> None:
+    batch = BatchFactory()
+    household = HouseholdFactory(batch=batch, individuals=[])
+
+    job = Mock()
+    job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
+
+    submission = {config["individual_records_field"]: [{"some_field": "value"}]}
+
+    with pytest.raises(GracefulJobCancellationError):
+        create_individuals(batch, household, submission, config, "originating_id", job=job)
+
+    job.ensure_not_cancelled.assert_called_once_with(refresh=True)
+
+
 def test_get_fullname_key_key_exists() -> None:
     assert get_fullname_key((key := "full_name",)) == key
 
