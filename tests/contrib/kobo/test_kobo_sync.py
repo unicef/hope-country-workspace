@@ -644,6 +644,38 @@ def test_create_individuals_checks_cancellation_per_individual(config: Config) -
     job.ensure_not_cancelled.assert_called_once_with(refresh=True)
 
 
+def test_create_individuals_with_job_checks_cancellation_and_continues(mocker: MockerFixture, config: Config) -> None:
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
+    get_fullname_key_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.get_fullname_key", return_value="full_name"
+    )
+    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+    build_processor_mock.return_value = Mock(side_effect=[{"full_name": "Name 1"}, {"full_name": "Name 2"}])
+
+    job = Mock()
+    submission = {
+        config["individual_records_field"]: [
+            {"full_name": "Name 1"},
+            {"full_name": "Name 2"},
+        ]
+    }
+
+    individuals = create_individuals(
+        batch_mock := Mock(name="batch"),
+        household_mock := Mock(name="household"),
+        cast("Submission", submission),
+        config,
+        "originating_id",
+        job=job,
+    )
+
+    assert individuals == [individual_class_mock.return_value, individual_class_mock.return_value]
+    assert job.ensure_not_cancelled.call_count == 2
+    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    assert get_fullname_key_mock.call_count == 2
+    household_mock.program.individuals.bulk_create.assert_called_once_with(individuals)
+
+
 def test_get_fullname_key_key_exists() -> None:
     assert get_fullname_key((key := "full_name",)) == key
 

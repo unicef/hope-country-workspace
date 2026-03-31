@@ -226,3 +226,27 @@ def test_sync_job_task_handles_graceful_cancellation(mocker, job):
     )
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches
+
+
+@pytest.mark.django_db
+def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
+    reason = "cancel requested"
+    ensure_not_cancelled_mock = mocker.patch.object(
+        AsyncJob,
+        "ensure_not_cancelled",
+        side_effect=GracefulJobCancellationError(reason),
+    )
+    execute_mock = mocker.patch.object(AsyncJob, "execute")
+    cancel_mock = mocker.patch.object(AsyncJob, "cancel")
+    update_state_mock = mocker.patch.object(sync_job_task, "update_state")
+
+    with pytest.raises(Ignore):
+        sync_job_task.run(job.pk, job.version)
+
+    ensure_not_cancelled_mock.assert_called_once_with(refresh=True)
+    execute_mock.assert_not_called()
+    cancel_mock.assert_called_once()
+    update_state_mock.assert_called_once_with(
+        state="REVOKED",
+        meta={"reason": reason, "job_id": job.pk},
+    )
