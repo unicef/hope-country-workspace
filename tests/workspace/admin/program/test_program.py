@@ -363,3 +363,58 @@ def test_update_dedup_settings_post_success(
     )
     assert isinstance(response, HttpResponseRedirect)
     assert response.url == "/program/1/change/"
+
+
+def test_set_unique_field_get(program_admin, mock_request, mock_program, mocker: MockerFixture) -> None:
+    mock_request.method = "GET"
+    mock_program.get_unique_field_for.return_value = "field_2"
+    mock_program.has_any_data.return_value = False
+
+    form_class = mocker.MagicMock()
+    render = mocker.patch("country_workspace.workspaces.admin.program.render")
+    context = {
+        "original": mock_program,
+        "checker": "checker",
+        "unique_scope_model": "Model",
+    }
+
+    response = program_admin._set_unique_field(mock_request, form_class, context)
+
+    form_class.assert_called_once_with(checker="checker", initial={"field": "field_2"})
+    render.assert_called_once_with(mock_request, "workspace/program/set_unique_field.html", context)
+    assert response is render.return_value
+
+
+@pytest.mark.parametrize("has_data", [True, False])
+def test_set_unique_field_post(
+    program_admin, mock_request, mock_program, mocker: MockerFixture, has_data: bool
+) -> None:
+    mock_request.method = "POST"
+    mock_request.POST = {"field": "national_id"}
+    mock_program.pk = 42
+    mock_program.has_any_data.return_value = has_data
+
+    context = {
+        "original": mock_program,
+        "checker": "checker",
+        "unique_scope_model": "Model",
+    }
+    reverse = mocker.patch(
+        "country_workspace.workspaces.admin.program.reverse",
+        return_value="/workspaces/countryprogram/42/change/",
+    )
+    form = MagicMock()
+    form.is_valid.return_value = True
+    form.cleaned_data = {"field": "national_id"}
+    form_class = mocker.MagicMock(return_value=form)
+
+    response = program_admin._set_unique_field(mock_request, form_class, context)
+    assert isinstance(response, HttpResponseRedirect)
+    reverse.assert_called_once()
+
+    if has_data:
+        form_class.assert_not_called()
+        mock_program.save_unique_field_for.assert_not_called()
+    else:
+        form_class.assert_called_once_with(mock_request.POST, checker="checker")
+        mock_program.save_unique_field_for.assert_called_once_with("Model", "national_id")

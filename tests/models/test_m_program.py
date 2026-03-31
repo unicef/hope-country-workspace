@@ -234,6 +234,57 @@ def test_program_apply_default_fields_applies_only_missing_or_none(program: Prog
     assert result == {"a": "keep", "b": 2, "c": 3}
 
 
+@pytest.mark.parametrize(
+    ("model_cls", "field_name"),
+    [
+        (Household, "household_id"),
+        (Individual, "national_id"),
+    ],
+)
+def test_program_unique_field_for_scope(program: Program, model_cls: type, field_name: str) -> None:
+    program.system_fields = {
+        "unique_fields": {
+            "household": "household_id",
+            "individual": "national_id",
+        }
+    }
+    assert program.get_unique_field_for(model_cls) == field_name
+
+
+@pytest.mark.parametrize(
+    ("model_cls", "scope_key"),
+    [
+        (Household, "household"),
+        (Individual, "individual"),
+    ],
+)
+def test_program_save_unique_field_for_updates_scope(program: Program, model_cls: type, scope_key: str) -> None:
+    program.system_fields = {"removed_unique_values": {"other": {"keep": ["x"]}}}
+
+    program.save_unique_field_for(model_cls, "field_1")
+
+    assert program.system_fields["unique_fields"][scope_key] == "field_1"
+    assert program.system_fields["removed_unique_values"][scope_key]["field_1"] == []
+    assert program.system_fields["removed_unique_values"]["other"] == {"keep": ["x"]}
+
+
+def test_program_add_removed_unique_values_for(program: Program) -> None:
+    program.system_fields = {
+        "unique_fields": {"individual": "national_id"},
+        "removed_unique_values": {"individual": {"national_id": ["A"]}},
+    }
+
+    program.add_removed_unique_values_for(Individual, ["A", "B", " ", None, 123])
+
+    assert set(program.get_removed_unique_values_for(Individual)) == {"A", "B", "123"}
+
+
+def test_program_has_any_data(program: Program) -> None:
+    assert not program.has_any_data()
+    IndividualFactory(batch__program=program)
+    assert program.has_any_data()
+
+
 def test_apply_mapping_importer_with_mapping_id(program: Program, mocker: MockerFixture) -> None:
     mapping_id = 123
     data: dict[str, Any] = {"name": "Test"}

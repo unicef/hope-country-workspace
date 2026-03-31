@@ -13,7 +13,7 @@ from country_workspace.contrib.dedup_engine import (
 )
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import AsyncJob, Rdp, Household, Individual
 
 from .config import CreateRdpConfig, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
@@ -58,6 +58,40 @@ def _deduplication_snapshot(status: DedupClientStatus | None) -> dict[str, Any]:
         "deduplication_set_status": status.deduplication_set_status,
         "findings_count": status.findings_count,
     }
+
+
+def archive_removed_unique_values(rdp: Rdp, is_master_detail: bool) -> None:
+    """Persist unique-field values for records that are being removed after a successful push."""
+    program = rdp.program
+
+    if hh_field := program.get_unique_field_for(Household):
+        hh_values = rdp.households.filter(removed=False).values_list(f"flex_fields__{hh_field}", flat=True)
+        program.add_removed_unique_values_for(Household, hh_values.iterator())
+
+    if ind_field := program.get_unique_field_for(Individual):
+        ind_qs = (
+            CountryIndividual.objects.filter(household__rdp=rdp, removed=False)
+            if is_master_detail
+            else rdp.individuals.filter(removed=False)
+        )
+        ind_values = ind_qs.values_list(f"flex_fields__{ind_field}", flat=True)
+        program.add_removed_unique_values_for(Individual, ind_values.iterator())
+
+
+def steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
+    """Yield the ordered workflow callables; each step appends errors to processor.total."""
+    pks = config["pks"]
+
+    yield processor.preflight
+    yield processor.rdi_create
+    if config["master_detail"]:
+        yield from (
+            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
+            partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
+        )
+    else:
+        yield partial(processor.run_with, qs_individuals_by_pks(pks), processor.rdi_push_people)
+    yield processor.rdi_complete
 
 
 def _save_current_deduplication_snapshot(*, rdp: Rdp, key: str) -> None:
@@ -318,6 +352,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
+        archive_removed_unique_values(locked, config["master_detail"])
         _mark_rdp_beneficiaries_removed(locked, config["master_detail"])
         set_rdp_push_status(
             rdp=locked,

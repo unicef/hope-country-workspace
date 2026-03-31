@@ -228,3 +228,69 @@ class Program(BaseModel):
             if field_name not in data or data[field_name] is None:
                 data[field_name] = default_value
         return data
+
+    def has_any_data(self) -> bool:
+        return self.households.exists() or self.individuals.exists()
+
+    def get_unique_field_for(self, m: type[Validable] | Validable) -> str | None:
+        scope = self._scope_for(m).value
+        unique_fields = (self.system_fields or {}).get("unique_fields") or {}
+        value = unique_fields.get(scope)
+        return value if isinstance(value, str) and value.strip() else None
+
+    def save_unique_field_for(self, m: type[Validable] | Validable, field_name: str | None) -> None:
+        scope = self._scope_for(m).value
+        normalized = (field_name or "").strip() or None
+
+        system_fields = dict(self.system_fields or {})
+        unique_fields = dict(system_fields.get("unique_fields") or {})
+        removed_unique_values = dict(system_fields.get("removed_unique_values") or {})
+        scope_removed_values = dict(removed_unique_values.get(scope) or {})
+
+        if normalized is None:
+            unique_fields.pop(scope, None)
+        else:
+            unique_fields[scope] = normalized
+            scope_removed_values.setdefault(normalized, [])
+            removed_unique_values[scope] = scope_removed_values
+
+        system_fields["unique_fields"] = unique_fields
+        system_fields["removed_unique_values"] = removed_unique_values
+        self.system_fields = system_fields
+        self.save(update_fields=["system_fields"])
+
+    def get_removed_unique_values_for(self, m: type[Validable] | Validable) -> list[str]:
+        """Return archived unique values for configured scope+field."""
+        if not (field_name := self.get_unique_field_for(m)):
+            return []
+
+        scope = self._scope_for(m).value
+        removed_unique_values = (self.system_fields or {}).get("removed_unique_values") or {}
+        scope_values = removed_unique_values.get(scope) or {}
+        values = scope_values.get(field_name) or []
+        if not isinstance(values, list):
+            return []
+        return [str(value) for value in values if value is not None and str(value).strip()]
+
+    def add_removed_unique_values_for(self, m: type[Validable] | Validable, values: Iterable[Any]) -> None:
+        """Merge removed values for configured unique field in the given scope."""
+        if not (field_name := self.get_unique_field_for(m)):
+            return
+        scope = self._scope_for(m).value
+
+        normalized_values = {str(value).strip() for value in values if value is not None and str(value).strip()}
+        if not normalized_values:
+            return
+
+        system_fields = dict(self.system_fields or {})
+        removed_unique_values = dict(system_fields.get("removed_unique_values") or {})
+        scope_values = dict(removed_unique_values.get(scope) or {})
+        existing_values = scope_values.get(field_name) or []
+        existing_set = {str(value).strip() for value in existing_values if value is not None and str(value).strip()}
+
+        scope_values[field_name] = sorted(existing_set | normalized_values)
+        removed_unique_values[scope] = scope_values
+        system_fields["removed_unique_values"] = removed_unique_values
+
+        self.system_fields = system_fields
+        self.save(update_fields=["system_fields"])

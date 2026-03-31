@@ -1,0 +1,57 @@
+{% extends "workspace/change_form.html" %}
+{% load i18n workspace_urls %}
+{% block page-title %}
+    &rsaquo; {{ original }}{% admin_url original %}
+    &rsaquo; {% translate "Set unique field" %}
+{% endblock page-title %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    {{ checker }}
+                </h1>
+                <form method="post" id="set-unique-field-form" novalidate>
+                    {% csrf_token %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>
+                                    {% translate "Field" %}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for value, label in form.fields.field.choices %}
+                                <tr>
+                                    <td>
+                                        <label for="id_field_{{ forloop.counter0 }}" class="min-w-full cursor-pointer">
+                                            <input type="radio"
+                                                   name="field"
+                                                   id="id_field_{{ forloop.counter0 }}"
+                                                   value="{{ value }}"
+                                                   {% if form.field.value == value %}checked="checked"{% endif %} />
+                                            {{ label }}
+                                        </label>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% if form.field.errors %}
+                        <div class="errors">
+                            {{ form.field.errors }}
+                        </div>
+                    {% endif %}
+                    <div class="submit-row">
+                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save" />
+                        {% url opts|workspace_urlname:'change' original.pk as change_url %}
+                        <a href="{% add_preserved_filters change_url %}" class="closelink">
+                            {% translate 'Close' %}
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

@@ -103,6 +103,10 @@ def test_configure_hh_columns(app, household: "CountryHousehold", master_detail:
             # 4) Ensure options contain links to *_columns and *_defaults views
             assert reverse("workspace:workspaces_countryprogram_household_columns", args=[program.pk]) in option_values
             assert reverse("workspace:workspaces_countryprogram_household_defaults", args=[program.pk]) in option_values
+            assert (
+                reverse("workspace:workspaces_countryprogram_household_unique_field", args=[program.pk])
+                in option_values
+            )
 
             # 5) Configure columns via household_columns view
             url = reverse("workspace:workspaces_countryprogram_household_columns", args=[program.pk])
@@ -154,6 +158,9 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
         # 3) Ensure options contain links to *_columns and *_defaults views
         assert reverse("workspace:workspaces_countryprogram_individual_columns", args=[program.pk]) in option_values
         assert reverse("workspace:workspaces_countryprogram_individual_defaults", args=[program.pk]) in option_values
+        assert (
+            reverse("workspace:workspaces_countryprogram_individual_unique_field", args=[program.pk]) in option_values
+        )
 
         # 4) Configure columns via individual_columns view
         url = reverse("workspace:workspaces_countryprogram_individual_columns", args=[program.pk])

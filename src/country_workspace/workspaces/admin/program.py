@@ -71,6 +71,19 @@ class SelectIndividualColumnsForm(SelectColumnsForm):
     model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
 
 
+class SelectUniqueFieldForm(forms.Form):
+    field = forms.ChoiceField(choices=(), required=True)
+
+    def __init__(self, *args: Any, checker: "DataChecker", **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        checker_form_class = checker.get_form_class()
+        choices: list[tuple[str, str]] = []
+        for name, field in checker_form_class.base_fields.items():
+            label = getattr(field, "label", "") or name
+            choices.append((name, f"{label} ({name})"))
+        self.fields["field"].choices = choices
+
+
 class ProgramForm(forms.ModelForm):
     class Meta:
         model = CountryProgram
@@ -398,6 +411,45 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         context["selected_fields"] = selected_fields
         return render(request, "workspace/program/set_defaults.html", context)
 
+    @staticmethod
+    def _can_update_unique_field(program: CountryProgram) -> bool:
+        return not program.has_any_data()
+
+    def _set_unique_field(
+        self,
+        request: HttpRequest,
+        form_class: type[SelectUniqueFieldForm],
+        context: dict[str, Any],
+    ) -> HttpResponse:
+        program: CountryProgram = context["original"]
+        checker: "DataChecker" = context["checker"]
+        scope_model: type[Validable] = context["unique_scope_model"]
+
+        if not self._can_update_unique_field(program):
+            self.message_user(
+                request,
+                _("Unique field can only be changed before importing any programme data."),
+                level=messages.ERROR,
+            )
+            return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+
+        initial_unique_field = program.get_unique_field_for(scope_model)
+        if request.method == "POST":
+            form = form_class(request.POST, checker=checker)
+            if form.is_valid():
+                program.save_unique_field_for(scope_model, form.cleaned_data["field"])
+                self.message_user(
+                    request,
+                    _("Unique field has been updated."),
+                    level=messages.SUCCESS,
+                )
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+        else:
+            form = form_class(checker=checker, initial={"field": initial_unique_field})
+
+        context["form"] = form
+        return render(request, "workspace/program/set_unique_field.html", context)
+
     @view(
         label=_("Configure Columns"),
         permission=can_change_country_program,
@@ -460,6 +512,18 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         context["defaults_scope_model"] = Household
         return self._set_defaults(request, MassDefaultsForm, context)
 
+    @view(
+        label=_("Set Unique Field"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Household, require_master_detail=True),
+    )
+    def household_unique_field(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk, title=_("Set Household unique field"))
+        program: CountryProgram = context["original"]
+        context["checker"] = program.household_checker
+        context["unique_scope_model"] = Household
+        return self._set_unique_field(request, SelectUniqueFieldForm, context)
+
     @choice(
         label=_("Household Columns"),
         change_form=True,
@@ -471,6 +535,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         button.choices = [
             self.household_columns,
             self.household_defaults,
+            self.household_unique_field,
             self.household_alien_fields_to_ignore,
         ]
 
@@ -504,6 +569,18 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         context["defaults_scope_model"] = Individual
         return self._set_defaults(request, MassDefaultsForm, context)
 
+    @view(
+        label=_("Set Unique Field"),
+        permission=can_change_country_program,
+        visible=lambda btn: CountryProgramAdmin._can_configure(btn, Individual),
+    )
+    def individual_unique_field(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk, title=_("Set Individual unique field"))
+        program: CountryProgram = context["original"]
+        context["checker"] = program.individual_checker
+        context["unique_scope_model"] = Individual
+        return self._set_unique_field(request, SelectUniqueFieldForm, context)
+
     @choice(
         label=_("Individual Columns"),
         change_form=True,
@@ -515,6 +592,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         button.choices = [
             self.individual_columns,
             self.individual_defaults,
+            self.individual_unique_field,
             self.individual_alien_fields_to_ignore,
         ]
 

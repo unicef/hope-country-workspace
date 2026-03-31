@@ -75,8 +75,10 @@ def test_program_action_permissions(
         ("workspace:workspaces_countryprogram_individual_columns", "country_program"),
         ("workspace:workspaces_countryprogram_household_defaults", "country_program_md_true"),
         ("workspace:workspaces_countryprogram_individual_defaults", "country_program"),
+        ("workspace:workspaces_countryprogram_household_unique_field", "country_program_md_true"),
+        ("workspace:workspaces_countryprogram_individual_unique_field", "country_program"),
     ],
-    ids=["hh_columns", "ind_columns", "hh_defaults", "ind_defaults"],
+    ids=["hh_columns", "ind_columns", "hh_defaults", "ind_defaults", "hh_unique_field", "ind_unique_field"],
 )
 def test_columns_and_defaults_permissions(
     user: User,
@@ -100,10 +102,22 @@ def test_columns_and_defaults_permissions(
 
 
 @pytest.mark.parametrize(
-    ("group_method", "columns_method", "defaults_method", "ignore_method"),
+    ("group_method", "columns_method", "defaults_method", "unique_method", "ignore_method"),
     [
-        ("household_group", "household_columns", "household_defaults", "household_alien_fields_to_ignore"),
-        ("individual_group", "individual_columns", "individual_defaults", "individual_alien_fields_to_ignore"),
+        (
+            "household_group",
+            "household_columns",
+            "household_defaults",
+            "household_unique_field",
+            "household_alien_fields_to_ignore",
+        ),
+        (
+            "individual_group",
+            "individual_columns",
+            "individual_defaults",
+            "individual_unique_field",
+            "individual_alien_fields_to_ignore",
+        ),
     ],
     ids=["household_group", "individual_group"],
 )
@@ -113,6 +127,7 @@ def test_group_choice_buttons_choices(
     group_method: str,
     columns_method: str,
     defaults_method: str,
+    unique_method: str,
     ignore_method: str,
 ) -> None:
     admin = country_program_admin_instance
@@ -124,6 +139,7 @@ def test_group_choice_buttons_choices(
     assert button.choices == [
         getattr(admin, columns_method),
         getattr(admin, defaults_method),
+        getattr(admin, unique_method),
         getattr(admin, ignore_method),
     ]
 

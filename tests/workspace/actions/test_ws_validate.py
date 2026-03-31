@@ -120,3 +120,52 @@ def test_validate_queryset_individuals(program, force_migrated_records):
     result = validate_queryset(qs)
 
     assert result["valid"] + result["invalid"] == 2
+
+
+@pytest.mark.django_db
+def test_validate_queryset_individual_unique_field_duplicates(program, force_migrated_records):
+    from testutils.factories import IndividualFactory
+
+    program.save_unique_field_for(Individual, "full_name")
+
+    ind1: "CountryIndividual" = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"full_name": "John Doe"},
+    )
+    ind2: "CountryIndividual" = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"full_name": "John Doe"},
+    )
+
+    result = validate_queryset(Individual.objects.filter(pk__in=[ind1.pk, ind2.pk]))
+
+    assert result == {"valid": 0, "invalid": 2}
+    ind1.refresh_from_db()
+    ind2.refresh_from_db()
+    assert "full_name" in ind1.errors
+    assert "full_name" in ind2.errors
+
+
+@pytest.mark.django_db
+def test_validate_queryset_individual_unique_field_against_archived_values(program, force_migrated_records):
+    from testutils.factories import IndividualFactory
+
+    program.save_unique_field_for(Individual, "full_name")
+    program.add_removed_unique_values_for(Individual, ["John Doe"])
+
+    individual: "CountryIndividual" = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"full_name": "John Doe"},
+    )
+
+    result = validate_queryset(Individual.objects.filter(pk=individual.pk))
+
+    assert result == {"valid": 0, "invalid": 1}
+    individual.refresh_from_db()
+    assert "full_name" in individual.errors
