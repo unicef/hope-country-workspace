@@ -163,9 +163,11 @@ def preflight_errors(
     return errors
 
 
-def set_rdp_dedup_state(*, rdp_id: int, state: Rdp.DedupRunState, deduplication_set_id: UUID | None = None) -> None:
+def set_rdp_dedup_state(
+    *, rdp_id: int, state: Rdp.DedupTrackingState, deduplication_set_id: UUID | None = None
+) -> None:
     """Persist dedup state and optional deduplication set id for the given RDP."""
-    fields: dict[str, object] = {"dedup_run_state": state}
+    fields: dict[str, object] = {"dedup_tracking_state": state}
     if deduplication_set_id is not None:
         fields["deduplication_set_id"] = deduplication_set_id
     Rdp.objects.filter(pk=rdp_id).update(**fields)

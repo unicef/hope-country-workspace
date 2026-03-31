@@ -15,7 +15,7 @@ class Rdp(BaseModel):
         FAILURE = "FAILURE", _("Failure")
         CANCELLED = "CANCELLED", _("Cancelled")
 
-    class DedupRunState(models.TextChoices):
+    class DedupTrackingState(models.TextChoices):
         NOT_RUN = "NOT_RUN", _("Not run yet")
         IN_PROGRESS = "IN_PROGRESS", _("In progress")
         FINISHED = "FINISHED", _("Finished")
@@ -29,11 +29,11 @@ class Rdp(BaseModel):
     )
     push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    dedup_run_state = models.CharField(
+    dedup_tracking_state = models.CharField(
         max_length=15,
-        choices=DedupRunState.choices,
-        default=DedupRunState.NOT_RUN,
-        help_text=_("Internal deduplication lifecycle."),
+        choices=DedupTrackingState.choices,
+        default=DedupTrackingState.NOT_RUN,
+        help_text=_("Local status used to decide whether DedupEngine should still be checked for this RDP."),
     )
     deduplication_set_id = models.UUIDField(blank=True, null=True)
     parent = models.ForeignKey(

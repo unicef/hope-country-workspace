@@ -122,7 +122,7 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 name=batch_name,
                 parent=source,
                 status=Rdp.PushStatus.PENDING,
-                dedup_run_state=Rdp.DedupRunState.NOT_RUN,
+                dedup_tracking_state=Rdp.DedupTrackingState.NOT_RUN,
                 deduplication_set_id=None,
                 hope_rdi_id="",
             )
@@ -160,7 +160,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
-        set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupRunState.FINISHED)
+        set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupTrackingState.FINISHED)
         set_rdp_push_status(
             rdp=locked,
             status=Rdp.PushStatus.CANCELLED if rejected else locked.status,
@@ -201,7 +201,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         mark_rdp_beneficiaries_removed(locked, config["master_detail"])
 
         if locked.program.biometric_deduplication_enabled:
-            set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupRunState.FINISHED)
+            set_rdp_dedup_state(rdp_id=locked.pk, state=Rdp.DedupTrackingState.FINISHED)
 
         set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id or "N/A")
 

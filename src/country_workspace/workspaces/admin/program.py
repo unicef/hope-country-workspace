@@ -229,7 +229,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         try:
             settings = self._get_dedup_settings(obj)
         except RemoteError:
-            return "-"
+            return "N/A"
 
         if not settings:
             return "-"

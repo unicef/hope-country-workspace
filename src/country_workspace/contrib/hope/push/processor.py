@@ -355,7 +355,7 @@ class DedupProcessor(ProcessorBase):
         """Execute dedup workflow; collect errors in total."""
         if self.rdp.status != Rdp.PushStatus.PENDING:
             self.fail("RDP", f"can not run dedup in status={self.rdp.status}")
-        if self.rdp.dedup_run_state == Rdp.DedupRunState.FINISHED:
+        if self.rdp.dedup_tracking_state == Rdp.DedupTrackingState.FINISHED:
             self.fail("RDP", "can not run dedup after it is already finished")
         if self.has_errors:
             return
@@ -419,7 +419,9 @@ class DedupProcessor(ProcessorBase):
             if ds_id is None:
                 return None, 0
 
-            set_rdp_dedup_state(rdp_id=self.rdp.pk, state=Rdp.DedupRunState.IN_PROGRESS, deduplication_set_id=ds_id)
+            set_rdp_dedup_state(
+                rdp_id=self.rdp.pk, state=Rdp.DedupTrackingState.IN_PROGRESS, deduplication_set_id=ds_id
+            )
 
             uploaded, images_sent = self.upload_images(client, first_batch, image_batches)
             if not uploaded:

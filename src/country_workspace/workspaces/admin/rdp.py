@@ -48,7 +48,19 @@ def visible_clone_rdp(btn: ButtonWidget) -> bool:
 
 def enabled_clone_rdp(btn: ButtonWidget) -> bool:
     obj = btn.original
-    return bool(obj and obj.parent_id is None)
+    if obj is None or obj.parent_id is not None or obj.status == obj.PushStatus.PENDING:
+        return False
+
+    has_other_pending_rdp = (
+        CountryRdp.objects.filter(
+            program_id=obj.program_id,
+            status=obj.PushStatus.PENDING,
+        )
+        .exclude(pk=obj.pk)
+        .exists()
+    )
+
+    return not has_other_pending_rdp
 
 
 def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
@@ -84,10 +96,10 @@ def enabled_deduplicate(btn: ButtonWidget) -> bool:
     if not obj.program.biometric_deduplication_enabled:
         return False
 
-    match obj.dedup_run_state:
-        case obj.DedupRunState.NOT_RUN:
+    match obj.dedup_tracking_state:
+        case obj.DedupTrackingState.NOT_RUN:
             return True
-        case obj.DedupRunState.IN_PROGRESS:
+        case obj.DedupTrackingState.IN_PROGRESS:
             return _dedup_status_safe(obj.program.unicef_id).status in {
                 DedupResponseStatus.FAILURE,
                 DedupResponseStatus.REVOKED,
@@ -122,10 +134,10 @@ def enabled_push(btn: ButtonWidget) -> bool:
     if not obj.program.biometric_deduplication_enabled:
         return True
 
-    match obj.dedup_run_state:
-        case obj.DedupRunState.NOT_RUN | obj.DedupRunState.FINISHED:
+    match obj.dedup_tracking_state:
+        case obj.DedupTrackingState.NOT_RUN | obj.DedupTrackingState.FINISHED:
             return True
-        case obj.DedupRunState.IN_PROGRESS:
+        case obj.DedupTrackingState.IN_PROGRESS:
             return _dedup_status_safe(obj.program.unicef_id).status not in {
                 DedupResponseStatus.STARTED,
                 DedupResponseStatus.PENDING,
@@ -137,7 +149,7 @@ def enabled_push(btn: ButtonWidget) -> bool:
 
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "push_date", "status", "dedup_run_state", "deduplication_set_id")
+    list_display = ("name", "push_date", "status", "dedup_tracking_state", "deduplication_set_id")
     list_filter = (("status", ChoiceFilter),)
     readonly_fields = fields = (
         "name",
@@ -145,7 +157,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "push_date",
         "status",
         "biometric_deduplication_enabled",
-        "dedup_run_state",
+        "dedup_tracking_state",
         "dedup_engine_state",
         "deduplication_set_id",
         "related_job",
@@ -198,8 +210,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if obj.status != obj.PushStatus.PENDING:
             return "N/A"
 
-        match obj.dedup_run_state:
-            case obj.DedupRunState.IN_PROGRESS:
+        match obj.dedup_tracking_state:
+            case obj.DedupTrackingState.IN_PROGRESS:
                 resp = _dedup_status_safe(obj.program.unicef_id)
                 if resp.status == DedupResponseStatus.SUCCESS:
                     return f"{resp.status.value} with findings={resp.duplicates_found}"
@@ -242,13 +254,13 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Reject DS",
+        label="Reject",
         change_form=True,
         change_list=False,
         permission="country_workspace.reject_deduplication_set",
         enabled=enabled_reject_ds,
         visible=visible_reject_ds,
-        html_attrs={"title": "Reject the active DedupEngine deduplication set."},
+        html_attrs={"title": "Reject this RDP by rejecting its active DE deduplication set."},
     )
     def reject_ds(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
@@ -256,7 +268,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         job = AsyncJob.objects.create(
-            description="Reject the active DedupEngine deduplication set",
+            description="Reject RDP by rejecting its active DE deduplication set",
             type=AsyncJob.JobType.TASK,
             owner=request.user,
             action=fqn(reject_deduplication_set_existing_rdp_core),
@@ -266,7 +278,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
         job.queue()
 
-        messages.success(request, "Reject DS task scheduled")
+        messages.success(request, "Reject task scheduled")
         return redirect(self._change_url(obj))
 
     @button(
