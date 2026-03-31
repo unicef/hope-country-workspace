@@ -16,6 +16,7 @@ from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.utils.import_processing import build_import_processor
+from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 from .config import Config, SheetName, Sheet
@@ -231,6 +232,7 @@ def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[s
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     _sync_ind_pks(household_mapping, individuals_mapping)
+    sync_collector_links(individuals_mapping.values())
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
@@ -238,6 +240,7 @@ def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
 
     people_mapping = process_beneficiaries(people_sheet, job, batch, config)
+    sync_collector_links(people_mapping.values())
     return {"people": len(people_mapping)}
 
 
