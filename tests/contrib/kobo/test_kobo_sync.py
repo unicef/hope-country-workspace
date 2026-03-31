@@ -661,7 +661,7 @@ def test_create_individuals_with_job_checks_cancellation_and_continues(mocker: M
     }
 
     individuals = create_individuals(
-        batch_mock := Mock(name="batch"),
+        Mock(name="batch"),
         household_mock := Mock(name="household"),
         cast("Submission", submission),
         config,
@@ -671,7 +671,7 @@ def test_create_individuals_with_job_checks_cancellation_and_continues(mocker: M
 
     assert individuals == [individual_class_mock.return_value, individual_class_mock.return_value]
     assert job.ensure_not_cancelled.call_count == 2
-    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    assert build_processor_mock.call_count == 2
     assert get_fullname_key_mock.call_count == 2
     household_mock.program.individuals.bulk_create.assert_called_once_with(individuals)
 

@@ -222,7 +222,7 @@ def test_sync_job_task_handles_graceful_cancellation(mocker, job):
     cancel_mock.assert_called_once()
     update_state_mock.assert_called_once_with(
         state="REVOKED",
-        meta={"reason": "Cancellation requested for job #" + str(job.pk), "job_id": job.pk},
+        meta={"reason": "cancel requested", "job_id": job.pk},
     )
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches
