@@ -280,9 +280,40 @@ def test_program_add_removed_unique_values_for(program: Program) -> None:
 
 
 def test_program_has_any_data(program: Program) -> None:
+    from tests.extras.testutils.factories import BatchFactory
+
     assert not program.has_any_data()
-    IndividualFactory(batch__program=program)
+    batch = BatchFactory(program=program, country_office=program.country_office)
+    IndividualFactory(batch=batch)
     assert program.has_any_data()
+
+
+def test_program_has_any_data_unsaved_program() -> None:
+    unsaved_program = ProgramFactory.build()
+    assert unsaved_program.has_any_data() is False
+
+
+def test_program_save_unique_field_for_none_removes_scope(program: Program) -> None:
+    program.system_fields = {
+        "unique_fields": {"individual": "national_id", "household": "household_id"},
+        "removed_unique_values": {"individual": {"national_id": ["A"]}},
+    }
+
+    program.save_unique_field_for(Individual, None)
+
+    assert "individual" not in program.system_fields["unique_fields"]
+    assert program.system_fields["unique_fields"]["household"] == "household_id"
+
+
+def test_program_get_removed_unique_values_for_without_unique_field(program: Program) -> None:
+    program.system_fields = {"removed_unique_values": {"individual": {"national_id": ["A"]}}}
+    assert program.get_removed_unique_values_for(Individual) == []
+
+
+def test_program_add_removed_unique_values_for_without_unique_field(program: Program) -> None:
+    program.system_fields = {}
+    program.add_removed_unique_values_for(Individual, ["A"])
+    assert program.system_fields == {}
 
 
 def test_apply_mapping_importer_with_mapping_id(program: Program, mocker: MockerFixture) -> None:
