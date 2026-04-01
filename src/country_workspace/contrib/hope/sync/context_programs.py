@@ -128,7 +128,7 @@ def prepare_program_defaults(record: dict[str, Any]) -> dict[str, Any] | None:
 
     return {
         "name": record["name"],
-        "code": record["programme_code"],
+        "code": record["code"],
         "status": record["status"],
         "sector": record["sector"],
         "country_office": office,

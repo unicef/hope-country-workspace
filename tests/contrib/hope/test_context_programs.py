@@ -164,14 +164,14 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
         "business_area_code": (area_code := "area_code"),
         "beneficiary_group": (group := "group"),
         "name": (name := "name"),
-        "programme_code": (programme_code := "programme_code"),
+        "code": (code := "code"),
         "status": (status := "status"),
         "sector": (sector := "sector"),
     }
 
     assert prepare_program_defaults(record) == {
         "name": name,
-        "code": programme_code,
+        "code": code,
         "status": status,
         "sector": sector,
         "country_office": get_office_mock.return_value,
