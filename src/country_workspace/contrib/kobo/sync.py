@@ -20,6 +20,7 @@ from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
+from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
@@ -441,6 +442,7 @@ def import_data(job: AsyncJob) -> ImportResult:
         job=job,
         timebox_seconds=timebox_seconds,
     )
+    sync_collector_links(batch.individual_set.filter(removed=False))  # type: ignore[attr-defined]
     household_counter += asset_import_result["households"]
     individual_counter += asset_import_result["individuals"]
 

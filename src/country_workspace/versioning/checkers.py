@@ -100,6 +100,7 @@ def create_hope_checkers() -> None:
         ("phone_no", defs["char"], {}),
         ("relationship", defs["i_relationship"], {"label": "Relationship", "required": True}),
         ("role", defs["i_role"], {"label": "Role"}),
+        ("collector_id", defs["char"], {"label": "Collector ID", "required": False}),
     ]
 
     people_fields_spec: list[FieldSpec] = [
@@ -109,6 +110,7 @@ def create_hope_checkers() -> None:
         ("residence_status", defs["h_residence"], {"label": "Residence Status", "required": True}),
         ("gender", defs["i_gender"], {}),
         ("birth_date", defs["date"], {"label": "Birth Date", "required": True}),
+        ("collector_id", defs["char"], {"label": "Collector ID", "required": False}),
     ]
 
     fields_specs = (household_fields_spec, individual_fields_spec, people_fields_spec)
