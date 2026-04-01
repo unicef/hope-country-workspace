@@ -26,6 +26,7 @@ from country_workspace.contrib.kobo.sync import (
     get_alien_fields,
     check_for_alien_fields,
 )
+from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.models import Program, SyncLog
 from testutils.factories import (
     BatchFactory,
@@ -343,7 +344,7 @@ def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, con
     def create_household_real(batch, submission, config, id_generator, originating_id):
         return HouseholdFactory(batch=batch, individuals=[])
 
-    def create_individuals_real(batch, household, submission, config, originating_id):
+    def create_individuals_real(batch, household, submission, config, originating_id, job=None):
         return [IndividualFactory(batch=batch, household=household)]
 
     mocker.patch(
@@ -456,6 +457,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         asset_mock,
         config,
         get_id_generator_mock.return_value,
+        job=job_mock,
         timebox_seconds=300,
     )
     get_id_generator_mock.assert_called_once()
@@ -543,6 +545,7 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
         asset_mock,
         config,
         get_id_generator_mock.return_value,
+        job=job_mock,
         timebox_seconds=300,
     )
     create_validation_jobs_mock.assert_not_called()
@@ -597,9 +600,81 @@ def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Confi
         asset_mock,
         config,
         get_id_generator_mock.return_value,
+        job=job_mock,
         timebox_seconds=300,
     )
     create_validation_mock.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_import_asset_re_raises_graceful_cancellation(mocker: MockerFixture, config: Config) -> None:
+    batch = BatchFactory()
+    program_ct = ContentType.objects.get_for_model(Program)
+    SyncLogFactory(
+        name="kobo_asset-id",
+        content_type=program_ct,
+        object_id=batch.program.id,
+        last_id="100",
+    )
+    asset = Mock()
+    asset.uid = "asset-id"
+    submission = Mock(spec=dict)
+    submission.id = 101
+    asset.submissions.return_value = iter([submission])
+
+    job = Mock()
+    job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
+
+    with pytest.raises(GracefulJobCancellationError):
+        import_asset(batch, asset, config, id_generator=Mock(), job=job)
+
+
+@pytest.mark.django_db
+def test_create_individuals_checks_cancellation_per_individual(config: Config) -> None:
+    batch = BatchFactory()
+    household = HouseholdFactory(batch=batch, individuals=[])
+
+    job = Mock()
+    job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
+
+    submission = {config["individual_records_field"]: [{"some_field": "value"}]}
+
+    with pytest.raises(GracefulJobCancellationError):
+        create_individuals(batch, household, submission, config, "originating_id", job=job)
+
+    job.ensure_not_cancelled.assert_called_once_with(refresh=True)
+
+
+def test_create_individuals_with_job_checks_cancellation_and_continues(mocker: MockerFixture, config: Config) -> None:
+    build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
+    get_fullname_key_mock = mocker.patch(
+        "country_workspace.contrib.kobo.sync.get_fullname_key", return_value="full_name"
+    )
+    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+    build_processor_mock.return_value = Mock(side_effect=[{"full_name": "Name 1"}, {"full_name": "Name 2"}])
+
+    job = Mock()
+    submission = {
+        config["individual_records_field"]: [
+            {"full_name": "Name 1"},
+            {"full_name": "Name 2"},
+        ]
+    }
+
+    individuals = create_individuals(
+        Mock(name="batch"),
+        household_mock := Mock(name="household"),
+        cast("Submission", submission),
+        config,
+        "originating_id",
+        job=job,
+    )
+
+    assert individuals == [individual_class_mock.return_value, individual_class_mock.return_value]
+    assert job.ensure_not_cancelled.call_count == 2
+    assert build_processor_mock.call_count == 2
+    assert get_fullname_key_mock.call_count == 2
+    household_mock.program.individuals.bulk_create.assert_called_once_with(individuals)
 
 
 def test_get_fullname_key_key_exists() -> None:

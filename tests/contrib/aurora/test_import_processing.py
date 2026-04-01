@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.contrib.aurora import import_processing
+from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.contrib.aurora.import_processing import (
     Config,
     ImportResult,
@@ -89,6 +90,15 @@ def test_import_data_master_detail_aggregates_households(mocker: MockerFixture, 
     import_result_mock.assert_any_call(batch, {"pk": "5"}, job.config)
     import_result_mock.assert_any_call(batch, {"pk": "6"}, job.config)
     batch_cls.objects.create.assert_called_once()
+
+
+def test_import_data_honors_cancellation_before_start(config: Config) -> None:
+    job = Mock()
+    job.config = config
+    job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
+
+    with pytest.raises(GracefulJobCancellationError):
+        import_data(job)
 
 
 # --- import_result ----------------------------------------------------------------

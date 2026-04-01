@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import Mock, patch, PropertyMock
 
 from testutils.factories import AsyncJobFactory, ProgramFactory
+from country_workspace.models.jobs import GracefulJobCancellationError
 
 
 @pytest.fixture
@@ -44,3 +45,31 @@ def test_job_info_with_exception(mock_async_result, program):
     job = AsyncJobFactory(program=program)
     mock_async_result.return_value = Mock(result=Exception("boom"))
     assert job.info == "-"
+
+
+@pytest.mark.django_db
+def test_request_cancellation_sets_tracking_flag(program):
+    job = AsyncJobFactory(program=program)
+    job.curr_async_result_id = "task-id-123"
+
+    with patch.object(job, "set_tracking_info") as set_tracking_info:
+        result = job.request_cancellation()
+
+    assert result is True
+    set_tracking_info.assert_called_once_with("terminate_requested", "1")
+
+
+@pytest.mark.django_db
+def test_request_cancellation_returns_false_without_task_id(program):
+    job = AsyncJobFactory(program=program)
+    assert job.request_cancellation() is False
+
+
+@pytest.mark.django_db
+def test_ensure_not_cancelled_raises_when_termination_requested(program):
+    job = AsyncJobFactory(program=program)
+
+    with patch("country_workspace.models.AsyncJob.is_termination_requested", new_callable=PropertyMock) as requested:
+        requested.return_value = True
+        with pytest.raises(GracefulJobCancellationError):
+            job.ensure_not_cancelled()

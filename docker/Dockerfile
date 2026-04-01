@@ -126,6 +126,10 @@ FROM base_os AS dist
 ARG BUILD_DATE
 ARG SOURCE_COMMIT
 ARG BRANCH
+ARG MEDIA_ROOT
+ARG STATIC_ROOT
+ARG GITHUB_SERVER_URL
+ARG GITHUB_REPOSITORY
 
 ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
     DJANGO_SETTINGS_MODULE=country_workspace.config.settings \

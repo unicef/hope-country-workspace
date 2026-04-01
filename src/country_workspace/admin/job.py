@@ -16,7 +16,11 @@ if TYPE_CHECKING:
 
 
 @admin.register(AsyncJob)
-class AsyncJobAdmin(CeleryTaskModelAdmin, BaseModelAdmin, JobErrorDisplayMixin):
+class AsyncJobAdmin(
+    CeleryTaskModelAdmin,
+    BaseModelAdmin,
+    JobErrorDisplayMixin,
+):
     list_display = ("program", "type", "status", "owner")
     autocomplete_fields = ("program", "owner", "batch", "content_type", "rdp")
     list_filter = (

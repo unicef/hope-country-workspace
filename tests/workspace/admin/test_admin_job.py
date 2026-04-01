@@ -79,6 +79,14 @@ def test_celery_check(rf, async_job, admin_site):
 
 
 @pytest.mark.django_db
+def test_celery_cancel_action_available(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    assert hasattr(admin, "celery_cancel")
+
+
+@pytest.mark.django_db
 def test_has_add_permission(rf, admin_site):
     from country_workspace.workspaces.admin.job import CountryJobAdmin
 

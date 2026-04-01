@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
 
 @register(CountryAsyncJob, site=workspace)
-class CountryJobAdmin(CeleryTaskModelAdmin, WorkspaceModelAdmin, JobErrorDisplayMixin):
+class CountryJobAdmin(
+    CeleryTaskModelAdmin,
+    WorkspaceModelAdmin,
+    JobErrorDisplayMixin,
+):
     queue_template = "workspace/celery_boost/queue.html"
 
     list_display = (
