@@ -1,21 +1,20 @@
-from typing import Any, Literal, TypedDict
+from typing import NotRequired, TypedDict
+from .schemas import GroupSettings
 
 
-class DeduplicationSet(TypedDict):
+class CreateDeduplicationSet(TypedDict):
+    id: NotRequired[str]
+    name: NotRequired[str | None]
+    notification_url: NotRequired[str | None]
+    notify: NotRequired[bool]
     reference_pk: str
 
 
-class Image(TypedDict):
-    reference_pk: str
+class DeduplicationSetGroupConfig(GroupSettings):
+    pass
+
+
+class CreateEncoding(TypedDict):
+    deduplication_set: NotRequired[str]
     filename: str
-
-
-class Approve(TypedDict):
-    action: Literal["approve"]
-
-
-class Reject(TypedDict):
-    action: Literal["reject"]
-
-
-type DeduplicationSetGroupConfig = dict[str, Any]
+    reference_pk: str

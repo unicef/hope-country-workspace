@@ -1,0 +1,730 @@
+openapi: 3.0.3
+info:
+  title: Deduplication Engine API
+  version: 1.0.0
+  description: Deduplication Engine to run deduplication for different datasets
+paths:
+  /api/rest/:
+    get:
+      operationId: api_rest_retrieve
+      description: |-
+        OpenApi3 schema for this API. Format can be selected via content negotiation.
+
+        - YAML: application/vnd.oai.openapi
+        - JSON: application/vnd.oai.openapi+json
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - json
+          - yaml
+      - in: query
+        name: lang
+        schema:
+          type: string
+          enum:
+          - ar
+          - en
+          - es
+          - fr
+      tags:
+      - api
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.oai.openapi:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/yaml:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/vnd.oai.openapi+json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /deduplication_set_groups/{reference_id}/approve/:
+    post:
+      operationId: deduplication_set_groups_approve_create
+      description: Approve the deduplicated set in this group (used by HOPE).
+      parameters:
+      - in: path
+        name: reference_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_set_groups
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          description: No response body
+  /deduplication_set_groups/{reference_id}/config/:
+    get:
+      operationId: deduplication_set_groups_config_retrieve
+      description: Get quality threshold settings for a deduplication set group.
+      parameters:
+      - in: path
+        name: reference_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_set_groups
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSettings'
+          description: ''
+    post:
+      operationId: deduplication_set_groups_config_create
+      description: Create or update quality threshold settings for a deduplication
+        set group.
+      parameters:
+      - in: path
+        name: reference_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_set_groups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupSettingsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GroupSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GroupSettingsRequest'
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSettings'
+          description: ''
+  /deduplication_set_groups/{reference_id}/findings/:
+    get:
+      operationId: deduplication_set_groups_findings_list
+      description: Paginated, filterable findings for a deduplication set group (used
+        by HOPE).
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: path
+        name: reference_id
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: reference_pk
+        schema:
+          type: array
+          items:
+            type: string
+        description: Filter by one or more reference pks
+        explode: false
+        style: form
+      - in: query
+        name: status_code
+        schema:
+          type: integer
+          enum:
+          - 200
+          - 404
+          - 412
+          - 416
+          - 418
+          - 429
+          - 500
+        description: |-
+          Filter by status code
+
+          * `200` - deduplication success
+          * `404` - no file found
+          * `412` - no face detected
+          * `416` - face was detected but did not meet confidence threshold
+          * `418` - image quality below threshold
+          * `429` - multiple faces detected
+          * `500` - generic error
+      - in: query
+        name: updated_after
+        schema:
+          type: string
+          format: date-time
+        description: 'Filter by updated_at >= datetime (ISO 8601: 2025-09-30T10:00:00Z)'
+      - in: query
+        name: updated_before
+        schema:
+          type: string
+          format: date-time
+        description: 'Filter by updated_at <= datetime (ISO 8601: 2025-09-30T10:00:00Z)'
+      tags:
+      - deduplication_set_groups
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDuplicateList'
+          description: ''
+  /deduplication_set_groups/{reference_id}/status/:
+    get:
+      operationId: deduplication_set_groups_status_retrieve
+      description: Check whether a new deduplication set can be created in this group.
+      parameters:
+      - in: path
+        name: reference_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_set_groups
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupStatus'
+          description: ''
+  /deduplication_sets/:
+    get:
+      operationId: deduplication_sets_list
+      description: List all deduplication sets available to the user
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeduplicationSet'
+          description: ''
+    post:
+      operationId: deduplication_sets_create
+      description: Create new deduplication set
+      tags:
+      - deduplication_sets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeduplicationSetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateDeduplicationSetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateDeduplicationSetRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDeduplicationSet'
+          description: ''
+  /deduplication_sets/{deduplication_set_id}/images/:
+    post:
+      operationId: deduplication_sets_images_create
+      parameters:
+      - in: path
+        name: deduplication_set_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - deduplication_sets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateEncodingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateEncodingRequest'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateEncodingRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreateEncoding'
+          description: ''
+  /deduplication_sets/{deduplication_set_id}/images/clear/:
+    delete:
+      operationId: deduplication_sets_images_clear_destroy
+      description: Delete all images from deduplication set
+      parameters:
+      - in: path
+        name: deduplication_set_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /deduplication_sets/{id}/:
+    get:
+      operationId: deduplication_sets_retrieve
+      description: Retrieve specific deduplication set
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeduplicationSet'
+          description: ''
+    delete:
+      operationId: deduplication_sets_destroy
+      description: Delete specific deduplication set
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /deduplication_sets/{id}/process/:
+    post:
+      operationId: deduplication_sets_process_create
+      description: Run encoding and/or deduplication for the deduplication set
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          description: No response body
+  /deduplication_sets/{id}/reject/:
+    post:
+      operationId: deduplication_sets_reject_create
+      description: Reject the deduplication set findings
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - deduplication_sets
+      security:
+      - tokenAuth: []
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    CreateDeduplicationSet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Deduplication set id.
+        reference_pk:
+          type: string
+        name:
+          type: string
+          nullable: true
+        notification_url:
+          type: string
+          nullable: true
+          description: Notification url.
+          maxLength: 255
+        notify:
+          type: boolean
+          description: Whether to send notifications about deduplication set state
+            changes.
+        state:
+          type: string
+          readOnly: true
+      required:
+      - reference_pk
+      - state
+    CreateDeduplicationSetRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Deduplication set id.
+        reference_pk:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          nullable: true
+        notification_url:
+          type: string
+          nullable: true
+          description: Notification url.
+          maxLength: 255
+        notify:
+          type: boolean
+          description: Whether to send notifications about deduplication set state
+            changes.
+      required:
+      - reference_pk
+    CreateEncoding:
+      type: object
+      properties:
+        reference_pk:
+          type: string
+          description: External id of the encoding.
+          maxLength: 100
+        filename:
+          type: string
+          description: Filename or data URL used in encoding.
+      required:
+      - filename
+      - reference_pk
+    CreateEncodingRequest:
+      type: object
+      properties:
+        reference_pk:
+          type: string
+          minLength: 1
+          description: External id of the encoding.
+          maxLength: 100
+        filename:
+          type: string
+          minLength: 1
+          description: Filename or data URL used in encoding.
+        deduplication_set:
+          type: string
+          format: uuid
+          description: Deduplication set id.
+          writeOnly: true
+      required:
+      - filename
+      - reference_pk
+    DeduplicationSet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Deduplication set id.
+        reference_pk:
+          type: string
+        name:
+          type: string
+          readOnly: true
+          nullable: true
+        state:
+          type: string
+          readOnly: true
+        findings_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Date and time when this deduplication set was created.
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Date and time when this deduplication set was last updated.
+      required:
+      - created_at
+      - findings_count
+      - name
+      - reference_pk
+      - state
+      - updated_at
+    Duplicate:
+      type: object
+      properties:
+        first:
+          $ref: '#/components/schemas/Entry'
+        second:
+          $ref: '#/components/schemas/Entry'
+        score:
+          type: number
+          format: double
+          maximum: 1
+          minimum: 0
+          title: Similarity Score
+          description: Similarity score between the two encodings.
+        status_code:
+          allOf:
+          - $ref: '#/components/schemas/StatusCodeEnum'
+          description: |-
+            Finding status code.
+
+            * `200` - deduplication success
+            * `404` - no file found
+            * `412` - no face detected
+            * `416` - face was detected but did not meet confidence threshold
+            * `418` - image quality below threshold
+            * `429` - multiple faces detected
+            * `500` - generic error
+          minimum: -2147483648
+          maximum: 2147483647
+        config:
+          nullable: true
+          description: Snapshot of the deduplication settings active when this finding
+            was created.
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Date and time when this finding was updated.
+      required:
+      - first
+      - second
+      - updated_at
+    Entry:
+      type: object
+      properties:
+        reference_pk:
+          type: integer
+          readOnly: true
+      required:
+      - reference_pk
+    GroupSettings:
+      type: object
+      properties:
+        face_detection_confidence_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum confidence score (0-1) for a detected face to be accepted.
+        duplicate_confidence_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Threshold on face match confidence (0-1) for treating pairs
+            as duplicates.
+        sharpness_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum sharpness score (0-1). 0 = disabled.
+        dynamic_range_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum dynamic range score (0-1). 0 = disabled.
+        no_head_cover_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum no-head-cover score (0-1). 0 = disabled.
+        eyes_open_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum eyes-open score (0-1). 0 = disabled.
+        inter_eye_distance_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum inter-eye distance score (0-1). 0 = disabled.
+        unified_quality_score_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum unified quality score (0-1). 0 = disabled.
+    GroupSettingsRequest:
+      type: object
+      properties:
+        face_detection_confidence_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum confidence score (0-1) for a detected face to be accepted.
+        duplicate_confidence_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Threshold on face match confidence (0-1) for treating pairs
+            as duplicates.
+        sharpness_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum sharpness score (0-1). 0 = disabled.
+        dynamic_range_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum dynamic range score (0-1). 0 = disabled.
+        no_head_cover_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum no-head-cover score (0-1). 0 = disabled.
+        eyes_open_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum eyes-open score (0-1). 0 = disabled.
+        inter_eye_distance_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum inter-eye distance score (0-1). 0 = disabled.
+        unified_quality_score_threshold:
+          type: number
+          format: double
+          maximum: 1.0
+          minimum: 0.0
+          description: Minimum unified quality score (0-1). 0 = disabled.
+    GroupStatus:
+      type: object
+      properties:
+        can_create:
+          type: boolean
+      required:
+      - can_create
+    PaginatedDuplicateList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Duplicate'
+    StatusCodeEnum:
+      enum:
+      - 200
+      - 404
+      - 412
+      - 416
+      - 418
+      - 429
+      - 500
+      type: integer
+      description: |-
+        * `200` - deduplication success
+        * `404` - no file found
+        * `412` - no face detected
+        * `416` - face was detected but did not meet confidence threshold
+        * `418` - image quality below threshold
+        * `429` - multiple faces detected
+        * `500` - generic error
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Token-based authentication with required prefix "Token"

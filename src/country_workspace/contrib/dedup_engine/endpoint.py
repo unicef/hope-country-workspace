@@ -42,10 +42,6 @@ class Process(Endpoint):
     pass
 
 
-class Approve(Endpoint):
-    pass
-
-
 class Reject(Endpoint):
     pass
 
@@ -54,22 +50,22 @@ class DeduplicationSetGroupConfig(Endpoint):
     pass
 
 
+class DeduplicationSetGroupStatus(Endpoint):
+    pass
+
+
 class DeduplicationSet(Endpoint):
     @property
-    def images_bulk(self) -> Images:
-        return Images(url_join(self.url, "images_bulk"))
+    def images(self) -> Images:
+        return Images(url_join(self.url, "images"))
 
     @property
     def process(self) -> Process:
         return Process(url_join(self.url, "process"))
 
     @property
-    def approve(self) -> Approve:
-        return Approve(url_join(self.url, "approve_or_reject"))
-
-    @property
     def reject(self) -> Reject:
-        return Reject(url_join(self.url, "approve_or_reject"))
+        return Reject(url_join(self.url, "reject"))
 
 
 class DeduplicationSets(Endpoint):
@@ -79,7 +75,10 @@ class DeduplicationSets(Endpoint):
 
 class DeduplicationSetGroups(Endpoint):
     def config(self, ref_id: Any) -> DeduplicationSetGroupConfig:
-        return DeduplicationSetGroupConfig(url_join(self.url, "config", str(ref_id)))
+        return DeduplicationSetGroupConfig(url_join(self.url, str(ref_id), "config"))
+
+    def status(self, ref_id: Any) -> DeduplicationSetGroupStatus:
+        return DeduplicationSetGroupStatus(url_join(self.url, str(ref_id), "status"))
 
 
 class APIRoot(Endpoint):

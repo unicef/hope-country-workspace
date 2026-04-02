@@ -1,23 +1,30 @@
-from enum import StrEnum, auto
-from typing import Any, TypedDict
+from typing import NotRequired, TypedDict
+from .schemas import GroupSettings
 
 
-class Status(StrEnum):
-    STARTED = auto()
-    SUCCESS = auto()
-    PENDING = auto()
-    FAILURE = auto()
-    REVOKED = auto()
-    UNKNOWN = auto()
-    NOT_SCHEDULED = auto()
-    DS_NOT_EXPOSED = auto()
-    STATUS_UNAVAILABLE = auto()
+class CreatedDeduplicationSet(TypedDict):
+    id: NotRequired[str]
+    name: NotRequired[str | None]
+    notification_url: NotRequired[str | None]
+    notify: NotRequired[bool]
+    reference_pk: str
+    state: str
 
 
 class DeduplicationSet(TypedDict):
-    id: str
-    status: str
-    duplicates_found: int
+    id: NotRequired[str]
+    created_at: str
+    findings_count: int
+    name: str | None
+    reference_pk: str
+    state: str
+    updated_at: str
 
 
-type DeduplicationSetGroupConfig = dict[str, Any]
+class DeduplicationSetGroupConfig(GroupSettings):
+    pass
+
+
+class CreatedEncoding(TypedDict):
+    reference_pk: str
+    filename: str

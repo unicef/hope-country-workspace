@@ -1,25 +1,25 @@
-from collections.abc import Callable, Generator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, NamedTuple, TypeVar
+from typing import Any, TypeVar
 
-from constance import config
 from requests import Session
-from requests.adapters import HTTPAdapter
-from requests.exceptions import HTTPError, RequestException
-from rest_framework.status import HTTP_404_NOT_FOUND
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    HTTPError,
+    RequestException,
+    Timeout as RequestsTimeout,
+)
 
-from country_workspace.contrib.dedup_engine import endpoint, resource, request, response
-from country_workspace.exceptions import RemoteError
-from country_workspace.utils.auth import Auth
+from country_workspace.contrib.dedup_engine import endpoint, request, resource, response
+from country_workspace.contrib.dedup_engine.validation import (
+    expect_mapping,
+    get_optional_str,
+    get_required_bool,
+)
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 
 T = TypeVar("T")
-
-
-class Status(NamedTuple):
-    status: response.Status
-    duplicates_found: int
 
 
 @dataclass(slots=True)
@@ -27,12 +27,25 @@ class Client:
     program_id: str
     session: Session
     api_root: endpoint.APIRoot
+    deduplication_set_id: str | None = None
 
     @property
     def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
-        return self.api_root.deduplication_sets.deduplication_set(self.program_id)
+        return self.api_root.deduplication_sets.deduplication_set(self._require_deduplication_set_id())
 
-    def _err(self, operation: str, err: Exception, response_obj: Any | None = None) -> RemoteError:
+    def _require_deduplication_set_id(self) -> str:
+        if self.deduplication_set_id:
+            return self.deduplication_set_id
+        raise RemoteError("DedupEngine: deduplication_set_id is not set")
+
+    def _err(
+        self,
+        operation: str,
+        err: Exception,
+        response_obj: Any | None = None,
+        *,
+        error_cls: type[RemoteError] | type[RemoteUnavailableError] = RemoteError,
+    ) -> Exception:
         req = getattr(response_obj, "request", None) if response_obj is not None else None
         target = f"{getattr(req, 'method', '')} {getattr(req, 'url', '')}".strip() or operation
 
@@ -43,102 +56,91 @@ class Client:
                 f". Response: {getattr(response_obj, 'text', None)}"
             )
 
-        return RemoteError(f"DedupEngine: {target} failed: {err}{details}")
+        return error_cls(f"DedupEngine: {target} failed: {err}{details}")
 
     def _request(self, operation: str, fn: Callable[[], T]) -> T:
         try:
             return fn()
-        except (RequestException, ValueError, KeyError, TypeError) as exc:
+        except (RequestsConnectionError, RequestsTimeout) as exc:
+            raise self._err(operation, exc, getattr(exc, "response", None), error_cls=RemoteUnavailableError) from exc
+        except HTTPError as exc:
+            response_obj = exc.response
+            status_code = getattr(response_obj, "status_code", None)
+            error_cls = RemoteUnavailableError if isinstance(status_code, int) and status_code >= 500 else RemoteError
+            raise self._err(operation, exc, response_obj, error_cls=error_cls) from exc
+        except (ValueError, KeyError, TypeError) as exc:
             raise self._err(operation, exc, getattr(exc, "response", None)) from exc
+        except RequestException as exc:
+            raise self._err(operation, exc, getattr(exc, "response", None), error_cls=RemoteUnavailableError) from exc
 
-    def create_deduplication_set(self) -> str:
-        deduplication_set_collection = resource.DeduplicationSetCollection(
+    def create_deduplication_set(self) -> response.CreatedDeduplicationSet:
+        collection = resource.DeduplicationSetCollection(
             self.session,
             self.api_root.deduplication_sets,
         )
-        return self._request(
+        result = self._request(
             "create_deduplication_set",
-            lambda: deduplication_set_collection.create({"reference_pk": self.program_id})["id"],
+            lambda: collection.create({"reference_pk": self.program_id}),
         )
+        self.deduplication_set_id = get_optional_str(result, "id")
+        return result
 
-    def create_images(self, images: list[request.Image]) -> None:
-        image_collection = resource.ImagesBulkCollection(
+    def can_create_deduplication_set(self) -> bool:
+        def fetch() -> bool:
+            result = self.session.get(str(self.api_root.deduplication_set_groups.status(self.program_id)))
+            result.raise_for_status()
+            payload = expect_mapping(result.json(), "can_create_deduplication_set")
+            return get_required_bool(payload, "can_create", "can_create_deduplication_set")
+
+        return self._request("can_create_deduplication_set", fetch)
+
+    def create_images(
+        self,
+        images: list[request.CreateEncoding],
+        *,
+        last: bool = False,
+    ) -> list[response.CreatedEncoding]:
+        collection = resource.ImagesCollection(
             self.session,
-            self.deduplication_set_endpoint.images_bulk,
+            self.deduplication_set_endpoint.images,
         )
-        self._request("create_images", lambda: image_collection.create(images))
+        params = {"last": "true"} if last else None
+        return self._request("create_images", lambda: collection.create(images, params=params))
 
     def process(self) -> None:
-        process_action = resource.ProcessDeduplicationSetAction(
+        action = resource.ProcessDeduplicationSetAction(
             self.session,
             self.deduplication_set_endpoint.process,
         )
-        self._request("process", lambda: process_action.call(None))
+        self._request("process", action.call)
 
     def reject(self) -> None:
-        reject_action = resource.RejectDeduplicationSetAction(
+        action = resource.RejectDeduplicationSetAction(
             self.session,
             self.deduplication_set_endpoint.reject,
         )
-        payload: request.Reject = {"action": "reject"}
-        self._request("reject", lambda: reject_action.call(payload))
+        self._request("reject", action.call)
 
-    def status(self) -> Status:
-        deduplication_set_item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
-
-        try:
-            deduplication_set = deduplication_set_item.retrieve()
-        except HTTPError as exc:
-            response_obj = exc.response
-            # Treat 404 as "deduplication set is not exposed" for this group.
-            # This includes both "no set exists" and "only INACTIVE sets exist".
-            if response_obj is not None and response_obj.status_code == HTTP_404_NOT_FOUND:
-                return Status(response.Status.DS_NOT_EXPOSED, -1)
-            raise self._err("status", exc, response_obj) from exc
-        except (RequestException, ValueError, KeyError, TypeError) as exc:
-            raise self._err("status", exc, getattr(exc, "response", None)) from exc
-
-        if not isinstance(deduplication_set, dict):
-            raise self._err("status", TypeError("malformed JSON response"))
-
-        raw_status = deduplication_set.get("status")
-        try:
-            status = response.Status(raw_status.lower()) if isinstance(raw_status, str) else response.Status.UNKNOWN
-        except ValueError:
-            status = response.Status.UNKNOWN
-
-        duplicates_found = deduplication_set.get("duplicates_found")
-        if not isinstance(duplicates_found, int):
-            duplicates_found = -1
-
-        return Status(status, duplicates_found)
+    def retrieve_deduplication_set(self) -> response.DeduplicationSet:
+        item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
+        return self._request("retrieve_deduplication_set", item.retrieve)
 
     def get_deduplication_set_group_config(self) -> response.DeduplicationSetGroupConfig:
         item = resource.DeduplicationSetGroupConfigItem(
             self.session,
             self.api_root.deduplication_set_groups.config(self.program_id),
         )
-        payload = self._request("get_deduplication_set_group_config", item.retrieve)
-        if not isinstance(payload, dict):
-            raise self._err("get_deduplication_set_group_config", TypeError("malformed JSON response"))
-        return payload
+        return self._request("get_deduplication_set_group_config", item.retrieve)
 
     def post_deduplication_set_group_config(
         self,
         payload: request.DeduplicationSetGroupConfig,
-    ) -> None:
-        action = resource.DeduplicationSetGroupConfigAction(
+    ) -> response.DeduplicationSetGroupConfig:
+        item = resource.DeduplicationSetGroupConfigItem(
             self.session,
             self.api_root.deduplication_set_groups.config(self.program_id),
         )
-        self._request("post_deduplication_set_group_config", lambda: action.call(payload))
-
-
-@contextmanager
-def make_client(program_id: str) -> Generator[Client, None, None]:
-    with Session() as session:
-        session.mount("https://", HTTPAdapter(max_retries=3))
-        session.auth = Auth(config.DEDUP_API_TOKEN)
-        api_root = endpoint.APIRoot(config.DEDUP_API_URL)
-
-        yield Client(program_id, session, api_root)
+        return self._request(
+            "post_deduplication_set_group_config",
+            lambda: item.update(payload),
+        )
