@@ -131,6 +131,51 @@ def test_detect_and_mark_no_new_values_after_filtering_is_noop(batch):
     assert "identity" not in hh.errors
 
 
+def test_detect_and_mark_records_pass_db_filter_but_values_list_empty(batch):
+    """Branch: `if not values: return` — records pass the ORM filter (not None/empty string)
+    but the Python-level falsy guard (flex_fields.get()) still yields an empty list."""
+    from testutils.factories import CountryHouseholdFactory
+
+    from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
+
+    # 0 is not None and not "" so it passes the DB .exclude() filters,
+    # but bool(0) is False so it is skipped by the list-comprehension guard,
+    # making `values` empty and triggering the early return.
+    hh = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": 0})
+
+    detect_and_mark_collisions_for_batch(batch)
+
+    hh.refresh_from_db()
+    assert "identity" not in hh.errors
+
+
+def test_detect_and_mark_skips_save_when_error_already_up_to_date(batch):
+    """Branch: `if record.errors.get("identity") != msg` is False — no redundant save.
+
+    When the duplicate error is already stored verbatim, re-running detection
+    must leave the record untouched (same errors dict, same last_checked).
+    """
+    from testutils.factories import CountryHouseholdFactory
+
+    from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
+
+    msg = "Duplicate 'uid' value 'DUP' found within the same batch."
+    CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP"})
+    hh2 = CountryHouseholdFactory(batch=batch, individuals=0, flex_fields={"uid": "DUP"})
+
+    # First run — sets the error and last_checked.
+    detect_and_mark_collisions_for_batch(batch)
+    hh2.refresh_from_db()
+    assert hh2.errors.get("identity") == msg
+    last_checked_after_first_run = hh2.last_checked
+
+    # Second run — error already matches; record must not be saved again.
+    detect_and_mark_collisions_for_batch(batch)
+    hh2.refresh_from_db()
+    assert hh2.errors.get("identity") == msg
+    assert hh2.last_checked == last_checked_after_first_run
+
+
 def test_detect_and_mark_individual_checker_marks_within_batch_duplicate(program_with_ind_checker):
     """The individual_checker branch marks within-batch duplicate individuals."""
     from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
