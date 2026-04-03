@@ -16,8 +16,8 @@ def test_job_create_new(program):
     job_1 = AsyncJobFactory(program=program, description=description, action=action)
     job_2 = AsyncJobFactory(program=program, description=description, action=action)
 
-    assert job_1.description == f"{description} #1"
-    assert job_2.description == f"{description} #2"
+    assert job_1.description == description
+    assert job_2.description == description
 
 
 def test_job_save_existing(program):
@@ -25,7 +25,7 @@ def test_job_save_existing(program):
     description = "test_description"
     job_1 = AsyncJobFactory(program=program, description=description, action=action)
     job_1.save()
-    assert job_1.description == f"{description} #1"
+    assert job_1.description == description
 
 
 def test_job_info_no_result(program):
