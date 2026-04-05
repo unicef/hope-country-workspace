@@ -13,8 +13,8 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.dedup_engine.client import Status as DedupClientStatus, make_client
-from country_workspace.contrib.dedup_engine.response import Status as DedupResponseStatus
+from country_workspace.contrib.dedup_engine import DeduplicationSetState, get_deduplication_status, make_dedup_client
+from country_workspace.contrib.dedup_engine.deduplication_status import DedupResponseStatus
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
@@ -24,7 +24,7 @@ from country_workspace.contrib.hope.push import (
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
 )
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import rdi_name_default
 
@@ -41,9 +41,8 @@ from admin_extra_buttons.buttons import ButtonWidget
 
 
 def visible_clone_rdp(btn: ButtonWidget) -> bool:
-    if (obj := btn.original) is None:
-        return False
-    return obj.parent_id is None
+    obj = btn.original
+    return bool(obj and obj.parent_id is None)
 
 
 def enabled_clone_rdp(btn: ButtonWidget) -> bool:
@@ -51,31 +50,62 @@ def enabled_clone_rdp(btn: ButtonWidget) -> bool:
     if obj is None or obj.parent_id is not None or obj.status == obj.PushStatus.PENDING:
         return False
 
-    has_other_pending_rdp = (
+    if (
         CountryRdp.objects.filter(
             program_id=obj.program_id,
             status=obj.PushStatus.PENDING,
         )
         .exclude(pk=obj.pk)
         .exists()
-    )
+    ):
+        return False
 
-    return not has_other_pending_rdp
+    if not obj.program.biometric_deduplication_enabled:
+        return True
 
-
-def _dedup_status_safe(program_unicef_id: str) -> DedupClientStatus:
     try:
-        with make_client(program_unicef_id) as client:
-            return client.status()
-    except RemoteError as e:
-        sentry_sdk.capture_exception(e)
-        return DedupClientStatus(DedupResponseStatus.STATUS_UNAVAILABLE, -1)
+        with make_dedup_client(obj.program.unicef_id) as client:
+            can_clone = client.can_create_deduplication_set()
+    except RemoteUnavailableError as exc:
+        sentry_sdk.capture_exception(exc)
+        can_clone = False
+    except RemoteError:
+        can_clone = False
+
+    return can_clone
 
 
 def visible_workflow(btn: ButtonWidget) -> bool:
     if (obj := btn.original) is None:
         return False
     return obj.status == obj.PushStatus.PENDING
+
+
+def visible_deduplicate(btn: ButtonWidget) -> bool:
+    if (obj := btn.original) is None:
+        return False
+    return bool(obj.status == obj.PushStatus.PENDING and obj.program.biometric_deduplication_enabled)
+
+
+def enabled_deduplicate(btn: ButtonWidget) -> bool:
+    obj = btn.original
+    if obj is None:
+        return False
+
+    if obj.status != obj.PushStatus.PENDING:
+        return False
+
+    if not obj.program.biometric_deduplication_enabled:
+        return False
+
+    try:
+        with make_dedup_client(obj.program.unicef_id) as client:
+            return client.can_create_deduplication_set()
+    except RemoteUnavailableError as exc:
+        sentry_sdk.capture_exception(exc)
+        return False
+    except RemoteError:
+        return False
 
 
 def visible_reject_ds(btn: ButtonWidget) -> bool:
@@ -86,27 +116,6 @@ def visible_reject_ds(btn: ButtonWidget) -> bool:
         and obj.program.biometric_deduplication_enabled
         and obj.deduplication_set_id
     )
-
-
-def enabled_deduplicate(btn: ButtonWidget) -> bool:
-    obj = btn.original
-    if obj is None or obj.status != obj.PushStatus.PENDING:
-        return False
-
-    if not obj.program.biometric_deduplication_enabled:
-        return False
-
-    match obj.dedup_tracking_state:
-        case obj.DedupTrackingState.NOT_RUN:
-            return True
-        case obj.DedupTrackingState.IN_PROGRESS:
-            return _dedup_status_safe(obj.program.unicef_id).status in {
-                DedupResponseStatus.FAILURE,
-                DedupResponseStatus.REVOKED,
-                DedupResponseStatus.DS_NOT_EXPOSED,
-            }
-        case _:
-            return False
 
 
 def enabled_reject_ds(btn: ButtonWidget) -> bool:
@@ -121,54 +130,70 @@ def enabled_reject_ds(btn: ButtonWidget) -> bool:
     ):
         return False
 
-    return _dedup_status_safe(obj.program.unicef_id).status not in {
-        DedupResponseStatus.DS_NOT_EXPOSED,
-        DedupResponseStatus.STATUS_UNAVAILABLE,
-    }
+    try:
+        with make_dedup_client(
+            obj.program.unicef_id,
+            deduplication_set_id=str(obj.deduplication_set_id),
+        ) as client:
+            payload = client.retrieve_deduplication_set()
+    except RemoteUnavailableError as exc:
+        sentry_sdk.capture_exception(exc)
+        return False
+    except RemoteError:
+        return False
+
+    return payload.get("state") == DeduplicationSetState.DEDUPLICATED
 
 
 def enabled_push(btn: ButtonWidget) -> bool:
     obj = btn.original
-    if obj is None or obj.status != obj.PushStatus.PENDING:
-        return False
-    if not obj.program.biometric_deduplication_enabled:
-        return True
+    can_push = bool(obj is not None and obj.status == obj.PushStatus.PENDING)
+    if can_push and obj.program.biometric_deduplication_enabled and obj.deduplication_set_id:
+        try:
+            with make_dedup_client(
+                obj.program.unicef_id,
+                deduplication_set_id=str(obj.deduplication_set_id),
+            ) as client:
+                can_push = client.can_create_deduplication_set()
+                if not can_push:
+                    payload = client.retrieve_deduplication_set()
+                    can_push = payload.get("state") == DeduplicationSetState.DEDUPLICATED
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            can_push = False
+        except RemoteError:
+            can_push = False
 
-    match obj.dedup_tracking_state:
-        case obj.DedupTrackingState.NOT_RUN | obj.DedupTrackingState.FINISHED:
-            return True
-        case obj.DedupTrackingState.IN_PROGRESS:
-            return _dedup_status_safe(obj.program.unicef_id).status not in {
-                DedupResponseStatus.STARTED,
-                DedupResponseStatus.PENDING,
-                DedupResponseStatus.STATUS_UNAVAILABLE,
-            }
-        case _:
-            return False
+    return can_push
 
 
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "push_date", "status", "dedup_tracking_state", "deduplication_set_id")
+    list_display = ("name", "push_date", "status", "deduplication_set_id")
     list_filter = (("status", ChoiceFilter),)
-    readonly_fields = fields = (
-        "name",
-        "parent",
-        "push_date",
-        "status",
-        "biometric_deduplication_enabled",
-        "dedup_tracking_state",
-        "dedup_engine_state",
-        "deduplication_set_id",
-        "related_job",
-    )
     search_fields = ("name", "deduplication_set_id")
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/change_form.html"]
     ordering = ("-push_date",)
 
+    def get_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
+        fields = [
+            "name",
+            "parent",
+            "push_date",
+            "status",
+            "biometric_deduplication_enabled",
+        ]
+        if obj and obj.program.biometric_deduplication_enabled:
+            fields.extend(("dedup_engine_state", "deduplication_set_id"))
+        fields.append("related_jobs")
+        return fields
+
+    def get_readonly_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
+        return self.get_fields(request, obj)
+
     def biometric_deduplication_enabled(self, obj: CountryRdp) -> bool:
-        return bool(obj.program.biometric_deduplication_enabled)
+        return obj.program.biometric_deduplication_enabled
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
@@ -187,7 +212,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
-    def related_job(self, obj: CountryRdp) -> str:
+    def related_jobs(self, obj: CountryRdp) -> str:
         if not (jobs := obj.jobs.order_by("datetime_created")).exists():
             return "-"
         return format_html_join(
@@ -207,17 +232,27 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
-        if obj.status != obj.PushStatus.PENDING:
-            return "N/A"
+        result = "N/A (RDP not pending)"
+        if obj.status == obj.PushStatus.PENDING:
+            result = "N/A (deduplication set ID is not set)"
+            if obj.deduplication_set_id:
+                try:
+                    resp = get_deduplication_status(
+                        obj.program.unicef_id,
+                        obj.deduplication_set_id,
+                    )
+                    if resp.response_status != DedupResponseStatus.OK:
+                        result = resp.response_status.value
+                    elif resp.deduplication_set_status is None:
+                        result = "N/A (deduplication set status is None)"
+                    elif resp.findings_count >= 0:
+                        result = f"{resp.deduplication_set_status} / {resp.findings_count} findings"
+                    else:
+                        result = resp.deduplication_set_status
+                except RemoteUnavailableError:
+                    result = DedupResponseStatus.STATUS_UNAVAILABLE.value
 
-        match obj.dedup_tracking_state:
-            case obj.DedupTrackingState.IN_PROGRESS:
-                resp = _dedup_status_safe(obj.program.unicef_id)
-                if resp.status == DedupResponseStatus.SUCCESS:
-                    return f"{resp.status.value} with findings={resp.duplicates_found}"
-                return resp.status.value
-            case _:
-                return "N/A"
+        return result
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -231,7 +266,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
         enabled=enabled_deduplicate,
-        visible=visible_workflow,
+        visible=visible_deduplicate,
         html_attrs={"title": "Run Deduplication process on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:

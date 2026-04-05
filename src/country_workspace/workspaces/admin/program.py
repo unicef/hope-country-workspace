@@ -19,7 +19,7 @@ from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
     import_data as import_from_aurora,
 )
-from country_workspace.contrib.dedup_engine.client import make_client
+from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import Household, Individual, Rdp
 from country_workspace.models.base import Validable
@@ -156,7 +156,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def get_fieldsets(
         self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
-        fieldsets = (
+        fieldsets = [
             (
                 None,
                 {
@@ -200,13 +200,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     "fields": ("serializer",),
                 },
             ),
-            (
-                _("Deduplication Configuration"),
-                {
-                    "fields": ("dedup_settings",),
-                },
-            ),
-        )
+        ]
+        if obj and obj.biometric_deduplication_enabled:
+            fieldsets.append(
+                (
+                    _("Deduplication Configuration"),
+                    {"fields": ("dedup_settings",)},
+                )
+            )
         if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
             fieldsets[1][1]["fields"] = ("beneficiary_validator", "alien_validation_enabled", "individual_checker")
             fieldsets[2][1]["fields"] = ("individual_columns",)
@@ -221,11 +222,14 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         ).exists()
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
-        with make_client(program_id=program.unicef_id) as client:
+        with make_dedup_client(program_id=program.unicef_id) as client:
             return client.get_deduplication_set_group_config()
 
     @display(description=_("Settings"))
     def dedup_settings(self, obj: CountryProgram) -> str:
+        if not obj.biometric_deduplication_enabled:
+            return "-"
+
         try:
             settings = self._get_dedup_settings(obj)
         except RemoteError:
@@ -572,8 +576,12 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     @button(
         label=_("Update Dedup Settings"),
         permission=can_change_country_program,
-        enabled=lambda btn: (
-            btn.context.get("original") is not None
+        visible=lambda btn: bool(
+            btn.context.get("original") and btn.context["original"].biometric_deduplication_enabled
+        ),
+        enabled=lambda btn: bool(
+            btn.context.get("original")
+            and btn.context["original"].biometric_deduplication_enabled
             and CountryProgramAdmin._can_update_dedup_settings(btn.context["original"])
         ),
         html_attrs={"title": "Update Deduplication settings on DedupEngine."},
@@ -610,7 +618,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         if request.method == "POST" and form.is_valid():
             try:
-                with make_client(program_id=program.unicef_id) as client:
+                with make_dedup_client(program_id=program.unicef_id) as client:
                     client.post_deduplication_set_group_config(payload=form.get_payload())
             except RemoteError:
                 self.message_user(
