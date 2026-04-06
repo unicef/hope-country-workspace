@@ -29,12 +29,6 @@ class Rdp(BaseModel):
     )
     push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    dedup_tracking_state = models.CharField(
-        max_length=15,
-        choices=DedupTrackingState.choices,
-        default=DedupTrackingState.NOT_RUN,
-        help_text=_("Local status used to decide whether DedupEngine should still be checked for this RDP."),
-    )
     deduplication_set_id = models.UUIDField(blank=True, null=True)
     parent = models.ForeignKey(
         "self",
