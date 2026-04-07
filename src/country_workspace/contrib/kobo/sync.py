@@ -396,6 +396,8 @@ def import_data(job: AsyncJob) -> ImportResult:
     - On incomplete (timebox or reschedule), a new AsyncJob is queued; no batch
       status change until the run that completes.
     """
+    from country_workspace.workspaces.admin.program import KOBO_IMPORT_JOB_DESCRIPTION
+
     config: Config = job.config
     job.ensure_not_cancelled(refresh=True)
 
@@ -463,7 +465,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     else:
         job.ensure_not_cancelled(refresh=True)
         AsyncJob.objects.create(
-            description=job.description,
+            description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=job.program.name),
             type=job.type,
             action=job.action,
             file=getattr(job, "file", None),

@@ -43,6 +43,7 @@ class AsyncJob(CeleryTaskModel, models.Model):
             existing_count = AsyncJob.objects.filter(program=self.program, action=self.action).count()
             next_number = existing_count + 1
             self.description = f"{self.description} #{next_number}"
+
         super().save(*args, **kwargs)
 
     @property

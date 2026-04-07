@@ -458,7 +458,7 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         config,
         get_id_generator_mock.return_value,
         job=job_mock,
-        timebox_seconds=300,
+        timebox_seconds=1800,
     )
     get_id_generator_mock.assert_called_once()
 
@@ -546,7 +546,7 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
         config,
         get_id_generator_mock.return_value,
         job=job_mock,
-        timebox_seconds=300,
+        timebox_seconds=1800,
     )
     create_validation_jobs_mock.assert_not_called()
     async_create_mock.assert_called_once()
@@ -601,7 +601,7 @@ def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Confi
         config,
         get_id_generator_mock.return_value,
         job=job_mock,
-        timebox_seconds=300,
+        timebox_seconds=1800,
     )
     create_validation_mock.assert_called_once()
 
