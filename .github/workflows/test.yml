@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v6
       - id: changes
         name: Check for file changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           base: ${{ github.ref }}
           token: ${{ github.token }}
@@ -97,7 +97,7 @@ jobs:
           echo BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: "unicef/hope-country-workspace"
           tags: |
@@ -107,7 +107,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{raw}}
       - name: DockerHub login
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -151,7 +151,7 @@ jobs:
               pytest tests/ --create-db -v --maxfail=5 --migrations --cov-report xml:./output/coverage.xml --record-mode none
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         continue-on-error: true
         with:
           env_vars: OS,PYTHON

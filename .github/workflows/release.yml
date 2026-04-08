@@ -16,13 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: DockerHub login
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: "unicef/hope-country-workspace"
           tags: |
