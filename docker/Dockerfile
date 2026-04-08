@@ -1,4 +1,4 @@
-FROM python:3.13-slim-bookworm AS base_os
+FROM python:3.14-slim-bookworm AS base_os
 ARG GOSU_VERSION=1.19
 ARG GOSU_SHA256=52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0
 ARG BUILD_DATE
