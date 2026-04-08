@@ -14,7 +14,7 @@ class CountryFactory(AutoRegisterModelFactory):
         django_get_or_create = ("name", "iso_code2")
 
     hope_id = factory.Sequence(lambda n: f"country-{n}")
-    name = factory.LazyFunction(lambda: faker.unique.country())
+    name = factory.LazyFunction(faker.unique.country)
     iso_code2 = factory.LazyFunction(lambda: faker.unique.country_code(representation="alpha-2"))
     iso_code3 = factory.LazyFunction(lambda: faker.unique.country_code(representation="alpha-3"))
 

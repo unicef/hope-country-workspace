@@ -10,5 +10,5 @@ class ValidatableFileValidator:
     error_messages = {"invalid_file": _("Unsupported file format '%s'")}
 
     def __call__(self, f: Path) -> None:
-        if Path(f.name).suffix not in [".xlsx"]:
+        if Path(f.name).suffix != ".xlsx":
             raise ValidationError(self.error_messages["invalid_file"] % Path(f.name).suffix)

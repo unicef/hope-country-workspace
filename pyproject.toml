@@ -7,11 +7,10 @@ requires = [
 
 [project]
 name = "hope-country-workspace"
-version = "0.2.0"
+version = "0.3.0"
 description = "HOPE Country Workspace (HCW)"
 readme = "README.md"
 license = { text = "MIT" }
-
 authors = [
   { name = "sax", email = "s.apostolico@gmail.com" },
 ]
@@ -105,7 +104,7 @@ dev = [
   "pytest-xdist",
   "responses",
   "ruff",
-  "seleniumbase",
+  "seleniumbase>4",
   "tox",
   "vcrpy",
 ]
@@ -116,19 +115,16 @@ docs = [
   "mkdocs-material",
   "mkdocstrings-python",
 ]
-
 type-check = [
   "types-python-dateutil",
   "types-requests",
 ]
 
-[tool.hatch.build.targets.sdist]
-include = [
+[tool.hatch]
+build.targets.sdist.include = [
   "src/country_workspace/**/*.*",
 ]
-
-[tool.hatch.build.targets.wheel]
-packages = [
+build.targets.wheel.packages = [
   "src/country_workspace",
 ]
 

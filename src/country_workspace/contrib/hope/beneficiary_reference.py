@@ -125,7 +125,7 @@ def _resolve_hh_batch_pks() -> tuple[int | None, int | None]:
 
     Household = apps.get_model("country_workspace", "Household")
     row = Household.objects.filter(pk=oid).values_list("pk", "batch_id").first()
-    return row if row else (None, None)
+    return row or (None, None)
 
 
 def _get_individuals_queryset(batch_id: int | None, household_id: int | None = None) -> QuerySet["Individual"]:

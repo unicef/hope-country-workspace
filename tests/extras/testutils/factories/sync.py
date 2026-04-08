@@ -8,7 +8,7 @@ from .base import AutoRegisterModelFactory
 
 
 class SyncLogFactory(AutoRegisterModelFactory):
-    last_update_date = factory.LazyFunction(lambda: timezone.now())
+    last_update_date = factory.LazyFunction(timezone.now)
     content_type = factory.LazyAttribute(lambda o: ContentType.objects.order_by("?").first())
 
     class Meta:
