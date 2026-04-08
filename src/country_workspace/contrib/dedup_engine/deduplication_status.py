@@ -1,5 +1,5 @@
 from enum import StrEnum, auto
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 import sentry_sdk
 
@@ -22,9 +22,16 @@ class DeduplicationSetState(StrEnum):
     REJECTED = "Rejected"
 
 
+CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[int, ...]] = (
+    DeduplicationSetState.ENCODING_FAILED,
+    DeduplicationSetState.DEDUPLICATION_FAILED,
+    DeduplicationSetState.REJECTED,
+)
+
+
 class DedupResponseStatus(StrEnum):
     OK = auto()
-    STATUS_UNAVAILABLE = auto()
+    STATUS_UNAVAILABLE = "N/A"
 
 
 class DedupClientStatus(NamedTuple):

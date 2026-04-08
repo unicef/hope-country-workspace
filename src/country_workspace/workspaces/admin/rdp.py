@@ -14,7 +14,10 @@ from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import DeduplicationSetState, get_deduplication_status, make_dedup_client
-from country_workspace.contrib.dedup_engine.deduplication_status import DedupResponseStatus
+from country_workspace.contrib.dedup_engine.deduplication_status import (
+    CLONEABLE_DEDUPLICATION_SET_STATES,
+    DedupResponseStatus,
+)
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
@@ -41,38 +44,36 @@ from admin_extra_buttons.buttons import ButtonWidget
 
 
 def visible_clone_rdp(btn: ButtonWidget) -> bool:
-    obj = btn.original
-    return bool(obj and obj.parent_id is None)
+    return bool((obj := btn.original) and obj.program.biometric_deduplication_enabled)
 
 
 def enabled_clone_rdp(btn: ButtonWidget) -> bool:
     obj = btn.original
-    if obj is None or obj.parent_id is not None or obj.status == obj.PushStatus.PENDING:
+    if obj is None:
         return False
 
-    if (
-        CountryRdp.objects.filter(
-            program_id=obj.program_id,
-            status=obj.PushStatus.PENDING,
-        )
-        .exclude(pk=obj.pk)
-        .exists()
-    ):
+    owner = obj.parent or obj
+
+    pending_qs = CountryRdp.objects.filter(
+        program_id=owner.program_id,
+        status=obj.PushStatus.PENDING,
+    )
+    if obj.status == obj.PushStatus.PENDING:
+        pending_qs = pending_qs.exclude(pk=obj.pk)
+    if pending_qs.exists():
         return False
 
-    if not obj.program.biometric_deduplication_enabled:
-        return True
+    if not owner.deduplication_set_id:
+        return False
 
-    try:
-        with make_dedup_client(obj.program.unicef_id) as client:
-            can_clone = client.can_create_deduplication_set()
-    except RemoteUnavailableError as exc:
-        sentry_sdk.capture_exception(exc)
-        can_clone = False
-    except RemoteError:
-        can_clone = False
+    status = get_deduplication_status(
+        owner.program.unicef_id,
+        str(owner.deduplication_set_id),
+    )
+    if status.response_status != DedupResponseStatus.OK:
+        return False
 
-    return can_clone
+    return status.deduplication_set_status in CLONEABLE_DEDUPLICATION_SET_STATES
 
 
 def visible_workflow(btn: ButtonWidget) -> bool:
@@ -89,23 +90,28 @@ def visible_deduplicate(btn: ButtonWidget) -> bool:
 
 def enabled_deduplicate(btn: ButtonWidget) -> bool:
     obj = btn.original
-    if obj is None:
-        return False
-
-    if obj.status != obj.PushStatus.PENDING:
-        return False
-
-    if not obj.program.biometric_deduplication_enabled:
+    is_available = bool(obj and obj.status == obj.PushStatus.PENDING and obj.program.biometric_deduplication_enabled)
+    if not is_available:
         return False
 
     try:
-        with make_dedup_client(obj.program.unicef_id) as client:
-            return client.can_create_deduplication_set()
+        if obj.deduplication_set_id:
+            with make_dedup_client(
+                obj.program.unicef_id,
+                deduplication_set_id=str(obj.deduplication_set_id),
+            ) as client:
+                payload = client.retrieve_deduplication_set()
+            is_available = payload.get("state") != DeduplicationSetState.DEDUPLICATED
+        else:
+            with make_dedup_client(obj.program.unicef_id) as client:
+                is_available = client.can_create_deduplication_set()
     except RemoteUnavailableError as exc:
         sentry_sdk.capture_exception(exc)
-        return False
+        is_available = False
     except RemoteError:
-        return False
+        is_available = False
+
+    return is_available
 
 
 def visible_reject_ds(btn: ButtonWidget) -> bool:
@@ -232,25 +238,43 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
-        result = "N/A (RDP not pending)"
+        result = "-"
+        response_status = DedupResponseStatus.OK
+        deduplication_set_status: str | None = None
+        findings_count = -1
+
         if obj.status == obj.PushStatus.PENDING:
-            result = "N/A (deduplication set ID is not set)"
-            if obj.deduplication_set_id:
-                try:
+            try:
+                if obj.deduplication_set_id:
                     resp = get_deduplication_status(
                         obj.program.unicef_id,
-                        obj.deduplication_set_id,
+                        str(obj.deduplication_set_id),
                     )
-                    if resp.response_status != DedupResponseStatus.OK:
-                        result = resp.response_status.value
-                    elif resp.deduplication_set_status is None:
-                        result = "N/A (deduplication set status is None)"
-                    elif resp.findings_count >= 0:
-                        result = f"{resp.deduplication_set_status} / {resp.findings_count} findings"
-                    else:
-                        result = resp.deduplication_set_status
-                except RemoteUnavailableError:
-                    result = DedupResponseStatus.STATUS_UNAVAILABLE.value
+                    response_status = resp.response_status
+                    deduplication_set_status = resp.deduplication_set_status
+                    findings_count = resp.findings_count
+                else:
+                    with make_dedup_client(obj.program.unicef_id) as client:
+                        deduplication_set_status = (
+                            "Ready to start"
+                            if client.can_create_deduplication_set()
+                            else "Blocked / another active deduplication set"
+                        )
+            except RemoteUnavailableError:
+                response_status = DedupResponseStatus.STATUS_UNAVAILABLE
+            except RemoteError:
+                response_status = None
+
+            if response_status == DedupResponseStatus.STATUS_UNAVAILABLE:
+                result = DedupResponseStatus.STATUS_UNAVAILABLE.value
+            elif response_status != DedupResponseStatus.OK:
+                result = "Remote error"
+            elif deduplication_set_status is None:
+                result = "Created / waiting for status"
+            elif obj.deduplication_set_id and findings_count >= 0:
+                result = f"{deduplication_set_status} / {findings_count} findings"
+            else:
+                result = deduplication_set_status
 
         return result
 

@@ -1,16 +1,22 @@
+from typing import Any
 from collections.abc import Callable, Iterable
 
 from .config import IND_TAG_RE
 
 
-def load_mapping_from_api(raw: dict, err: Callable[[str], None]) -> dict[int, str]:
-    """Return {int: str} mapping from API payload; log keys that can't be coerced to int."""
-    out = {}
+def load_mapping_from_api(raw: dict[Any, Any], err: Callable[[str], None]) -> dict[int, str]:
+    """Return validated {int: IND-tag} mapping from API payload; log invalid keys and values."""
+    out: dict[int, str] = {}
     for k, v in raw.items():
         try:
-            out[int(k)] = str(v)
+            key = int(k)
         except (TypeError, ValueError):
-            err(f"Invalid mapping key '{k}' -> '{v}'")
+            err(f"Invalid mapping key {k!r} -> {v!r}")
+            continue
+        if not isinstance(v, str) or not IND_TAG_RE.fullmatch(v):
+            err(f"Invalid mapping value {k!r} -> {v!r}")
+            continue
+        out[key] = v
     return out
 
 

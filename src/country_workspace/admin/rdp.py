@@ -15,7 +15,7 @@ from .base import BaseModelAdmin
 
 @admin.register(Rdp)
 class RdpAdmin(BaseModelAdmin):
-    list_display = ("name", "program", "pushed_by", "push_date", "status")
+    list_display = ("name", "program", "status", "pushed_by", "push_date")
     list_filter = (
         ("country_office", LinkedAutoCompleteFilter.factory(parent=None)),
         ("program", LinkedAutoCompleteFilter.factory(parent="country_office")),

@@ -3,8 +3,11 @@ from functools import partial
 from typing import Any
 from django.db import transaction, IntegrityError
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState, make_dedup_client
-
+from country_workspace.contrib.dedup_engine import DeduplicationSetState, make_dedup_client, get_deduplication_status
+from country_workspace.contrib.dedup_engine.deduplication_status import (
+    CLONEABLE_DEDUPLICATION_SET_STATES,
+    DedupResponseStatus,
+)
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp
@@ -17,8 +20,10 @@ from .repository import (
     lock_rdp_for_update,
     qs_households,
     preflight_errors,
+    preflight_exclude_rdp_ids,
     rdp_for_dedup,
     rdp_for_push,
+    rdp_selection,
     selection_owner_for_rdp,
     set_rdp_push_status,
     workflow_config_for_rdp,
@@ -101,33 +106,65 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
-    """Create a direct child RDP that reuses the parent's beneficiary selection."""
-    if source.parent_id is not None:
-        raise HopePushError({"errors": ["RDP: cloning from a child RDP is not allowed"]})
+    """Create a child RDP that reuses the owner selection and DE deduplication set."""
+    owner = selection_owner_for_rdp(rdp=source)
 
-    if source.program.biometric_deduplication_enabled:
-        try:
-            with make_dedup_client(source.program.unicef_id) as client:
-                can_create = client.can_create_deduplication_set()
-        except RemoteError as e:
-            raise HopePushError({"errors": [str(e)]}) from e
-        if not can_create:
-            raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
+    if not owner.deduplication_set_id:
+        raise HopePushError({"errors": ["DedupEngine: deduplication_set_id is not set for this RDP."]})
+
+    status = get_deduplication_status(
+        owner.program.unicef_id,
+        str(owner.deduplication_set_id),
+    )
+    if status.response_status != DedupResponseStatus.OK:
+        raise HopePushError({"errors": ["DedupEngine: can not retrieve deduplication set status."]})
+    if status.deduplication_set_status not in CLONEABLE_DEDUPLICATION_SET_STATES:
+        raise HopePushError(
+            {
+                "errors": [
+                    "DedupEngine: can not clone RDP for deduplication set in "
+                    f"state={status.deduplication_set_status!r}."
+                ]
+            }
+        )
+
+    master_detail, pks = rdp_selection(rdp=owner)
+    errors = preflight_errors(
+        pks=pks,
+        master_detail=master_detail,
+        exclude_rdp_ids=preflight_exclude_rdp_ids(rdp=source),
+    )
+    if errors:
+        raise HopePushError({"errors": errors})
 
     try:
         with transaction.atomic():
             source = lock_rdp_for_update(pk=source.pk)
-            if source.parent_id is not None:
-                raise HopePushError({"errors": ["RDP: cloning from a child RDP is not allowed"]})
+            owner = selection_owner_for_rdp(rdp=source)
+            if owner.pk != source.pk:
+                owner = lock_rdp_for_update(pk=owner.pk)
+
+            pending_qs = Rdp.objects.filter(
+                program_id=owner.program_id,
+                status=Rdp.PushStatus.PENDING,
+            )
+            if source.status == Rdp.PushStatus.PENDING:
+                pending_qs = pending_qs.exclude(pk=source.pk)
+            if pending_qs.exists():
+                raise HopePushError({"errors": ["RDP: can not clone while another RDP is pending"]})
+
+            if source.status == Rdp.PushStatus.PENDING:
+                source.status = Rdp.PushStatus.CANCELLED
+                source.save(update_fields=["status"])
 
             return Rdp.objects.create(
-                country_office_id=source.country_office_id,
-                program_id=source.program_id,
+                country_office_id=owner.country_office_id,
+                program_id=owner.program_id,
                 pushed_by_id=pushed_by_id,
                 name=batch_name,
-                parent=source,
+                parent=owner,
                 status=Rdp.PushStatus.PENDING,
-                deduplication_set_id=None,
+                deduplication_set_id=owner.deduplication_set_id,
                 hope_rdi_id="",
             )
     except IntegrityError as e:

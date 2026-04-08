@@ -343,7 +343,7 @@ class PushProcessor(ProcessorBase):
 
 
 class DedupProcessor(ProcessorBase):
-    """Dedup pipeline: collect images, create set, upload and start processing."""
+    """Dedup pipeline: create/upload/process or reuse an existing DE set."""
 
     PREFIX = "Dedup"
 
@@ -361,6 +361,12 @@ class DedupProcessor(ProcessorBase):
 
         self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
 
+        if self.rdp.deduplication_set_id:
+            self.process_existing_deduplication_set()
+            self.total["images_sent"] = 0
+            self.total["deduplication_set_id"] = str(self.rdp.deduplication_set_id)
+            return
+
         image_batches = (list(batch) for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE))
         first_batch = next(image_batches, None)
         if first_batch is None:
@@ -372,6 +378,19 @@ class DedupProcessor(ProcessorBase):
         ds_id, images_sent = self.deduplicate(first_batch, image_batches)
         self.total["images_sent"] = images_sent
         self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
+
+    def process_existing_deduplication_set(self) -> None:
+        """Run processing for an already existing DE deduplication set."""
+        deduplication_set_id = self.rdp.deduplication_set_id
+        if not deduplication_set_id:
+            self.fail("process", "deduplication_set_id is not set")
+            return
+
+        with make_dedup_client(
+            self.program_unicef_id,
+            deduplication_set_id=str(deduplication_set_id),
+        ) as client:
+            self.run_remote("process", client.process)
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
