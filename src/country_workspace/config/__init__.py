@@ -163,7 +163,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     "TIME_ZONE": (str, "UTC", "UTC", False, setting("std-setting-TIME_ZONE")),
     "AZURE_CLIENT_SECRET": (str, "", "", False, "Azure client secret for SSO"),
     "AZURE_TENANT_ID": (str, "", "", False, "Azure tenant ID for SSO"),
-    "AZURE_CLIENT_KEY": (str, "", "", False, "Azure client key for SSO"),
+    "AZURE_CLIENT_ID": (str, "", "", False, "Azure client key for SSO"),
     "KOBO_KF_URL": (str, "", "", False, "Kobo API base URL"),
     "KOBO_MASTER_API_TOKEN": (str, "", "", False, "Kobo API master token"),
     "KOBO_PROJECT_VIEW_ID": (str, "", "", False, "Kobo project view ID"),
