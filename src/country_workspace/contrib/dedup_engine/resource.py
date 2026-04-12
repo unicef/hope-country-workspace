@@ -6,7 +6,7 @@ from requests import Session
 from country_workspace.contrib.dedup_engine import endpoint, request, response
 
 
-@dataclass
+@dataclass(slots=True)
 class GenericResource[T]:
     session: Session
     endpoint: T
@@ -34,9 +34,9 @@ class UpdateMixin[T, R]:
 
 
 class ActionMixin[T]:
-    def call(self: GenericResource, body: T | None = None) -> None:
+    def call(self: GenericResource, body: T | None = None, *, params: Mapping[str, str] | None = None) -> None:
         kwargs = {"json": body} if body is not None else {}
-        result = self.session.post(str(self.endpoint), **kwargs)
+        result = self.session.post(str(self.endpoint), params=params, **kwargs)
         result.raise_for_status()
 
 
@@ -55,6 +55,12 @@ class DeduplicationSetItem(
 class ImagesCollection(
     GenericResource[endpoint.Images],
     CreateMixin[list[request.CreateEncoding], list[response.CreatedEncoding]],
+): ...
+
+
+class ReadyDeduplicationSetAction(
+    GenericResource[endpoint.Ready],
+    ActionMixin[None],
 ): ...
 
 

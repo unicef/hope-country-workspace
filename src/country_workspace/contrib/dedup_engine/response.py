@@ -21,8 +21,7 @@ class DeduplicationSet(TypedDict):
     updated_at: str
 
 
-class DeduplicationSetGroupConfig(GroupSettings):
-    pass
+class DeduplicationSetGroupConfig(GroupSettings): ...
 
 
 class CreatedEncoding(TypedDict):

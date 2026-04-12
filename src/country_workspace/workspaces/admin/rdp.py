@@ -258,7 +258,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         deduplication_set_status = (
                             "Ready to start"
                             if client.can_create_deduplication_set()
-                            else "Blocked / another active deduplication set"
+                            else "Can't create deduplication set"
                         )
             except RemoteUnavailableError:
                 response_status = DedupResponseStatus.STATUS_UNAVAILABLE

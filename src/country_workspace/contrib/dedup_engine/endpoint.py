@@ -1,6 +1,8 @@
 from posixpath import sep as posix_sep
-from typing import Any
 from urllib.parse import urlparse, urlunparse
+from uuid import UUID
+
+type EndpointId = str | int | UUID
 
 
 def to_segments(path: str) -> tuple[str, ...]:
@@ -22,7 +24,6 @@ def url_join(url: str, *paths: str) -> str:
 def ensure_trailing_slash(url: str) -> str:
     if url.endswith(posix_sep):
         return url
-
     return url + posix_sep
 
 
@@ -34,30 +35,47 @@ class Endpoint:
         return ensure_trailing_slash(self.url)
 
 
-class Images(Endpoint):
-    pass
+class DeduplicationSetGroupConfig(Endpoint): ...
 
 
-class Process(Endpoint):
-    pass
+class DeduplicationSetGroupStatus(Endpoint): ...
 
 
-class Reject(Endpoint):
-    pass
+class DeduplicationSetGroup(Endpoint):
+    @property
+    def config(self) -> DeduplicationSetGroupConfig:
+        return DeduplicationSetGroupConfig(url_join(self.url, "config"))
+
+    @property
+    def status(self) -> DeduplicationSetGroupStatus:
+        return DeduplicationSetGroupStatus(url_join(self.url, "status"))
 
 
-class DeduplicationSetGroupConfig(Endpoint):
-    pass
+class DeduplicationSetGroups(Endpoint):
+    def deduplication_set_group(self, reference_id: EndpointId) -> DeduplicationSetGroup:
+        return DeduplicationSetGroup(url_join(self.url, str(reference_id)))
 
 
-class DeduplicationSetGroupStatus(Endpoint):
-    pass
+class Images(Endpoint): ...
+
+
+class Ready(Endpoint): ...
+
+
+class Process(Endpoint): ...
+
+
+class Reject(Endpoint): ...
 
 
 class DeduplicationSet(Endpoint):
     @property
     def images(self) -> Images:
         return Images(url_join(self.url, "images"))
+
+    @property
+    def ready(self) -> Ready:
+        return Ready(url_join(self.url, "ready"))
 
     @property
     def process(self) -> Process:
@@ -69,16 +87,8 @@ class DeduplicationSet(Endpoint):
 
 
 class DeduplicationSets(Endpoint):
-    def deduplication_set(self, id_: Any) -> DeduplicationSet:
+    def deduplication_set(self, id_: EndpointId) -> DeduplicationSet:
         return DeduplicationSet(url_join(self.url, str(id_)))
-
-
-class DeduplicationSetGroups(Endpoint):
-    def config(self, ref_id: Any) -> DeduplicationSetGroupConfig:
-        return DeduplicationSetGroupConfig(url_join(self.url, str(ref_id), "config"))
-
-    def status(self, ref_id: Any) -> DeduplicationSetGroupStatus:
-        return DeduplicationSetGroupStatus(url_join(self.url, str(ref_id), "status"))
 
 
 class APIRoot(Endpoint):

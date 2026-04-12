@@ -3,7 +3,6 @@ from typing import Final, NamedTuple
 
 import sentry_sdk
 
-from country_workspace.contrib.dedup_engine.validation import get_optional_int, get_optional_str
 from country_workspace.exceptions import RemoteUnavailableError
 from .factory import make_client
 
@@ -22,7 +21,7 @@ class DeduplicationSetState(StrEnum):
     REJECTED = "Rejected"
 
 
-CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[int, ...]] = (
+CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.ENCODING_FAILED,
     DeduplicationSetState.DEDUPLICATION_FAILED,
     DeduplicationSetState.REJECTED,
@@ -62,9 +61,8 @@ def get_deduplication_status(
             findings_count=-1,
         )
 
-    deduplication_set_status = get_optional_str(payload, "state")
     return DedupClientStatus(
         response_status=DedupResponseStatus.OK,
-        deduplication_set_status=deduplication_set_status,
-        findings_count=get_optional_int(payload, "findings_count") if deduplication_set_status is not None else -1,
+        deduplication_set_status=payload["state"],
+        findings_count=payload["findings_count"],
     )

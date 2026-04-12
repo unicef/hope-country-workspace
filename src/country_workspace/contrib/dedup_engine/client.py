@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, cast
 
 from requests import Session
 from requests.exceptions import (
@@ -11,15 +11,7 @@ from requests.exceptions import (
 )
 
 from country_workspace.contrib.dedup_engine import endpoint, request, resource, response
-from country_workspace.contrib.dedup_engine.validation import (
-    expect_mapping,
-    get_optional_str,
-    get_required_bool,
-)
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-
-
-T = TypeVar("T")
 
 
 @dataclass(slots=True)
@@ -28,6 +20,10 @@ class Client:
     session: Session
     api_root: endpoint.APIRoot
     deduplication_set_id: str | None = None
+
+    @property
+    def deduplication_set_group_endpoint(self) -> endpoint.DeduplicationSetGroup:
+        return self.api_root.deduplication_set_groups.deduplication_set_group(self.program_id)
 
     @property
     def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
@@ -45,7 +41,7 @@ class Client:
         response_obj: Any | None = None,
         *,
         error_cls: type[RemoteError] | type[RemoteUnavailableError] = RemoteError,
-    ) -> Exception:
+    ) -> RemoteError | RemoteUnavailableError:
         req = getattr(response_obj, "request", None) if response_obj is not None else None
         target = f"{getattr(req, 'method', '')} {getattr(req, 'url', '')}".strip() or operation
 
@@ -58,7 +54,7 @@ class Client:
 
         return error_cls(f"DedupEngine: {target} failed: {err}{details}")
 
-    def _request(self, operation: str, fn: Callable[[], T]) -> T:
+    def _request[T](self, operation: str, fn: Callable[[], T]) -> T:
         try:
             return fn()
         except (RequestsConnectionError, RequestsTimeout) as exc:
@@ -82,37 +78,43 @@ class Client:
             "create_deduplication_set",
             lambda: collection.create({"reference_pk": self.program_id}),
         )
-        self.deduplication_set_id = get_optional_str(result, "id")
-        return result
+        payload = cast("response.CreatedDeduplicationSet", result)
+        self.deduplication_set_id = payload.get("id")
+        return payload
 
     def can_create_deduplication_set(self) -> bool:
         def fetch() -> bool:
-            result = self.session.get(str(self.api_root.deduplication_set_groups.status(self.program_id)))
+            result = self.session.get(str(self.deduplication_set_group_endpoint.status))
             result.raise_for_status()
-            payload = expect_mapping(result.json(), "can_create_deduplication_set")
-            return get_required_bool(payload, "can_create", "can_create_deduplication_set")
+            return cast("bool", result.json()["can_create"])
 
         return self._request("can_create_deduplication_set", fetch)
 
     def create_images(
         self,
         images: list[request.CreateEncoding],
-        *,
-        last: bool = False,
     ) -> list[response.CreatedEncoding]:
         collection = resource.ImagesCollection(
             self.session,
             self.deduplication_set_endpoint.images,
         )
-        params = {"last": "true"} if last else None
-        return self._request("create_images", lambda: collection.create(images, params=params))
+        result = self._request("create_images", lambda: collection.create(images))
+        return cast("list[response.CreatedEncoding]", result)
 
-    def process(self) -> None:
+    def ready(self) -> None:
+        action = resource.ReadyDeduplicationSetAction(
+            self.session,
+            self.deduplication_set_endpoint.ready,
+        )
+        self._request("ready", action.call)
+
+    def process(self, *, encode_only: bool = False) -> None:
         action = resource.ProcessDeduplicationSetAction(
             self.session,
             self.deduplication_set_endpoint.process,
         )
-        self._request("process", action.call)
+        params = {"encode_only": "true"} if encode_only else None
+        self._request("process", lambda: action.call(params=params))
 
     def reject(self) -> None:
         action = resource.RejectDeduplicationSetAction(
@@ -123,14 +125,16 @@ class Client:
 
     def retrieve_deduplication_set(self) -> response.DeduplicationSet:
         item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
-        return self._request("retrieve_deduplication_set", item.retrieve)
+        result = self._request("retrieve_deduplication_set", item.retrieve)
+        return cast("response.DeduplicationSet", result)
 
     def get_deduplication_set_group_config(self) -> response.DeduplicationSetGroupConfig:
         item = resource.DeduplicationSetGroupConfigItem(
             self.session,
-            self.api_root.deduplication_set_groups.config(self.program_id),
+            self.deduplication_set_group_endpoint.config,
         )
-        return self._request("get_deduplication_set_group_config", item.retrieve)
+        result = self._request("get_deduplication_set_group_config", item.retrieve)
+        return cast("response.DeduplicationSetGroupConfig", result)
 
     def post_deduplication_set_group_config(
         self,
@@ -138,9 +142,10 @@ class Client:
     ) -> response.DeduplicationSetGroupConfig:
         item = resource.DeduplicationSetGroupConfigItem(
             self.session,
-            self.api_root.deduplication_set_groups.config(self.program_id),
+            self.deduplication_set_group_endpoint.config,
         )
-        return self._request(
+        result = self._request(
             "post_deduplication_set_group_config",
             lambda: item.update(payload),
         )
+        return cast("response.DeduplicationSetGroupConfig", result)

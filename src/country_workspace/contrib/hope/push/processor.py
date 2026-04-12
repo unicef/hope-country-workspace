@@ -361,28 +361,18 @@ class DedupProcessor(ProcessorBase):
 
         self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
 
-        if self.rdp.deduplication_set_id:
+        if deduplication_set_id := self.rdp.deduplication_set_id:
             self.process_existing_deduplication_set()
-            self.total["images_sent"] = 0
-            self.total["deduplication_set_id"] = str(self.rdp.deduplication_set_id)
-            return
+            ds_id, images_sent = deduplication_set_id, 0
+        else:
+            ds_id, images_sent = self.deduplicate()
 
-        image_batches = (list(batch) for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE))
-        first_batch = next(image_batches, None)
-        if first_batch is None:
-            self.fail("Images", "no valid photos found")
-            self.total["images_sent"] = 0
-            self.total["deduplication_set_id"] = None
-            return
-
-        ds_id, images_sent = self.deduplicate(first_batch, image_batches)
         self.total["images_sent"] = images_sent
         self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
 
     def process_existing_deduplication_set(self) -> None:
         """Run processing for an already existing DE deduplication set."""
-        deduplication_set_id = self.rdp.deduplication_set_id
-        if not deduplication_set_id:
+        if not (deduplication_set_id := self.rdp.deduplication_set_id):
             self.fail("process", "deduplication_set_id is not set")
             return
 
@@ -394,51 +384,46 @@ class DedupProcessor(ProcessorBase):
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
-        rows = qs_individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
-        for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
+        for pk, photo in (
+            qs_individuals_for_rdp(rdp=self.rdp)
+            .values_list("id", "flex_fields__photo")
+            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5)
+        ):
             if isinstance(photo, str) and (photo := photo.strip()):
                 yield {"reference_pk": str(pk), "filename": photo}
 
-    def create_deduplication_set(self, client: Any) -> UUID | None:
+    def create_deduplication_set_id(self, client: Any) -> UUID | None:
+        """Create a remote deduplication set and return its UUID."""
         payload = self.try_remote("create_deduplication_set", client.create_deduplication_set)
         if payload is None:
             return None
 
-        raw_id = payload.get("id")
-        if not isinstance(raw_id, str) or not raw_id:
+        if not isinstance(raw_id := payload.get("id"), str) or not raw_id:
             self.fail("create_deduplication_set", "response has no valid id", response=payload)
             return None
 
         try:
             return UUID(raw_id)
-        except ValueError as e:
-            self.fail("create_deduplication_set", f"returned invalid UUID {raw_id!r}: {e}", response=payload)
+        except ValueError as exc:
+            self.fail("create_deduplication_set", f"returned invalid UUID {raw_id!r}: {exc}", response=payload)
             return None
 
-    def upload_images(
-        self,
-        client: Any,
-        first_batch: list[dict[str, str]],
-        image_batches: Iterator[list[dict[str, str]]],
-    ) -> tuple[bool, int]:
-        """Upload image batches and return success flag with sent images count."""
+    def upload_images(self, client: Any) -> tuple[bool, int]:
+        """Upload image batches, mark the set as ready, and return sent images count."""
         images_sent = 0
-        batch = first_batch
 
-        for next_batch in image_batches:
-            if not self.run_remote("create_images", lambda batch=batch: client.create_images(batch, last=False)):
+        for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
+            payload = list(batch)
+            if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
                 return False, images_sent
-            images_sent += len(batch)
-            batch = next_batch
+            images_sent += len(payload)
 
-        if not self.run_remote("create_images", lambda batch=batch: client.create_images(batch, last=True)):
+        if not self.run_remote("ready", client.ready):
             return False, images_sent
 
-        return True, images_sent + len(batch)
+        return True, images_sent
 
-    def deduplicate(
-        self, first_batch: list[dict[str, str]], image_batches: Iterator[list[dict[str, str]]]
-    ) -> tuple[UUID | None, int]:
+    def deduplicate(self) -> tuple[UUID | None, int]:
         """Run remote DedupEngine steps and return deduplication_set_id with sent images count."""
         with make_dedup_client(self.program_unicef_id) as client:
             can_create = self.try_remote("can_create_deduplication_set", client.can_create_deduplication_set)
@@ -447,13 +432,13 @@ class DedupProcessor(ProcessorBase):
                     self.fail("RDP", "can not run dedup while another deduplication set is active")
                 return None, 0
 
-            ds_id = self.create_deduplication_set(client)
+            ds_id = self.create_deduplication_set_id(client)
             if ds_id is None:
                 return None, 0
 
             set_rdp_deduplication_set_id(rdp_id=self.rdp.pk, deduplication_set_id=ds_id)
 
-            uploaded, images_sent = self.upload_images(client, first_batch, image_batches)
+            uploaded, images_sent = self.upload_images(client)
             if not uploaded:
                 return ds_id, images_sent
 
