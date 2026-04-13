@@ -1,20 +1,22 @@
-from constance.test.unittest import override_config
-
 import pytest
 from pytest_mock import MockerFixture
-from requests.exceptions import HTTPError, RequestException
-from rest_framework.status import HTTP_404_NOT_FOUND
+from requests.exceptions import (
+    ConnectionError as RequestsConnectionError,
+    HTTPError,
+    RequestException,
+    Timeout as RequestsTimeout,
+)
 
-from country_workspace.contrib.dedup_engine.client import Client, make_client
-from country_workspace.contrib.dedup_engine.response import Status
-from country_workspace.exceptions import RemoteError
+from country_workspace.contrib.dedup_engine.client import Client
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 
 @pytest.fixture
 def client_ctx(mocker: MockerFixture) -> tuple[Client, object, object]:
     session = mocker.MagicMock()
     api_root = mocker.MagicMock()
-    return Client("PROGRAM_ID", session, api_root), session, api_root
+    client = Client("PROGRAM_ID", session, api_root, deduplication_set_id="SET_ID")
+    return client, session, api_root
 
 
 def test_client_create_deduplication_set(
@@ -22,258 +24,274 @@ def test_client_create_deduplication_set(
     client_ctx: tuple[Client, object, object],
 ) -> None:
     collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
-    collection_cls.return_value.create.return_value = {"id": "SET_ID"}
+    collection_cls.return_value.create.return_value = payload = {
+        "id": "NEW_SET_ID",
+        "reference_pk": "PROGRAM_ID",
+        "state": "Empty",
+    }
     client, session, api_root = client_ctx
 
-    assert client.create_deduplication_set() == "SET_ID"
+    assert client.create_deduplication_set() == payload
+    assert client.deduplication_set_id == "NEW_SET_ID"
 
     collection_cls.assert_called_once_with(session, api_root.deduplication_sets)
     collection_cls.return_value.create.assert_called_once_with({"reference_pk": "PROGRAM_ID"})
+
+
+def test_client_can_create_deduplication_set(
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    client, session, api_root = client_ctx
+    group_endpoint = api_root.deduplication_set_groups.deduplication_set_group.return_value
+    session.get.return_value.json.return_value = {"can_create": True}
+
+    assert client.can_create_deduplication_set() is True
+
+    api_root.deduplication_set_groups.deduplication_set_group.assert_called_once_with("PROGRAM_ID")
+    session.get.assert_called_once_with(str(group_endpoint.status))
+    session.get.return_value.raise_for_status.assert_called_once_with()
 
 
 def test_client_create_images(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.ImagesBulkCollection")
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.ImagesCollection")
+    collection_cls.return_value.create.return_value = payload = [{"filename": "a.jpg", "reference_pk": "1"}]
     client, session, api_root = client_ctx
-    images = mocker.Mock()
+    images = [{"filename": "a.jpg", "reference_pk": "1"}]
 
-    client.create_images(images)
+    assert client.create_images(images) == payload
 
     endpoint = api_root.deduplication_sets.deduplication_set
-    endpoint.assert_called_once_with("PROGRAM_ID")
-    collection_cls.assert_called_once_with(session, endpoint.return_value.images_bulk)
+    endpoint.assert_called_once_with("SET_ID")
+    collection_cls.assert_called_once_with(session, endpoint.return_value.images)
     collection_cls.return_value.create.assert_called_once_with(images)
 
 
+@pytest.mark.parametrize(
+    ("method_name", "patch_target", "endpoint_attr"),
+    [
+        (
+            "ready",
+            "country_workspace.contrib.dedup_engine.client.resource.ReadyDeduplicationSetAction",
+            "ready",
+        ),
+        (
+            "reject",
+            "country_workspace.contrib.dedup_engine.client.resource.RejectDeduplicationSetAction",
+            "reject",
+        ),
+    ],
+    ids=["ready", "reject"],
+)
+def test_client_actions(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+    method_name: str,
+    patch_target: str,
+    endpoint_attr: str,
+) -> None:
+    action_cls = mocker.patch(patch_target)
+    client, session, api_root = client_ctx
+
+    getattr(client, method_name)()
+
+    endpoint = api_root.deduplication_sets.deduplication_set
+    endpoint.assert_called_once_with("SET_ID")
+    action_cls.assert_called_once_with(session, getattr(endpoint.return_value, endpoint_attr))
+    action_cls.return_value.call.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("encode_only", "params"),
+    [(False, None), (True, {"encode_only": "true"})],
+    ids=["default", "encode_only"],
+)
 def test_client_process(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
+    encode_only: bool,
+    params: dict[str, str] | None,
 ) -> None:
     action_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.ProcessDeduplicationSetAction")
     client, session, api_root = client_ctx
 
-    client.process()
+    client.process(encode_only=encode_only)
 
     endpoint = api_root.deduplication_sets.deduplication_set
-    endpoint.assert_called_once_with("PROGRAM_ID")
+    endpoint.assert_called_once_with("SET_ID")
     action_cls.assert_called_once_with(session, endpoint.return_value.process)
-    action_cls.return_value.call.assert_called_once_with(None)
+    action_cls.return_value.call.assert_called_once_with(params=params)
 
 
-def test_client_reject(
+def test_client_retrieve_deduplication_set(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
-) -> None:
-    action_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.RejectDeduplicationSetAction")
-    client, session, api_root = client_ctx
-
-    client.reject()
-
-    endpoint = api_root.deduplication_sets.deduplication_set
-    endpoint.assert_called_once_with("PROGRAM_ID")
-    action_cls.assert_called_once_with(session, endpoint.return_value.reject)
-    action_cls.return_value.call.assert_called_once_with({"action": "reject"})
-
-
-@pytest.mark.parametrize(
-    ("payload", "expected"),
-    [
-        ({"status": "STARTED", "duplicates_found": 0}, (Status.STARTED, 0)),
-        ({"status": "SUCCESS", "duplicates_found": 42}, (Status.SUCCESS, 42)),
-        ({"status": "PENDING", "duplicates_found": 0}, (Status.PENDING, 0)),
-        ({"status": "FAILURE", "duplicates_found": 0}, (Status.FAILURE, 0)),
-        ({"status": "REVOKED", "duplicates_found": 0}, (Status.REVOKED, 0)),
-        ({"status": "Something went wrong", "duplicates_found": 0}, (Status.UNKNOWN, 0)),
-        ({"status": "SUCCESS", "duplicates_found": "x"}, (Status.SUCCESS, -1)),
-        ({}, (Status.UNKNOWN, -1)),
-    ],
-    ids=[
-        "started",
-        "success",
-        "pending",
-        "failure",
-        "revoked",
-        "unknown_status",
-        "success_but_invalid_duplicates_found",
-        "empty_payload",
-    ],
-)
-def test_client_status(
-    mocker: MockerFixture,
-    client_ctx: tuple[Client, object, object],
-    payload: dict[str, object],
-    expected: tuple[Status, int],
 ) -> None:
     item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
-    item_cls.return_value.retrieve.return_value = payload
+    item_cls.return_value.retrieve.return_value = payload = {
+        "created_at": "2026-04-13T00:00:00Z",
+        "findings_count": 2,
+        "name": None,
+        "reference_pk": "PROGRAM_ID",
+        "state": "Ready",
+        "updated_at": "2026-04-13T00:00:00Z",
+    }
     client, session, api_root = client_ctx
 
-    assert client.status() == expected
+    assert client.retrieve_deduplication_set() == payload
 
     endpoint = api_root.deduplication_sets.deduplication_set
-    endpoint.assert_called_once_with("PROGRAM_ID")
+    endpoint.assert_called_once_with("SET_ID")
     item_cls.assert_called_once_with(session, endpoint.return_value)
     item_cls.return_value.retrieve.assert_called_once_with()
 
 
 @pytest.mark.parametrize(
-    ("side_effect", "expected", "match"),
+    ("client_method", "resource_method", "payload", "expected_args"),
     [
-        (
-            HTTPError("boom", response=type("Resp", (), {"status_code": HTTP_404_NOT_FOUND})()),
-            (Status.DS_NOT_EXPOSED, -1),
-            None,
-        ),
-        (
-            HTTPError(
-                "boom",
-                response=type(
-                    "Resp",
-                    (),
-                    {
-                        "status_code": 500,
-                        "text": "err",
-                        "request": type("Req", (), {"method": "GET", "url": "https://de/status"})(),
-                    },
-                )(),
-            ),
-            None,
-            r"GET https://de/status failed: boom",
-        ),
-        (ValueError("boom"), None, r"status failed: boom"),
-    ],
-    ids=["404", "500", "value_error"],
-)
-def test_client_status_special_cases(
-    mocker: MockerFixture,
-    client_ctx: tuple[Client, object, object],
-    side_effect: Exception,
-    expected: tuple[Status, int] | None,
-    match: str | None,
-) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
-    item_cls.return_value.retrieve.side_effect = side_effect
-    client, _, _ = client_ctx
-
-    if expected is not None:
-        assert client.status() == expected
-    else:
-        with pytest.raises(RemoteError, match=match):
-            client.status()
-
-
-@pytest.mark.parametrize(
-    ("method", "patch_target"),
-    [
-        ("status", "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem"),
         (
             "get_deduplication_set_group_config",
-            "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem",
+            "retrieve",
+            {
+                "face_detection_confidence_threshold": 0.1,
+                "duplicate_confidence_threshold": 0.2,
+            },
+            (),
+        ),
+        (
+            "post_deduplication_set_group_config",
+            "update",
+            {
+                "face_detection_confidence_threshold": 0.5,
+                "duplicate_confidence_threshold": 0.7,
+            },
+            (
+                {
+                    "face_detection_confidence_threshold": 0.5,
+                    "duplicate_confidence_threshold": 0.7,
+                },
+            ),
         ),
     ],
-    ids=["status", "group_config"],
+    ids=["get_group_config", "post_group_config"],
 )
-def test_client_methods_raise_on_malformed_json(
+def test_client_deduplication_set_group_config(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
-    method: str,
-    patch_target: str,
+    client_method: str,
+    resource_method: str,
+    payload: dict[str, float],
+    expected_args: tuple[dict[str, float], ...],
 ) -> None:
-    item_cls = mocker.patch(patch_target)
-    item_cls.return_value.retrieve.return_value = []
-    client, _, _ = client_ctx
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
+    getattr(item_cls.return_value, resource_method).return_value = payload
+    client, session, api_root = client_ctx
 
-    with pytest.raises(RemoteError, match="malformed JSON response"):
-        getattr(client, method)()
+    if expected_args:
+        assert getattr(client, client_method)(payload) == payload
+    else:
+        assert getattr(client, client_method)() == payload
+
+    group_endpoint = api_root.deduplication_set_groups.deduplication_set_group.return_value
+    api_root.deduplication_set_groups.deduplication_set_group.assert_called_once_with("PROGRAM_ID")
+    item_cls.assert_called_once_with(session, group_endpoint.config)
+    getattr(item_cls.return_value, resource_method).assert_called_once_with(*expected_args)
+
+
+def test_client_requires_deduplication_set_id(mocker: MockerFixture) -> None:
+    client = Client("PROGRAM_ID", mocker.MagicMock(), mocker.MagicMock())
+
+    with pytest.raises(RemoteError, match="deduplication_set_id is not set"):
+        client.retrieve_deduplication_set()
 
 
 @pytest.mark.parametrize(
     "exc",
-    [
-        RequestException("boom"),
-        ValueError("boom"),
-        KeyError("boom"),
-        TypeError("boom"),
-    ],
-    ids=["request", "value", "key", "type"],
+    [RequestsConnectionError("boom"), RequestsTimeout("boom")],
+    ids=["connection_error", "timeout"],
 )
-def test_client_request_wraps_errors(
+def test_client_request_wraps_connection_errors(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
     exc: Exception,
 ) -> None:
     client, _, _ = client_ctx
+    fn = mocker.Mock(side_effect=exc)
 
-    if isinstance(exc, RequestException):
-        response = mocker.MagicMock(status_code=500, text="err")
-        response.request.method = "POST"
-        response.request.url = "https://de/images"
-        exc.response = response
-        match = r"POST https://de/images failed: boom"
-    else:
-        match = r"op failed: .*boom"
+    with pytest.raises(RemoteUnavailableError, match=r"op failed: boom"):
+        client._request("op", fn)
 
-    with pytest.raises(RemoteError, match=match):
-        client._request("op", lambda: (_ for _ in ()).throw(exc))
+    fn.assert_called_once_with()
 
 
-def test_make_client(mocker: MockerFixture) -> None:
-    session_class_mock = mocker.patch("country_workspace.contrib.dedup_engine.client.Session")
-    auth_class_mock = mocker.patch("country_workspace.contrib.dedup_engine.client.Auth")
-    client_class_mock = mocker.patch("country_workspace.contrib.dedup_engine.client.Client")
-    http_adapter_class_mock = mocker.patch("country_workspace.contrib.dedup_engine.client.HTTPAdapter")
-    api_root_class_mock = mocker.patch("country_workspace.contrib.dedup_engine.client.endpoint.APIRoot")
+@pytest.mark.parametrize(
+    ("status_code", "text", "expected_exception"),
+    [
+        (404, "not found", RemoteError),
+        (503, "err", RemoteUnavailableError),
+    ],
+    ids=["4xx", "5xx"],
+)
+def test_client_request_wraps_http_errors(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+    status_code: int,
+    text: str,
+    expected_exception: type[Exception],
+) -> None:
+    client, _, _ = client_ctx
+    response = mocker.MagicMock(status_code=status_code, text=text)
+    response.request.method = "GET"
+    response.request.url = "https://de/item"
+    exc = HTTPError("boom", response=response)
+    fn = mocker.Mock(side_effect=exc)
 
-    with (
-        override_config(DEDUP_API_URL=(url := "https://test.org")),
-        override_config(DEDUP_API_TOKEN=(token := "token")),
+    with pytest.raises(
+        expected_exception,
+        match=rf"GET https://de/item failed: boom.*Status: {status_code}.*Response: {text}",
     ):
-        with make_client(program_id := "PROGRAM_ID") as client:
-            assert client is client_class_mock.return_value
+        client._request("op", fn)
 
-    session_class_mock.assert_called_once_with()
-    session = session_class_mock.return_value.__enter__.return_value
-    session.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
-    assert session.auth is auth_class_mock.return_value
-
-    http_adapter_class_mock.assert_called_once_with(max_retries=3)
-    auth_class_mock.assert_called_once_with(token)
-    api_root_class_mock.assert_called_once_with(url)
-    client_class_mock.assert_called_once_with(program_id, session, api_root_class_mock.return_value)
+    fn.assert_called_once_with()
 
 
-def test_client_get_deduplication_set_group_config(
+@pytest.mark.parametrize(
+    "exc",
+    [ValueError("boom"), KeyError("boom"), TypeError("boom")],
+    ids=["value_error", "key_error", "type_error"],
+)
+def test_client_request_wraps_parse_errors(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+    exc: Exception,
+) -> None:
+    client, _, _ = client_ctx
+    fn = mocker.Mock(side_effect=exc)
+
+    with pytest.raises(RemoteError, match=r"op failed: .*boom"):
+        client._request("op", fn)
+
+    fn.assert_called_once_with()
+
+
+def test_client_request_wraps_request_exception(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
-    item_cls.return_value.retrieve.return_value = {"threshold_1": 0.1, "threshold_2": 0.2}
-    client, session, api_root = client_ctx
+    client, _, _ = client_ctx
+    response = mocker.MagicMock(status_code=500, text="err")
+    response.request.method = "POST"
+    response.request.url = "https://de/images"
+    exc = RequestException("boom")
+    exc.response = response
+    fn = mocker.Mock(side_effect=exc)
 
-    assert client.get_deduplication_set_group_config() == {
-        "threshold_1": 0.1,
-        "threshold_2": 0.2,
-    }
+    with pytest.raises(
+        RemoteUnavailableError,
+        match=r"POST https://de/images failed: boom.*Status: 500.*Response: err",
+    ):
+        client._request("op", fn)
 
-    api_root.deduplication_set_groups.config.assert_called_once_with("PROGRAM_ID")
-    item_cls.assert_called_once_with(session, api_root.deduplication_set_groups.config.return_value)
-    item_cls.return_value.retrieve.assert_called_once_with()
-
-
-def test_client_post_deduplication_set_group_config(
-    mocker: MockerFixture,
-    client_ctx: tuple[Client, object, object],
-) -> None:
-    action_cls = mocker.patch(
-        "country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigAction"
-    )
-    client, session, api_root = client_ctx
-    payload = {"threshold_1": 0.5, "threshold_2": 0.7}
-
-    client.post_deduplication_set_group_config(payload)
-
-    api_root.deduplication_set_groups.config.assert_called_once_with("PROGRAM_ID")
-    action_cls.assert_called_once_with(session, api_root.deduplication_set_groups.config.return_value)
-    action_cls.return_value.call.assert_called_once_with(payload)
+    fn.assert_called_once_with()

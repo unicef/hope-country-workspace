@@ -2,14 +2,16 @@ import pytest
 
 from country_workspace.contrib.dedup_engine.endpoint import (
     APIRoot,
-    Approve,
     DeduplicationSet,
+    DeduplicationSetGroup,
     DeduplicationSetGroupConfig,
     DeduplicationSetGroups,
+    DeduplicationSetGroupStatus,
     DeduplicationSets,
     Endpoint,
     Images,
     Process,
+    Ready,
     Reject,
     ensure_trailing_slash,
     join_paths,
@@ -88,38 +90,58 @@ def test_endpoint_str() -> None:
 
 
 def test_deduplication_set_endpoints() -> None:
-    endpoint = DeduplicationSet("https://example.com/deduplication_sets/program-id")
+    endpoint = DeduplicationSet("https://example.com/deduplication_sets/set-id")
+    images = endpoint.images
+    ready = endpoint.ready
+    process = endpoint.process
+    reject = endpoint.reject
 
-    assert endpoint.images_bulk.url == "https://example.com/deduplication_sets/program-id/images_bulk"
-    assert endpoint.process.url == "https://example.com/deduplication_sets/program-id/process"
-    assert endpoint.approve.url == "https://example.com/deduplication_sets/program-id/approve_or_reject"
-    assert endpoint.reject.url == "https://example.com/deduplication_sets/program-id/approve_or_reject"
+    assert images.url == "https://example.com/deduplication_sets/set-id/images"
+    assert ready.url == "https://example.com/deduplication_sets/set-id/ready"
+    assert process.url == "https://example.com/deduplication_sets/set-id/process"
+    assert reject.url == "https://example.com/deduplication_sets/set-id/reject"
 
-    assert isinstance(endpoint.images_bulk, Images)
-    assert isinstance(endpoint.process, Process)
-    assert isinstance(endpoint.approve, Approve)
-    assert isinstance(endpoint.reject, Reject)
+    assert isinstance(images, Images)
+    assert isinstance(ready, Ready)
+    assert isinstance(process, Process)
+    assert isinstance(reject, Reject)
 
 
 def test_deduplication_sets_endpoint() -> None:
-    endpoint = DeduplicationSets("https://example.com/deduplication_sets").deduplication_set("program-id")
+    endpoint = DeduplicationSets("https://example.com/deduplication_sets").deduplication_set("set-id")
 
     assert isinstance(endpoint, DeduplicationSet)
-    assert endpoint.url == "https://example.com/deduplication_sets/program-id"
+    assert endpoint.url == "https://example.com/deduplication_sets/set-id"
 
 
-def test_deduplication_set_groups_config_endpoint() -> None:
-    endpoint = DeduplicationSetGroups("https://example.com/deduplication_set_groups").config("program-id")
+def test_deduplication_set_group_endpoints() -> None:
+    endpoint = DeduplicationSetGroup("https://example.com/deduplication_set_groups/program-id")
+    config = endpoint.config
+    status = endpoint.status
 
-    assert isinstance(endpoint, DeduplicationSetGroupConfig)
-    assert endpoint.url == "https://example.com/deduplication_set_groups/config/program-id"
+    assert config.url == "https://example.com/deduplication_set_groups/program-id/config"
+    assert status.url == "https://example.com/deduplication_set_groups/program-id/status"
+
+    assert isinstance(config, DeduplicationSetGroupConfig)
+    assert isinstance(status, DeduplicationSetGroupStatus)
+
+
+def test_deduplication_set_groups_endpoint() -> None:
+    endpoint = DeduplicationSetGroups("https://example.com/deduplication_set_groups").deduplication_set_group(
+        "program-id"
+    )
+
+    assert isinstance(endpoint, DeduplicationSetGroup)
+    assert endpoint.url == "https://example.com/deduplication_set_groups/program-id"
 
 
 def test_api_root_endpoints() -> None:
     api_root = APIRoot("https://example.com/api")
+    deduplication_sets = api_root.deduplication_sets
+    deduplication_set_groups = api_root.deduplication_set_groups
 
-    assert isinstance(api_root.deduplication_sets, DeduplicationSets)
-    assert api_root.deduplication_sets.url == "https://example.com/api/deduplication_sets"
+    assert isinstance(deduplication_sets, DeduplicationSets)
+    assert deduplication_sets.url == "https://example.com/api/deduplication_sets"
 
-    assert isinstance(api_root.deduplication_set_groups, DeduplicationSetGroups)
-    assert api_root.deduplication_set_groups.url == "https://example.com/api/deduplication_set_groups"
+    assert isinstance(deduplication_set_groups, DeduplicationSetGroups)
+    assert deduplication_set_groups.url == "https://example.com/api/deduplication_set_groups"

@@ -9,20 +9,17 @@ from django.db.models import QuerySet
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
+from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
 from country_workspace.exceptions import RemoteError
-from country_workspace.models import Rdp
 from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
     qs_individuals_for_rdp,
     preflight_errors,
     preflight_exclude_rdp_ids,
-    rdp_for_dedup,
     serializer_for_program,
-    # set_rdp_dedup_state,
     set_rdp_deduplication_set_id,
 )
 from .transport import HopeApi
@@ -347,35 +344,22 @@ class DedupProcessor(ProcessorBase):
 
     PREFIX = "Dedup"
 
-    def __init__(self, *, rdp_id: int) -> None:
+    def __init__(self, rdp: Rdp) -> None:
         super().__init__()
-        self.rdp = rdp_for_dedup(pk=rdp_id)
-        self.program_unicef_id = self.rdp.program.unicef_id
+        self.rdp = rdp
+        self.program_unicef_id = rdp.program.unicef_id
 
     def run(self) -> None:
-        """Execute dedup workflow; collect errors in total."""
-        if self.rdp.status != Rdp.PushStatus.PENDING:
-            self.fail("RDP", f"can not run dedup in status={self.rdp.status}")
-        if self.has_errors:
-            return
-
         self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
-
-        if deduplication_set_id := self.rdp.deduplication_set_id:
-            self.process_existing_deduplication_set()
-            ds_id, images_sent = deduplication_set_id, 0
+        if ds_id := self.rdp.deduplication_set_id:
+            self.process_existing_deduplication_set(ds_id)
+            images_sent = 0
         else:
             ds_id, images_sent = self.deduplicate()
-
         self.total["images_sent"] = images_sent
         self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
 
-    def process_existing_deduplication_set(self) -> None:
-        """Run processing for an already existing DE deduplication set."""
-        if not (deduplication_set_id := self.rdp.deduplication_set_id):
-            self.fail("process", "deduplication_set_id is not set")
-            return
-
+    def process_existing_deduplication_set(self, deduplication_set_id: UUID) -> None:
         with make_dedup_client(
             self.program_unicef_id,
             deduplication_set_id=str(deduplication_set_id),
@@ -426,12 +410,6 @@ class DedupProcessor(ProcessorBase):
     def deduplicate(self) -> tuple[UUID | None, int]:
         """Run remote DedupEngine steps and return deduplication_set_id with sent images count."""
         with make_dedup_client(self.program_unicef_id) as client:
-            can_create = self.try_remote("can_create_deduplication_set", client.can_create_deduplication_set)
-            if can_create is not True:
-                if can_create is False:
-                    self.fail("RDP", "can not run dedup while another deduplication set is active")
-                return None, 0
-
             ds_id = self.create_deduplication_set_id(client)
             if ds_id is None:
                 return None, 0

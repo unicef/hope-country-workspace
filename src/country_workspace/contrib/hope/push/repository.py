@@ -23,7 +23,10 @@ def rdp_for_dedup(*, pk: int) -> Rdp:
 def rdp_for_push(*, pk: int) -> Rdp:
     """Return RDP with relations required for push workflow."""
     return Rdp.objects.select_related(
-        "parent", "program__country_office", "program__beneficiary_group", "pushed_by"
+        "parent",
+        "program__country_office",
+        "program__beneficiary_group",
+        "pushed_by",
     ).get(pk=pk)
 
 
@@ -38,7 +41,6 @@ def preflight_exclude_rdp_ids(*, rdp_id: int | None = None, rdp: Rdp | None = No
         if rdp_id is None:
             return ()
         rdp = Rdp.objects.only("id", "parent_id").get(pk=rdp_id)
-
     return (rdp.pk, rdp.parent_id) if rdp.parent_id else (rdp.pk,)
 
 
@@ -72,18 +74,19 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
     }
 
 
-def qs_households(*, pks: Iterable[int], prefetch_members: bool = True) -> QuerySet[CountryHousehold]:
-    """Return Households by ids, ordered by primary key, with optional member prefetch."""
-    qs = CountryHousehold.objects.filter(pk__in=pks).order_by("id")
-    if prefetch_members:
-        qs = qs.prefetch_related(
+def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
+    """Return Households by ids, ordered by primary key, with prefetched members."""
+    return (
+        CountryHousehold.objects.filter(pk__in=pks)
+        .order_by("id")
+        .prefetch_related(
             Prefetch(
                 "members",
                 queryset=CountryIndividual.objects.only("id").order_by("id"),
                 to_attr="prefetched_members",
             )
         )
-    return qs
+    )
 
 
 def qs_individuals_by_household_pks(hh_pks: Iterable[int]) -> QuerySet[CountryIndividual]:
@@ -94,35 +97,6 @@ def qs_individuals_by_household_pks(hh_pks: Iterable[int]) -> QuerySet[CountryIn
 def qs_individuals_by_pks(pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     """Return Individuals filtered by primary keys; ordered by primary key."""
     return CountryIndividual.objects.filter(pk__in=pks).order_by("id")
-
-
-def qs_rdp_pending_or_success(*, exclude_ids: Iterable[int] = ()) -> QuerySet[Rdp]:
-    """Return RDPs in PENDING or SUCCESS status; optionally exclude multiple RDPs."""
-    qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
-    exclude_ids = list(exclude_ids)
-    return qs.exclude(pk__in=exclude_ids) if exclude_ids else qs
-
-
-def qs_rdp_pre(qs: QuerySet[Beneficiary], *, rdp_qs: QuerySet[Rdp]) -> QuerySet[Beneficiary]:
-    """Prefetch related RDPs into the `rdp_pre` attribute."""
-    return qs.prefetch_related(Prefetch("rdp", queryset=rdp_qs, to_attr="rdp_pre"))
-
-
-def qs_households_for_preflight(*, pks: Iterable[int], rdp_qs: QuerySet[Rdp]) -> QuerySet[CountryHousehold]:
-    """Return Households with prefetched related RDPs for preflight validation."""
-    return qs_rdp_pre(qs_households(pks=pks), rdp_qs=rdp_qs)  # type: ignore[return-value]
-
-
-def qs_individuals_for_preflight_by_households(
-    *, hh_pks: Iterable[int], rdp_qs: QuerySet[Rdp]
-) -> QuerySet[CountryIndividual]:
-    """Return Individuals for the given household ids with prefetched related RDPs."""
-    return qs_rdp_pre(qs_individuals_by_household_pks(hh_pks), rdp_qs=rdp_qs)  # type: ignore[return-value]
-
-
-def qs_individuals_for_preflight_by_pks(*, pks: Iterable[int], rdp_qs: QuerySet[Rdp]) -> QuerySet[CountryIndividual]:
-    """Return Individuals for the given ids with prefetched related RDPs."""
-    return qs_rdp_pre(qs_individuals_by_pks(pks), rdp_qs=rdp_qs)  # type: ignore[return-value]
 
 
 def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
@@ -141,24 +115,26 @@ def preflight_errors(
         return []
 
     errors: list[str] = []
+    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
+    if excluded := tuple(exclude_rdp_ids):
+        rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
-    def add(msg: str) -> None:
-        errors.append(msg)
+    def with_rdp(qs: QuerySet[Beneficiary]) -> QuerySet[Beneficiary]:
+        return qs.prefetch_related(Prefetch("rdp", queryset=rdp_qs, to_attr="rdp_pre"))
 
     def check(qs: QuerySet[Beneficiary], tag: str) -> None:
         for obj in qs.iterator(chunk_size=PUSH_BATCH_SIZE * 5):
             base = f"{tag} #{obj.pk}"
             if not obj.is_valid():
-                add(f"{base} invalid")
+                errors.append(f"{base} invalid")
             if getattr(obj, "rdp_pre", []):
-                add(f"{base} already in another RDP(s) (pending/success)")
+                errors.append(f"{base} already in another RDP(s) (pending/success)")
 
-    rdp_qs = qs_rdp_pending_or_success(exclude_ids=exclude_rdp_ids)
     if master_detail:
-        check(qs_households_for_preflight(pks=pks, rdp_qs=rdp_qs), "HH")
-        check(qs_individuals_for_preflight_by_households(hh_pks=pks, rdp_qs=rdp_qs), "Ind")
+        check(with_rdp(qs_households(pks=pks)), "HH")
+        check(with_rdp(qs_individuals_by_household_pks(pks)), "Ind")
     else:
-        check(qs_individuals_for_preflight_by_pks(pks=pks, rdp_qs=rdp_qs), "Ind")
+        check(with_rdp(qs_individuals_by_pks(pks)), "Ind")
 
     return errors
 
@@ -173,3 +149,11 @@ def set_rdp_push_status(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -
     rdp.status = status
     rdp.hope_rdi_id = hope_rdi_id
     rdp.save(update_fields=["status", "hope_rdi_id"])
+
+
+def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:
+    """Return True when the program has another pending RDP."""
+    qs = Rdp.objects.filter(program_id=owner.program_id, status=Rdp.PushStatus.PENDING)
+    if excluded := tuple(exclude_ids):
+        qs = qs.exclude(pk__in=excluded)
+    return qs.exists()

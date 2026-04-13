@@ -158,7 +158,10 @@ def qs() -> Callable[[list[Any]], Any]:
         def iterator(self, chunk_size: int | None = None):
             yield from self._items
 
-    return lambda items: _QS(items)  # noqa: PLW0108
+    def factory(items: list[Any]) -> Any:
+        return _QS(items)
+
+    return factory
 
 
 @pytest.fixture
@@ -178,7 +181,10 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
         def apply_grouping(self):
             return getattr(self, "_group", {})
 
-    return lambda **kw: _Stub(**kw)  # noqa: PLW0108
+    def factory(**kw: Any) -> Beneficiary:
+        return _Stub(**kw)
+
+    return factory
 
 
 @pytest.fixture
@@ -220,8 +226,7 @@ def dedup_api_cm(mocker: MockerFixture) -> Callable[[Any], Any]:
 
 
 @pytest.fixture
-def dedup_processor(mocker, rdp: CountryRdp):
+def dedup_processor(rdp: CountryRdp):
     from country_workspace.contrib.hope.push.processor import DedupProcessor
 
-    mocker.patch("country_workspace.contrib.hope.push.processor.rdp_for_dedup", return_value=rdp)
-    return DedupProcessor(rdp_id=rdp.pk)
+    return DedupProcessor(rdp)

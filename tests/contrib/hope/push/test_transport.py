@@ -26,11 +26,13 @@ def test_hope_api_methods_delegate_to_client_post(
 ) -> None:
     client = mocker.MagicMock()
     client.post.return_value = {"ok": True}
-    mocker.patch.object(tr, "HopeClient", return_value=client)
+    hope_client_cls = mocker.patch.object(tr, "HopeClient", return_value=client)
 
     api = tr.HopeApi(co_slug="CO")
 
     assert getattr(api, method)(*args) == {"ok": True}
+
+    hope_client_cls.assert_called_once_with()
     client.post.assert_called_once_with(
         ROUTES[route].format(co_slug="CO", **({"rdi_id": args[0]} if route is not tr.Route.CREATE else {})),
         payload,
@@ -55,9 +57,11 @@ def test_hope_api_methods_propagate_remote_error(
 ) -> None:
     client = mocker.MagicMock()
     client.post.side_effect = RemoteError("boom")
-    mocker.patch.object(tr, "HopeClient", return_value=client)
+    hope_client_cls = mocker.patch.object(tr, "HopeClient", return_value=client)
 
     api = tr.HopeApi(co_slug="CO")
 
     with pytest.raises(RemoteError, match="boom"):
         getattr(api, method)(*args)
+
+    hope_client_cls.assert_called_once_with()

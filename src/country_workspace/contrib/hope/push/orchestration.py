@@ -3,18 +3,16 @@ from functools import partial
 from typing import Any
 from django.db import transaction, IntegrityError
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState, make_dedup_client, get_deduplication_status
-from country_workspace.contrib.dedup_engine.deduplication_status import (
-    CLONEABLE_DEDUPLICATION_SET_STATES,
-    DedupResponseStatus,
-)
+from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import AsyncJob, Rdp
 
 from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
+from .policy import RdpActionPolicy
 from .repository import (
+    has_other_pending_rdp,
     qs_individuals_by_pks,
     qs_individuals_by_household_pks,
     lock_rdp_for_update,
@@ -30,22 +28,11 @@ from .repository import (
 )
 
 
-def create_rdp_records(config: CreateRdpConfig, job_id: int) -> Rdp:
-    """Create an RDP and link beneficiaries."""
+def require_rdp_action(rdp: Rdp, action: str) -> None:
     try:
-        with transaction.atomic():
-            rdp = Rdp.objects.create(
-                country_office_id=config["country_office_id"],
-                program_id=config["program_id"],
-                name=config["batch_name"],
-                pushed_by_id=config["pushed_by_id"],
-                status=Rdp.PushStatus.PENDING,
-            )
-            rdp.add_beneficiaries(config["pks"], config["master_detail"])
-            AsyncJob.objects.filter(id=job_id).update(rdp=rdp)
-            return rdp
-    except IntegrityError as e:
-        raise HopePushError({"errors": [f"RDP: can not create record: {e}"]}) from e
+        getattr(RdpActionPolicy(rdp), action)().require()
+    except RemoteError as e:
+        raise HopePushError({"errors": [str(e)]}) from e
 
 
 def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
@@ -83,14 +70,14 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
         raise HopePushError({"errors": ["RDP: beneficiary_group is not set"]})
     if not job.config.get("pks"):
         raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
+
     if job.program.biometric_deduplication_enabled:
         try:
             with make_dedup_client(job.program.unicef_id) as client:
-                can_create = client.can_create_deduplication_set()
+                if not client.can_create_deduplication_set():
+                    raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
         except RemoteError as e:
             raise HopePushError({"errors": [str(e)]}) from e
-        if not can_create:
-            raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
 
     config: CreateRdpConfig = job.config
     errors = preflight_errors(
@@ -101,33 +88,28 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     if errors:
         raise HopePushError({"errors": errors})
 
-    rdp = create_rdp_records(config, job.id)
+    try:
+        with transaction.atomic():
+            rdp = Rdp.objects.create(
+                country_office_id=config["country_office_id"],
+                program_id=config["program_id"],
+                name=config["batch_name"],
+                pushed_by_id=config["pushed_by_id"],
+                status=Rdp.PushStatus.PENDING,
+            )
+            rdp.add_beneficiaries(config["pks"], config["master_detail"])
+            AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
+    except IntegrityError as e:
+        raise HopePushError({"errors": [f"RDP: can not create record: {e}"]}) from e
+
     return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
 
 
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
     """Create a child RDP that reuses the owner selection and DE deduplication set."""
+    require_rdp_action(source, "can_clone")
+
     owner = selection_owner_for_rdp(rdp=source)
-
-    if not owner.deduplication_set_id:
-        raise HopePushError({"errors": ["DedupEngine: deduplication_set_id is not set for this RDP."]})
-
-    status = get_deduplication_status(
-        owner.program.unicef_id,
-        str(owner.deduplication_set_id),
-    )
-    if status.response_status != DedupResponseStatus.OK:
-        raise HopePushError({"errors": ["DedupEngine: can not retrieve deduplication set status."]})
-    if status.deduplication_set_status not in CLONEABLE_DEDUPLICATION_SET_STATES:
-        raise HopePushError(
-            {
-                "errors": [
-                    "DedupEngine: can not clone RDP for deduplication set in "
-                    f"state={status.deduplication_set_status!r}."
-                ]
-            }
-        )
-
     master_detail, pks = rdp_selection(rdp=owner)
     errors = preflight_errors(
         pks=pks,
@@ -144,13 +126,8 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
             if owner.pk != source.pk:
                 owner = lock_rdp_for_update(pk=owner.pk)
 
-            pending_qs = Rdp.objects.filter(
-                program_id=owner.program_id,
-                status=Rdp.PushStatus.PENDING,
-            )
-            if source.status == Rdp.PushStatus.PENDING:
-                pending_qs = pending_qs.exclude(pk=source.pk)
-            if pending_qs.exists():
+            exclude_ids = (source.pk,) if source.status == Rdp.PushStatus.PENDING else ()
+            if has_other_pending_rdp(owner=owner, exclude_ids=exclude_ids):
                 raise HopePushError({"errors": ["RDP: can not clone while another RDP is pending"]})
 
             if source.status == Rdp.PushStatus.PENDING:
@@ -172,8 +149,9 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
 
 
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Run DedupEngine deduplication for an existing RDP."""
-    processor = DedupProcessor(rdp_id=job.config["rdp_id"])
+    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
+    require_rdp_action(rdp, "can_deduplicate")
+    processor = DedupProcessor(rdp)
     processor.run()
     if processor.has_errors:
         raise HopePushError(processor.total)
@@ -183,26 +161,13 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Reject the active DedupEngine deduplication set for an existing RDP."""
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    if rdp.status != Rdp.PushStatus.PENDING:
-        raise HopePushError({"errors": [f"RDP: can not reject deduplication set in status={rdp.status}"]})
-    if not rdp.program.biometric_deduplication_enabled:
-        raise HopePushError({"errors": ["DedupEngine: biometric deduplication is not enabled for this program."]})
-    if not rdp.deduplication_set_id:
-        raise HopePushError({"errors": ["DedupEngine: deduplication_set_id is not set for this RDP."]})
+    require_rdp_action(rdp, "can_reject_ds")
 
     program_id = rdp.program.unicef_id
     deduplication_set_id = str(rdp.deduplication_set_id)
 
     try:
         with make_dedup_client(program_id, deduplication_set_id=deduplication_set_id) as client:
-            payload = client.retrieve_deduplication_set()
-            deduplication_set_state = payload.get("state")
-
-            if deduplication_set_state != DeduplicationSetState.DEDUPLICATED:
-                raise HopePushError(
-                    {"errors": [f"DedupEngine: can not reject deduplication set in state={deduplication_set_state!r}."]}
-                )
-
             client.reject()
     except RemoteError as e:
         raise HopePushError({"errors": [str(e)]}) from e
@@ -226,8 +191,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
     rdp = rdp_for_push(pk=job.config["rdp_id"])
-    if rdp.status != Rdp.PushStatus.PENDING:
-        raise HopePushError({"errors": [f"RDP: can not push in status={rdp.status}"]})
+    require_rdp_action(rdp, "can_push")
 
     imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
     config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
@@ -239,13 +203,19 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             with transaction.atomic():
                 locked = lock_rdp_for_update(pk=rdp.pk)
                 set_rdp_push_status(
-                    rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id=hope_processor.hope_rdi_id or "N/A"
+                    rdp=locked,
+                    status=Rdp.PushStatus.FAILURE,
+                    hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
                 )
             raise HopePushError(hope_processor.total)
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
         mark_rdp_beneficiaries_removed(locked, config["master_detail"])
-        set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_processor.hope_rdi_id or "N/A")
+        set_rdp_push_status(
+            rdp=locked,
+            status=Rdp.PushStatus.SUCCESS,
+            hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+        )
 
     return hope_processor.total
