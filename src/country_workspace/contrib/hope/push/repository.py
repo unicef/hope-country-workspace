@@ -1,13 +1,13 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Exists, OuterRef, Prefetch, QuerySet
 
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Program, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import Beneficiary, PushWorkflowConfig, Serializer
+from .config import PushWorkflowConfig, Serializer
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -105,6 +105,12 @@ def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     return qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
 
 
+def _is_valid_row(*, last_checked: object, errors: object) -> bool | None:
+    if last_checked is None:
+        return None
+    return not bool(errors)
+
+
 def preflight_errors(
     pks: list[int],
     master_detail: bool,
@@ -114,29 +120,43 @@ def preflight_errors(
     if not pks:
         return []
 
-    errors: list[str] = []
     rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
     if excluded := tuple(exclude_rdp_ids):
         rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
-    def with_rdp(qs: QuerySet[Beneficiary]) -> QuerySet[Beneficiary]:
-        return qs.prefetch_related(Prefetch("rdp", queryset=rdp_qs, to_attr="rdp_pre"))
-
-    def check(qs: QuerySet[Beneficiary], tag: str) -> None:
-        for obj in qs.iterator(chunk_size=PUSH_BATCH_SIZE * 5):
-            base = f"{tag} #{obj.pk}"
-            if not obj.is_valid():
+    def collect(rows: QuerySet, tag: str) -> list[str]:
+        errors: list[str] = []
+        for pk, last_checked, obj_errors, has_rdp in rows.iterator(chunk_size=PUSH_BATCH_SIZE * 5):
+            base = f"{tag} #{pk}"
+            if not _is_valid_row(last_checked=last_checked, errors=obj_errors):
                 errors.append(f"{base} invalid")
-            if getattr(obj, "rdp_pre", []):
+            if has_rdp:
                 errors.append(f"{base} already in another RDP(s) (pending/success)")
+        return errors
 
-    if master_detail:
-        check(with_rdp(qs_households(pks=pks)), "HH")
-        check(with_rdp(qs_individuals_by_household_pks(pks)), "Ind")
-    else:
-        check(with_rdp(qs_individuals_by_pks(pks)), "Ind")
+    def individual_rows() -> QuerySet:
+        qs = (
+            CountryIndividual.objects.filter(household_id__in=pks)
+            if master_detail
+            else CountryIndividual.objects.filter(pk__in=pks)
+        )
+        return (
+            qs.order_by("id")
+            .annotate(has_rdp=Exists(rdp_qs.filter(individuals=OuterRef("pk"))))
+            .values_list("pk", "last_checked", "errors", "has_rdp")
+        )
 
-    return errors
+    errors = collect(individual_rows(), "Ind")
+    if not master_detail:
+        return errors
+
+    household_rows = (
+        CountryHousehold.objects.filter(pk__in=pks)
+        .order_by("id")
+        .annotate(has_rdp=Exists(rdp_qs.filter(households=OuterRef("pk"))))
+        .values_list("pk", "last_checked", "errors", "has_rdp")
+    )
+    return collect(household_rows, "HH") + errors
 
 
 def set_rdp_deduplication_set_id(*, rdp_id: int, deduplication_set_id: UUID) -> None:

@@ -1,6 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 from uuid import uuid4
+from django.utils import timezone
 
 import country_workspace.contrib.hope.push.repository as repo
 from country_workspace.models import Rdp as RdpModel
@@ -281,71 +282,48 @@ def test_preflight_errors_empty_selection() -> None:
     assert repo.preflight_errors(pks=[], master_detail=True) == []
 
 
-@pytest.mark.parametrize(
-    ("master_detail", "expected"),
-    [
-        (True, ["HH #1 invalid", "HH #2 already in another RDP(s) (pending/success)"]),
-        (False, ["Ind #1 invalid", "Ind #2 already in another RDP(s) (pending/success)"]),
-    ],
-    ids=["master_detail", "flat"],
-)
-def test_preflight_errors_collects_validation_and_rdp_errors(
-    mocker: MockerFixture,
-    master_detail: bool,
-    expected: list[str],
-) -> None:
-    mocker.patch.object(repo, "Prefetch", return_value="prefetch")
+def test_preflight_errors_flat() -> None:
+    invalid = CountryIndividualFactory(last_checked=None, errors={})
+    linked = CountryIndividualFactory(last_checked=timezone.now(), errors={})
+    linked.rdp.add(CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS))
 
-    invalid = mocker.MagicMock(pk=1)
-    invalid.is_valid.return_value = False
-    invalid.rdp_pre = []
-
-    linked = mocker.MagicMock(pk=2)
-    linked.is_valid.return_value = True
-    linked.rdp_pre = [mocker.MagicMock()]
-
-    qs = mocker.MagicMock()
-    qs.prefetch_related.return_value = qs
-    qs.iterator.return_value = iter([invalid, linked])
-
-    filter_qs = mocker.MagicMock()
-    filter_qs.exclude.return_value = filter_qs
-    mocker.patch.object(repo.Rdp.objects, "filter", return_value=filter_qs)
-
-    if master_detail:
-        hh_qs = mocker.patch.object(repo, "qs_households", return_value=qs)
-        ind_qs = mocker.patch.object(repo, "qs_individuals_by_household_pks", return_value=mocker.MagicMock())
-        ind_qs.return_value.prefetch_related.return_value = ind_qs.return_value
-        ind_qs.return_value.iterator.return_value = iter([])
-
-        assert repo.preflight_errors(pks=[1, 2], master_detail=True) == expected
-
-        hh_qs.assert_called_once_with(pks=[1, 2])
-        ind_qs.assert_called_once_with([1, 2])
-    else:
-        ind_qs = mocker.patch.object(repo, "qs_individuals_by_pks", return_value=qs)
-
-        assert repo.preflight_errors(pks=[1, 2], master_detail=False) == expected
-
-        ind_qs.assert_called_once_with([1, 2])
+    assert repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=False) == [
+        f"Ind #{invalid.pk} invalid",
+        f"Ind #{linked.pk} already in another RDP(s) (pending/success)",
+    ]
 
 
-def test_preflight_errors_excludes_rdp_ids(mocker: MockerFixture) -> None:
-    mocker.patch.object(repo, "Prefetch", return_value="prefetch")
+def test_preflight_errors_master_detail() -> None:
+    invalid = CountryHouseholdFactory(last_checked=None, errors={})
+    invalid_member = CountryIndividualFactory(household=invalid, last_checked=None, errors={})
 
-    qs = mocker.MagicMock()
-    qs.prefetch_related.return_value = qs
-    qs.iterator.return_value = iter([])
+    linked = CountryHouseholdFactory(last_checked=timezone.now(), errors={})
+    linked_member = CountryIndividualFactory(household=linked, last_checked=timezone.now(), errors={})
+    rdp = CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS)
+    linked.rdp.add(rdp)
+    linked_member.rdp.add(rdp)
 
-    filter_qs = mocker.MagicMock()
-    excluded_qs = mocker.MagicMock()
-    filter_qs.exclude.return_value = excluded_qs
-    mocker.patch.object(repo.Rdp.objects, "filter", return_value=filter_qs)
-    mocker.patch.object(repo, "qs_individuals_by_pks", return_value=qs)
+    errors = repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=True)
 
-    assert repo.preflight_errors(pks=[1], master_detail=False, exclude_rdp_ids=[10, 20]) == []
+    assert f"HH #{invalid.pk} invalid" in errors
+    assert f"HH #{linked.pk} already in another RDP(s) (pending/success)" in errors
+    assert f"Ind #{invalid_member.pk} invalid" in errors
+    assert f"Ind #{linked_member.pk} already in another RDP(s) (pending/success)" in errors
 
-    filter_qs.exclude.assert_called_once_with(pk__in=(10, 20))
+
+def test_preflight_errors_excludes_rdp_ids() -> None:
+    individual = CountryIndividualFactory(last_checked=timezone.now(), errors={})
+    rdp = CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS)
+    individual.rdp.add(rdp)
+
+    assert (
+        repo.preflight_errors(
+            pks=[individual.pk],
+            master_detail=False,
+            exclude_rdp_ids=[rdp.pk],
+        )
+        == []
+    )
 
 
 def test_set_rdp_deduplication_set_id(rdp) -> None:

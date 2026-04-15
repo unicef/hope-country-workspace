@@ -193,6 +193,7 @@ def test_create_rdp_core_dedup_remote_error(
     client = mocker.MagicMock()
     client.can_create_deduplication_set.side_effect = RemoteError("boom")
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    mocker.patch(f"{MOD}.preflight_errors", return_value=[])
 
     with pytest.raises(HopePushError) as exc:
         create_rdp_core(create_job)
@@ -206,13 +207,15 @@ def test_create_rdp_core_preflight_errors(
     create_job: AsyncJob,
     err_contains,
 ) -> None:
-    create_job.program.biometric_deduplication_enabled = False
+    create_job.program.biometric_deduplication_enabled = True
+    make_client = mocker.patch(f"{MOD}.make_dedup_client")
     mocker.patch(f"{MOD}.preflight_errors", return_value=["boom"])
 
     with pytest.raises(HopePushError) as exc:
         create_rdp_core(create_job)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
+    make_client.assert_not_called()
 
 
 @pytest.mark.django_db

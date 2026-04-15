@@ -71,14 +71,6 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     if not job.config.get("pks"):
         raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
 
-    if job.program.biometric_deduplication_enabled:
-        try:
-            with make_dedup_client(job.program.unicef_id) as client:
-                if not client.can_create_deduplication_set():
-                    raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
-        except RemoteError as e:
-            raise HopePushError({"errors": [str(e)]}) from e
-
     config: CreateRdpConfig = job.config
     errors = preflight_errors(
         pks=config["pks"],
@@ -87,6 +79,14 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     )
     if errors:
         raise HopePushError({"errors": errors})
+
+    if job.program.biometric_deduplication_enabled:
+        try:
+            with make_dedup_client(job.program.unicef_id) as client:
+                if not client.can_create_deduplication_set():
+                    raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
+        except RemoteError as e:
+            raise HopePushError({"errors": [str(e)]}) from e
 
     try:
         with transaction.atomic():
