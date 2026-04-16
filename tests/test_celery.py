@@ -3,6 +3,7 @@ from unittest.mock import patch, PropertyMock
 
 from celery.exceptions import Ignore
 
+from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -205,6 +206,25 @@ def test_clean_program_data_stops_when_cancellation_requested(job, batch, househ
             clean_program_data(job, batch_size=1)
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches
+
+
+@pytest.mark.django_db
+def test_clean_program_data_bumps_cache_version_exactly_once(job, batch, households, individuals):
+    program = job.program
+    version_before = cache_manager.get_cache_version(program=program)
+
+    result = clean_program_data(job, batch_size=5)
+
+    assert result is not None
+    assert result["households"] > 0
+    assert result["individuals"] > 0
+
+    version_after = cache_manager.get_cache_version(program=program)
+    assert version_after == version_before + 1, (
+        "cache version must be bumped exactly once: per-row post_save/post_delete "
+        "updates are suppressed during the bulk delete and a single bump is issued "
+        "at the end"
+    )
 
 
 @pytest.mark.django_db
