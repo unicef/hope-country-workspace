@@ -13,13 +13,12 @@ from country_workspace.contrib.hope.push.orchestration import (
     mark_rdp_beneficiaries_removed,
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
-    require_rdp_action,
+    require_policy_check,
     steps,
 )
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.workspaces.models import CountryHousehold
-
 
 MOD = "country_workspace.contrib.hope.push.orchestration"
 
@@ -54,30 +53,32 @@ def proc() -> object:
     return Proc()
 
 
-def test_require_rdp_action_calls_policy_action(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock()
+def test_require_policy_check_calls_check_require(mocker: MockerFixture) -> None:
     check = mocker.MagicMock()
-    policy = mocker.MagicMock()
-    policy.can_push.return_value = check
-    policy_cls = mocker.patch(f"{MOD}.RdpActionPolicy", return_value=policy)
+    check_fn = mocker.Mock(return_value=check)
 
-    require_rdp_action(rdp, "can_push")
+    require_policy_check(check_fn)
 
-    policy_cls.assert_called_once_with(rdp)
-    policy.can_push.assert_called_once_with()
+    check_fn.assert_called_once_with()
     check.require.assert_called_once_with()
 
 
-def test_require_rdp_action_wraps_remote_error(mocker: MockerFixture, err_contains) -> None:
-    rdp = mocker.MagicMock()
+@pytest.mark.parametrize(
+    "exc_cls",
+    [RemoteError, RemoteUnavailableError],
+    ids=["remote_error", "remote_unavailable"],
+)
+def test_require_policy_check_wraps_remote_errors(
+    mocker: MockerFixture,
+    exc_cls: type[Exception],
+    err_contains,
+) -> None:
     check = mocker.MagicMock()
-    check.require.side_effect = RemoteError("boom")
-    policy = mocker.MagicMock()
-    policy.can_push.return_value = check
-    mocker.patch(f"{MOD}.RdpActionPolicy", return_value=policy)
+    check.require.side_effect = exc_cls("boom")
+    check_fn = mocker.Mock(return_value=check)
 
     with pytest.raises(HopePushError) as exc:
-        require_rdp_action(rdp, "can_push")
+        require_policy_check(check_fn)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
 
@@ -183,15 +184,21 @@ def test_create_rdp_core_dedup_guard(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "exc_cls",
+    [RemoteError, RemoteUnavailableError],
+    ids=["remote_error", "remote_unavailable"],
+)
 def test_create_rdp_core_dedup_remote_error(
     mocker: MockerFixture,
     create_job: AsyncJob,
     dedup_api_cm,
+    exc_cls: type[Exception],
     err_contains,
 ) -> None:
     create_job.program.biometric_deduplication_enabled = True
     client = mocker.MagicMock()
-    client.can_create_deduplication_set.side_effect = RemoteError("boom")
+    client.can_create_deduplication_set.side_effect = exc_cls("boom")
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     mocker.patch(f"{MOD}.preflight_errors", return_value=[])
 
@@ -250,7 +257,7 @@ def test_clone_rdp_core_preflight_errors(mocker: MockerFixture, err_contains) ->
     source = mocker.MagicMock()
     owner = mocker.MagicMock()
 
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
     mocker.patch(f"{MOD}.rdp_selection", return_value=(True, [1, 2]))
     mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=(1,))
@@ -266,7 +273,7 @@ def test_clone_rdp_core_blocks_when_other_pending_exists(mocker: MockerFixture, 
     source = mocker.MagicMock(pk=1, status=Rdp.PushStatus.PENDING)
     owner = source
 
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.selection_owner_for_rdp", side_effect=[owner, owner])
     mocker.patch(f"{MOD}.rdp_selection", return_value=(True, [1, 2]))
     mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=(1,))
@@ -290,7 +297,7 @@ def test_clone_rdp_core_integrity_error(mocker: MockerFixture, err_contains) -> 
     )
     owner = source
 
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.selection_owner_for_rdp", side_effect=[owner, owner])
     mocker.patch(f"{MOD}.rdp_selection", return_value=(True, [1, 2]))
     mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=(1,))
@@ -317,7 +324,7 @@ def test_clone_rdp_core_success_cancels_pending_source(mocker: MockerFixture) ->
     owner = source
     cloned = mocker.MagicMock()
 
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.selection_owner_for_rdp", side_effect=[owner, owner])
     mocker.patch(f"{MOD}.rdp_selection", return_value=(True, [1, 2]))
     mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=(1,))
@@ -353,7 +360,7 @@ def test_dedup_existing_rdp_core(
     job = mocker.MagicMock(config={"rdp_id": 123})
 
     mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-    require = mocker.patch(f"{MOD}.require_rdp_action")
+    require = mocker.patch(f"{MOD}.require_policy_check")
     processor_cls = mocker.patch(f"{MOD}.DedupProcessor", return_value=processor)
 
     if has_errors:
@@ -363,7 +370,7 @@ def test_dedup_existing_rdp_core(
     else:
         assert dedup_existing_rdp_core(job) == total
 
-    require.assert_called_once_with(rdp, "can_deduplicate")
+    require.assert_called_once()
     processor_cls.assert_called_once_with(rdp)
     processor.run.assert_called_once_with()
 
@@ -378,7 +385,7 @@ def test_reject_deduplication_set_existing_rdp_core(
     job = mocker.MagicMock(config={"rdp_id": 1})
 
     mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-    require = mocker.patch(f"{MOD}.require_rdp_action")
+    require = mocker.patch(f"{MOD}.require_policy_check")
     client = mocker.MagicMock()
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
@@ -391,7 +398,7 @@ def test_reject_deduplication_set_existing_rdp_core(
         "rejected": True,
     }
 
-    require.assert_called_once_with(rdp, "can_reject_ds")
+    require.assert_called_once()
     client.reject.assert_called_once_with()
     set_status.assert_called_once_with(
         rdp=locked,
@@ -400,9 +407,15 @@ def test_reject_deduplication_set_existing_rdp_core(
     )
 
 
+@pytest.mark.parametrize(
+    "exc_cls",
+    [RemoteError, RemoteUnavailableError],
+    ids=["remote_error", "remote_unavailable"],
+)
 def test_reject_deduplication_set_existing_rdp_core_remote_error(
     mocker: MockerFixture,
     dedup_api_cm,
+    exc_cls: type[Exception],
     err_contains,
 ) -> None:
     rdp = mocker.MagicMock(pk=1, deduplication_set_id="ds-1")
@@ -410,9 +423,9 @@ def test_reject_deduplication_set_existing_rdp_core_remote_error(
     job = mocker.MagicMock(config={"rdp_id": 1})
 
     mocker.patch(f"{MOD}.rdp_for_dedup", return_value=rdp)
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     client = mocker.MagicMock()
-    client.reject.side_effect = RemoteError("boom")
+    client.reject.side_effect = exc_cls("boom")
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
 
     with pytest.raises(HopePushError) as exc:
@@ -446,7 +459,7 @@ def test_push_existing_rdp_core_success(
     job.owner.email = owner_email
 
     mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
-    require = mocker.patch(f"{MOD}.require_rdp_action")
+    require = mocker.patch(f"{MOD}.require_policy_check")
     workflow = mocker.patch(f"{MOD}.workflow_config_for_rdp", return_value=config)
     processor_cls = mocker.patch(f"{MOD}.PushProcessor", return_value=processor)
     steps_spy = mocker.patch(f"{MOD}.steps", return_value=[step1, step2])
@@ -456,7 +469,7 @@ def test_push_existing_rdp_core_success(
 
     assert push_existing_rdp_core(job) == {"errors": []}
 
-    require.assert_called_once_with(rdp, "can_push")
+    require.assert_called_once()
     workflow.assert_called_once_with(rdp=rdp, imported_by_email=expected_email)
     processor_cls.assert_called_once_with(config)
     steps_spy.assert_called_once_with(processor, config)
@@ -483,7 +496,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
         processor.has_errors = True
 
     mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
-    mocker.patch(f"{MOD}.require_rdp_action")
+    mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.workflow_config_for_rdp", return_value=config)
     mocker.patch(f"{MOD}.PushProcessor", return_value=processor)
     mocker.patch(f"{MOD}.steps", return_value=[fail_step])

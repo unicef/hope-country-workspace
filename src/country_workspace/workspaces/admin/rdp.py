@@ -1,9 +1,8 @@
 from typing import Any
 
-from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.api import button, link
 import sentry_sdk
-
+from admin_extra_buttons.api import button, link
+from admin_extra_buttons.buttons import ButtonWidget, LinkButton
 from django.contrib import messages
 from django.contrib.admin import register
 from django.db.models import QuerySet
@@ -13,9 +12,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.dedup_engine.deduplication_status import (
-    DedupResponseStatus,
-)
+
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
@@ -25,7 +22,7 @@ from country_workspace.contrib.hope.push import (
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
 )
-from country_workspace.contrib.hope.push.policy import get_rdp_policy
+from country_workspace.contrib.hope.push.policy import DedupEngineState, get_rdp_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import rdi_name_default
@@ -39,18 +36,15 @@ from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
 
-from admin_extra_buttons.buttons import ButtonWidget
-
-
-def _visible(btn: ButtonWidget, action: str) -> bool:
+def _is_visible(btn: ButtonWidget, action: str) -> bool:
     return bool((obj := btn.original) and getattr(get_rdp_policy(obj), action)())
 
 
-def _enabled(btn: ButtonWidget, action: str) -> bool:
+def _is_allowed(btn: ButtonWidget, action: str) -> bool:
     if (obj := btn.original) is None:
         return False
     try:
-        return getattr(get_rdp_policy(obj), action)().enabled
+        return getattr(get_rdp_policy(obj), action)().allowed
     except RemoteUnavailableError as exc:
         sentry_sdk.capture_exception(exc)
         return False
@@ -124,9 +118,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         try:
-            return get_rdp_policy(obj).dedup_engine_state()
+            return str(get_rdp_policy(obj).dedup_engine_state())
         except RemoteUnavailableError:
-            return DedupResponseStatus.STATUS_UNAVAILABLE.value
+            return str(DedupEngineState.unavailable())
         except RemoteError:
             return "Remote error"
 
@@ -141,8 +135,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
-        visible=lambda btn: _visible(btn, "visible_deduplicate"),
-        enabled=lambda btn: _enabled(btn, "can_deduplicate"),
+        visible=lambda btn: _is_visible(btn, "is_deduplicate_visible"),
+        enabled=lambda btn: _is_allowed(btn, "deduplicate_check"),
         html_attrs={"title": "Run Deduplication process on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -169,8 +163,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.reject_deduplication_set",
-        visible=lambda btn: _visible(btn, "visible_reject_ds"),
-        enabled=lambda btn: _enabled(btn, "can_reject_ds"),
+        visible=lambda btn: _is_visible(btn, "is_reject_ds_visible"),
+        enabled=lambda btn: _is_allowed(btn, "reject_ds_check"),
         html_attrs={"title": "Reject this RDP by rejecting its active DE deduplication set."},
     )
     def reject_ds(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -197,8 +191,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.create_rdp",
-        visible=lambda btn: _visible(btn, "visible_clone"),
-        enabled=lambda btn: _enabled(btn, "can_clone"),
+        visible=lambda btn: _is_visible(btn, "is_clone_visible"),
+        enabled=lambda btn: _is_allowed(btn, "clone_check"),
         html_attrs={"title": "Create a child RDP that reuses the parent selection."},
     )
     def clone_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -246,8 +240,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
-        enabled=lambda btn: _enabled(btn, "can_push"),
-        visible=lambda btn: _visible(btn, "visible_push"),
+        visible=lambda btn: _is_visible(btn, "is_push_visible"),
+        enabled=lambda btn: _is_allowed(btn, "push_check"),
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:

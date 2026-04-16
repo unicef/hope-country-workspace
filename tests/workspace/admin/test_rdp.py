@@ -196,54 +196,54 @@ def test_country_rdp_admin_biometric_deduplication_enabled(admin_instance, rdp, 
     assert admin_instance.biometric_deduplication_enabled(rdp) is flag
 
 
-def test_visible(mocker: MockerFixture) -> None:
+def test_is_visible(mocker: MockerFixture) -> None:
     policy = mocker.MagicMock()
-    policy.visible_push.return_value = True
+    policy.is_push_visible.return_value = True
     obj = mocker.MagicMock()
     btn = mocker.MagicMock(original=obj)
     spy = mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
 
-    assert rdp_admin_mod._visible(btn, "visible_push") is True
-    assert rdp_admin_mod._visible(mocker.MagicMock(original=None), "visible_push") is False
+    assert rdp_admin_mod._is_visible(btn, "is_push_visible") is True
+    assert rdp_admin_mod._is_visible(mocker.MagicMock(original=None), "is_push_visible") is False
 
     spy.assert_called_once_with(obj)
-    policy.visible_push.assert_called_once_with()
+    policy.is_push_visible.assert_called_once_with()
 
 
-def test_enabled_returns_action_enabled(mocker: MockerFixture) -> None:
+def test_is_allowed_returns_action_allowed(mocker: MockerFixture) -> None:
     policy = mocker.MagicMock()
-    policy.can_push.return_value = mocker.MagicMock(enabled=True)
+    policy.push_check.return_value = mocker.MagicMock(allowed=True)
     obj = mocker.MagicMock()
     btn = mocker.MagicMock(original=obj)
     spy = mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
 
-    assert rdp_admin_mod._enabled(btn, "can_push") is True
-    assert rdp_admin_mod._enabled(mocker.MagicMock(original=None), "can_push") is False
+    assert rdp_admin_mod._is_allowed(btn, "push_check") is True
+    assert rdp_admin_mod._is_allowed(mocker.MagicMock(original=None), "push_check") is False
 
     spy.assert_called_once_with(obj)
-    policy.can_push.assert_called_once_with()
+    policy.push_check.assert_called_once_with()
 
 
-def test_enabled_returns_false_on_remote_unavailable(mocker: MockerFixture) -> None:
+def test_is_allowed_returns_false_on_remote_unavailable(mocker: MockerFixture) -> None:
     policy = mocker.MagicMock()
-    policy.can_push.side_effect = RemoteUnavailableError("boom")
+    policy.push_check.side_effect = RemoteUnavailableError("boom")
     btn = mocker.MagicMock(original=mocker.MagicMock())
     mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
     cap = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    assert rdp_admin_mod._enabled(btn, "can_push") is False
+    assert rdp_admin_mod._is_allowed(btn, "push_check") is False
 
     cap.assert_called_once()
 
 
-def test_enabled_returns_false_on_remote_error(mocker: MockerFixture) -> None:
+def test_is_allowed_returns_false_on_remote_error(mocker: MockerFixture) -> None:
     policy = mocker.MagicMock()
-    policy.can_push.side_effect = RemoteError("boom")
+    policy.push_check.side_effect = RemoteError("boom")
     btn = mocker.MagicMock(original=mocker.MagicMock())
     mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
     cap = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    assert rdp_admin_mod._enabled(btn, "can_push") is False
+    assert rdp_admin_mod._is_allowed(btn, "push_check") is False
 
     cap.assert_not_called()
 
@@ -269,7 +269,7 @@ def test_country_rdp_admin_dedup_engine_state_handles_remote_unavailable(
     policy.dedup_engine_state.side_effect = RemoteUnavailableError("boom")
     mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
 
-    assert admin_instance.dedup_engine_state(rdp) == rdp_admin_mod.DedupResponseStatus.STATUS_UNAVAILABLE.value
+    assert admin_instance.dedup_engine_state(rdp) == str(rdp_admin_mod.DedupEngineState.unavailable())
 
 
 def test_country_rdp_admin_dedup_engine_state_handles_remote_error(

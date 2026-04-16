@@ -11,6 +11,7 @@ from country_workspace.contrib.dedup_engine.deduplication_status import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.policy import (
     ActionCheck,
+    DedupEngineState,
     RdpActionPolicy,
     get_rdp_policy,
 )
@@ -83,7 +84,7 @@ def test_deduplication_status_calls_remote(mocker: MockerFixture, rdp) -> None:
     spy.assert_called_once_with("program-1", "ds-1")
 
 
-def test_can_create_deduplication_set_cached_property(
+def test__can_create_deduplication_set_cached_property(
     mocker: MockerFixture,
     rdp,
     dedup_api_cm,
@@ -94,8 +95,8 @@ def test_can_create_deduplication_set_cached_property(
 
     policy = RdpActionPolicy(rdp)
 
-    assert policy.can_create_deduplication_set is True
-    assert policy.can_create_deduplication_set is True
+    assert policy._can_create_deduplication_set is True
+    assert policy._can_create_deduplication_set is True
 
     make_client.assert_called_once_with("program-1")
     client.can_create_deduplication_set.assert_called_once_with()
@@ -138,7 +139,7 @@ def test_deduplication_set_state_cached_property(
     ],
     ids=["pending_with_set", "pending_without_set", "pending_disabled", "non_pending"],
 )
-def test_visible_methods(
+def test_visibility_methods(
     rdp,
     status: str,
     enabled: bool,
@@ -151,10 +152,10 @@ def test_visible_methods(
     policy = RdpActionPolicy(rdp)
 
     assert (
-        policy.visible_deduplicate(),
-        policy.visible_reject_ds(),
-        policy.visible_clone(),
-        policy.visible_push(),
+        policy.is_deduplicate_visible(),
+        policy.is_reject_ds_visible(),
+        policy.is_clone_visible(),
+        policy.is_push_visible(),
     ) == expected
 
 
@@ -233,7 +234,7 @@ def test_visible_methods(
         "can_create",
     ],
 )
-def test_can_deduplicate(
+def test_deduplicate_check(
     mocker: MockerFixture,
     rdp,
     status: str,
@@ -255,12 +256,12 @@ def test_can_deduplicate(
     )
     mocker.patch.object(
         RdpActionPolicy,
-        "can_create_deduplication_set",
+        "_can_create_deduplication_set",
         new_callable=mocker.PropertyMock,
         return_value=can_create,
     )
 
-    assert RdpActionPolicy(rdp).can_deduplicate() == expected
+    assert RdpActionPolicy(rdp).deduplicate_check() == expected
 
 
 @pytest.mark.parametrize(
@@ -307,7 +308,7 @@ def test_can_deduplicate(
     ],
     ids=["not_pending", "disabled", "missing_set_id", "wrong_state", "ok"],
 )
-def test_can_reject_ds(
+def test_reject_ds_check(
     mocker: MockerFixture,
     rdp,
     status: str,
@@ -327,7 +328,7 @@ def test_can_reject_ds(
         return_value=state,
     )
 
-    assert RdpActionPolicy(rdp).can_reject_ds() == expected
+    assert RdpActionPolicy(rdp).reject_ds_check() == expected
 
 
 @pytest.mark.parametrize(
@@ -408,7 +409,7 @@ def test_can_reject_ds(
     ],
     ids=["disabled", "other_pending", "missing_status", "status_unavailable", "state_not_cloneable", "ok"],
 )
-def test_can_clone(
+def test_clone_check(
     mocker: MockerFixture,
     rdp,
     rdp_status: str,
@@ -428,7 +429,7 @@ def test_can_clone(
     pending_spy = mocker.patch(f"{MOD}.has_other_pending_rdp", return_value=has_pending)
     status_spy = mocker.patch.object(RdpActionPolicy, "deduplication_status", return_value=dedup_status)
 
-    assert RdpActionPolicy(rdp).can_clone() == expected
+    assert RdpActionPolicy(rdp).clone_check() == expected
 
     if pending_called:
         pending_spy.assert_called_once_with(owner=owner, exclude_ids=exclude_ids)
@@ -498,7 +499,7 @@ def test_can_clone(
     ],
     ids=["not_pending", "disabled", "missing_set_id", "can_create", "deduplicated", "blocked_state"],
 )
-def test_can_push(
+def test_push_check(
     mocker: MockerFixture,
     rdp,
     status: str,
@@ -514,7 +515,7 @@ def test_can_push(
 
     mocker.patch.object(
         RdpActionPolicy,
-        "can_create_deduplication_set",
+        "_can_create_deduplication_set",
         new_callable=mocker.PropertyMock,
         return_value=can_create,
     )
@@ -525,37 +526,78 @@ def test_can_push(
         return_value=state,
     )
 
-    assert RdpActionPolicy(rdp).can_push() == expected
+    assert RdpActionPolicy(rdp).push_check() == expected
+
+
+def test_dedup_engine_state_unavailable() -> None:
+    assert DedupEngineState.unavailable() == DedupEngineState(
+        status=DedupClientStatus(
+            response_status=DedupResponseStatus.STATUS_UNAVAILABLE,
+            deduplication_set_status=None,
+            findings_count=-1,
+        )
+    )
+    assert str(DedupEngineState.unavailable()) == DedupResponseStatus.STATUS_UNAVAILABLE.value
 
 
 @pytest.mark.parametrize(
-    ("rdp_status", "status_obj", "can_create", "expected"),
+    ("rdp_status", "status_obj", "can_create", "expected_state", "expected_display"),
     [
-        (Rdp.PushStatus.SUCCESS, None, True, "-"),
-        (Rdp.PushStatus.PENDING, None, True, "Ready to start"),
-        (Rdp.PushStatus.PENDING, None, False, "Can't create deduplication set"),
+        (
+            Rdp.PushStatus.SUCCESS,
+            None,
+            True,
+            DedupEngineState(),
+            "-",
+        ),
+        (
+            Rdp.PushStatus.PENDING,
+            None,
+            True,
+            DedupEngineState(can_create_deduplication_set=True),
+            "Ready to start",
+        ),
+        (
+            Rdp.PushStatus.PENDING,
+            None,
+            False,
+            DedupEngineState(can_create_deduplication_set=False),
+            "Can't create deduplication set",
+        ),
         (
             Rdp.PushStatus.PENDING,
             DedupClientStatus(DedupResponseStatus.STATUS_UNAVAILABLE, None, -1),
             False,
+            DedupEngineState(
+                status=DedupClientStatus(DedupResponseStatus.STATUS_UNAVAILABLE, None, -1),
+            ),
             DedupResponseStatus.STATUS_UNAVAILABLE.value,
         ),
         (
             Rdp.PushStatus.PENDING,
             DedupClientStatus(DedupResponseStatus.OK, None, -1),
             False,
+            DedupEngineState(
+                status=DedupClientStatus(DedupResponseStatus.OK, None, -1),
+            ),
             "Created / waiting for status",
         ),
         (
             Rdp.PushStatus.PENDING,
             DedupClientStatus(DedupResponseStatus.OK, DeduplicationSetState.READY, 7),
             False,
+            DedupEngineState(
+                status=DedupClientStatus(DedupResponseStatus.OK, DeduplicationSetState.READY, 7),
+            ),
             f"{DeduplicationSetState.READY} / 7 findings",
         ),
         (
             Rdp.PushStatus.PENDING,
             DedupClientStatus(DedupResponseStatus.OK, DeduplicationSetState.READY, -1),
             False,
+            DedupEngineState(
+                status=DedupClientStatus(DedupResponseStatus.OK, DeduplicationSetState.READY, -1),
+            ),
             DeduplicationSetState.READY,
         ),
     ],
@@ -575,18 +617,22 @@ def test_dedup_engine_state(
     rdp_status: str,
     status_obj: DedupClientStatus | None,
     can_create: bool,
-    expected: str,
+    expected_state: DedupEngineState,
+    expected_display: str,
 ) -> None:
     rdp.status = rdp_status
     status_spy = mocker.patch.object(RdpActionPolicy, "deduplication_status", return_value=status_obj)
     mocker.patch.object(
         RdpActionPolicy,
-        "can_create_deduplication_set",
+        "_can_create_deduplication_set",
         new_callable=mocker.PropertyMock,
         return_value=can_create,
     )
 
-    assert RdpActionPolicy(rdp).dedup_engine_state() == expected
+    state = RdpActionPolicy(rdp).dedup_engine_state()
+
+    assert state == expected_state
+    assert str(state) == expected_display
 
     if rdp_status == Rdp.PushStatus.PENDING:
         status_spy.assert_called_once_with(rdp)
@@ -606,7 +652,9 @@ def test_dedup_engine_state_remote_error(mocker: MockerFixture, rdp) -> None:
         ),
     )
 
-    assert RdpActionPolicy(rdp).dedup_engine_state() == "Remote error"
+    state = RdpActionPolicy(rdp).dedup_engine_state()
+
+    assert str(state) == "Remote error"
 
 
 def test_get_rdp_policy_caches_on_rdp(rdp) -> None:

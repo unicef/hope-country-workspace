@@ -1,24 +1,25 @@
 from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
-from django.db import transaction, IntegrityError
+
+from django.db import IntegrityError, transaction
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 
-from .processor import PushProcessor, DedupProcessor
 from .config import CreateRdpConfig, PushWorkflowConfig
-from .policy import RdpActionPolicy
+from .policy import ActionCheck, get_rdp_policy
+from .processor import DedupProcessor, PushProcessor
 from .repository import (
     has_other_pending_rdp,
-    qs_individuals_by_pks,
-    qs_individuals_by_household_pks,
     lock_rdp_for_update,
-    qs_households,
     preflight_errors,
     preflight_exclude_rdp_ids,
+    qs_households,
+    qs_individuals_by_household_pks,
+    qs_individuals_by_pks,
     rdp_for_dedup,
     rdp_for_push,
     rdp_selection,
@@ -28,10 +29,10 @@ from .repository import (
 )
 
 
-def require_rdp_action(rdp: Rdp, action: str) -> None:
+def require_policy_check(check: Callable[[], ActionCheck]) -> None:
     try:
-        getattr(RdpActionPolicy(rdp), action)().require()
-    except RemoteError as e:
+        check().require()
+    except (RemoteError, RemoteUnavailableError) as e:
         raise HopePushError({"errors": [str(e)]}) from e
 
 
@@ -85,7 +86,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
             with make_dedup_client(job.program.unicef_id) as client:
                 if not client.can_create_deduplication_set():
                     raise HopePushError({"errors": ["DedupEngine: can not create deduplication set for this program."]})
-        except RemoteError as e:
+        except (RemoteError, RemoteUnavailableError) as e:
             raise HopePushError({"errors": [str(e)]}) from e
 
     try:
@@ -107,7 +108,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
     """Create a child RDP that reuses the owner selection and DE deduplication set."""
-    require_rdp_action(source, "can_clone")
+    require_policy_check(get_rdp_policy(source).clone_check)
 
     owner = selection_owner_for_rdp(rdp=source)
     master_detail, pks = rdp_selection(rdp=owner)
@@ -150,7 +151,8 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
 
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    require_rdp_action(rdp, "can_deduplicate")
+    require_policy_check(get_rdp_policy(rdp).deduplicate_check)
+
     processor = DedupProcessor(rdp)
     processor.run()
     if processor.has_errors:
@@ -161,7 +163,7 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Reject the active DedupEngine deduplication set for an existing RDP."""
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    require_rdp_action(rdp, "can_reject_ds")
+    require_policy_check(get_rdp_policy(rdp).reject_ds_check)
 
     program_id = rdp.program.unicef_id
     deduplication_set_id = str(rdp.deduplication_set_id)
@@ -169,7 +171,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     try:
         with make_dedup_client(program_id, deduplication_set_id=deduplication_set_id) as client:
             client.reject()
-    except RemoteError as e:
+    except (RemoteError, RemoteUnavailableError) as e:
         raise HopePushError({"errors": [str(e)]}) from e
 
     with transaction.atomic():
@@ -191,7 +193,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
     rdp = rdp_for_push(pk=job.config["rdp_id"])
-    require_rdp_action(rdp, "can_push")
+    require_policy_check(get_rdp_policy(rdp).push_check)
 
     imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
     config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)

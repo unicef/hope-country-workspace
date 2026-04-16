@@ -8,8 +8,10 @@ from datetime import date
 from uuid import uuid4
 from faker import Faker
 from io import BytesIO
+from pathlib import Path
 
 from django import forms
+from PIL import Image
 from pytest_mock import MockerFixture
 from contextlib import nullcontext
 import country_workspace.utils.gen_rdi as rdi
@@ -35,6 +37,19 @@ def flexform_factory() -> Callable[[dict[str, forms.Field]], forms.Form]:
     def _make(fields: dict[str, forms.Field], *, prefix: str = "flex_field") -> forms.Form:
         form_class = type(f"FlexFormStub_{uuid4().hex}", (forms.Form,), dict(fields))
         return form_class(prefix=prefix)
+
+    return _make
+
+
+@pytest.fixture
+def image_file_factory(tmp_path: Path) -> Callable[..., Path]:
+    def _make(name: str = "image.png", *, valid: bool = True) -> Path:
+        path = tmp_path / name
+        if valid:
+            Image.new("RGB", (1, 1), (255, 0, 0)).save(path, format="PNG")
+        else:
+            path.write_text("not an image")
+        return path
 
     return _make
 
@@ -85,6 +100,19 @@ def test_resolve_field_value_prefers_choices_over_patterns(fake: Faker, rng: ran
     # choices handler must be preferred over BooleanField pattern
     got = rdi.resolve_field_value("consent_i_c", fld, fake, rng)
     assert got in {True, False}
+
+
+def test_resolve_field_value_uses_disk_image_iter(
+    fake: Faker,
+    rng: random.Random,
+    image_file_factory: Callable[..., Path],
+) -> None:
+    field = forms.CharField(required=False)
+    image = image_file_factory()
+
+    got = rdi.resolve_field_value("photo_i_c", field, fake, rng, iter([image]))
+
+    assert got == image
 
 
 def test_make_field_writers_special_handlers_for_ids(
@@ -212,6 +240,18 @@ def test_write_cell_writes_date_and_bytes(mocker: MockerFixture) -> None:
     ws.write.assert_called_once()
 
 
+def test_write_cell_writes_path_image(
+    mocker: MockerFixture,
+    image_file_factory: Callable[..., Path],
+) -> None:
+    ws = mocker.MagicMock()
+    image = image_file_factory()
+
+    rdi.write_cell(ws, 1, 2, image, date_fmt="FMT")
+
+    ws.insert_image.assert_called_once_with(1, 2, str(image), {"x_scale": 0.5, "y_scale": 0.5})
+
+
 def test_write_row_calls_cell_writer_in_field_order(mocker: MockerFixture) -> None:
     ws = mocker.MagicMock()
     fields = ["a", "b"]
@@ -242,7 +282,7 @@ def test_write_excel_no_sheets_exits_early(mocker: MockerFixture) -> None:
     storage.open.assert_not_called()
 
 
-# ---------- primitive generators (json/png/phone) ----------
+# ---------- primitive generators (json/png/phone/disk images) ----------
 
 
 def test__generate_json_data_none(fake: Faker, rng: random.Random, mocker: MockerFixture) -> None:
@@ -279,6 +319,28 @@ def test__generate_phone_e164(rng: random.Random, mocker: MockerFixture) -> None
     """Formats E.164 with fixed 4-digit tail."""
     mocker.patch.object(rng, "randint", return_value=1234)
     assert rdi._generate_phone_e164(rng=rng) == "+12025551234"
+
+
+def test__load_disk_images_returns_only_valid_files(image_file_factory: Callable[..., Path]) -> None:
+    """Returns sorted readable images only."""
+    valid = image_file_factory("a.png")
+    image_file_factory("b.txt", valid=False)
+
+    assert rdi._load_disk_images(str(valid.parent)) == (valid,)
+
+
+def test__load_disk_images_raises_for_missing_dir(tmp_path: Path) -> None:
+    """Raises when image directory does not exist."""
+    with pytest.raises(ValueError, match="Image directory does not exist"):
+        rdi._load_disk_images(str(tmp_path / "missing"))
+
+
+def test__load_disk_images_raises_when_no_readable_images(image_file_factory: Callable[..., Path]) -> None:
+    """Raises when no readable image files are found."""
+    invalid = image_file_factory("x.txt", valid=False)
+
+    with pytest.raises(ValueError, match="No readable images found"):
+        rdi._load_disk_images(str(invalid.parent))
 
 
 # ---------- _fake_value patterns ----------
@@ -352,6 +414,13 @@ def test__build_filename_composition(mode: rdi.GenerationMode, expected_token: s
     assert re.fullmatch(r"\d{14}", parts[6]), "timestamp must be YYYYMMDDhhmmss"
 
 
+def test__build_filename_includes_img_token() -> None:
+    cfg = rdi.GeneratorConfig(image_dir="/tmp/images")
+    name = rdi._build_filename(cfg)
+
+    assert "_img_" in name
+
+
 # ---------- end-to-end generate ----------
 
 
@@ -367,13 +436,27 @@ def test_generate_end_to_end_calls_pipeline(mocker: MockerFixture) -> None:
     spy_write.assert_called_once()
 
 
-def test_generate_defaults_min(mocker) -> None:
+def test_generate_defaults_min(mocker: MockerFixture) -> None:
     """generate(None) builds default config and runs the pipeline."""
     mocker.patch.object(rdi.GenerationMode, "get_sheets", return_value=[(rdi.PEOPLE_SPEC, [{"index_id": 1}])])
     w = mocker.patch.object(rdi, "write_excel")
     out = rdi.generate()  # config=None path
     assert re.fullmatch(r"rdi_afghanistan_pp20_en_\d{14}\.xlsx", out)
     rdi.GenerationMode.get_sheets.assert_called_once()
+    w.assert_called_once()
+
+
+def test_generate_loads_images_when_image_dir_is_set(mocker: MockerFixture) -> None:
+    """image_dir should trigger disk image loading before sheet generation."""
+    cfg = rdi.GeneratorConfig(image_dir="/tmp/images", filename="x.xlsx")
+    mocker.patch.object(rdi, "_load_disk_images", return_value=(Path("/tmp/images/a.png"),))
+    mocker.patch.object(rdi.GenerationMode, "get_sheets", return_value=[(rdi.PEOPLE_SPEC, [{"index_id": 1}])])
+    w = mocker.patch.object(rdi, "write_excel")
+
+    out = rdi.generate(cfg)
+
+    assert out == "x.xlsx"
+    rdi._load_disk_images.assert_called_once_with("/tmp/images")
     w.assert_called_once()
 
 
