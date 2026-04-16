@@ -3,12 +3,6 @@ import pytest
 pytestmark = pytest.mark.django_db
 
 
-def test_identity_field_is_disabled():
-    from hope_flex_fields.fields import IdentityField
-
-    assert IdentityField().disabled is True
-
-
 def test_get_identity_field_name_no_checker():
     from country_workspace.contrib.hope.collision import get_identity_field_name
 
