@@ -367,7 +367,7 @@ def test_generate_end_to_end_calls_pipeline(mocker: MockerFixture) -> None:
     spy_write.assert_called_once()
 
 
-def test_generate_defaults_min(mocker):
+def test_generate_defaults_min(mocker) -> None:
     """generate(None) builds default config and runs the pipeline."""
     mocker.patch.object(rdi.GenerationMode, "get_sheets", return_value=[(rdi.PEOPLE_SPEC, [{"index_id": 1}])])
     w = mocker.patch.object(rdi, "write_excel")

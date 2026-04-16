@@ -3,7 +3,7 @@ import random
 import re
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import pytest
 from constance.test import override_config
@@ -222,6 +222,8 @@ def test_sync(
                 "seed": 42,
                 "filename": "out.xlsx",
                 "exclude": ("wallet_address", "email", "phone_no"),
+                "with_postfix": False,
+                "image_dir": None,
             },
         ),
         # HH_IND mode
@@ -236,28 +238,51 @@ def test_sync(
                 "seed": 7,
                 "filename": None,
                 "exclude": (),
+                "with_postfix": False,
+                "image_dir": None,
+            },
+        ),
+        (
+            [
+                "afghanistan",
+                "-P",
+                "2",
+                "--with-postfix",
+                "--image-dir",
+                "/tmp/images",
+            ],
+            {
+                "mode": GenerationMode.PEOPLE,
+                "office": "afghanistan",
+                "people": 2,
+                "locale": "en",
+                "seed": None,
+                "filename": None,
+                "exclude": (),
+                "with_postfix": True,
+                "image_dir": "/tmp/images",
             },
         ),
     ],
 )
-def test_gen_rdi_happy_paths(mocker: MockerFixture, cli_args: list[str], expect: dict[str, any]) -> None:
-    """Smoke test: CLI builds GeneratorConfig and calls generate once."""
+def test_gen_rdi_happy_paths(mocker: MockerFixture, cli_args: list[str], expect: dict[str, Any]) -> None:
     out = StringIO()
     gen = mocker.patch.object(gen_rdi_cmd, "generate", return_value="used.xlsx")
 
     call_command("gen_rdi", *cli_args, stdout=out)
 
-    # called once with GeneratorConfig instance
     assert gen.call_count == 1
     (cfg,), _ = gen.call_args
     assert isinstance(cfg, GeneratorConfig)
 
-    # core expectations by mode
     assert cfg.mode is expect["mode"]
     assert cfg.office_slug == expect["office"]
     assert cfg.locale == expect["locale"]
     assert cfg.seed == expect["seed"]
     assert cfg.filename == expect["filename"]
+    assert tuple(cfg.exclude_fields) == expect["exclude"]
+    assert cfg.with_postfix is expect.get("with_postfix", False)
+    assert cfg.image_dir == expect.get("image_dir")
 
     if cfg.mode is GenerationMode.PEOPLE:
         assert cfg.people == expect["people"]
@@ -265,10 +290,7 @@ def test_gen_rdi_happy_paths(mocker: MockerFixture, cli_args: list[str], expect:
         assert cfg.hh_amount == expect["hh"]
         assert cfg.inds_per_hh == expect["inds"]
 
-    assert tuple(cfg.exclude_fields) == expect["exclude"]
-
-    s = out.getvalue()
-    assert "RDI file 'used.xlsx' generated successfully." in s
+    assert "RDI file 'used.xlsx' generated successfully." in out.getvalue()
 
 
 @pytest.mark.parametrize(

@@ -16,9 +16,9 @@ class Command(BaseCommand):
         p.add_argument("-L", "--locale", help="Faker locale (e.g., en, es_CL).")
         p.add_argument("-S", "--seed", type=int, help="Random seed for reproducible output.")
         p.add_argument(
-            "--without-postfix",
+            "--with-postfix",
             action="store_true",
-            help="Generate header columns without sheet postfixes (_h_c/_i_c).",
+            help="Generate header columns with sheet postfixes (_h_c/_i_c).",
         )
         p.add_argument("-o", "--filename", help="Output .xlsx name; if omitted, auto-generated.")
         p.add_argument(
@@ -29,6 +29,7 @@ class Command(BaseCommand):
             default=[],
             help="Field name to exclude (base name, repeatable or comma-separated).",
         )
+        p.add_argument("--image-dir", help="Directory with source images.")
 
     def _parse_exclude_fields(self, opts: dict[str, Any]) -> tuple[str, ...]:
         raw = opts.get("exclude_fields") or []
@@ -67,8 +68,9 @@ class Command(BaseCommand):
             | ({"people": people_count} if people_count is not None else {})
             | ({"locale": opts.get("locale")} if opts.get("locale") else {})
             | ({"seed": opts.get("seed")} if opts.get("seed") is not None else {})
-            | ({"with_postfix": False} if opts.get("without_postfix") else {})
+            | {"with_postfix": opts.get("with_postfix", False)}
             | ({"exclude_fields": exclude} if exclude else {})
+            | ({"image_dir": opts.get("image_dir")} if opts.get("image_dir") else {})
         )
 
     def handle(self, *_: Any, **opts: dict) -> None:
@@ -77,6 +79,10 @@ class Command(BaseCommand):
         mode = self._select_mode_and_validate(opts)
         exclude = self._parse_exclude_fields(opts)
         cfg = self._build_cfg(opts, mode=mode, exclude=exclude)
-        used_name = generate(GeneratorConfig(**cfg))
+
+        try:
+            used_name = generate(GeneratorConfig(**cfg))
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
 
         self.stdout.write(self.style.SUCCESS(f"RDI file '{used_name}' generated successfully."))
