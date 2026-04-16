@@ -27,6 +27,13 @@ CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.REJECTED,
 )
 
+PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    DeduplicationSetState.READY,
+    DeduplicationSetState.ENCODED,
+    DeduplicationSetState.ENCODING_FAILED,
+    DeduplicationSetState.DEDUPLICATION_FAILED,
+)
+
 
 class DedupResponseStatus(StrEnum):
     OK = auto()

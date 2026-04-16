@@ -404,7 +404,13 @@ def test_process_individuals_response_paths(
     err_contains,
 ) -> None:
     processor.total = {"errors": []}
-    mocker.patch(f"{MOD}.load_mapping_from_api", return_value={1: "IND-1.1", 2: "IND-2.1"})
+    load_mapping = mocker.patch(
+        f"{MOD}.load_mapping_from_api",
+        side_effect=[
+            {1: "IND-1.1", 2: "IND-2.1"},
+            {999: "IND-999.1"},
+        ],
+    )
 
     processor._process_individuals_response(
         {"processed": 2, "accepted": 2, "individual_id_mapping": {"1": "IND-1.1", "2": "IND-2.1"}},
@@ -414,11 +420,12 @@ def test_process_individuals_response_paths(
     assert processor.ind_id_map == {1: "IND-1.1", 2: "IND-2.1"}
 
     processor._process_individuals_response(
-        {"processed": 1, "accepted": 1, "individual_id_mapping": {"1": "IND-1.1"}},
+        {"processed": 1, "accepted": 1, "individual_id_mapping": {"999": "IND-999.1"}},
         [1, 2],
     )
     assert err_contains(processor.total["errors"], "accepted mismatch")
-    assert processor.total["individuals"] == 3
+    assert processor.total["individuals"] == 2
+    assert processor.ind_id_map == {1: "IND-1.1", 2: "IND-2.1"}
 
     processor.total["errors"].clear()
     processor._process_individuals_response({"errors": 1, "processed": 1, "accepted": 0, "results": [{}]}, [1])
@@ -427,6 +434,8 @@ def test_process_individuals_response_paths(
     processor.total["errors"].clear()
     processor._process_individuals_response({}, [1])
     assert err_contains(processor.total["errors"], "unexpected response")
+
+    assert load_mapping.call_count == 1
 
 
 def test_individuals_mapping_accumulates_across_batches(mocker: MockerFixture, processor: PushProcessor) -> None:

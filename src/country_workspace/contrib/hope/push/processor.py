@@ -250,6 +250,7 @@ class PushProcessor(ProcessorBase):
                         ids=batch_ids,
                         response=response,
                     )
+                    return
                 self.total["individuals"] = self.total.get("individuals", 0) + a
                 self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
@@ -296,7 +297,7 @@ class PushProcessor(ProcessorBase):
             self.fail(name, "can't push: queryset is not set")
             return
 
-        for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE * 5), PUSH_BATCH_SIZE):
+        for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
             ids, payload = prepare(batch)
             if not ids:
                 continue
@@ -371,7 +372,7 @@ class DedupProcessor(ProcessorBase):
         for pk, photo in (
             qs_individuals_for_rdp(rdp=self.rdp)
             .values_list("id", "flex_fields__photo")
-            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5)
+            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE)
         ):
             if isinstance(photo, str) and (photo := photo.strip()):
                 yield {"reference_pk": str(pk), "filename": photo}

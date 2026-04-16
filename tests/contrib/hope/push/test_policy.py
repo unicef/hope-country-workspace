@@ -6,6 +6,7 @@ from country_workspace.contrib.dedup_engine.deduplication_status import (
     CLONEABLE_DEDUPLICATION_SET_STATES,
     DedupClientStatus,
     DedupResponseStatus,
+    PROCESSABLE_DEDUPLICATION_SET_STATES,
 )
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.policy import (
@@ -14,7 +15,6 @@ from country_workspace.contrib.hope.push.policy import (
     get_rdp_policy,
 )
 from country_workspace.models import Rdp
-
 
 MOD = "country_workspace.contrib.hope.push.policy"
 
@@ -177,22 +177,32 @@ def test_visible_methods(
             True,
             ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program."),
         ),
-        (
-            Rdp.PushStatus.PENDING,
-            True,
-            "ds-1",
-            DeduplicationSetState.DEDUPLICATED,
-            True,
-            ActionCheck(False, "DedupEngine: can not run dedup for a deduplicated set."),
-        ),
-        (
-            Rdp.PushStatus.PENDING,
-            True,
-            "ds-1",
-            DeduplicationSetState.READY,
-            True,
-            ActionCheck(True),
-        ),
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                True,
+                ActionCheck(True),
+            )
+            for state in PROCESSABLE_DEDUPLICATION_SET_STATES
+        ],
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                True,
+                ActionCheck(
+                    False,
+                    f"DedupEngine: can not run dedup for deduplication set in state={state!r}.",
+                ),
+            )
+            for state in DeduplicationSetState
+            if state not in PROCESSABLE_DEDUPLICATION_SET_STATES
+        ],
         (
             Rdp.PushStatus.PENDING,
             True,
@@ -210,7 +220,18 @@ def test_visible_methods(
             ActionCheck(True),
         ),
     ],
-    ids=["not_pending", "disabled", "already_deduplicated", "existing_set_ok", "cannot_create", "can_create"],
+    ids=[
+        "not_pending",
+        "disabled",
+        *(f"processable_{state.name.lower()}" for state in PROCESSABLE_DEDUPLICATION_SET_STATES),
+        *(
+            f"blocked_{state.name.lower()}"
+            for state in DeduplicationSetState
+            if state not in PROCESSABLE_DEDUPLICATION_SET_STATES
+        ),
+        "cannot_create",
+        "can_create",
+    ],
 )
 def test_can_deduplicate(
     mocker: MockerFixture,
