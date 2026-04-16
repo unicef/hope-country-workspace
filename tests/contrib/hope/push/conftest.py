@@ -157,7 +157,10 @@ def qs() -> Callable[[list], Any]:
         def iterator(self, chunk_size=None):
             yield from self._items
 
-    return lambda items: _QS(items)
+    def callback(items):
+        return _QS(items)
+
+    return callback
 
 
 @pytest.fixture
@@ -177,7 +180,10 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
         def apply_grouping(self):
             return getattr(self, "_group", {})
 
-    return lambda **kw: _Stub(**kw)
+    def callback(**kw):
+        return _Stub(**kw)
+
+    return callback
 
 
 @pytest.fixture
