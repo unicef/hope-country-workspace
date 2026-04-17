@@ -1,19 +1,56 @@
 import contextlib
 import logging
+from datetime import timedelta
 from typing import Any, Generator
 
 import sentry_sdk
 from celery.exceptions import Ignore
+from constance import config as constance_config
 from django.core.cache import cache
+from django.utils import timezone
 from redis_lock import Lock
 
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Rdp, Rdi
+from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
+
+
+@app.task()
+def cleanup_merged_rdp_data() -> None:
+    days = constance_config.RDP_CLEANUP_DAYS
+    if not days or days <= 0:
+        return
+
+    # Find successful RDPs older than threshold
+    old_rdps = Rdp.objects.filter(status=Rdp.PushStatus.SUCCESS, push_date__lt=timezone.now() - timedelta(days=days))
+
+    if not old_rdps.exists():
+        return
+
+    # Delete Households and Individuals associated with these RDPs,
+    # but ONLY if they are not linked to any other RDP (pending, failed, or recent success).
+    other_rdps = Rdp.objects.exclude(pk__in=old_rdps)
+
+    households_to_delete = Household.objects.filter(rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
+    individuals_to_delete = Individual.objects.filter(rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
+
+    with suppress_cache_updates():
+        _, counts_h = households_to_delete.delete()
+        _, counts_i = individuals_to_delete.delete()
+
+    deleted_h = counts_h.get("country_workspace.Household", 0)
+    deleted_i = counts_h.get("country_workspace.Individual", 0) + counts_i.get("country_workspace.Individual", 0)
+
+    logger.info(
+        "Deleted %s households and %s individuals from merged RDPs older than %s days",
+        deleted_h,
+        deleted_i,
+        days,
+    )
 
 
 @contextlib.contextmanager
