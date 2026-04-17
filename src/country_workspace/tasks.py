@@ -73,8 +73,6 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
     deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
 
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
-    if not batch_ids:
-        return None
 
     try:
         with suppress_cache_updates():

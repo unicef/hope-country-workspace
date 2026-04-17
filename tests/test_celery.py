@@ -163,13 +163,6 @@ def test_clean_program_data_multiple_batches(job):
 
 
 @pytest.mark.django_db
-def test_clean_program_data_empty_program(job):
-    result = clean_program_data(job)
-
-    assert result is None
-
-
-@pytest.mark.django_db
 def test_clean_program_data_does_not_affect_other_programs(job, batch, households):
     other_program = ProgramFactory.create()
     other_batch = BatchFactory.create(program=other_program)
