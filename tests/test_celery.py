@@ -235,7 +235,11 @@ def test_sync_job_task_handles_graceful_cancellation(mocker, job):
     cancel_mock.assert_called_once()
     update_state_mock.assert_called_once_with(
         state="REVOKED",
-        meta={"reason": "cancel requested", "job_id": job.pk},
+        meta={
+            "exc_type": "GracefulJobCancellationError",
+            "exc_module": "country_workspace.models.jobs",
+            "exc_message": "cancel requested",
+        },
     )
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches
@@ -261,5 +265,9 @@ def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
     cancel_mock.assert_called_once()
     update_state_mock.assert_called_once_with(
         state="REVOKED",
-        meta={"reason": reason, "job_id": job.pk},
+        meta={
+            "exc_type": "GracefulJobCancellationError",
+            "exc_module": "country_workspace.models.jobs",
+            "exc_message": reason,
+        },
     )
