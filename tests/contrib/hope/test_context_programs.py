@@ -1,51 +1,50 @@
 from collections.abc import Mapping
-from unittest.mock import Mock
+from typing import Any
 
 import pytest
-from pytest_mock import MockerFixture
+from constance.test import override_config
+from pytest_mock import MockType, MockerFixture
 
 from country_workspace.contrib.hope.constants import (
     HOUSEHOLD_CHECKER_NAME,
     INDIVIDUAL_CHECKER_NAME,
     PEOPLE_CHECKER_NAME,
 )
-from country_workspace.contrib.hope.sync.base import SyncConfig, ParamDateName, EndpointConfig, SkipRecordError
+from country_workspace.contrib.hope.sync.base import ParamDateName, SkipRecordError, SyncConfig
 from country_workspace.contrib.hope.sync.context_programs import make_office_countries_m2m_hook
-from constance.test import override_config
-
 from country_workspace.contrib.hope.sync.context_programs import (
+    BENEFICIARY_GROUPS,
+    BENEFICIARY_GROUP_FIELDS,
+    BUSINESS_AREAS,
+    HOPE_ID,
+    OFFICE_FIELDS,
+    PROGRAMS,
     get_default_checkers,
     get_default_ignored_fields,
     get_field_extractor,
-    should_process_office,
-    sync_offices,
-    HOPE_ID,
-    BUSINESS_AREAS,
-    OFFICE_FIELDS,
-    sync_beneficiary_groups,
-    BENEFICIARY_GROUPS,
-    BENEFICIARY_GROUP_FIELDS,
     get_should_process_program,
-    prepare_program_defaults,
     post_process_program,
+    prepare_program_defaults,
+    should_process_office,
+    sync_beneficiary_groups,
+    sync_offices,
     sync_programs,
-    PROGRAMS,
 )
-from country_workspace.models import Office, BeneficiaryGroup, Program
+from country_workspace.models import BeneficiaryGroup, Office, Program
 
 
 @pytest.fixture
-def sync_entity_mock(mocker: MockerFixture) -> Mock:
+def sync_entity_mock(mocker: MockerFixture) -> MockType:
     return mocker.patch("country_workspace.contrib.hope.sync.context_programs.sync_entity")
 
 
 @pytest.fixture
-def build_endpoint_mock(mocker: MockerFixture) -> Mock:
+def build_endpoint_mock(mocker: MockerFixture) -> MockType:
     return mocker.patch("country_workspace.contrib.hope.sync.context_programs.build_endpoint")
 
 
 @pytest.fixture
-def get_field_extractor_mock(mocker: MockerFixture) -> Mock:
+def get_field_extractor_mock(mocker: MockerFixture) -> MockType:
     return mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_field_extractor")
 
 
@@ -87,9 +86,9 @@ def test_should_process_office(active: bool | None, expected: bool) -> None:
 
 def test_sync_offices(
     mocker: MockerFixture,
-    sync_entity_mock: Mock,
-    build_endpoint_mock: Mock,
-    get_field_extractor_mock: Mock,
+    sync_entity_mock: MockType,
+    build_endpoint_mock: MockType,
+    get_field_extractor_mock: MockType,
     delta_sync: bool,
 ) -> None:
     should_process_office_mock = mocker.patch(
@@ -117,32 +116,46 @@ def test_sync_offices(
     get_field_extractor_mock.assert_called_once_with(OFFICE_FIELDS)
 
 
-def test_sync_beneficiary_groups(sync_entity_mock: Mock, get_field_extractor_mock: Mock, delta_sync: bool) -> None:
+def test_sync_beneficiary_groups(
+    sync_entity_mock: MockType,
+    build_endpoint_mock: MockType,
+    get_field_extractor_mock: MockType,
+    delta_sync: bool,
+) -> None:
     sync_beneficiary_groups(delta_sync)
 
     sync_entity_mock.assert_called_once_with(
         SyncConfig(
             model=BeneficiaryGroup,
             reference_id=HOPE_ID,
-            endpoint=EndpointConfig(path=BENEFICIARY_GROUPS),
+            endpoint=build_endpoint_mock.return_value,
             prepare_defaults=get_field_extractor_mock.return_value,
             delta_sync=delta_sync,
         )
+    )
+    build_endpoint_mock.assert_called_once_with(
+        BENEFICIARY_GROUPS,
+        BeneficiaryGroup,
+        ParamDateName.UPDATED,
+        delta_sync,
     )
     get_field_extractor_mock.assert_called_once_with(BENEFICIARY_GROUP_FIELDS)
 
 
 @pytest.mark.parametrize("status", [Program.ACTIVE, Program.DRAFT, Program.FINISHED])
 @pytest.mark.parametrize("business_area_code", ["matching", "some_business_area_code"])
-@pytest.mark.parametrize("office", [Mock(), None])
-@pytest.mark.parametrize("code", ["matching", "some_code"])
-def test_get_should_process_program(status: str, business_area_code: str, office: Mock | None, code: str) -> None:
+@pytest.mark.parametrize("office_code", ["matching", "some_code", None])
+def test_get_should_process_program(
+    mocker: MockerFixture,
+    status: str,
+    business_area_code: str,
+    office_code: str | None,
+) -> None:
     record = {"status": status, "business_area_code": business_area_code}
+    office = None if office_code is None else mocker.Mock(code=office_code)
 
     program_is_not_finished = status in (Program.ACTIVE, Program.DRAFT)
-    office_matches = not office or code == business_area_code
-    if office:
-        office.code = code
+    office_matches = office is None or office.code == business_area_code
 
     predicate = get_should_process_program(office)
     assert predicate(record) == (program_is_not_finished and office_matches)
@@ -150,6 +163,7 @@ def test_get_should_process_program(status: str, business_area_code: str, office
 
 def test_prepare_program_defaults_office_not_found(mocker: MockerFixture) -> None:
     mocker.patch.object(Office.objects, "get", side_effect=Office.DoesNotExist)
+
     with pytest.raises(SkipRecordError):
         prepare_program_defaults({"business_area_code": "code"})
 
@@ -157,6 +171,7 @@ def test_prepare_program_defaults_office_not_found(mocker: MockerFixture) -> Non
 def test_prepare_program_defaults_beneficiary_group_not_found(mocker: MockerFixture) -> None:
     mocker.patch.object(Office.objects, "get")
     mocker.patch.object(BeneficiaryGroup.objects, "get", side_effect=BeneficiaryGroup.DoesNotExist)
+
     with pytest.raises(SkipRecordError):
         prepare_program_defaults({"business_area_code": "code", "beneficiary_group": "group"})
 
@@ -262,12 +277,17 @@ def test_get_default_ignored_fields_sorts_results() -> None:
     ],
 )
 def test_post_process_program_checkers(
-    mocker: MockerFixture, created: bool, master_detail: bool, checkers: Mapping[str, str]
+    mocker: MockerFixture,
+    created: bool,
+    master_detail: bool,
+    checkers: Mapping[str, str],
 ) -> None:
     mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_checkers", return_value=checkers)
     mocker.patch("country_workspace.contrib.hope.sync.context_programs.get_default_ignored_fields", return_value=None)
+
     program = mocker.Mock()
     program.beneficiary_group.master_detail = master_detail
+
     household_checker = checkers.get("hh")
     individual_checker = checkers.get("ind") if master_detail else checkers.get("ppl")
     checkers_set = household_checker or individual_checker
@@ -279,7 +299,7 @@ def test_post_process_program_checkers(
         assert program.household_checker == household_checker
         assert program.individual_checker == individual_checker
         program.save.assert_called_once()
-    elif not created:
+    else:
         program.save.assert_not_called()
 
 
@@ -326,10 +346,15 @@ def test_post_process_program_does_not_set_ignored_fields_when_not_created(mocke
         program.save.assert_not_called()
 
 
-@pytest.mark.parametrize("office", [None, Mock()])
+@pytest.mark.parametrize("office_code", [None, "office-code"])
 def test_sync_programs(
-    mocker: MockerFixture, sync_entity_mock: Mock, build_endpoint_mock: Mock, delta_sync: bool, office: Mock | None
+    mocker: MockerFixture,
+    sync_entity_mock: MockType,
+    build_endpoint_mock: MockType,
+    delta_sync: bool,
+    office_code: str | None,
 ) -> None:
+    office = None if office_code is None else mocker.Mock(code=office_code)
     prepare_program_defaults_mock = mocker.patch(
         "country_workspace.contrib.hope.sync.context_programs.prepare_program_defaults"
     )
@@ -366,12 +391,17 @@ def test_sync_programs(
     ],
     ids=["missing_key", "empty_list_clears", "sets_by_iso_code2"],
 )
-def test_make_office_countries_m2m_hook(mocker: MockerFixture, record: dict, expect_clear: bool, expect_pks):
+def test_make_office_countries_m2m_hook(
+    mocker: MockerFixture,
+    record: dict[str, Any],
+    expect_clear: bool,
+    expect_pks: set[int] | None,
+) -> None:
     iso2_to_pk = {"AA": 11, "BB": 22}
 
     mocker.patch(
         "country_workspace.contrib.hope.sync.context_programs.Country.objects.values_list",
-        return_value=list(iso2_to_pk.items()),  # [("AA", 11), ("BB", 22)]
+        return_value=list(iso2_to_pk.items()),
     )
     hook = make_office_countries_m2m_hook()
 
