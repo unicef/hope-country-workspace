@@ -34,3 +34,12 @@ def test_program_zap(app, program: "CountryProgram"):
     res = res.forms[1].submit()
     res = res.follow()
     assert res.status_code == 200
+
+
+def test_program_clean_program(app, program: "CountryProgram"):
+    base_url = reverse("admin:country_workspace_program_clean_program", args=[program.pk])
+    res = app.get(base_url, expect_errors=True)
+    confirmation_form = res.forms[1]
+    res = confirmation_form.submit()
+    res = res.follow()
+    assert res.status_code == 200
