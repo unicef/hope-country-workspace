@@ -35,8 +35,12 @@ def cleanup_merged_rdp_data() -> None:
     # but ONLY if they are not linked to any other RDP (pending, failed, or recent success).
     other_rdps = Rdp.objects.exclude(pk__in=old_rdps)
 
-    households_to_delete = Household.objects.filter(rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
-    individuals_to_delete = Individual.objects.filter(rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
+    households_to_delete = (
+        Household.objects.filter(removed=True, rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
+    )
+    individuals_to_delete = (
+        Individual.objects.filter(removed=True, rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
+    )
 
     with suppress_cache_updates():
         _, counts_h = households_to_delete.delete()

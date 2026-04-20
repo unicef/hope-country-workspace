@@ -28,8 +28,8 @@ def test_cleanup_merged_rdp_data_task():
     Rdp.objects.filter(pk=rdp_old_success.pk).update(push_date=old_date)
     rdp_old_success.refresh_from_db()
 
-    hh_old = HouseholdFactory.create(batch=batch, individuals=[])
-    ind_old = IndividualFactory.create(household=hh_old)
+    hh_old = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
+    ind_old = IndividualFactory.create(household=hh_old, removed=True)
     hh_old.rdp.add(rdp_old_success)
     ind_old.rdp.add(rdp_old_success)
 
@@ -59,24 +59,31 @@ def test_cleanup_merged_rdp_data_task():
     Rdp.objects.filter(pk=rdp_old_success_2.pk).update(push_date=old_date)
     rdp_pending_2 = RdpFactory.create(program=program_multi, status=Rdp.PushStatus.PENDING)
 
-    hh_multi = HouseholdFactory.create(batch=batch_multi, individuals=[])
+    hh_multi = HouseholdFactory.create(batch=batch_multi, individuals=[], removed=True)
     hh_multi.rdp.add(rdp_old_success_2, rdp_pending_2)
 
+    # 5. Household in old success RDP but removed=False (Should NOT be cleaned up)
+    rdp_old_success_3 = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    Rdp.objects.filter(pk=rdp_old_success_3.pk).update(push_date=old_date)
+    hh_not_removed = HouseholdFactory.create(batch=batch, individuals=[], removed=False)
+    hh_not_removed.rdp.add(rdp_old_success_3)
+
     # Initial counts
-    assert Household.objects.count() == 4
+    assert Household.objects.count() == 5
     assert Individual.objects.count() == 3
 
     # Run task
     cleanup_merged_rdp_data()
 
     # Final counts
-    assert Household.objects.count() == 3
+    assert Household.objects.count() == 4
     assert Individual.objects.count() == 2
 
     assert not Household.objects.filter(pk=hh_old.pk).exists()
     assert Household.objects.filter(pk=hh_recent.pk).exists()
     assert Household.objects.filter(pk=hh_pending.pk).exists()
     assert Household.objects.filter(pk=hh_multi.pk).exists()
+    assert Household.objects.filter(pk=hh_not_removed.pk).exists()
 
 
 @pytest.mark.django_db
@@ -89,7 +96,7 @@ def test_cleanup_merged_rdp_data_disabled():
     Rdp.objects.filter(pk=rdp_old_success.pk).update(push_date=old_date)
 
     batch = BatchFactory.create(program=program)
-    hh = HouseholdFactory.create(batch=batch, individuals=[])
+    hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
     hh.rdp.add(rdp_old_success)
 
     cleanup_merged_rdp_data()
