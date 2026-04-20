@@ -195,3 +195,19 @@ class MassDefaultsForm(forms.Form):
         for field in source_form.fields.values():
             field.required = False
         self.fields.update(source_form.fields)
+
+
+class DedupSettingsForm(forms.Form):
+    def __init__(self, *args: Any, settings: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        for name, value in settings.items():
+            self.fields[name] = forms.FloatField(
+                min_value=0,
+                max_value=1,
+                required=True,
+                initial=value,
+                widget=forms.NumberInput(attrs={"step": "0.01"}),
+            )
+
+    def get_payload(self) -> dict[str, float]:
+        return {name: float(value) for name, value in self.cleaned_data.items()}

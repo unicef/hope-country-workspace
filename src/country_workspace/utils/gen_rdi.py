@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any, NamedTuple, Final
 
 import json
@@ -8,6 +8,8 @@ from io import BytesIO
 from enum import StrEnum
 from PIL import Image
 from functools import partial
+from itertools import cycle
+from pathlib import Path
 
 from django.core.files.storage import default_storage
 from django.forms import BooleanField
@@ -52,6 +54,9 @@ class GenerationMode(StrEnum):
         raise ValueError(f"Unknown generation mode: {self}")
 
 
+DISK_IMAGE_FIELDS: Final[frozenset[str]] = frozenset({"photo"})
+
+
 class GeneratorConfig(NamedTuple):
     mode: GenerationMode = GenerationMode.PEOPLE
     office_slug: str = "afghanistan"
@@ -61,9 +66,10 @@ class GeneratorConfig(NamedTuple):
     people: int = 20
     filename: str | None = None
     seed: int | None = None
-    with_postfix: bool = True
+    with_postfix: bool = False
     # these fields will be excluded by base name from sheet
     exclude_fields: tuple[str, ...] = ()
+    image_dir: str | None = None
 
 
 class SheetName(StrEnum):
@@ -159,6 +165,8 @@ FIELD_PATTERNS: dict[str, FieldGen] = {
     "email": lambda fake, _rng, /: fake.email(),
 }
 
+NON_NULLABLE_FIELD_PATTERNS = {"birth_date"}
+
 FIELDSET_PREFIXES = {
     "document": ("national_id_", "national_passport_", "birth_certificate_"),
     "account": ("mobile_", "bank_", "cash_"),
@@ -204,6 +212,26 @@ def _generate_png_solid_square(side: int = 50, *, rng: Random) -> bytes | None:
     buf = BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
+
+
+def _is_image(path: Path) -> bool:
+    try:
+        with Image.open(path) as image:
+            image.verify()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _load_disk_images(image_dir: str) -> tuple[Path, ...]:
+    directory = Path(image_dir).expanduser()
+    if not directory.is_dir():
+        raise ValueError(f"Image directory does not exist: {directory}")
+
+    images = tuple(path for path in sorted(directory.iterdir()) if path.is_file() and _is_image(path))
+    if not images:
+        raise ValueError(f"No readable images found in: {directory}")
+    return images
 
 
 def _generate_name_parts(fake: Faker) -> dict[str, str]:
@@ -264,7 +292,14 @@ def pick_from_choices(field: Any, rng: Random) -> Any:
 def _fake_value(field_name: str, fake: Faker, field_patterns: dict[str, FieldGen], rng: Random) -> Any:
     base = _field_basename(field_name.lower())
 
+    if base == "photo":
+        while (value := field_patterns[base](fake, rng)) is None:
+            pass
+        return value
+
     if base in field_patterns:
+        if base in NON_NULLABLE_FIELD_PATTERNS:
+            return field_patterns[base](fake, rng)
         return None if rng.random() < NULLABLE_RATE else field_patterns[base](fake, rng)
 
     for prefixes, mapping in FIELDSET_PREFIXES_PATTERNS.items():
@@ -277,7 +312,16 @@ def _fake_value(field_name: str, fake: Faker, field_patterns: dict[str, FieldGen
     return None
 
 
-def resolve_field_value(field_name: str, django_field: Any, fake: Faker, rng: Random) -> Any:
+def resolve_field_value(
+    field_name: str,
+    django_field: Any,
+    fake: Faker,
+    rng: Random,
+    image_iter: Iterator[Path] | None = None,
+) -> Any:
+    if image_iter is not None and _field_basename(field_name.lower()) in DISK_IMAGE_FIELDS:
+        return next(image_iter)
+
     v = pick_from_choices(django_field, rng)
     if v is not None:
         return v
@@ -303,15 +347,14 @@ def _get_sheet_specific_handler(name: str, sheet_type: SheetName, rng: Random) -
     return None
 
 
-def make_field_writers(
+def make_field_writers(  # noqa: PLR0913
     fields: list[str],
     sheet_type: SheetName,
     form: FlexForm,
     fake: Faker,
     rng: Random,
+    image_iter: Iterator[Path] | None = None,
 ) -> list[Callable[..., Any]]:
-    """Build per-column writer callables for the given sheet based on the form schema."""
-
     def writer_for(name: str) -> Callable:
         if handler := _get_sheet_specific_handler(name, sheet_type, rng):
             return handler
@@ -320,17 +363,29 @@ def make_field_writers(
         field = form.base_fields[name]
         if field is None:
             return lambda **__: None
-        return lambda *_, f=field, n=name, **__: resolve_field_value(n, f, fake, rng)
+        return lambda *_, f=field, n=name, **__: resolve_field_value(n, f, fake, rng, image_iter)
 
     return [writer_for(n) for n in fields]
 
 
-def generate_individuals_data(
-    households: list[dict], ind_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random
+def generate_individuals_data(  # noqa: PLR0913
+    households: list[dict],
+    ind_form: FlexForm,
+    config: GeneratorConfig,
+    fake: Faker,
+    rng: Random,
+    image_iter: Iterator[Path] | None = None,
 ) -> list[dict]:
     individuals: list[dict] = []
     ind_fields = _effective_exclude(ind_form.base_fields.keys(), config.exclude_fields, SheetName.INDIVIDUALS)
-    ind_writers = make_field_writers(ind_fields, SheetName.INDIVIDUALS, ind_form, fake, rng)
+    ind_writers = make_field_writers(
+        ind_fields,
+        SheetName.INDIVIDUALS,
+        ind_form,
+        fake,
+        rng,
+        image_iter=image_iter,
+    )
 
     for hh_data in households:
         hh_id = hh_data["household_id"]
@@ -349,10 +404,23 @@ def generate_individuals_data(
     return individuals
 
 
-def generate_people_data(pp_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random) -> list[dict]:
+def generate_people_data(
+    pp_form: FlexForm,
+    config: GeneratorConfig,
+    fake: Faker,
+    rng: Random,
+    image_iter: Iterator[Path] | None = None,
+) -> list[dict]:
     people: list[dict] = []
     pp_fields = _effective_exclude(pp_form.base_fields.keys(), config.exclude_fields, SheetName.PEOPLE)
-    pp_writers = make_field_writers(pp_fields, SheetName.PEOPLE, pp_form, fake, rng)
+    pp_writers = make_field_writers(
+        pp_fields,
+        SheetName.PEOPLE,
+        pp_form,
+        fake,
+        rng,
+        image_iter=image_iter,
+    )
 
     for ppl_index in range(1, config.people + 1):
         name_parts = _generate_name_parts(fake)
@@ -365,9 +433,22 @@ def generate_people_data(pp_form: FlexForm, config: GeneratorConfig, fake: Faker
     return people
 
 
-def generate_households_data(hh_form: FlexForm, config: GeneratorConfig, fake: Faker, rng: Random) -> list[dict]:
+def generate_households_data(
+    hh_form: FlexForm,
+    config: GeneratorConfig,
+    fake: Faker,
+    rng: Random,
+    image_iter: Iterator[Path] | None = None,
+) -> list[dict]:
     hh_fields = _effective_exclude(hh_form.base_fields.keys(), config.exclude_fields, SheetName.HOUSEHOLDS)
-    hh_writers = make_field_writers(hh_fields, SheetName.HOUSEHOLDS, hh_form, fake, rng)
+    hh_writers = make_field_writers(
+        hh_fields,
+        SheetName.HOUSEHOLDS,
+        hh_form,
+        fake,
+        rng,
+        image_iter=image_iter,
+    )
 
     households = []
     ind_counter = 1
@@ -409,13 +490,18 @@ def update_collectors(households: list[dict], total_individuals: int, rng: Rando
 
 
 def write_cell(ws: "Worksheet", row: int, col: int, value: Any, *, date_fmt: Any) -> None:
-    """Write a value as date/image/primitive depending on its runtime type."""
     if isinstance(value, date):
         ws.write_datetime(row, col, datetime(value.year, value.month, value.day, tzinfo=UTC), date_fmt)
         return
+    if isinstance(value, Path):
+        ws.insert_image(row, col, str(value), {"x_scale": 0.5, "y_scale": 0.5})
+        return
     if isinstance(value, bytes | bytearray):
         ws.insert_image(
-            row, col, f"image_{row}_{col}.png", {"image_data": BytesIO(value), "x_scale": 0.5, "y_scale": 0.5}
+            row,
+            col,
+            f"image_{row}_{col}.png",
+            {"image_data": BytesIO(value), "x_scale": 0.5, "y_scale": 0.5},
         )
         return
     ws.write(row, col, value)
@@ -442,7 +528,7 @@ def write_excel(sheets: list[tuple[SheetSpec, list[dict]]], filename: str, *, wi
         return
 
     buff = BytesIO()
-    with Workbook(buff, {"in_memory": True, "use_zip64": True, "remove_timezone": True}) as wb:
+    with Workbook(buff, {"use_zip64": True, "remove_timezone": True}) as wb:
         date_fmt = wb.add_format({"num_format": "yyyy-mm-dd"})
         cell_writer = partial(write_cell, date_fmt=date_fmt)
 
@@ -469,11 +555,13 @@ def _build_filename(cfg: GeneratorConfig) -> str:
         parts.append(f"s{cfg.seed}")
     if cfg.exclude_fields:
         parts.append(f"excl{len(cfg.exclude_fields)}flds")
+    if cfg.image_dir:
+        parts.append("img")
     parts.append(datetime.now(UTC).strftime("%Y%m%d%H%M%S"))
     return "_".join(parts) + ".xlsx"
 
 
-def generate(config: GeneratorConfig = None) -> str:
+def generate(config: GeneratorConfig | None = None) -> str:
     if config is None:
         config = GeneratorConfig()
 
@@ -482,7 +570,15 @@ def generate(config: GeneratorConfig = None) -> str:
     if config.seed is not None:
         fake.seed_instance(config.seed)
 
-    gen_data = partial(partial, config=config, fake=fake, rng=rng)
+    image_iter = cycle(_load_disk_images(config.image_dir)) if config.image_dir else None
+
+    gen_data = partial(
+        partial,
+        config=config,
+        fake=fake,
+        rng=rng,
+        image_iter=image_iter,
+    )
     sheets = config.mode.get_sheets(config, gen_data, rng)
     filename = config.filename or _build_filename(config)
     write_excel(sheets, filename, with_postfix=config.with_postfix)

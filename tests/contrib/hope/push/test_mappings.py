@@ -2,77 +2,78 @@ import pytest
 
 from country_workspace.contrib.hope.push.mappings import (
     load_mapping_from_api,
-    map_role_value,
     map_members,
+    map_role_value,
 )
 
 
-# ------------------------- load_mapping_from_api ------------------------
+def test_load_mapping_from_api_filters_invalid_keys_and_values(err, errs) -> None:
+    raw = {
+        "1": "IND-25-0000.0051",
+        "2": "IND-7.1",
+        "x": "IND-25-0000.0051",
+        "3": "IND-7",
+        "4": 5,
+        None: "IND-8-9.1",
+    }
 
-
-def test_load_mapping_from_api_ok_and_coercion(err, errs):
-    raw = {"1": "IND-1", "2": 5}
-    out = load_mapping_from_api(raw, err)
-    assert out == {1: "IND-1", 2: "5"}
-    assert errs == []
-
-
-def test_load_mapping_from_api_logs_invalid_keys(err, errs):
-    raw = {"x": "IND-X", "3": "IND-3", None: "IND-NONE"}
-    out = load_mapping_from_api(raw, err)
-    assert out[3] == "IND-3"
-    # two invalid keys: 'x' and None
-    assert len(errs) == 2
-    assert "Invalid mapping key 'x' -> 'IND-X'" in errs[0]
-    assert "Invalid mapping key" in errs[1]
-
-
-# ------------------------------ map_role_value --------------------------
+    assert load_mapping_from_api(raw, err) == {
+        1: "IND-25-0000.0051",
+        2: "IND-7.1",
+    }
+    assert errs == [
+        "Invalid mapping key 'x' -> 'IND-25-0000.0051'",
+        "Invalid mapping value '3' -> 'IND-7'",
+        "Invalid mapping value '4' -> 5",
+        "Invalid mapping key None -> 'IND-8-9.1'",
+    ]
 
 
 @pytest.mark.parametrize(
-    ("value", "mapping", "expected", "err_sub"),
+    ("value", "mapping", "expected", "expected_error"),
     [
         (None, {}, None, None),
-        (7, {7: "IND-7"}, "IND-7", None),
-        (8, {7: "IND-7"}, None, "no mapping for role=8"),
-        ("IND-42.1", {}, "IND-42.1", None),  # valid tag per IND_TAG_RE
-        ("IND-42", {}, None, "invalid role='IND-42'"),  # almost valid but lacks .digits
-        ("foo", {}, None, "invalid role='foo'"),
-        (1.0, {1: "IND-1"}, None, "invalid role=1.0"),
+        (7, {7: "IND-7.1"}, "IND-7.1", None),
+        (8, {7: "IND-7.1"}, None, "HH #100: no mapping for role=8"),
+        ("IND-25-0000.0051", {}, "IND-25-0000.0051", None),
+        ("IND-25", {}, None, "HH #100: invalid role='IND-25'"),
+        ("foo", {}, None, "HH #100: invalid role='foo'"),
+        (1.0, {1: "IND-1.1"}, None, "HH #100: invalid role=1.0"),
     ],
     ids=["none", "int_hit", "int_miss", "tag_ok", "tag_almost", "str_bad", "float_bad"],
 )
-def test_map_role_value_variants(err, errs, value, mapping, expected, err_sub):
-    field = "role"
-    hh_pk = 100
-    out = map_role_value(mapping, err, hh_pk, field, value)
-    assert out == expected
-    if err_sub is None:
-        assert errs == []
-    else:
-        assert any(err_sub in m for m in errs)
+def test_map_role_value(err, errs, value, mapping, expected, expected_error) -> None:
+    assert map_role_value(mapping, err, 100, "role", value) == expected
+    assert errs == ([] if expected_error is None else [expected_error])
 
 
-# ------------------------------- map_members ----------------------------
-
-
-def test_map_members_collects_missing_once(err, errs):
-    mapping = {1: "IND-1", 3: "IND-3"}
-    out = map_members(mapping, err, 777, [1, 2, 3, 4])
-    assert out == ["IND-1", "IND-3"]
-    assert errs
-    assert errs[-1] == "HH #777: no mapping for member ids [2, 4]"
-
-
-def test_map_members_all_mapped(err, errs):
-    mapping = {1: "IND-1", 2: "IND-2"}
-    out = map_members(mapping, err, 5, [1, 2])
-    assert out == ["IND-1", "IND-2"]
-    assert errs == []
-
-
-def test_map_members_empty(err, errs):
-    out = map_members({}, err, 9, [])
-    assert out == []
-    assert errs == []
+@pytest.mark.parametrize(
+    ("mapping", "member_ids", "hh_pk", "expected", "expected_errors"),
+    [
+        (
+            {1: "IND-1.1", 3: "IND-3.1"},
+            [1, 2, 3, 4],
+            777,
+            ["IND-1.1", "IND-3.1"],
+            ["HH #777: no mapping for member ids [2, 4]"],
+        ),
+        (
+            {1: "IND-1.1", 2: "IND-2.1"},
+            [1, 2],
+            5,
+            ["IND-1.1", "IND-2.1"],
+            [],
+        ),
+        (
+            {},
+            [],
+            9,
+            [],
+            [],
+        ),
+    ],
+    ids=["missing", "all_mapped", "empty"],
+)
+def test_map_members(err, errs, mapping, member_ids, hh_pk, expected, expected_errors) -> None:
+    assert map_members(mapping, err, hh_pk, member_ids) == expected
+    assert errs == expected_errors

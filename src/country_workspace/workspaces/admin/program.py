@@ -5,25 +5,28 @@ from admin_extra_buttons.buttons import ChoiceButton
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.admin import register
+from django.contrib.admin import display, register
 from django.db.models import QuerySet, Field
 from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
     import_data as import_from_aurora,
 )
+from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.exceptions import RemoteError
+from country_workspace.models import Household, Individual, Rdp
+from country_workspace.models.base import Validable
 from country_workspace.state import state
 from country_workspace.utils.fields import batch_name_default
-from country_workspace.models import Household, Individual
-from country_workspace.models.base import Validable
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm
+from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm, DedupSettingsForm
 from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -125,6 +128,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         "status",
         "sector",
         "name",
+        "dedup_settings",
     )
     form = ProgramForm
     ordering = ("name",)
@@ -152,7 +156,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
     def get_fieldsets(
         self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
-        fieldsets = (
+        fieldsets = [
             (
                 None,
                 {
@@ -196,12 +200,52 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                     "fields": ("serializer",),
                 },
             ),
-        )
+        ]
+        if obj and obj.biometric_deduplication_enabled:
+            fieldsets.append(
+                (
+                    _("Deduplication Configuration"),
+                    {"fields": ("dedup_settings",)},
+                )
+            )
         if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
             fieldsets[1][1]["fields"] = ("beneficiary_validator", "alien_validation_enabled", "individual_checker")
             fieldsets[2][1]["fields"] = ("individual_columns",)
 
         return fieldsets
+
+    @staticmethod
+    def _can_update_dedup_settings(program: CountryProgram) -> bool:
+        return not Rdp.objects.filter(
+            program=program,
+            status=Rdp.PushStatus.SUCCESS,
+        ).exists()
+
+    def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
+        with make_dedup_client(program_id=program.unicef_id) as client:
+            return client.get_deduplication_set_group_config()
+
+    @display(description=_("Settings"))
+    def dedup_settings(self, obj: CountryProgram) -> str:
+        if not obj.biometric_deduplication_enabled:
+            return "-"
+
+        try:
+            settings = self._get_dedup_settings(obj)
+        except RemoteError:
+            return "N/A"
+
+        if not settings:
+            return "-"
+
+        return format_html_join(
+            "\n",
+            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
+            "<span style='white-space:nowrap'>{}:</span>"
+            "<span>{}</span>"
+            "</div>",
+            ((key, value) for key, value in settings.items()),
+        )
 
     def formfield_for_dbfield(self, db_field: Field, request: HttpRequest, **kwargs: Any) -> Field | None:
         field = super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -528,6 +572,71 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
+
+    @button(
+        label=_("Update Dedup Settings"),
+        permission=can_change_country_program,
+        visible=lambda btn: bool(
+            btn.context.get("original") and btn.context["original"].biometric_deduplication_enabled
+        ),
+        enabled=lambda btn: bool(
+            btn.context.get("original")
+            and btn.context["original"].biometric_deduplication_enabled
+            and CountryProgramAdmin._can_update_dedup_settings(btn.context["original"])
+        ),
+        html_attrs={"title": "Update Deduplication settings on DedupEngine."},
+    )
+    def update_dedup_settings(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
+        program: CountryProgram = context["original"]
+        can_update = self._can_update_dedup_settings(program)
+        change_url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
+
+        if not can_update:
+            self.message_user(
+                request,
+                _("Deduplication settings cannot be updated because the program already has a successful RDP."),
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        try:
+            settings = self._get_dedup_settings(program)
+        except RemoteError:
+            self.message_user(
+                request,
+                _("Failed to fetch Deduplication settings from DedupEngine."),
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        form = (
+            DedupSettingsForm(request.POST, settings=settings)
+            if request.method == "POST"
+            else DedupSettingsForm(settings=settings)
+        )
+
+        if request.method == "POST" and form.is_valid():
+            try:
+                with make_dedup_client(program_id=program.unicef_id) as client:
+                    client.post_deduplication_set_group_config(payload=form.get_payload())
+            except RemoteError:
+                self.message_user(
+                    request,
+                    _("Failed to update Deduplication settings on DedupEngine."),
+                    messages.ERROR,
+                )
+            else:
+                self.message_user(
+                    request,
+                    _("Deduplication settings have been updated."),
+                    messages.SUCCESS,
+                )
+                return HttpResponseRedirect(change_url)
+
+        context["form"] = form
+        context["can_update_dedup_settings"] = can_update
+        return render(request, "workspace/program/dedup_settings.html", context)
 
     @button(
         label=_("Import Data"),

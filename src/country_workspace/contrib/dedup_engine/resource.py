@@ -1,60 +1,83 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TypedDict
 
 from requests import Session
-
 
 from country_workspace.contrib.dedup_engine import endpoint, request, response
 
 
-@dataclass
+@dataclass(slots=True)
 class GenericResource[T]:
     session: Session
     endpoint: T
 
 
 class CreateMixin[T, R]:
-    def create(self: GenericResource, body: T) -> R:
-        result = self.session.post(str(self.endpoint), json=body)
+    def create(self: GenericResource, body: T, *, params: Mapping[str, str] | None = None) -> R:
+        result = self.session.post(str(self.endpoint), json=body, params=params)
         result.raise_for_status()
         return result.json()
 
 
-class RetrieveMixin[T: TypedDict]:
-    def retrieve(self: GenericResource) -> T:
+class RetrieveMixin[R]:
+    def retrieve(self: GenericResource) -> R:
         result = self.session.get(str(self.endpoint))
         result.raise_for_status()
         return result.json()
 
 
-class ActionMixin[T]:
-    def call(self: GenericResource, body: T) -> None:
+class UpdateMixin[T, R]:
+    def update(self: GenericResource, body: T) -> R:
         result = self.session.post(str(self.endpoint), json=body)
+        result.raise_for_status()
+        return result.json()
+
+
+class ActionMixin[T]:
+    def call(self: GenericResource, body: T | None = None, *, params: Mapping[str, str] | None = None) -> None:
+        kwargs = {"json": body} if body is not None else {}
+        result = self.session.post(str(self.endpoint), params=params, **kwargs)
         result.raise_for_status()
 
 
 class DeduplicationSetCollection(
     GenericResource[endpoint.DeduplicationSets],
-    CreateMixin[request.DeduplicationSet, response.DeduplicationSet],
-):
-    pass
+    CreateMixin[request.CreateDeduplicationSet, response.CreatedDeduplicationSet],
+): ...
 
 
-class DeduplicationSetItem(GenericResource[endpoint.DeduplicationSet], RetrieveMixin[response.DeduplicationSet]):
-    pass
+class DeduplicationSetItem(
+    GenericResource[endpoint.DeduplicationSet],
+    RetrieveMixin[response.DeduplicationSet],
+): ...
 
 
-class ImagesBulkCollection(GenericResource[endpoint.Images], CreateMixin[list[request.Image], None]):
-    pass
+class ImagesCollection(
+    GenericResource[endpoint.Images],
+    CreateMixin[list[request.CreateEncoding], list[response.CreatedEncoding]],
+): ...
 
 
-class ProcessDeduplicationSetAction(GenericResource[endpoint.Process], ActionMixin[None]):
-    pass
+class ReadyDeduplicationSetAction(
+    GenericResource[endpoint.Ready],
+    ActionMixin[None],
+): ...
 
 
-class ApproveDeduplicationSetAction(GenericResource[endpoint.Approve], ActionMixin[request.Approve]):
-    pass
+class ProcessDeduplicationSetAction(
+    GenericResource[endpoint.Process],
+    ActionMixin[None],
+): ...
 
 
-class RejectDeduplicationSetAction(GenericResource[endpoint.Reject], ActionMixin[request.Reject]):
-    pass
+class RejectDeduplicationSetAction(
+    GenericResource[endpoint.Reject],
+    ActionMixin[None],
+): ...
+
+
+class DeduplicationSetGroupConfigItem(
+    GenericResource[endpoint.DeduplicationSetGroupConfig],
+    RetrieveMixin[response.DeduplicationSetGroupConfig],
+    UpdateMixin[request.DeduplicationSetGroupConfig, response.DeduplicationSetGroupConfig],
+): ...
