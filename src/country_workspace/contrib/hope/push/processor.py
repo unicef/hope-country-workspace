@@ -7,16 +7,22 @@ from uuid import UUID
 
 from django.db.models import QuerySet
 
+from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
+from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
 from country_workspace.exceptions import RemoteError
-from country_workspace.models import Rdp
 from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
-from .repository import individuals_for_rdp, rdp_for_dedup, serializer_for_program, preflight_errors
-from .transport import HopeApi, dedup_api
+from .repository import (
+    qs_individuals_for_rdp,
+    preflight_errors,
+    preflight_exclude_rdp_ids,
+    serializer_for_program,
+    set_rdp_deduplication_set_id,
+)
+from .transport import HopeApi
 
 
 class ProcessorBase:
@@ -90,6 +96,20 @@ class ProcessorBase:
             self.fail(subject, f"request failed. {e}", ids=ids)
             return None
 
+    def run_remote(
+        self,
+        subject: str,
+        fn: Callable[[], object],
+        *,
+        ids: Sequence[int] | None = None,
+    ) -> bool:
+        try:
+            fn()
+        except RemoteError as e:
+            self.fail(subject, f"request failed. {e}", ids=ids)
+            return False
+        return True
+
 
 class PushProcessor(ProcessorBase):
     """Push pipeline: validate, prepare, send and track results via Hope API."""
@@ -116,14 +136,18 @@ class PushProcessor(ProcessorBase):
 
     def preflight(self) -> None:
         """Validate selected beneficiaries before creating/pushing RDP."""
-        for msg in preflight_errors(pks=self.pks, master_detail=self.master_detail, exclude_rdp_id=self.rdp_id):
+        for msg in preflight_errors(
+            pks=self.pks,
+            master_detail=self.master_detail,
+            exclude_rdp_ids=preflight_exclude_rdp_ids(rdp_id=self.rdp_id),
+        ):
             self.fail("Preflight", msg)
 
     def rdi_complete(self) -> None:
         if not self.hope_rdi_id:
             self.fail("RDI", "can't complete: hope_rdi_id is not set")
             return
-        self.try_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
+        self.run_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
 
     def rdi_create(self) -> None:
         payload = {
@@ -226,6 +250,7 @@ class PushProcessor(ProcessorBase):
                         ids=batch_ids,
                         response=response,
                     )
+                    return
                 self.total["individuals"] = self.total.get("individuals", 0) + a
                 self.ind_id_map |= load_mapping_from_api(mapping, self._err)
             case _:
@@ -272,7 +297,7 @@ class PushProcessor(ProcessorBase):
             self.fail(name, "can't push: queryset is not set")
             return
 
-        for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE * 5), PUSH_BATCH_SIZE):
+        for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
             ids, payload = prepare(batch)
             if not ids:
                 continue
@@ -316,68 +341,87 @@ class PushProcessor(ProcessorBase):
 
 
 class DedupProcessor(ProcessorBase):
-    """Dedup pipeline: collect images, create set, upload and start processing."""
+    """Dedup pipeline: create/upload/process or reuse an existing DE set."""
 
     PREFIX = "Dedup"
 
-    def __init__(self, *, rdp_id: int) -> None:
+    def __init__(self, rdp: Rdp) -> None:
         super().__init__()
-        self.rdp = rdp_for_dedup(pk=rdp_id)
-        self.program_unicef_id = self.rdp.program.unicef_id
+        self.rdp = rdp
+        self.program_unicef_id = rdp.program.unicef_id
 
     def run(self) -> None:
-        """Execute dedup workflow; collect errors in total."""
-        if self.rdp.status != Rdp.PushStatus.PENDING:
-            self.fail("RDP", f"can not run dedup in status={self.rdp.status}")
-        if self.rdp.dedup_run_state == Rdp.DedupRunState.FINISHED:
-            self.fail("RDP", "can not run dedup after it is already finished")
-        if self.has_errors:
-            return
-
         self.total |= {"rdp_id": self.rdp.pk, "program": self.program_unicef_id}
-
-        images = self._collect_images()
-        self.total["images_sent"] = len(images)
-
-        if not images:
-            self.total["deduplication_set_id"] = None
-            return
-
-        ds_id = self._deduplicate(images)
+        if ds_id := self.rdp.deduplication_set_id:
+            self.process_existing_deduplication_set(ds_id)
+            images_sent = 0
+        else:
+            ds_id, images_sent = self.deduplicate()
+        self.total["images_sent"] = images_sent
         self.total["deduplication_set_id"] = str(ds_id) if ds_id else None
 
-    def _collect_images(self) -> list[dict[str, str]]:
-        """Collect DedupEngine images payload (reference_pk, filename) from RDP individuals."""
-        rows = individuals_for_rdp(rdp=self.rdp).values_list("id", "flex_fields__photo")
+    def process_existing_deduplication_set(self, deduplication_set_id: UUID) -> None:
+        with make_dedup_client(
+            self.program_unicef_id,
+            deduplication_set_id=str(deduplication_set_id),
+        ) as client:
+            self.run_remote("process", client.process)
 
-        images: list[dict[str, str]] = []
-        for pk, photo in rows.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE * 5):
+    def _iter_images(self) -> Iterator[dict[str, str]]:
+        """Yield DedupEngine images payload from RDP individuals."""
+        for pk, photo in (
+            qs_individuals_for_rdp(rdp=self.rdp)
+            .values_list("id", "flex_fields__photo")
+            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE)
+        ):
             if isinstance(photo, str) and (photo := photo.strip()):
-                images.append({"reference_pk": str(pk), "filename": photo})
-        return images
+                yield {"reference_pk": str(pk), "filename": photo}
 
-    def _deduplicate(self, images: list[dict[str, str]]) -> UUID | None:
-        """Run remote DedupEngine steps; return deduplication_set_id UUID on success."""
-        with dedup_api(self.program_unicef_id) as api:
-            raw = self.try_remote("create_deduplication_set", lambda: api.create_deduplication_set(settings={}))
-            if raw is None:
-                return None
+    def create_deduplication_set_id(self, client: Any) -> UUID | None:
+        """Create a remote deduplication set and return its UUID."""
+        payload = self.try_remote("create_deduplication_set", client.create_deduplication_set)
+        if payload is None:
+            return None
 
-            try:
-                ds_id = UUID(str(raw))
-            except (TypeError, ValueError) as e:
-                self.fail("create_deduplication_set", f"returned invalid UUID {raw!r}: {e}")
-                return None
+        if not isinstance(raw_id := payload.get("id"), str) or not raw_id:
+            self.fail("create_deduplication_set", "response has no valid id", response=payload)
+            return None
 
-            Rdp.objects.filter(pk=self.rdp.pk).update(
-                deduplication_set_id=ds_id,
-                dedup_run_state=Rdp.DedupRunState.IN_PROGRESS,
-            )
+        try:
+            return UUID(raw_id)
+        except ValueError as exc:
+            self.fail("create_deduplication_set", f"returned invalid UUID {raw_id!r}: {exc}", response=payload)
+            return None
 
-            if not self.try_remote("create_images", lambda images=images: api.create_images(images)):
-                return None
+    def upload_images(self, client: Any) -> tuple[bool, int]:
+        """Upload image batches, mark the set as ready, and return sent images count."""
+        images_sent = 0
 
-            if not self.try_remote("process", api.process):
-                return None
+        for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
+            payload = list(batch)
+            if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
+                return False, images_sent
+            images_sent += len(payload)
 
-            return ds_id
+        if not self.run_remote("ready", client.ready):
+            return False, images_sent
+
+        return True, images_sent
+
+    def deduplicate(self) -> tuple[UUID | None, int]:
+        """Run remote DedupEngine steps and return deduplication_set_id with sent images count."""
+        with make_dedup_client(self.program_unicef_id) as client:
+            ds_id = self.create_deduplication_set_id(client)
+            if ds_id is None:
+                return None, 0
+
+            set_rdp_deduplication_set_id(rdp_id=self.rdp.pk, deduplication_set_id=ds_id)
+
+            uploaded, images_sent = self.upload_images(client)
+            if not uploaded:
+                return ds_id, images_sent
+
+            if not self.run_remote("process", client.process):
+                return ds_id, images_sent
+
+            return ds_id, images_sent

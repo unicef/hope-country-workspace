@@ -1,0 +1,70 @@
+{% extends "workspace/change_form.html" %}
+{% load i18n workspace_urls %}
+{% block page-title %}
+    &rsaquo; {{ original }}{% admin_url original %}
+    &rsaquo; {% translate "Update deduplication settings" %}
+{% endblock page-title %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    {% translate "Update deduplication settings" %}
+                </h1>
+                {% if not can_update_dedup_settings %}
+                    <ul class="messagelist">
+                        <li class="warning">
+                            {% translate "Deduplication settings cannot be updated because the program already has an RDP in SUCCESS status." %}
+                        </li>
+                    </ul>
+                {% endif %}
+                <form method="post" id="dedup-settings-form" novalidate>
+                    {% csrf_token %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>
+                                    {% translate "Setting" %}
+                                </th>
+                                <th>
+                                    {% translate "Value" %}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field in form %}
+                                <tr>
+                                    <td>
+                                        <label for="{{ field.id_for_label }}" class="min-w-full cursor-pointer">
+                                            {{ field.label }}
+                                        </label>
+                                    </td>
+                                    <td>
+                                        {{ field }}
+                                        {% if field.errors %}
+                                            <div class="errors">
+                                                {{ field.errors }}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="submit-row">
+                        <input type="submit"
+                               value="{% translate 'Send to Dedup Engine' %}"
+                               class="default"
+                               name="_save"
+                               title="{% if not can_update_dedup_settings %}{% translate 'Disabled because the program already has an RDP in SUCCESS status.' %}{% endif %}"
+                               {% if not can_update_dedup_settings %} disabled style="opacity: 0.5; cursor: not-allowed;" {% endif %} />
+                        {% url opts|workspace_urlname:'change' original.pk as change_url %}
+                        <a href="{% add_preserved_filters change_url %}" class="closelink">
+                            {% translate 'Close' %}
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

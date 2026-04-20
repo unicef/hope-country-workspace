@@ -1,17 +1,19 @@
 {% extends "workspace/actions/base.html" %}
 {% load i18n workspace_urls %}
 {% block action-content %}
-    Selected beneficiaries will be pushed to the HOPE core system.
+    {{ intro_text|default:"Selected beneficiaries will be pushed to the HOPE core system." }}
     <div>
         <form method="post" id="create-rdp-form">
             <div class="submit-row">
-                <input type="submit" value="{% translate 'Create RDP' %}" class="default" name="_create" />
+                <input type="submit"
+                       value="{% firstof submit_label 'Create RDP' %}"
+                       class="default"
+                       name="{{ submit_name|default:'_create' }}" />
             </div>
             {% csrf_token %}
             <table>
                 {{ form.as_table }}
             </table>
-            {% load admin_urls i18n workspace_urls %}
         </form>
     </div>
 {% endblock action-content %}

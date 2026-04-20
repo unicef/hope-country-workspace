@@ -105,7 +105,7 @@ def test_fetch_middleware_anonymous_user(fetch_middleware, rf):
         mock_build_key.assert_called_once_with(request, "view", None)
 
 
-def test_update_middleware_with_existing_etag(update_middleware, rf, mock_user):
+def test_update_middleware_with_existing_etag(update_middleware, rf, mock_user, mocker) -> None:
     request = rf.get("/test-url/")
     request.user = mock_user
     request._cache_update_cache = True
@@ -115,14 +115,19 @@ def test_update_middleware_with_existing_etag(update_middleware, rf, mock_user):
     existing_etag = "existing-etag-key"
     response.headers["Etag"] = existing_etag
 
-    with patch("country_workspace.cache.manager.cache_manager.store") as mock_store:
-        processed_response = update_middleware.process_response(request, response)
+    mock_store = mocker.patch("country_workspace.cache.manager.cache_manager.store")
 
-        mock_store.assert_called_once_with(existing_etag, response)
-        assert processed_response.headers["Etag"] == existing_etag
+    processed_response = update_middleware.process_response(request, response)
+
+    mock_store.assert_called_once_with(
+        existing_etag,
+        response,
+        timeout=update_middleware.page_timeout,
+    )
+    assert processed_response.headers["Etag"] == existing_etag
 
 
-def test_update_middleware_without_etag(update_middleware, rf, mock_user):
+def test_update_middleware_without_etag(update_middleware, rf, mock_user, mocker) -> None:
     request = rf.get("/test-url/")
     request.user = mock_user
     request._cache_update_cache = True
@@ -130,17 +135,22 @@ def test_update_middleware_without_etag(update_middleware, rf, mock_user):
     response = HttpResponse()
     response.status_code = 200
 
-    with (
-        patch("country_workspace.cache.manager.cache_manager.build_key_from_request") as mock_build_key,
-        patch("country_workspace.cache.manager.cache_manager.store") as mock_store,
-    ):
-        generated_key = "generated-cache-key"
-        mock_build_key.return_value = generated_key
-        processed_response = update_middleware.process_response(request, response)
+    generated_key = "generated-cache-key"
+    mock_build_key = mocker.patch(
+        "country_workspace.cache.manager.cache_manager.build_key_from_request",
+        return_value=generated_key,
+    )
+    mock_store = mocker.patch("country_workspace.cache.manager.cache_manager.store")
 
-        mock_build_key.assert_called_once_with(request, "view", mock_user.pk)
-        mock_store.assert_called_once_with(generated_key, response)
-        assert processed_response.headers["Etag"] == generated_key
+    processed_response = update_middleware.process_response(request, response)
+
+    mock_build_key.assert_called_once_with(request, "view", mock_user.pk)
+    mock_store.assert_called_once_with(
+        generated_key,
+        response,
+        timeout=update_middleware.page_timeout,
+    )
+    assert processed_response.headers["Etag"] == generated_key
 
 
 def test_fetch_middleware_admin_action_request(fetch_middleware, rf, mock_user):

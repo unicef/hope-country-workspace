@@ -15,7 +15,7 @@ class Rdp(BaseModel):
         FAILURE = "FAILURE", _("Failure")
         CANCELLED = "CANCELLED", _("Cancelled")
 
-    class DedupRunState(models.TextChoices):
+    class DedupTrackingState(models.TextChoices):
         NOT_RUN = "NOT_RUN", _("Not run yet")
         IN_PROGRESS = "IN_PROGRESS", _("In progress")
         FINISHED = "FINISHED", _("Finished")
@@ -29,13 +29,15 @@ class Rdp(BaseModel):
     )
     push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    dedup_run_state = models.CharField(
-        max_length=15,
-        choices=DedupRunState.choices,
-        default=DedupRunState.NOT_RUN,
-        help_text=_("Internal deduplication lifecycle."),
-    )
     deduplication_set_id = models.UUIDField(blank=True, null=True)
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="children",
+        help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
+    )
 
     class Meta:
         constraints = [
@@ -54,6 +56,7 @@ class Rdp(BaseModel):
             ("reset_rdp", _("Can reset RDP")),
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("deduplicate_rdp", _("Can run RDP deduplication")),
+            ("reject_deduplication_set", _("Can reject deduplication set")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
         ]
         verbose_name = _("Registration Data Push")

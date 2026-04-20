@@ -1,17 +1,18 @@
 import pytest
-from hope_flex_fields.models import DataChecker
+from pytest_mock import MockerFixture
 from collections.abc import Callable
 from typing import Any
+from hope_flex_fields.models import DataChecker
 
-from country_workspace.models import Office, User, AsyncJob
-from country_workspace.workspaces.models import CountryProgram, CountryRdp
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG
 from country_workspace.contrib.hope.push.processor import PushProcessor
+from country_workspace.models import AsyncJob, Office, User
 from country_workspace.state import state
+from country_workspace.workspaces.models import CountryProgram, CountryRdp
 
 
 @pytest.fixture
-def office():
+def office() -> Office:
     from testutils.factories import OfficeFactory
 
     co = OfficeFactory()
@@ -89,7 +90,7 @@ def user() -> User:
 
 
 @pytest.fixture
-def push_config_base(beneficiary_instance: Beneficiary, user: User) -> dict:
+def push_config_base(beneficiary_instance: Beneficiary, user: User) -> dict[str, Any]:
     """
     Base workflow config used by processor/unit tests (derived from an existing RDP).
     """
@@ -108,7 +109,7 @@ def push_config_base(beneficiary_instance: Beneficiary, user: User) -> dict:
 
 
 @pytest.fixture
-def create_config_base(program: CountryProgram, create_beneficiary_instance: Beneficiary, user: User) -> dict:
+def create_config_base(program: CountryProgram, create_beneficiary_instance: Beneficiary, user: User) -> dict[str, Any]:
     """
     Minimal CreateRdpConfig for create_rdp_records/create_rdp_core.
     """
@@ -123,14 +124,14 @@ def create_config_base(program: CountryProgram, create_beneficiary_instance: Ben
 
 
 @pytest.fixture
-def create_job(program: CountryProgram, create_config_base: dict) -> AsyncJob:
+def create_job(program: CountryProgram, create_config_base: dict[str, Any]) -> AsyncJob:
     from testutils.factories import AsyncJobFactory
 
     return AsyncJobFactory(program=program, config=create_config_base)
 
 
 @pytest.fixture
-def job(beneficiary_instance: Beneficiary, push_config_base: dict) -> AsyncJob:
+def job(beneficiary_instance: Beneficiary, push_config_base: dict[str, Any]) -> AsyncJob:
     """
     Push job must include rdp_id because push_existing_rdp_core reads job.config['rdp_id'].
     """
@@ -147,17 +148,20 @@ def processor(job: AsyncJob) -> PushProcessor:
 
 
 @pytest.fixture
-def qs() -> Callable[[list], Any]:
+def qs() -> Callable[[list[Any]], Any]:
     """Fixture that returns a minimal queryset-like object with .iterator()."""
 
     class _QS:
-        def __init__(self, items):
+        def __init__(self, items: list[Any]) -> None:
             self._items = items
 
-        def iterator(self, chunk_size=None):
+        def iterator(self, chunk_size: int | None = None):
             yield from self._items
 
-    return lambda items: _QS(items)  # noqa: PLW0108
+    def factory(items: list[Any]) -> Any:
+        return _QS(items)
+
+    return factory
 
 
 @pytest.fixture
@@ -165,7 +169,7 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
     """Factory fixture for a tiny attribute bag with a few helper methods."""
 
     class _Stub:
-        def __init__(self, **kw):
+        def __init__(self, **kw: Any) -> None:
             if "id" not in kw and "pk" in kw:
                 kw["id"] = kw["pk"]
             kw.setdefault("originating_id", kw.get("id"))
@@ -177,18 +181,21 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
         def apply_grouping(self):
             return getattr(self, "_group", {})
 
-    return lambda **kw: _Stub(**kw)  # noqa: PLW0108
+    def factory(**kw: Any) -> Beneficiary:
+        return _Stub(**kw)
+
+    return factory
 
 
 @pytest.fixture
-def serializer_identity(processor: PushProcessor):
+def serializer_identity(processor: PushProcessor) -> PushProcessor:
     """Disable JSON serialization: pass rows through as-is for prepare_* tests."""
     processor.__dict__["serializer"] = lambda rows: rows
     return processor
 
 
 @pytest.fixture
-def errs():
+def errs() -> list[str]:
     return []
 
 
@@ -201,15 +208,15 @@ def err(errs):
 def err_contains() -> Callable[[list[str], str], bool]:
     def _contains(errors: list[str], expected: str) -> bool:
         ln = ERROR_CONFIG.MAX_ERROR_LEN
-        tr = expected if len(expected) <= ln else f"{expected[: ln - 1]}…"
-        return any((expected in e) or (tr in e) for e in errors)
+        truncated = expected if len(expected) <= ln else f"{expected[: ln - 1]}…"
+        return any((expected in error) or (truncated in error) for error in errors)
 
     return _contains
 
 
 @pytest.fixture
-def dedup_api_cm(mocker):
-    def _cm(api):
+def dedup_api_cm(mocker: MockerFixture) -> Callable[[Any], Any]:
+    def _cm(api: Any) -> Any:
         return mocker.MagicMock(
             __enter__=mocker.Mock(return_value=api),
             __exit__=mocker.Mock(return_value=False),
@@ -219,8 +226,7 @@ def dedup_api_cm(mocker):
 
 
 @pytest.fixture
-def dedup_processor(mocker, rdp):
+def dedup_processor(rdp: CountryRdp):
     from country_workspace.contrib.hope.push.processor import DedupProcessor
 
-    mocker.patch("country_workspace.contrib.hope.push.processor.rdp_for_dedup", return_value=rdp)
-    return DedupProcessor(rdp_id=rdp.pk)
+    return DedupProcessor(rdp)

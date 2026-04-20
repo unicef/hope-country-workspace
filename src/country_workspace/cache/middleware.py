@@ -64,9 +64,9 @@ class UpdateCacheMiddleware(MiddlewareMixin):
                 cache_key = self.manager.build_key_from_request(request, "view", getattr(request.user, "pk", ""))
                 response.headers["Etag"] = cache_key
             if hasattr(response, "render") and callable(response.render):
-                response.add_post_render_callback(lambda r: self.manager.store(cache_key, r))
+                response.add_post_render_callback(lambda r: self.manager.store(cache_key, r, timeout=timeout))
             else:
-                self.manager.store(cache_key, response)
+                self.manager.store(cache_key, response, timeout=timeout)
 
     def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
         if self._should_invalidate_cache(request, response):
@@ -83,7 +83,7 @@ class FetchFromCacheMiddleware(MiddlewareMixin):
         super().__init__(get_response)
         self.manager = cache_manager
 
-    def process_request(self, request: HttpRequest) -> HttpResponse:
+    def process_request(self, request: HttpRequest) -> HttpResponse | None:
         if request.method in NOT_CACHABLE_METHODS or get_messages(request):
             request._cache_update_cache = True
             return None
