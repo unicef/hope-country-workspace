@@ -53,8 +53,14 @@ def sync_job_task(task: Any, pk: int, version: int) -> dict[str, Any]:
             return job.execute()
         except GracefulJobCancellationError as exc:
             logger.info("Task cancelled gracefully for AsyncJob #%s", job.pk)
-            job.cancel()
-            task.update_state(state="REVOKED", meta={"reason": str(exc), "job_id": job.pk})
+            task.update_state(
+                state="REVOKED",
+                meta={
+                    "exc_type": type(exc).__name__,
+                    "exc_module": type(exc).__module__,
+                    "exc_message": str(exc),
+                },
+            )
             raise Ignore from exc
         finally:
             scope.clear()
