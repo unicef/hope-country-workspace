@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
 from django.contrib import admin
-from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 from strategy_field.utils import fqn
@@ -89,13 +88,22 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
     def clean_program(self, request: HttpRequest, pk: str) -> None:
         obj: Program = self.get_object(request, pk)
 
-        job = AsyncJob.objects.create(
-            description=f"Clean data for program {obj.name}",
-            program=obj,
-            owner=request.user,
-            type=AsyncJob.JobType.TASK,
-            action=fqn(clean_program_data),
-            config={},
+        def _action(_: HttpRequest) -> None:
+            job = AsyncJob.objects.create(
+                description=f"Clean data for program {obj.name}",
+                program=obj,
+                owner=request.user,
+                type=AsyncJob.JobType.TASK,
+                action=fqn(clean_program_data),
+                config={},
+            )
+            job.queue()
+
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Confirm action",
+            description="Continuing will erase all the data from this program",
+            success_message="Job for program data cleaning is scheduled",
         )
-        job.queue()
-        self.message_user(request, "Job for program data cleaning is scheduled", level=messages.SUCCESS)
