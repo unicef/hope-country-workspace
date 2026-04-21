@@ -50,11 +50,15 @@ def get_field_extractor_mock(mocker: MockerFixture) -> Mock:
 
 
 def test_get_default_checkers(mocker: MockerFixture) -> None:
-    data_checker_model_mock = mocker.patch("country_workspace.contrib.hope.sync.context_programs.DataChecker")
+    dc = mocker.patch("country_workspace.contrib.hope.sync.context_programs.DataChecker")
+
     assert get_default_checkers().keys() == {"hh", "ind", "ppl"}
-    data_checker_model_mock.objects.filter.assert_any_call(name=HOUSEHOLD_CHECKER_NAME)
-    data_checker_model_mock.objects.filter.assert_any_call(name=INDIVIDUAL_CHECKER_NAME)
-    data_checker_model_mock.objects.filter.assert_any_call(name=PEOPLE_CHECKER_NAME)
+
+    assert set(dc.objects.filter.call_args.kwargs["name__in"]) == {
+        HOUSEHOLD_CHECKER_NAME,
+        INDIVIDUAL_CHECKER_NAME,
+        PEOPLE_CHECKER_NAME,
+    }
 
 
 def test_get_field_extractor() -> None:
@@ -161,24 +165,26 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
     get_office_mock = mocker.patch.object(Office.objects, "get")
     get_group_mock = mocker.patch.object(BeneficiaryGroup.objects, "get")
     record = {
+        "beneficiary_group": (bg := "bg"),
+        "biometric_deduplication_enabled": (dedup_enabled := True),
         "business_area_code": (area_code := "area_code"),
-        "beneficiary_group": (group := "group"),
-        "name": (name := "name"),
         "code": (code := "code"),
-        "status": (status := "status"),
+        "name": (name := "name"),
         "sector": (sector := "sector"),
+        "status": (status := "status"),
     }
 
     assert prepare_program_defaults(record) == {
-        "name": name,
+        "biometric_deduplication_enabled": dedup_enabled,
+        "beneficiary_group": get_group_mock.return_value,
         "code": code,
+        "country_office": get_office_mock.return_value,
+        "name": name,
         "status": status,
         "sector": sector,
-        "country_office": get_office_mock.return_value,
-        "beneficiary_group": get_group_mock.return_value,
     }
     get_office_mock.assert_called_once_with(code=area_code)
-    get_group_mock.assert_called_once_with(hope_id=group)
+    get_group_mock.assert_called_once_with(hope_id=bg)
 
 
 def test_get_default_ignored_fields_collects_from_all_sources() -> None:
