@@ -293,6 +293,16 @@ def test_program_has_any_data_unsaved_program() -> None:
     assert unsaved_program.has_any_data() is False
 
 
+def test_program_has_any_data_proxy_instance() -> None:
+    from tests.extras.testutils.factories import CountryProgramFactory, BatchFactory
+
+    program = CountryProgramFactory()
+    assert program.has_any_data() is False
+
+    BatchFactory(program=program, country_office=program.country_office)
+    assert program.has_any_data() is True
+
+
 def test_program_save_unique_field_for_none_removes_scope(program: Program) -> None:
     program.system_fields = {
         "unique_fields": {"individual": "national_id", "household": "household_id"},

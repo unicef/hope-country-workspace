@@ -19,6 +19,7 @@ from country_workspace.contrib.hope.push.orchestration import (
     _require_policy_check,
     _save_current_deduplication_snapshot,
     _steps,
+    archive_removed_unique_values,
     claim_rdp_deduplication,
     clone_rdp_core,
     create_rdp_core,
@@ -1001,3 +1002,35 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
         hope_rdi_id="N/A",
     )
     next_step.assert_not_called()
+
+
+@pytest.mark.parametrize("master_detail", [True, False], ids=["md", "people_only"])
+def test_archive_removed_unique_values(mocker: MockerFixture, master_detail: bool) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.side_effect = lambda model: {
+        "Household": "household_id",
+        "Individual": "document_number",
+    }[model.__name__]
+
+    hh_values = mocker.MagicMock()
+    hh_values.iterator.return_value = iter(["HH-1"])
+    households_qs = mocker.MagicMock()
+    households_qs.values_list.return_value = hh_values
+
+    ind_values = mocker.MagicMock()
+    ind_values.iterator.return_value = iter(["DOC-1", "DOC-2"])
+    individuals_qs = mocker.MagicMock()
+    individuals_qs.values_list.return_value = ind_values
+
+    rdp = mocker.MagicMock(program=program)
+    rdp.households.filter.return_value = households_qs
+    rdp.individuals.filter.return_value = individuals_qs
+
+    if master_detail:
+        ci_qs = mocker.MagicMock()
+        ci_qs.values_list.return_value = ind_values
+        mocker.patch(f"{MOD}.CountryIndividual.objects.filter", return_value=ci_qs)
+
+    archive_removed_unique_values(rdp, master_detail)
+
+    assert program.add_removed_unique_values_for.call_count == 2

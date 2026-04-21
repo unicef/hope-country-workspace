@@ -169,3 +169,34 @@ def test_validate_queryset_individual_unique_field_against_archived_values(progr
     assert result == {"valid": 0, "invalid": 1}
     individual.refresh_from_db()
     assert "full_name" in individual.errors
+
+
+@pytest.mark.django_db
+def test_validate_queryset_households_marks_invalid_when_member_unique_duplicates(program, force_migrated_records):
+    from testutils.factories import HouseholdFactory, IndividualFactory
+
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.save_unique_field_for(Individual, "full_name")
+
+    household: "CountryHousehold" = HouseholdFactory(
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"size": 2},
+    )
+    IndividualFactory(
+        household=household,
+        batch=household.batch,
+        flex_fields={"full_name": "Member X"},
+    )
+    IndividualFactory(
+        household=household,
+        batch=household.batch,
+        flex_fields={"full_name": "Member X"},
+    )
+
+    result = validate_queryset(Household.objects.filter(pk=household.pk).prefetch_related("members"))
+    assert result == {"valid": 0, "invalid": 1}
+
+    household.refresh_from_db()
+    assert "dct" in household.errors

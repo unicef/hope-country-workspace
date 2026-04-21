@@ -234,7 +234,7 @@ class Program(BaseModel):
             return False
         from country_workspace.models import Batch
 
-        return Batch.objects.filter(program=self).exists()
+        return Batch.objects.filter(program_id=self.pk).exists()
 
     def get_unique_field_for(self, m: type[Validable] | Validable) -> str | None:
         scope = self._scope_for(m).value
