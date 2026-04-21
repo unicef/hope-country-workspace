@@ -319,7 +319,7 @@ class PushProcessor(ProcessorBase):
                 return (
                     isinstance(item, dict)
                     and "pk" in item
-                    and not any(isinstance(v, (list, dict)) for v in item.values())
+                    and not any(isinstance(v, list | dict) for v in item.values())
                 )
 
             log_resp = {k: response.get(k) for k in ("id", "processed", "accepted", "errors")}

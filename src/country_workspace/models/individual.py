@@ -41,3 +41,13 @@ class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
     @cached_property
     def country_office(self) -> "Office":
         return self.batch.program.country_office
+
+    def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+        # Identity collision errors are set at import time only — preserve them
+        # across re-validations since validate_with_checker replaces errors wholesale.
+        identity_error = self.errors.get("identity")
+        super().validate_with_checker(fail_if_alien=fail_if_alien)
+        if identity_error and "identity" not in self.errors:
+            self.errors["identity"] = identity_error
+            self.save(update_fields=["errors"])
+        return not bool(self.errors)

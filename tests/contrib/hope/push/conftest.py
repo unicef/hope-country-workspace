@@ -158,10 +158,10 @@ def qs() -> Callable[[list[Any]], Any]:
         def iterator(self, chunk_size: int | None = None):
             yield from self._items
 
-    def factory(items: list[Any]) -> Any:
+    def callback(items):
         return _QS(items)
 
-    return factory
+    return callback
 
 
 @pytest.fixture
@@ -181,10 +181,10 @@ def beneficiary_stub() -> Callable[..., Beneficiary]:
         def apply_grouping(self):
             return getattr(self, "_group", {})
 
-    def factory(**kw: Any) -> Beneficiary:
+    def callback(**kw):
         return _Stub(**kw)
 
-    return factory
+    return callback
 
 
 @pytest.fixture
