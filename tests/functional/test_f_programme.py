@@ -32,9 +32,8 @@ def _test_import_file_mass_update_success(browser_program: CountryWorkspaceSelen
     browser_program.find_element("#id_file").send_keys(file_path)
     browser_program.click('input[name="_import"]')
 
-    assert browser_program.driver.current_url.endswith("/workspaces/countryasyncjob/")
-
     browser_program.wait_for_element("table#result_list", timeout=10)
+    assert browser_program.driver.current_url.endswith("/workspaces/countryasyncjob/")
     rows = browser_program.find_elements("table#result_list tbody tr")
     assert any(description_tex in row.text for row in rows)
 

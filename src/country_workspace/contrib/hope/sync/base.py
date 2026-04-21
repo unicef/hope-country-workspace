@@ -7,7 +7,7 @@ from typing import Any, Final, TypedDict, NotRequired, Literal
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.db.models import Model
 
 from country_workspace.exceptions import RemoteError
@@ -164,33 +164,34 @@ def sync_entity[T: Model](config: SyncConfig[T], client: HopeClient | None = Non
     stats = stats or Stats(errors=[], add=0, upd=0)
     client = client or HopeClient()
 
-    with cache.lock(f"sync-{model_name}"):
+    with cache.lock(f"hope-sync:{model_name}"):
         logger.info(format_msg("SYNC_START", entity=model_name))
         for record in safe_get(client, config["endpoint"], stats):
-            if not (reference_id_val := validated_reference_id(record)):
-                continue
-            if should_process and not should_process(record):
+            if not (reference_id_val := validated_reference_id(record)) or (
+                should_process is not None and not should_process(record)
+            ):
                 continue
             try:
-                defaults = prepare_defaults(record) if prepare_defaults else None
-                if defaults is None or not defaults:
+                if not (defaults := prepare_defaults(record)):
                     continue
-                instance, created = model.objects.update_or_create(
-                    defaults=defaults, **{reference_id: reference_id_val}
-                )
-                if m2m_hook:
-                    m2m_hook(instance, record)
-                if post_process:
-                    post_process(instance, created)
-                stats["add" if created else "upd"] += 1
+                with transaction.atomic():
+                    instance, created = model.objects.update_or_create(
+                        defaults=defaults, **{reference_id: reference_id_val}
+                    )
+                    if m2m_hook:
+                        m2m_hook(instance, record)
+                    if post_process:
+                        post_process(instance, created)
             except SkipRecordError as e:
                 logger.warning(format_msg("RECORD_SKIPPED", reference_id_val=reference_id_val, error=str(e)))
             except (DatabaseError, KeyError, AttributeError) as e:
                 error = format_msg("RECORD_SYNC_FAILURE", reference_id_val=reference_id_val, error=str(e))
                 add_error(stats, error)
                 logger.error(error)
+            else:
+                stats["add" if created else "upd"] += 1
         if stats["errors"]:
-            raise HopeSyncError(stats["errors"])
+            raise HopeSyncError("\n".join(stats["errors"]))
         SyncLog.objects.register_sync(model)
         logger.info(format_msg("SYNC_COMPLETE", entity=model_name, result=stats, errors_count=0))
         return stats
