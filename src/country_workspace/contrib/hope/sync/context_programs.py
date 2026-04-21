@@ -14,7 +14,6 @@ from country_workspace.contrib.hope.constants import (
 from country_workspace.contrib.hope.sync.base import (
     SyncConfig,
     SkipRecordError,
-    EndpointConfig,
     ParamDateName,
     sync_entity,
     build_endpoint,
@@ -93,7 +92,7 @@ def sync_beneficiary_groups(delta_sync: bool = False) -> Stats:
         SyncConfig[BeneficiaryGroup](
             model=BeneficiaryGroup,
             reference_id=HOPE_ID,
-            endpoint=EndpointConfig(path=BENEFICIARY_GROUPS),
+            endpoint=build_endpoint(BENEFICIARY_GROUPS, BeneficiaryGroup, ParamDateName.UPDATED, delta_sync),
             prepare_defaults=get_field_extractor(BENEFICIARY_GROUP_FIELDS),
             delta_sync=delta_sync,
         )
