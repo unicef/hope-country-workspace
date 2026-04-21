@@ -35,8 +35,8 @@ def test_cleanup_merged_rdp_data_task():
 
     # 2. Successful RDP pushed today (Should NOT be cleaned up)
     rdp_recent_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
-    hh_recent = HouseholdFactory.create(batch=batch, individuals=[])
-    ind_recent = IndividualFactory.create(household=hh_recent)
+    hh_recent = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
+    ind_recent = IndividualFactory.create(household=hh_recent, removed=True)
     hh_recent.rdp.add(rdp_recent_success)
     ind_recent.rdp.add(rdp_recent_success)
 
@@ -46,8 +46,8 @@ def test_cleanup_merged_rdp_data_task():
     rdp_old_pending = RdpFactory.create(program=program_pending, status=Rdp.PushStatus.PENDING)
     Rdp.objects.filter(pk=rdp_old_pending.pk).update(push_date=old_date)
 
-    hh_pending = HouseholdFactory.create(batch=batch_pending, individuals=[])
-    ind_pending = IndividualFactory.create(household=hh_pending)
+    hh_pending = HouseholdFactory.create(batch=batch_pending, individuals=[], removed=True)
+    ind_pending = IndividualFactory.create(household=hh_pending, removed=True)
     hh_pending.rdp.add(rdp_old_pending)
     ind_pending.rdp.add(rdp_old_pending)
 
@@ -98,6 +98,25 @@ def test_cleanup_merged_rdp_data_disabled():
     batch = BatchFactory.create(program=program)
     hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
     hh.rdp.add(rdp_old_success)
+
+    cleanup_merged_rdp_data()
+
+    assert Household.objects.filter(pk=hh.pk).exists()
+
+
+@pytest.mark.django_db
+def test_cleanup_merged_rdp_data_no_old_rdps():
+    # threshold = 10 days, but RDP is only 5 days old
+    constance_config.RDP_CLEANUP_DAYS = 10
+
+    program = ProgramFactory.create()
+    old_date = timezone.now() - timedelta(days=5)
+    rdp_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    Rdp.objects.filter(pk=rdp_success.pk).update(push_date=old_date)
+
+    batch = BatchFactory.create(program=program)
+    hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
+    hh.rdp.add(rdp_success)
 
     cleanup_merged_rdp_data()
 
