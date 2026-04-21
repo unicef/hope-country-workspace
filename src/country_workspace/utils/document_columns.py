@@ -7,10 +7,7 @@ from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, MAX_DOCUMEN
 
 _COLUMN_RE = re.compile(r"^document_(\d+)_(type|number|country|expire_date)$")
 
-_NORMALIZED_TYPES: dict[str, str] = {}
-for _t in DOCUMENT_TYPES:
-    _NORMALIZED_TYPES[_t] = _t
-    _NORMALIZED_TYPES[_t.replace("_", " ")] = _t
+_NORMALIZED_TYPES: dict[str, str] = {key: t for t in DOCUMENT_TYPES for key in (t, t.replace("_", " "))}
 
 _FIELD_SUFFIX_MAP = {
     "number": "document_number",
