@@ -62,16 +62,16 @@ If you need to edit the CSS follow the below steps:
 
 ## Run tests
 
-    pytests tests
+    pytest tests
 
 ## Run Selenium tests (ONLY)
 
-    pytests tests -m selenium
+    pytest tests -m selenium
 
 
 ## Run Selenium any tests
 
-    pytests tests --selenium
+    pytest tests --selenium
 
 
 !!! note

@@ -69,6 +69,11 @@ CONSTANCE_CONFIG = {
     "DEDUP_API_URL": (DEDUP_API_URL, "Dedup Engine server address", str),
     "DEDUP_API_TOKEN": (DEDUP_API_TOKEN, "Dedup Engine API access token", "write_only_text_input"),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
+    "RDP_CLEANUP_DAYS": (
+        30,
+        "Number of days to keep Household and Individual data after a successful RDP push. 0 means disabled.",
+        int,
+    ),
     "KOBO_FIELDS_TO_IGNORE": (
         "audit, collect_individual_data, deviceid, start, end, hh_geopoint, instanceid, number_alternate, "
         "number_primary, number_repeat, org_name_enumerator, rootuuid, uuid",
@@ -146,6 +151,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "CACHE_TIMEOUT",
         "CACHE_BY_VERSION",
         "CHUNK_SIZE_FOR_VALIDATION_TASK",
+        "RDP_CLEANUP_DAYS",
         "NEW_USER_IS_STAFF",
         "NEW_USER_DEFAULT_GROUP",
         "CONCURRENCY_GUARD",

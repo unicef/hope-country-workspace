@@ -18,7 +18,7 @@ urlpatterns = [
     path(r"__debug__/", include(debug_toolbar.urls)),
 ]
 
-if "django_browser_reload" in settings.INSTALLED_APPS:
+if "django_browser_reload" in settings.INSTALLED_APPS:  # pragma: no cover
     urlpatterns += [path(r"__reload__/", include("django_browser_reload.urls"))]
 
 urlpatterns += [path(r"", workspace.urls)]

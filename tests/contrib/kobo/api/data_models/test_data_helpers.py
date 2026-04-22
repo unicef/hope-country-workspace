@@ -50,3 +50,20 @@ def test_download_attachments(mocker: MockerFixture, top_level_attachment: bool)
         )
     else:
         submission.__setitem__.assert_called_once_with(question_xpath, value)
+
+
+def test_download_attachments_empty_xpath(mocker: MockerFixture) -> None:
+    data_getter = Mock()
+    mocker.patch("country_workspace.contrib.kobo.api.data.helpers.b64encode")
+    submission = MagicMock()
+    submission.attachments = [
+        {
+            "download_url": "https://test.org",
+            "mimetype": "mime-type",
+            "question_xpath": "",
+        }
+    ]
+    submission.__contains__.return_value = False
+
+    assert download_attachments(data_getter, cast("Submission", submission)) == submission
+    submission.__setitem__.assert_not_called()
