@@ -87,6 +87,38 @@ def test_cleanup_merged_rdp_data_task():
 
 
 @pytest.mark.django_db
+def test_cleanup_merged_rdp_data_batching():
+    program = ProgramFactory.create()
+    batch = BatchFactory.create(program=program)
+    constance_config.RDP_CLEANUP_DAYS = 1
+    constance_config.RDP_CLEANUP_BATCH_SIZE = 2
+
+    old_date = timezone.now() - timedelta(days=2)
+    rdp = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    Rdp.objects.filter(pk=rdp.pk).update(push_date=old_date)
+
+    # Create 5 households with 1 individual each (Total 5 HH, 5 Ind)
+    for _ in range(5):
+        hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
+        ind = IndividualFactory.create(batch=batch, household=hh, removed=True)
+        hh.rdp.add(rdp)
+        ind.rdp.add(rdp)
+
+    # Create 3 individuals without households (Total 5 HH, 8 Ind)
+    for _ in range(3):
+        ind = IndividualFactory.create(batch=batch, household=None, removed=True)
+        ind.rdp.add(rdp)
+
+    assert Household.objects.count() == 5
+    assert Individual.objects.count() == 8
+
+    cleanup_merged_rdp_data()
+
+    assert Household.objects.count() == 0
+    assert Individual.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_cleanup_merged_rdp_data_disabled():
     constance_config.RDP_CLEANUP_DAYS = 0
 
