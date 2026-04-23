@@ -1,57 +1,62 @@
-from unittest.mock import Mock
-
 import pytest
-from django.db.models import QuerySet
 
+from country_workspace.models import Individual
 from country_workspace.utils.collector_linkage import _normalize_reference, sync_collector_links
 
 
-def _mock_queryset(rows):
-    """Build a mock QuerySet that mimics annotate().values_list().iterator()."""
-    qs = Mock(spec=QuerySet)
-    annotated = Mock()
-    values_list = Mock()
-    values_list.iterator.return_value = iter(rows)
-    annotated.values_list.return_value = values_list
-    qs.annotate.return_value = annotated
-    return qs
-
-
-def test_sync_collector_links_maps_collector_reference_to_pk(mocker) -> None:
-    update_qs = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.filter")
-    update_qs.return_value.update.return_value = 1
-
-    qs = _mock_queryset(
-        [
-            (10, "B-1", None, "C-1"),
-            (20, "C-1", None, None),
-        ]
-    )
-
-    synced = sync_collector_links(qs)
+@pytest.mark.django_db
+def test_sync_collector_links_maps_collector_reference_to_pk(beneficiary, collector, collector_links_qs) -> None:
+    synced = sync_collector_links(collector_links_qs)
 
     assert synced == 1
-    update_qs.assert_called_once_with(pk__in=[10])
+    beneficiary.refresh_from_db()
+    assert beneficiary.flex_fields["collector_id"] == collector.pk
 
 
-def test_sync_collector_links_skips_unknown_collector_reference(mocker) -> None:
-    update_qs = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.filter")
+@pytest.mark.django_db
+def test_sync_collector_links_skips_unknown_collector_reference(beneficiary_with_unknown_ref) -> None:
+    qs = Individual.objects.filter(pk=beneficiary_with_unknown_ref.pk)
+    synced = sync_collector_links(qs)
 
-    qs = _mock_queryset(
-        [
-            (10, None, "100", "missing-ref"),
-        ]
-    )
+    assert synced == 0
+    beneficiary_with_unknown_ref.refresh_from_db()
+    assert beneficiary_with_unknown_ref.flex_fields["collector_id"] == "missing-ref"
+
+
+@pytest.mark.django_db
+def test_sync_collector_links_skips_already_resolved(beneficiary, collector, collector_links_qs) -> None:
+    sync_collector_links(collector_links_qs)
+
+    beneficiary.refresh_from_db()
+    assert beneficiary.flex_fields["collector_id"] == collector.pk
+
+    synced = sync_collector_links(collector_links_qs)
+    assert synced == 0
+
+
+@pytest.mark.django_db
+def test_sync_collector_links_preserves_other_flex_fields(beneficiary_with_extra_fields, collector) -> None:
+    qs = Individual.objects.filter(pk__in=[beneficiary_with_extra_fields.pk, collector.pk])
+    sync_collector_links(qs)
+
+    beneficiary_with_extra_fields.refresh_from_db()
+    assert beneficiary_with_extra_fields.flex_fields["collector_id"] == collector.pk
+    assert beneficiary_with_extra_fields.flex_fields["name"] == "John"
+    assert beneficiary_with_extra_fields.flex_fields["photo"] == "base64data"
+    assert beneficiary_with_extra_fields.flex_fields["individual_id"] == "B-1"
+
+
+@pytest.mark.django_db
+def test_sync_collector_links_skips_when_collector_id_already_equals_pk(
+    beneficiary_with_resolved_collector, collector
+) -> None:
+    qs = Individual.objects.filter(pk__in=[beneficiary_with_resolved_collector.pk, collector.pk])
 
     synced = sync_collector_links(qs)
 
     assert synced == 0
-    update_qs.assert_not_called()
-
-
-def test_sync_collector_links_raises_on_non_queryset_inputs() -> None:
-    with pytest.raises(AttributeError):
-        sync_collector_links([Mock()])
+    beneficiary_with_resolved_collector.refresh_from_db()
+    assert beneficiary_with_resolved_collector.flex_fields["collector_id"] == str(collector.pk)
 
 
 @pytest.mark.parametrize(

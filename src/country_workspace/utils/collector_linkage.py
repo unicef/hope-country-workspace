@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Any
 
 from django.db.models import F, QuerySet, Value
+from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform
 
 from country_workspace.models import Individual
@@ -66,7 +67,7 @@ def sync_collector_links(qs: QuerySet) -> int:
     for collector_pk, pks in updates_by_value.items():
         patch = Value({COLLECTOR_ID_FIELD: collector_pk}, output_field=JSONField())
         Individual.objects.filter(pk__in=pks).update(
-            flex_fields=F("flex_fields").bitor(patch),
+            flex_fields=CombinedExpression(F("flex_fields"), "||", patch),
         )
         total += len(pks)
 
