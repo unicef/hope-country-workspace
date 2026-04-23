@@ -1,43 +1,57 @@
 from unittest.mock import Mock
 
 import pytest
+from django.db.models import QuerySet
 
 from country_workspace.utils.collector_linkage import _normalize_reference, sync_collector_links
 
 
-def _individual(pk: int, flex_fields: dict) -> Mock:
-    individual = Mock()
-    individual.pk = pk
-    individual.flex_fields = flex_fields
-    return individual
+def _mock_queryset(rows):
+    """Build a mock QuerySet that mimics annotate().values_list().iterator()."""
+    qs = Mock(spec=QuerySet)
+    annotated = Mock()
+    values_list = Mock()
+    values_list.iterator.return_value = iter(rows)
+    annotated.values_list.return_value = values_list
+    qs.annotate.return_value = annotated
+    return qs
 
 
 def test_sync_collector_links_maps_collector_reference_to_pk(mocker) -> None:
-    bulk_update = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.bulk_update")
-    beneficiary = _individual(10, {"individual_id": "B-1", "collector_id": "C-1"})
-    collector = _individual(20, {"individual_id": "C-1"})
+    update_qs = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.filter")
+    update_qs.return_value.update.return_value = 1
 
-    synced = sync_collector_links([beneficiary, collector])
+    qs = _mock_queryset(
+        [
+            (10, "B-1", None, "C-1"),
+            (20, "C-1", None, None),
+        ]
+    )
+
+    synced = sync_collector_links(qs)
 
     assert synced == 1
-    assert beneficiary.flex_fields["collector_id"] == 20
-    bulk_update.assert_called_once()
+    update_qs.assert_called_once_with(pk__in=[10])
 
 
 def test_sync_collector_links_skips_unknown_collector_reference(mocker) -> None:
-    bulk_update = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.bulk_update")
-    beneficiary = _individual(10, {"index_id": 100, "collector_id": "missing-ref"})
+    update_qs = mocker.patch("country_workspace.utils.collector_linkage.Individual.objects.filter")
 
-    synced = sync_collector_links([beneficiary])
+    qs = _mock_queryset(
+        [
+            (10, None, "100", "missing-ref"),
+        ]
+    )
+
+    synced = sync_collector_links(qs)
 
     assert synced == 0
-    assert beneficiary.flex_fields["collector_id"] == "missing-ref"
-    bulk_update.assert_not_called()
+    update_qs.assert_not_called()
 
 
-def test_sync_collector_links_raises_on_non_iterable_inputs() -> None:
-    with pytest.raises(TypeError):
-        sync_collector_links(Mock())
+def test_sync_collector_links_raises_on_non_queryset_inputs() -> None:
+    with pytest.raises(AttributeError):
+        sync_collector_links([Mock()])
 
 
 @pytest.mark.parametrize(
