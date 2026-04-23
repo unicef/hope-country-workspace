@@ -24,8 +24,9 @@ class DeduplicationSetState(StrEnum):
 CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.ENCODING_FAILED,
     DeduplicationSetState.DEDUPLICATION_FAILED,
-    DeduplicationSetState.REJECTED,
+    DeduplicationSetState.DEDUPLICATED,
 )
+
 
 PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.READY,

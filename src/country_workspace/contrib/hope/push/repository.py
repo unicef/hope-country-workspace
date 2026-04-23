@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from uuid import UUID
+from typing import Any
 
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
 
@@ -169,6 +170,15 @@ def set_rdp_push_status(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -
     rdp.status = status
     rdp.hope_rdi_id = hope_rdi_id
     rdp.save(update_fields=["status", "hope_rdi_id"])
+
+
+def set_rdp_deduplication_snapshot(*, rdp: Rdp, key: str, snapshot: dict[str, Any]) -> None:
+    """Persist a deduplication snapshot for an already-locked RDP."""
+    rdp.deduplication_snapshots = {
+        **(rdp.deduplication_snapshots or {}),
+        key: snapshot,
+    }
+    rdp.save(update_fields=["deduplication_snapshots"])
 
 
 def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:

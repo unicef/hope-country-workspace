@@ -5,6 +5,7 @@ from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import ButtonWidget, LinkButton
 from django.contrib import messages
 from django.contrib.admin import register
+from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
@@ -23,6 +24,7 @@ from country_workspace.contrib.hope.push import (
     reject_deduplication_set_existing_rdp_core,
 )
 from country_workspace.contrib.hope.push.policy import DedupEngineState, get_rdp_policy
+from country_workspace.contrib.hope.push.orchestration import claim_rdp_deduplication
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import rdi_name_default
@@ -70,7 +72,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             "biometric_deduplication_enabled",
         ]
         if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(("dedup_engine_state", "deduplication_set_id"))
+            fields.extend(("dedup_engine_state", "deduplication_set_id", "deduplication_snapshots"))
         fields.append("related_jobs")
         return fields
 
@@ -136,7 +138,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
         visible=lambda btn: _is_visible(btn, "is_deduplicate_visible"),
-        enabled=lambda btn: _is_allowed(btn, "deduplicate_check"),
+        enabled=lambda btn: bool(
+            (obj := btn.original) and not obj.is_deduplication_started and _is_allowed(btn, "deduplicate_check")
+        ),
         html_attrs={"title": "Run Deduplication process on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -144,16 +148,22 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        job = AsyncJob.objects.create(
-            description="Run Deduplication process on DedupEngine",
-            type=AsyncJob.JobType.TASK,
-            owner=request.user,
-            action=fqn(dedup_existing_rdp_core),
-            program=obj.program,
-            rdp=obj,
-            config={"rdp_id": obj.pk},
-        )
-        job.queue()
+        with transaction.atomic():
+            check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
+            if not check.allowed:
+                messages.error(request, check.reason or "Action is not allowed.")
+                return redirect(self._change_url(obj))
+
+            job = AsyncJob.objects.create(
+                description="Run Deduplication process on DedupEngine",
+                type=AsyncJob.JobType.TASK,
+                owner=request.user,
+                action=fqn(dedup_existing_rdp_core),
+                program=locked.program,
+                rdp=locked,
+                config={"rdp_id": locked.pk},
+            )
+            job.queue()
 
         messages.success(request, "Dedup task scheduled")
         return redirect(self._change_url(obj))

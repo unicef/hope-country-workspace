@@ -25,6 +25,7 @@ from .repository import (
     rdp_selection,
     selection_owner_for_rdp,
     set_rdp_push_status,
+    set_rdp_deduplication_snapshot,
     workflow_config_for_rdp,
 )
 
@@ -34,6 +35,33 @@ def require_policy_check(check: Callable[[], ActionCheck]) -> None:
         check().require()
     except (RemoteError, RemoteUnavailableError) as e:
         raise HopePushError({"errors": [str(e)]}) from e
+
+
+def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
+    """Validate and mark RDP deduplication as requested inside an active transaction."""
+    rdp = lock_rdp_for_update(pk=rdp_id)
+    if rdp.is_deduplication_started:
+        return ActionCheck(False, "RDP: deduplication has already been started for this RDP."), None
+    check = get_rdp_policy(rdp).deduplicate_check()
+    if not check.allowed:
+        return check, None
+    rdp.is_deduplication_started = True
+    rdp.save(update_fields=["is_deduplication_started"])
+    return ActionCheck(True), rdp
+
+
+def deduplication_snapshot(rdp: Rdp) -> dict[str, Any]:
+    """Return the current deduplication snapshot for the given RDP."""
+    if (status := get_rdp_policy(rdp).deduplication_status(rdp)) is None:
+        return {}
+    return {
+        "deduplication_set_status": (
+            status.deduplication_set_status.value
+            if hasattr(status.deduplication_set_status, "value")
+            else status.deduplication_set_status
+        ),
+        "findings_count": status.findings_count,
+    }
 
 
 def mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
@@ -107,7 +135,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
-    """Create a child RDP that reuses the owner selection and DE deduplication set."""
+    """Create a child RDP that reuses the owner selection and starts a new deduplication lifecycle."""
     require_policy_check(get_rdp_policy(source).clone_check)
 
     owner = selection_owner_for_rdp(rdp=source)
@@ -131,6 +159,12 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
             if has_other_pending_rdp(owner=owner, exclude_ids=exclude_ids):
                 raise HopePushError({"errors": ["RDP: can not clone while another RDP is pending"]})
 
+            set_rdp_deduplication_snapshot(
+                rdp=source,
+                key="before_clone",
+                snapshot=deduplication_snapshot(source),
+            )
+
             if source.status == Rdp.PushStatus.PENDING:
                 source.status = Rdp.PushStatus.CANCELLED
                 source.save(update_fields=["status"])
@@ -142,7 +176,7 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 name=batch_name,
                 parent=owner,
                 status=Rdp.PushStatus.PENDING,
-                deduplication_set_id=owner.deduplication_set_id,
+                deduplication_set_id=None,
                 hope_rdi_id="",
             )
     except IntegrityError as e:
@@ -167,6 +201,14 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     program_id = rdp.program.unicef_id
     deduplication_set_id = str(rdp.deduplication_set_id)
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp.pk)
+        set_rdp_deduplication_snapshot(
+            rdp=locked,
+            key="before_reject",
+            snapshot=deduplication_snapshot(locked),
+        )
 
     try:
         with make_dedup_client(program_id, deduplication_set_id=deduplication_set_id) as client:
@@ -194,6 +236,14 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
     rdp = rdp_for_push(pk=job.config["rdp_id"])
     require_policy_check(get_rdp_policy(rdp).push_check)
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp.pk)
+        set_rdp_deduplication_snapshot(
+            rdp=locked,
+            key="before_push",
+            snapshot=deduplication_snapshot(locked),
+        )
 
     imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
     config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)

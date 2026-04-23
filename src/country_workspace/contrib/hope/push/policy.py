@@ -124,16 +124,14 @@ class RdpActionPolicy:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
 
         if not self.has_deduplication_set:
-            if not self._can_create_deduplication_set:
-                return ActionCheck(False, "DedupEngine: can not create deduplication set for this program.")
-            return ActionCheck(True)
+            if self.rdp.parent_id or self._can_create_deduplication_set:
+                return ActionCheck(True)
+            return ActionCheck(False, "DedupEngine: can not create deduplication set for this program.")
 
-        if self.deduplication_set_state not in PROCESSABLE_DEDUPLICATION_SET_STATES:
-            return ActionCheck(
-                False,
-                f"DedupEngine: can not run dedup for deduplication set in state={self.deduplication_set_state!r}.",
-            )
-        return ActionCheck(True)
+        state = self.deduplication_set_state
+        if state in PROCESSABLE_DEDUPLICATION_SET_STATES:
+            return ActionCheck(True)
+        return ActionCheck(False, f"DedupEngine: can not run dedup for deduplication set in state={state!r}.")
 
     def reject_ds_check(self) -> ActionCheck:
         if not self.is_pending:
@@ -174,6 +172,11 @@ class RdpActionPolicy:
             return ActionCheck(False, f"RDP: can not push in status={self.rdp.status}")
         if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set:
             return ActionCheck(True)
+        if self.deduplication_set_state == DeduplicationSetState.REJECTED:
+            return ActionCheck(
+                False,
+                f"DedupEngine: can not push with deduplication set in state={self.deduplication_set_state!r}.",
+            )
         if self._can_create_deduplication_set or self.deduplication_set_state == DeduplicationSetState.DEDUPLICATED:
             return ActionCheck(True)
         return ActionCheck(

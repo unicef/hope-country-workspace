@@ -6,7 +6,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db.models import QuerySet, Field
+from django.db.models import QuerySet, Field, Q
 from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -216,10 +216,19 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @staticmethod
     def _can_update_dedup_settings(program: CountryProgram) -> bool:
-        return not Rdp.objects.filter(
-            program=program,
-            status=Rdp.PushStatus.SUCCESS,
-        ).exists()
+        return (
+            not Rdp.objects.filter(
+                program=program,
+            )
+            .filter(
+                Q(status=Rdp.PushStatus.SUCCESS)
+                | Q(
+                    status=Rdp.PushStatus.PENDING,
+                    is_deduplication_started=True,
+                )
+            )
+            .exists()
+        )
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_dedup_client(program_id=program.unicef_id) as client:
@@ -595,7 +604,10 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         if not can_update:
             self.message_user(
                 request,
-                _("Deduplication settings cannot be updated because the program already has a successful RDP."),
+                _(
+                    "Deduplication settings cannot be updated because the program has a successful RDP "
+                    "or a pending RDP with deduplication already requested."
+                ),
                 messages.ERROR,
             )
             return HttpResponseRedirect(change_url)

@@ -32,6 +32,7 @@ class RdpAdmin(BaseModelAdmin):
         "status",
         "hope_rdi_id",
         "deduplication_set_id",
+        "deduplication_snapshots",
         "related_job",
     )
     readonly_fields = ("parent", "country_office", "program", "related_job", "push_date", "hope_rdi_id")
