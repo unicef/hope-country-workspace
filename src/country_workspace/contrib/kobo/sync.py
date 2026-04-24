@@ -151,7 +151,7 @@ def create_individuals(  # noqa: PLR0913
     individuals = []
     individual_mapping_id = config.get("individual_mapping_id")
     individual_transformer_id = config.get("individual_transformer_id")
-    for raw_individual in submission.get(config["individual_records_field"], []):
+    for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
         individual_fields = build_individual_processor(
@@ -165,7 +165,7 @@ def create_individuals(  # noqa: PLR0913
                 batch=batch,
                 household=household,
                 name=individual_fields.get(fullname, "") if fullname else "",
-                originating_id=originating_id,
+                originating_id=f"{originating_id}#{idx:04d}",
                 flex_fields=individual_fields,
                 raw_data=raw_individual,
             ),
