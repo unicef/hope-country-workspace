@@ -4,7 +4,7 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
-from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.contrib.dedup_engine import DedupResponseStatus, DeduplicationSetState, make_dedup_client
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
@@ -135,7 +135,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
-    """Create a child RDP that reuses the owner selection and starts a new deduplication lifecycle."""
+    """Create a child RDP from the current RDP deduplication state."""
     require_policy_check(get_rdp_policy(source).clone_check)
 
     owner = selection_owner_for_rdp(rdp=source)
@@ -165,6 +165,12 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 snapshot=deduplication_snapshot(source),
             )
 
+            status = get_rdp_policy(source).deduplication_status(source)
+            if status is None or status.response_status != DedupResponseStatus.OK:
+                raise HopePushError({"errors": ["DedupEngine: can not retrieve deduplication set status."]})
+
+            reuse_dedup_set = status.deduplication_set_status == DeduplicationSetState.DEDUPLICATED
+
             if source.status == Rdp.PushStatus.PENDING:
                 source.status = Rdp.PushStatus.CANCELLED
                 source.save(update_fields=["status"])
@@ -176,7 +182,8 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 name=batch_name,
                 parent=owner,
                 status=Rdp.PushStatus.PENDING,
-                deduplication_set_id=None,
+                deduplication_set_id=source.deduplication_set_id if reuse_dedup_set else None,
+                is_deduplication_started=reuse_dedup_set,
                 hope_rdi_id="",
             )
     except IntegrityError as e:

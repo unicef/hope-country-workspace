@@ -25,14 +25,20 @@ CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.ENCODING_FAILED,
     DeduplicationSetState.DEDUPLICATION_FAILED,
     DeduplicationSetState.DEDUPLICATED,
+    DeduplicationSetState.REJECTED,
+    DeduplicationSetState.READY,
 )
 
-
-PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
-    DeduplicationSetState.READY,
+PROCESSABLE_EXISTING_DEDUPLICATION_SET_STATES = (
     DeduplicationSetState.ENCODED,
     DeduplicationSetState.ENCODING_FAILED,
     DeduplicationSetState.DEDUPLICATION_FAILED,
+    DeduplicationSetState.READY,
+)
+
+PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    # DeduplicationSetState.READY,
+    *PROCESSABLE_EXISTING_DEDUPLICATION_SET_STATES,
 )
 
 
