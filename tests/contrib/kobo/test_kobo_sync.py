@@ -158,7 +158,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         raw_data=individual_data,
         flex_fields=processor_mock.return_value,
-        originating_id=originating_id,
+        originating_id=f"{originating_id}#0001",
         household=household_mock,
         name=processor_result.get.return_value,
     )
