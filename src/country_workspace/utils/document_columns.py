@@ -36,7 +36,7 @@ def _resolve_document_type(raw_value: Any) -> str:
 def _present(value: Any) -> bool:
     if value is None:
         return False
-    return not isinstance(value, str) and not value.strip()
+    return not (isinstance(value, str) and not value.strip())
 
 
 def expand_document_columns(row: dict[str, Any]) -> dict[str, Any]:
