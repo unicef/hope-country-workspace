@@ -16,6 +16,7 @@ class Config(AppConfig):
         from hope_flex_fields.registry import field_registry
 
         from .remotes.country import CountryAttributeHandler
+        from country_workspace.utils.flex_fields import ObservedDisabilityChoice
 
         attributes_registry.register(CountryAttributeHandler)
         field_registry.register(CountryChoice)
@@ -27,6 +28,7 @@ class Config(AppConfig):
         field_registry.register(PhoneNumberField)
         field_registry.register(BeneficiaryReferenceModelChoiceField)
         field_registry.register(ChoiceFieldWithEmptyDisplay)
+        field_registry.register(ObservedDisabilityChoice)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry
