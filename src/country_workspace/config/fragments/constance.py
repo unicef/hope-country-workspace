@@ -74,6 +74,11 @@ CONSTANCE_CONFIG = {
         "Number of days to keep Household and Individual data after a successful RDP push. 0 means disabled.",
         int,
     ),
+    "RDP_CLEANUP_BATCH_SIZE": (
+        5000,
+        "Number of records to delete per batch in RDP cleanup task",
+        int,
+    ),
     "KOBO_FIELDS_TO_IGNORE": (
         "audit, collect_individual_data, deviceid, start, end, hh_geopoint, instanceid, number_alternate, "
         "number_primary, number_repeat, org_name_enumerator, rootuuid, uuid",
@@ -152,6 +157,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "CACHE_BY_VERSION",
         "CHUNK_SIZE_FOR_VALIDATION_TASK",
         "RDP_CLEANUP_DAYS",
+        "RDP_CLEANUP_BATCH_SIZE",
         "NEW_USER_IS_STAFF",
         "NEW_USER_DEFAULT_GROUP",
         "CONCURRENCY_GUARD",
