@@ -42,12 +42,28 @@ def cleanup_merged_rdp_data() -> None:
         Individual.objects.filter(removed=True, rdp__in=old_rdps).exclude(rdp__in=other_rdps).distinct()
     )
 
-    with suppress_cache_updates():
-        _, counts_h = households_to_delete.delete()
-        _, counts_i = individuals_to_delete.delete()
+    batch_size = constance_config.RDP_CLEANUP_BATCH_SIZE
+    deleted_h = 0
+    deleted_i = 0
 
-    deleted_h = counts_h.get("country_workspace.Household", 0)
-    deleted_i = counts_h.get("country_workspace.Individual", 0) + counts_i.get("country_workspace.Individual", 0)
+    with suppress_cache_updates():
+        # Process Households in batches. Deleting households also deletes their individuals via CASCADE.
+        while True:
+            batch_h_pks = list(households_to_delete.values_list("pk", flat=True)[:batch_size])
+            if not batch_h_pks:
+                break
+            _, counts = Household.objects.filter(pk__in=batch_h_pks).delete()
+            deleted_h += counts.get("country_workspace.Household", 0)
+            deleted_i += counts.get("country_workspace.Individual", 0)
+
+        # Process remaining Individuals in batches
+        # those not linked to households or whose households were already deleted.
+        while True:
+            batch_i_pks = list(individuals_to_delete.values_list("pk", flat=True)[:batch_size])
+            if not batch_i_pks:
+                break
+            _, counts = Individual.objects.filter(pk__in=batch_i_pks).delete()
+            deleted_i += counts.get("country_workspace.Individual", 0)
 
     logger.info(
         "Deleted %s households and %s individuals from merged RDPs older than %s days",
