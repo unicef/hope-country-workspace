@@ -7,7 +7,13 @@ from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
-from country_workspace.tasks import removed_expired_jobs, clean_program_data, sync_job_task
+from country_workspace.tasks import (
+    SYNC_HOPE_DATA_PERIODIC_TASK_NAME,
+    clean_program_data,
+    removed_expired_jobs,
+    sync_hope_data,
+    sync_job_task,
+)
 from tests.extras.testutils.factories import (
     ProgramFactory,
     BatchFactory,
@@ -271,3 +277,62 @@ def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
             "exc_message": reason,
         },
     )
+
+
+@pytest.mark.django_db
+def test_sync_hope_data_invokes_both_sync_runners(mocker):
+    program_runner = mocker.patch("country_workspace.tasks.run_program_sync")
+    geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
+
+    result = sync_hope_data.run()
+
+    program_runner.assert_called_once_with()
+    geo_runner.assert_called_once_with()
+    assert result == {"programs": True, "geo": True}
+
+
+@pytest.mark.django_db
+def test_sync_hope_data_isolates_failures(mocker):
+    mocker.patch("country_workspace.tasks.run_program_sync", side_effect=RuntimeError("boom"))
+    geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
+    capture = mocker.patch("country_workspace.tasks.sentry_sdk.capture_exception")
+
+    result = sync_hope_data.run()
+
+    geo_runner.assert_called_once_with()
+    capture.assert_called_once()
+    assert result == {"programs": False, "geo": True}
+
+
+@pytest.mark.django_db
+def test_register_hope_sync_periodic_task_script_is_idempotent():
+    import importlib.util
+    from pathlib import Path
+
+    from django.core.management import call_command
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    call_command("upgradescripts", ["apply"])
+    call_command("upgradescripts", ["apply"])
+
+    task = PeriodicTask.objects.get(name=SYNC_HOPE_DATA_PERIODIC_TASK_NAME)
+    assert task.task == "country_workspace.tasks.sync_hope_data"
+    assert task.queue == "queue_hcw"
+    assert task.enabled is True
+    assert task.interval is not None
+    assert task.interval.every == 1
+    assert task.interval.period == IntervalSchedule.HOURS
+
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "country_workspace"
+        / "versioning"
+        / "scripts"
+        / "0033_register_hope_sync_periodic_task.py"
+    )
+    spec = importlib.util.spec_from_file_location("_hcw_periodic_sync_script", script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.backward()
+    assert not PeriodicTask.objects.filter(name=SYNC_HOPE_DATA_PERIODIC_TASK_NAME).exists()

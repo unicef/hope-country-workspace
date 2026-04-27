@@ -13,10 +13,14 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
+from country_workspace.management.commands.sync import run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
+
+
+SYNC_HOPE_DATA_PERIODIC_TASK_NAME = "sync-hope-data-hourly"
 
 
 @app.task()
@@ -141,6 +145,29 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 
 def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
     model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
+
+
+@app.task(bind=True)
+def sync_hope_data(task: Any) -> dict[str, bool]:
+    """Periodic job that pulls reference data from HOPE.
+
+    Runs the same synchronisation routines exposed by the ``sync`` management
+    command (programs/offices/beneficiary groups and geo data). Errors of one
+    sync block do not prevent the other from running; failures are logged and
+    reported back to Sentry instead of being re-raised, so that a transient
+    HOPE outage does not flood the worker with retries.
+    """
+    results: dict[str, bool] = {}
+    for label, runner in (("programs", run_program_sync), ("geo", run_geo_sync)):
+        try:
+            runner()
+        except Exception as exc:
+            logger.exception("Periodic HOPE %s sync failed", label)
+            sentry_sdk.capture_exception(exc)
+            results[label] = False
+        else:
+            results[label] = True
+    return results
 
 
 def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
