@@ -13,7 +13,8 @@ from country_workspace.contrib.dedup_engine import (
 )
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp, Household, Individual
+from country_workspace.models import AsyncJob, Household, Individual, Rdp
+from country_workspace.workspaces.models import CountryIndividual
 
 from .config import CreateRdpConfig, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
@@ -61,20 +62,30 @@ def _deduplication_snapshot(status: DedupClientStatus | None) -> dict[str, Any]:
 
 
 def archive_removed_unique_values(rdp: Rdp, is_master_detail: bool) -> None:
-    """Persist unique-field values for records that are being removed after a successful push."""
+    """Persist unique-field values for records about to be marked as removed after a successful push."""
     program = rdp.program
+    owner = selection_owner_for_rdp(rdp=rdp)
 
-    if hh_field := program.get_unique_field_for(Household):
-        hh_values = rdp.households.filter(removed=False).values_list(f"flex_fields__{hh_field}", flat=True)
-        program.add_removed_unique_values_for(Household, hh_values.iterator())
+    if is_master_detail:
+        hh_field = program.get_unique_field_for(Household)
+        ind_field = program.get_unique_field_for(Individual)
+        if not (hh_field or ind_field):
+            return
+        hh_pks = list(owner.households.filter(removed=False).values_list("pk", flat=True))
+        if not hh_pks:
+            return
+        if hh_field:
+            hh_values = owner.households.filter(pk__in=hh_pks).values_list(f"flex_fields__{hh_field}", flat=True)
+            program.add_removed_unique_values_for(Household, hh_values.iterator())
+        if ind_field:
+            ind_values = CountryIndividual.objects.filter(household_id__in=hh_pks, removed=False).values_list(
+                f"flex_fields__{ind_field}", flat=True
+            )
+            program.add_removed_unique_values_for(Individual, ind_values.iterator())
+        return
 
     if ind_field := program.get_unique_field_for(Individual):
-        ind_qs = (
-            CountryIndividual.objects.filter(household__rdp=rdp, removed=False)
-            if is_master_detail
-            else rdp.individuals.filter(removed=False)
-        )
-        ind_values = ind_qs.values_list(f"flex_fields__{ind_field}", flat=True)
+        ind_values = owner.individuals.filter(removed=False).values_list(f"flex_fields__{ind_field}", flat=True)
         program.add_removed_unique_values_for(Individual, ind_values.iterator())
 
 

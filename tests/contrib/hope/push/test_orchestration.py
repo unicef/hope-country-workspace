@@ -941,6 +941,7 @@ def test_push_existing_rdp_core_success(
     processor_cls = mocker.patch(f"{MOD}.PushProcessor", return_value=processor)
     steps_spy = mocker.patch(f"{MOD}._steps", return_value=[step1, step2])
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    archive = mocker.patch(f"{MOD}.archive_removed_unique_values")
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     approve = mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
@@ -954,6 +955,7 @@ def test_push_existing_rdp_core_success(
     steps_spy.assert_called_once_with(processor, config)
     step1.assert_called_once_with()
     step2.assert_called_once_with()
+    archive.assert_called_once_with(locked, True)
     mark_removed.assert_called_once_with(locked, True)
     set_status.assert_called_once_with(
         rdp=locked,
@@ -988,6 +990,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     mocker.patch(f"{MOD}._steps", return_value=[fail_step, next_step])
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+    archive = mocker.patch(f"{MOD}.archive_removed_unique_values")
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
 
     with pytest.raises(HopePushError) as exc:
@@ -995,6 +998,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
     save_snapshot.assert_called_once_with(rdp=rdp, key="before_push")
+    archive.assert_not_called()
     mark_removed.assert_not_called()
     set_status.assert_called_once_with(
         rdp=locked,
@@ -1004,8 +1008,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     next_step.assert_not_called()
 
 
-@pytest.mark.parametrize("master_detail", [True, False], ids=["md", "people_only"])
-def test_archive_removed_unique_values(mocker: MockerFixture, master_detail: bool) -> None:
+def test_archive_removed_unique_values_master_detail(mocker: MockerFixture) -> None:
     program = mocker.MagicMock()
     program.get_unique_field_for.side_effect = lambda model: {
         "Household": "household_id",
@@ -1014,23 +1017,85 @@ def test_archive_removed_unique_values(mocker: MockerFixture, master_detail: boo
 
     hh_values = mocker.MagicMock()
     hh_values.iterator.return_value = iter(["HH-1"])
-    households_qs = mocker.MagicMock()
-    households_qs.values_list.return_value = hh_values
+    hh_values_qs = mocker.MagicMock()
+    hh_values_qs.values_list.return_value = hh_values
 
-    ind_values = mocker.MagicMock()
-    ind_values.iterator.return_value = iter(["DOC-1", "DOC-2"])
-    individuals_qs = mocker.MagicMock()
-    individuals_qs.values_list.return_value = ind_values
+    owner = mocker.MagicMock()
+    owner.households.filter.side_effect = [
+        mocker.MagicMock(values_list=mocker.Mock(return_value=[10, 11])),
+        hh_values_qs,
+    ]
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    ci_values = mocker.MagicMock()
+    ci_values.iterator.return_value = iter(["DOC-1", "DOC-2"])
+    ci_qs = mocker.MagicMock()
+    ci_qs.values_list.return_value = ci_values
+    ci_filter = mocker.patch(f"{MOD}.CountryIndividual.objects.filter", return_value=ci_qs)
 
     rdp = mocker.MagicMock(program=program)
-    rdp.households.filter.return_value = households_qs
-    rdp.individuals.filter.return_value = individuals_qs
 
-    if master_detail:
-        ci_qs = mocker.MagicMock()
-        ci_qs.values_list.return_value = ind_values
-        mocker.patch(f"{MOD}.CountryIndividual.objects.filter", return_value=ci_qs)
+    archive_removed_unique_values(rdp, True)
 
-    archive_removed_unique_values(rdp, master_detail)
-
+    ci_filter.assert_called_once_with(household_id__in=[10, 11], removed=False)
     assert program.add_removed_unique_values_for.call_count == 2
+
+
+def test_archive_removed_unique_values_master_detail_no_records(mocker: MockerFixture) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.return_value = "document_number"
+
+    owner = mocker.MagicMock()
+    owner.households.filter.return_value = mocker.MagicMock(values_list=mocker.Mock(return_value=[]))
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    archive_removed_unique_values(mocker.MagicMock(program=program), True)
+
+    program.add_removed_unique_values_for.assert_not_called()
+
+
+def test_archive_removed_unique_values_master_detail_no_config(mocker: MockerFixture) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.return_value = None
+
+    owner = mocker.MagicMock()
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    archive_removed_unique_values(mocker.MagicMock(program=program), True)
+
+    owner.households.filter.assert_not_called()
+    program.add_removed_unique_values_for.assert_not_called()
+
+
+def test_archive_removed_unique_values_people_only(mocker: MockerFixture) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.side_effect = lambda model: (
+        "document_number" if model.__name__ == "Individual" else None
+    )
+
+    ind_values = mocker.MagicMock()
+    ind_values.iterator.return_value = iter(["DOC-1"])
+    ind_qs = mocker.MagicMock()
+    ind_qs.values_list.return_value = ind_values
+
+    owner = mocker.MagicMock()
+    owner.individuals.filter.return_value = ind_qs
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    archive_removed_unique_values(mocker.MagicMock(program=program), False)
+
+    owner.individuals.filter.assert_called_once_with(removed=False)
+    program.add_removed_unique_values_for.assert_called_once()
+
+
+def test_archive_removed_unique_values_people_only_no_config(mocker: MockerFixture) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.return_value = None
+
+    owner = mocker.MagicMock()
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    archive_removed_unique_values(mocker.MagicMock(program=program), False)
+
+    owner.individuals.filter.assert_not_called()
+    program.add_removed_unique_values_for.assert_not_called()
