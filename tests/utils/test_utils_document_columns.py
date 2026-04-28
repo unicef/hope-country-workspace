@@ -47,6 +47,23 @@ def test_no_document_columns_returns_unchanged() -> None:
     assert result == row
 
 
+def test_non_string_column_keys_are_ignored() -> None:
+    row = {
+        1: "unexpected-header-index",
+        "given_name": "Ahmad",
+        "document_1_type": "national_id",
+        "document_1_number": "123456",
+        "document_1_country": "AF",
+    }
+    result = expand_document_columns(row)
+    assert result == {
+        1: "unexpected-header-index",
+        "given_name": "Ahmad",
+        "national_id_document_number": "123456",
+        "national_id_country": "AF",
+    }
+
+
 def test_single_document() -> None:
     row = {
         "given_name": "Ahmad",
@@ -158,6 +175,25 @@ def test_none_type_skips_slot() -> None:
         "national_id_document_number": "123",
         "national_id_country": "AF",
     }
+
+
+def test_missing_type_with_other_values_raises() -> None:
+    row = {
+        "document_1_number": "123",
+        "document_1_country": "AF",
+    }
+    with pytest.raises(DocumentColumnError, match="document_1_type is required"):
+        expand_document_columns(row)
+
+
+def test_unknown_document_suffix_raises() -> None:
+    row = {
+        "document_1_tpe": "national_id",
+        "document_1_number": "123",
+        "document_1_country": "AF",
+    }
+    with pytest.raises(DocumentColumnError, match="Unknown document column"):
+        expand_document_columns(row)
 
 
 def test_missing_number_raises() -> None:
