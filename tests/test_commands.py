@@ -11,7 +11,12 @@ from django.core.management import call_command
 from pytest_mock import MockerFixture
 from responses import RequestsMock
 
-from country_workspace.management.commands.sync import Command as SyncCommand, run_program_sync, run_geo_sync
+from country_workspace.management.commands.sync import (
+    Command as SyncCommand,
+    run_flex_fields_sync,
+    run_geo_sync,
+    run_program_sync,
+)
 import country_workspace.management.commands.gen_rdi as gen_rdi_cmd
 from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
 
@@ -143,55 +148,81 @@ def test_upgrade_sync(mocker: MockerFixture, environment: dict[str, str]) -> Non
     handle_mock.assert_called_once()
 
 
-def test_run_program_sync(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize("delta_sync", [False, True])
+def test_run_program_sync(mocker: MockerFixture, delta_sync: bool) -> None:
     sync_offices_mock = mocker.patch("country_workspace.management.commands.sync.sync_offices")
     sync_beneficiary_groups_mock = mocker.patch("country_workspace.management.commands.sync.sync_beneficiary_groups")
     sync_programs_mock = mocker.patch("country_workspace.management.commands.sync.sync_programs")
 
-    run_program_sync()
+    run_program_sync(delta_sync=delta_sync)
 
-    sync_offices_mock.assert_called_once()
-    sync_beneficiary_groups_mock.assert_called_once()
-    sync_programs_mock.assert_called_once()
+    sync_offices_mock.assert_called_once_with(delta_sync=delta_sync)
+    sync_beneficiary_groups_mock.assert_called_once_with(delta_sync=delta_sync)
+    sync_programs_mock.assert_called_once_with(delta_sync=delta_sync)
 
 
-def test_run_geo_sync(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize("delta_sync", [False, True])
+def test_run_geo_sync(mocker: MockerFixture, delta_sync: bool) -> None:
     sync_countries_mock = mocker.patch("country_workspace.management.commands.sync.sync_countries")
     sync_area_types_mock = mocker.patch("country_workspace.management.commands.sync.sync_area_types")
     sync_areas_mock = mocker.patch("country_workspace.management.commands.sync.sync_areas")
 
-    run_geo_sync()
+    run_geo_sync(delta_sync=delta_sync)
 
-    sync_countries_mock.assert_called_once()
-    sync_area_types_mock.assert_called_once()
-    sync_areas_mock.assert_called_once()
+    sync_countries_mock.assert_called_once_with(delta_sync=delta_sync)
+    sync_area_types_mock.assert_called_once_with(delta_sync=delta_sync)
+    sync_areas_mock.assert_called_once_with(delta_sync=delta_sync)
+
+
+def test_run_flex_fields_sync(mocker: MockerFixture) -> None:
+    refresh = mocker.patch("country_workspace.management.commands.sync.SyncLog.objects.refresh")
+
+    run_flex_fields_sync()
+
+    refresh.assert_called_once_with()
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.xdist_group("remote")
 @pytest.mark.parametrize(
-    ("cli_args", "run_program_sync_expected", "run_geo_sync_expected"),
+    (
+        "cli_args",
+        "run_program_sync_expected",
+        "run_geo_sync_expected",
+        "run_flex_fields_sync_expected",
+        "delta_expected",
+    ),
     [
-        ([], True, True),
-        (["--only-context-programs"], True, False),
-        (["--only-context-geo"], False, True),
+        ([], 1, 1, 1, False),
+        (["--only-context-programs"], 1, 0, 0, False),
+        (["--only-context-geo"], 0, 1, 0, False),
+        (["--only-flex-fields"], 0, 0, 1, False),
+        (["--delta"], 1, 1, 1, True),
     ],
 )
 def test_sync(
     mocker: MockerFixture,
     environment: dict[str, str],
     cli_args: list[str],
-    run_program_sync_expected: bool,
-    run_geo_sync_expected: bool,
+    run_program_sync_expected: int,
+    run_geo_sync_expected: int,
+    run_flex_fields_sync_expected: int,
+    delta_expected: bool,
 ) -> None:
     out = StringIO()
-    run_program_sync = mocker.patch("country_workspace.management.commands.sync.run_program_sync")
+    run_program_sync_mock = mocker.patch("country_workspace.management.commands.sync.run_program_sync")
     run_geo_sync_mock = mocker.patch("country_workspace.management.commands.sync.run_geo_sync")
+    run_flex_fields_sync_mock = mocker.patch("country_workspace.management.commands.sync.run_flex_fields_sync")
 
     call_command("sync", *cli_args, stdout=out)
 
-    assert run_program_sync.call_count == run_program_sync_expected
+    assert run_program_sync_mock.call_count == run_program_sync_expected
     assert run_geo_sync_mock.call_count == run_geo_sync_expected
+    assert run_flex_fields_sync_mock.call_count == run_flex_fields_sync_expected
+    if run_program_sync_expected:
+        run_program_sync_mock.assert_called_with(delta_sync=delta_expected)
+    if run_geo_sync_expected:
+        run_geo_sync_mock.assert_called_with(delta_sync=delta_expected)
 
 
 @pytest.mark.parametrize(

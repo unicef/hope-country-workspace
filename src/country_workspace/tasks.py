@@ -13,7 +13,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.management.commands.sync import run_geo_sync, run_program_sync
+from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
 
@@ -151,14 +151,27 @@ def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
 def sync_hope_data(task: Any) -> dict[str, bool]:
     """Periodic job that pulls reference data from HOPE.
 
-    Runs the same synchronisation routines exposed by the ``sync`` management
-    command (programs/offices/beneficiary groups and geo data). Errors of one
-    sync block do not prevent the other from running; failures are logged and
-    reported back to Sentry instead of being re-raised, so that a transient
-    HOPE outage does not flood the worker with retries.
+    Runs the same routines exposed by the ``sync`` management command:
+
+    * programs / offices / beneficiary groups (delta sync);
+    * countries / area types / areas (delta sync);
+    * HOPE flex field lookups (equivalent of the ``sync_flex_fields`` admin
+      button).
+
+    Programs and geo run in *delta* mode so each hourly tick only fetches
+    records changed since the previous successful sync, keeping load on
+    HOPE small. Errors in one block do not prevent the others from
+    running; failures are logged and reported to Sentry instead of being
+    re-raised, so a transient HOPE outage does not flood the worker with
+    retries.
     """
     results: dict[str, bool] = {}
-    for label, runner in (("programs", run_program_sync), ("geo", run_geo_sync)):
+    runners = (
+        ("programs", lambda: run_program_sync(delta_sync=True)),
+        ("geo", lambda: run_geo_sync(delta_sync=True)),
+        ("flex_fields", run_flex_fields_sync),
+    )
+    for label, runner in runners:
         try:
             runner()
         except Exception as exc:

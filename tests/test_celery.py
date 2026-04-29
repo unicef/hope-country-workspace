@@ -280,28 +280,32 @@ def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
 
 
 @pytest.mark.django_db
-def test_sync_hope_data_invokes_both_sync_runners(mocker):
+def test_sync_hope_data_runs_delta_and_flex_fields(mocker):
     program_runner = mocker.patch("country_workspace.tasks.run_program_sync")
     geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
+    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync")
 
     result = sync_hope_data.run()
 
-    program_runner.assert_called_once_with()
-    geo_runner.assert_called_once_with()
-    assert result == {"programs": True, "geo": True}
+    program_runner.assert_called_once_with(delta_sync=True)
+    geo_runner.assert_called_once_with(delta_sync=True)
+    flex_runner.assert_called_once_with()
+    assert result == {"programs": True, "geo": True, "flex_fields": True}
 
 
 @pytest.mark.django_db
 def test_sync_hope_data_isolates_failures(mocker):
     mocker.patch("country_workspace.tasks.run_program_sync", side_effect=RuntimeError("boom"))
     geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
+    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync")
     capture = mocker.patch("country_workspace.tasks.sentry_sdk.capture_exception")
 
     result = sync_hope_data.run()
 
-    geo_runner.assert_called_once_with()
+    geo_runner.assert_called_once_with(delta_sync=True)
+    flex_runner.assert_called_once_with()
     capture.assert_called_once()
-    assert result == {"programs": False, "geo": True}
+    assert result == {"programs": False, "geo": True, "flex_fields": True}
 
 
 @pytest.mark.django_db
