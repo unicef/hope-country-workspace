@@ -1,6 +1,8 @@
 import pytest
 from django.contrib import messages
-from django.http import HttpResponseRedirect, QueryDict
+from django.contrib.auth.models import User
+from django.http import HttpRequest, HttpResponseRedirect, QueryDict
+from unittest.mock import MagicMock
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError
