@@ -63,6 +63,13 @@ def test_import_aurora_returns_form_when_invalid(
     assert result is form
 
 
+@pytest.fixture
+def mock_program(mocker: MockerFixture):
+    program = mocker.MagicMock()
+    program.pk = 1
+    return program
+
+
 def test_import_kobo_returns_form_when_invalid(
     program_admin,
     mock_request,
