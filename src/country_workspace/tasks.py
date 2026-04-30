@@ -13,7 +13,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
@@ -45,25 +45,35 @@ def cleanup_merged_rdp_data() -> None:
     batch_size = constance_config.RDP_CLEANUP_BATCH_SIZE
     deleted_h = 0
     deleted_i = 0
+    affected_programs: set[int] = set()
 
     with suppress_cache_updates():
-        # Process Households in batches. Deleting households also deletes their individuals via CASCADE.
         while True:
-            batch_h_pks = list(households_to_delete.values_list("pk", flat=True)[:batch_size])
+            batch_h_pks = list(households_to_delete.order_by("pk").values_list("pk", flat=True)[:batch_size])
             if not batch_h_pks:
                 break
+            affected_programs.update(
+                Batch.objects.filter(household__pk__in=batch_h_pks).values_list("program_id", flat=True).distinct()
+            )
+            _clear_heavy_fields(Individual, {"household_id__in": batch_h_pks})
+            _clear_heavy_fields(Household, {"pk__in": batch_h_pks})
             _, counts = Household.objects.filter(pk__in=batch_h_pks).delete()
             deleted_h += counts.get("country_workspace.Household", 0)
             deleted_i += counts.get("country_workspace.Individual", 0)
 
-        # Process remaining Individuals in batches
-        # those not linked to households or whose households were already deleted.
         while True:
-            batch_i_pks = list(individuals_to_delete.values_list("pk", flat=True)[:batch_size])
+            batch_i_pks = list(individuals_to_delete.order_by("pk").values_list("pk", flat=True)[:batch_size])
             if not batch_i_pks:
                 break
+            affected_programs.update(
+                Batch.objects.filter(individual__pk__in=batch_i_pks).values_list("program_id", flat=True).distinct()
+            )
+            _clear_heavy_fields(Individual, {"pk__in": batch_i_pks})
             _, counts = Individual.objects.filter(pk__in=batch_i_pks).delete()
             deleted_i += counts.get("country_workspace.Individual", 0)
+
+    for program in Program.objects.filter(pk__in=affected_programs):
+        cache_manager.incr_cache_version(program=program)
 
     logger.info(
         "Deleted %s households and %s individuals from merged RDPs older than %s days",
