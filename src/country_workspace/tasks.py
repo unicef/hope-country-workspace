@@ -10,7 +10,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Rdp, Rdi
+from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Individual, Household
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,10 @@ def removed_expired_jobs(**kwargs: Any) -> None:
     AsyncJob.objects.filter(**kwargs).delete()
 
 
+def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
+    model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
+
+
 def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
     job.ensure_not_cancelled(refresh=True)
     program = job.program
@@ -79,10 +83,18 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
             for i in range(0, len(batch_ids), batch_size):
                 job.ensure_not_cancelled(refresh=True)
                 chunk = batch_ids[i : i + batch_size]
+
+                _clear_heavy_fields(Individual, {"batch_id__in": chunk})
+                _clear_heavy_fields(Household, {"batch_id__in": chunk})
+
+                _, counts = Individual.objects.filter(batch_id__in=chunk).delete()
+                deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
+
+                _, counts = Household.objects.filter(batch_id__in=chunk).delete()
+                deleted_counts["households"] += counts.get("country_workspace.Household", 0)
+
                 _, counts = Batch.objects.filter(id__in=chunk).delete()
                 deleted_counts["batches"] += counts.get("country_workspace.Batch", 0)
-                deleted_counts["households"] += counts.get("country_workspace.Household", 0)
-                deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
 
             job.ensure_not_cancelled(refresh=True)
             _, counts = Rdp.objects.filter(program_id=program_id).delete()
