@@ -370,8 +370,8 @@ def import_asset(  # noqa: PLR0913
     )
 
 
-def get_id_generator() -> Callable[[], int]:
-    last_id = 0
+def get_id_generator(start: int = 0) -> Callable[[], int]:
+    last_id = start
 
     def id_generator() -> int:
         nonlocal last_id
@@ -424,7 +424,7 @@ def import_data(job: AsyncJob) -> ImportResult:
             batch.status = Batch.BatchStatus.LOADING
             batch.save(update_fields=["status"])
 
-    id_generator = get_id_generator()
+    id_generator = get_id_generator(start=batch.household_set.count())
     client = make_client(job.program.country_office.kobo_country_code)
 
     household_counter = 0
