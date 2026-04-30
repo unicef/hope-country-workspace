@@ -61,6 +61,13 @@ def app(
     return django_app
 
 
+@pytest.fixture
+def households(program):
+    from testutils.factories import CountryHouseholdFactory
+
+    return CountryHouseholdFactory.create_batch(3, batch__program=program, batch__country_office=program.country_office)
+
+
 def test_mass_update_impl(household):
     from country_workspace.models import Household
 
@@ -68,6 +75,16 @@ def test_mass_update_impl(household):
 
     household.refresh_from_db()
     assert household.flex_fields["address"] == "__NEW VALUE__"
+
+
+def test_mass_update_impl_multiple_records(households):
+    from country_workspace.models import Household
+
+    mass_update_impl(Household.objects.all(), {"address": ("djangoformsfieldsfield_set_lambda", "__BULK__")})
+
+    for hh in households:
+        hh.refresh_from_db()
+        assert hh.flex_fields["address"] == "__BULK__"
 
 
 def test_mass_update_impl_empty_queryset():
