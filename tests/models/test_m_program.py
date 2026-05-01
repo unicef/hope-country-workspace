@@ -326,6 +326,31 @@ def test_program_add_removed_unique_values_for_without_unique_field(program: Pro
     assert program.system_fields == {}
 
 
+def test_program_add_removed_unique_values_for_skips_empty_values(program: Program) -> None:
+    program.system_fields = {
+        "unique_fields": {"individual": "national_id"},
+        "removed_unique_values": {"individual": {"national_id": ["A"]}},
+    }
+
+    program.add_removed_unique_values_for(Individual, [None, "", "  "])
+
+    assert program.system_fields["removed_unique_values"]["individual"]["national_id"] == ["A"]
+
+
+def test_program_get_removed_unique_values_for_handles_non_list(program: Program) -> None:
+    program.system_fields = {
+        "unique_fields": {"individual": "national_id"},
+        "removed_unique_values": {"individual": {"national_id": "not-a-list"}},
+    }
+
+    assert program.get_removed_unique_values_for(Individual) == []
+
+
+def test_program_scope_for_unsupported_model_raises(program: Program) -> None:
+    with pytest.raises(TypeError):
+        program._scope_for(Program)
+
+
 def test_apply_mapping_importer_with_mapping_id(program: Program, mocker: MockerFixture) -> None:
     mapping_id = 123
     data: dict[str, Any] = {"name": "Test"}

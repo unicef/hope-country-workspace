@@ -427,3 +427,114 @@ def test_set_unique_field_post(
     else:
         form_class.assert_called_once_with(mock_request.POST, checker="checker")
         mock_program.save_unique_field_for.assert_called_once_with("Model", "national_id")
+
+
+def test_set_unique_field_get_blocked_when_program_has_data(
+    program_admin, mock_request, mock_program, mocker: MockerFixture
+) -> None:
+    mock_request.method = "GET"
+    mock_program.has_any_data.return_value = True
+    mock_program.pk = 99
+    reverse_mock = mocker.patch(
+        "country_workspace.workspaces.admin.program.reverse",
+        return_value="/program/99/change/",
+    )
+
+    response = program_admin._set_unique_field(
+        mock_request,
+        mocker.MagicMock(),
+        {
+            "original": mock_program,
+            "checker": "checker",
+            "unique_scope_model": "Model",
+        },
+    )
+
+    assert isinstance(response, HttpResponseRedirect)
+    assert response.url == "/program/99/change/"
+    reverse_mock.assert_called_once()
+    program_admin.message_user.assert_called_once()
+    _, kwargs = program_admin.message_user.call_args
+    assert kwargs.get("level") == messages.ERROR
+
+
+def test_set_unique_field_post_invalid_form_renders_again(
+    program_admin, mock_request, mock_program, mocker: MockerFixture
+) -> None:
+    mock_request.method = "POST"
+    mock_request.POST = {"field": ""}
+    mock_program.has_any_data.return_value = False
+    mock_program.get_unique_field_for.return_value = None
+
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+    form_class = mocker.MagicMock(return_value=form)
+    render = mocker.patch("country_workspace.workspaces.admin.program.render")
+
+    context = {
+        "original": mock_program,
+        "checker": "checker",
+        "unique_scope_model": "Model",
+    }
+    response = program_admin._set_unique_field(mock_request, form_class, context)
+
+    form_class.assert_called_once_with(mock_request.POST, checker="checker")
+    mock_program.save_unique_field_for.assert_not_called()
+    render.assert_called_once_with(mock_request, "workspace/program/set_unique_field.html", context)
+    assert response is render.return_value
+
+
+def test_select_unique_field_form_builds_choices_from_checker(mocker: MockerFixture) -> None:
+    labelled = mocker.MagicMock()
+    labelled.label = "National ID"
+    unlabelled = mocker.MagicMock()
+    unlabelled.label = ""
+
+    form_class = mocker.MagicMock()
+    form_class.base_fields = {"national_id": labelled, "iban": unlabelled}
+
+    checker = mocker.MagicMock()
+    checker.get_form_class.return_value = form_class
+
+    form = program_admin_mod.SelectUniqueFieldForm(checker=checker)
+
+    assert form.fields["field"].choices == [
+        ("national_id", "National ID (national_id)"),
+        ("iban", "iban (iban)"),
+    ]
+
+
+def test_household_unique_field_view_dispatches(program_admin, mock_request, mocker: MockerFixture) -> None:
+    set_unique = mocker.patch.object(program_admin, "_set_unique_field")
+
+    program_admin.household_unique_field.func(program_admin, mock_request, pk="1")
+
+    set_unique.assert_called_once()
+    _, _, ctx = set_unique.call_args.args
+    assert ctx["unique_scope_model"].__name__ == "Household"
+    assert "checker" in ctx
+
+
+def test_individual_unique_field_view_dispatches(program_admin, mock_request, mocker: MockerFixture) -> None:
+    set_unique = mocker.patch.object(program_admin, "_set_unique_field")
+
+    program_admin.individual_unique_field.func(program_admin, mock_request, pk="1")
+
+    set_unique.assert_called_once()
+    _, _, ctx = set_unique.call_args.args
+    assert ctx["unique_scope_model"].__name__ == "Individual"
+    assert "checker" in ctx
+
+
+def test_household_group_includes_unique_field(program_admin) -> None:
+    button = MagicMock()
+    button.choices = []
+    program_admin.household_group.func(program_admin, button)
+    assert program_admin.household_unique_field in button.choices
+
+
+def test_individual_group_includes_unique_field(program_admin) -> None:
+    button = MagicMock()
+    button.choices = []
+    program_admin.individual_group.func(program_admin, button)
+    assert program_admin.individual_unique_field in button.choices

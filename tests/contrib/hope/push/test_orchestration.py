@@ -1099,3 +1099,26 @@ def test_archive_removed_unique_values_people_only_no_config(mocker: MockerFixtu
 
     owner.individuals.filter.assert_not_called()
     program.add_removed_unique_values_for.assert_not_called()
+
+
+def test_archive_removed_unique_values_master_detail_individual_only(mocker: MockerFixture) -> None:
+    program = mocker.MagicMock()
+    program.get_unique_field_for.side_effect = lambda model: (
+        None if model.__name__ == "Household" else "document_number"
+    )
+
+    owner = mocker.MagicMock()
+    owner.households.filter.return_value = mocker.MagicMock(values_list=mocker.Mock(return_value=[10]))
+    mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
+
+    ci_values = mocker.MagicMock()
+    ci_values.iterator.return_value = iter(["DOC-1"])
+    ci_qs = mocker.MagicMock()
+    ci_qs.values_list.return_value = ci_values
+    mocker.patch(f"{MOD}.CountryIndividual.objects.filter", return_value=ci_qs)
+
+    archive_removed_unique_values(mocker.MagicMock(program=program), True)
+
+    program.add_removed_unique_values_for.assert_called_once()
+    args, _ = program.add_removed_unique_values_for.call_args
+    assert args[0].__name__ == "Individual"

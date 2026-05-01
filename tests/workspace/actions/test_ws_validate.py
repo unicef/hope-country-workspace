@@ -1,14 +1,27 @@
 import datetime
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import freezegun
 import pytest
 from django.urls import reverse
+from pytest_mock import MockerFixture
 from testutils.utils import select_office
 
 from country_workspace.models import Household, Individual
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.validate import validate_queryset
+from country_workspace.workspaces.admin.cleaners import validate as validate_mod
+from country_workspace.workspaces.admin.cleaners.validate import (
+    ARCHIVED_UNIQUE_VALIDATION_ERROR,
+    UNIQUE_VALIDATION_ERROR,
+    UniqueValidationState,
+    _append_household_member_invalid_error,
+    _append_unique_error,
+    _build_unique_state,
+    _normalize_unique_value,
+    _validate_and_count,
+    validate_queryset,
+)
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -200,3 +213,177 @@ def test_validate_queryset_households_marks_invalid_when_member_unique_duplicate
 
     household.refresh_from_db()
     assert "dct" in household.errors
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("   ", None),
+        ("hello", "hello"),
+        ("  spaced  ", "spaced"),
+        (123, "123"),
+    ],
+)
+def test_normalize_unique_value(raw: object, expected: str | None) -> None:
+    assert _normalize_unique_value(raw) == expected
+
+
+def _mock_obj(errors: object = None) -> MagicMock:
+    obj = MagicMock()
+    obj.errors = errors
+    return obj
+
+
+def test_append_unique_error_appends_first_message() -> None:
+    obj = _mock_obj({})
+
+    _append_unique_error(obj, "national_id", UNIQUE_VALIDATION_ERROR)
+
+    assert obj.errors["national_id"] == [UNIQUE_VALIDATION_ERROR]
+    obj.save.assert_called_once_with(update_fields=["errors", "last_checked"])
+
+
+def test_append_unique_error_wraps_non_list_current() -> None:
+    obj = _mock_obj({"national_id": "previous"})
+
+    _append_unique_error(obj, "national_id", UNIQUE_VALIDATION_ERROR)
+
+    assert obj.errors["national_id"] == ["previous", UNIQUE_VALIDATION_ERROR]
+
+
+def test_append_unique_error_skips_when_message_already_present() -> None:
+    obj = _mock_obj({"national_id": [UNIQUE_VALIDATION_ERROR]})
+
+    _append_unique_error(obj, "national_id", UNIQUE_VALIDATION_ERROR)
+
+    assert obj.errors == {"national_id": [UNIQUE_VALIDATION_ERROR]}
+    obj.save.assert_not_called()
+
+
+def test_append_household_member_invalid_error_appends() -> None:
+    obj = _mock_obj({})
+
+    _append_household_member_invalid_error(obj)
+
+    assert obj.errors["dct"] == ["Some members did not validate"]
+    obj.save.assert_called_once_with(update_fields=["errors", "last_checked"])
+
+
+def test_append_household_member_invalid_error_wraps_non_list() -> None:
+    obj = _mock_obj({"dct": "scalar"})
+
+    _append_household_member_invalid_error(obj)
+
+    assert obj.errors["dct"] == ["scalar", "Some members did not validate"]
+
+
+def test_append_household_member_invalid_error_skips_when_marker_present() -> None:
+    obj = _mock_obj({"dct": ["Some members did not validate"]})
+
+    _append_household_member_invalid_error(obj)
+
+    obj.save.assert_not_called()
+
+
+def test_unique_validation_state_skips_empty_values() -> None:
+    state_ = UniqueValidationState(field_name="national_id", archived_values=set())
+    obj = MagicMock(flex_fields={"national_id": "  "})
+
+    assert state_.validate(obj) == set()
+
+
+def test_unique_validation_state_handles_missing_flex_fields() -> None:
+    state_ = UniqueValidationState(field_name="national_id", archived_values=set())
+    obj = MagicMock(flex_fields=None)
+
+    assert state_.validate(obj) == set()
+
+
+def test_unique_validation_state_archived_value(mocker: MockerFixture) -> None:
+    spy = mocker.patch.object(validate_mod, "_append_unique_error")
+    state_ = UniqueValidationState(field_name="national_id", archived_values={"A"})
+    obj = MagicMock(pk=1, flex_fields={"national_id": "A"})
+
+    assert state_.validate(obj) == {1}
+
+    spy.assert_called_once_with(obj, "national_id", ARCHIVED_UNIQUE_VALIDATION_ERROR)
+
+
+def test_unique_validation_state_first_occurrence_records_value() -> None:
+    state_ = UniqueValidationState(field_name="national_id", archived_values=set())
+    obj = MagicMock(pk=1, flex_fields={"national_id": "A"})
+
+    assert state_.validate(obj) == set()
+    assert state_.seen_by_value == {"A": obj}
+
+
+def test_unique_validation_state_duplicate_marks_both(mocker: MockerFixture) -> None:
+    spy = mocker.patch.object(validate_mod, "_append_unique_error")
+    state_ = UniqueValidationState(field_name="national_id", archived_values=set())
+    first = MagicMock(pk=1, flex_fields={"national_id": "A"})
+    second = MagicMock(pk=2, flex_fields={"national_id": "A"})
+
+    state_.validate(first)
+    invalid = state_.validate(second)
+
+    assert invalid == {1, 2}
+    assert spy.call_count == 2
+    assert spy.call_args_list[0].args == (first, "national_id", UNIQUE_VALIDATION_ERROR)
+    assert spy.call_args_list[1].args == (second, "national_id", UNIQUE_VALIDATION_ERROR)
+
+
+def test_build_unique_state_returns_none_when_no_field() -> None:
+    program = MagicMock()
+    program.get_unique_field_for.return_value = None
+
+    assert _build_unique_state(program, Individual) is None
+
+
+def test_build_unique_state_filters_falsy_archived_values() -> None:
+    program = MagicMock()
+    program.get_unique_field_for.return_value = "national_id"
+    program.get_removed_unique_values_for.return_value = ["A", "", "B"]
+
+    state_ = _build_unique_state(program, Individual)
+
+    assert state_ is not None
+    assert state_.field_name == "national_id"
+    assert state_.archived_values == {"A", "B"}
+
+
+def test_validate_and_count_without_states(mocker: MockerFixture) -> None:
+    mocker.patch.object(validate_mod, "validate_alien_fields")
+    mocker.patch.object(validate_mod, "batch_ctx")
+    obj = MagicMock(pk=1, batch_id=1)
+    obj.validate_with_checker.return_value = True
+
+    valid, invalid = _validate_and_count([obj])
+
+    assert (valid, invalid) == (1, 0)
+
+
+def test_validate_and_count_invalid_obj_only(mocker: MockerFixture) -> None:
+    mocker.patch.object(validate_mod, "validate_alien_fields")
+    mocker.patch.object(validate_mod, "batch_ctx")
+    obj = MagicMock(pk=1, batch_id=1)
+    obj.validate_with_checker.return_value = False
+
+    valid, invalid = _validate_and_count([obj])
+
+    assert (valid, invalid) == (0, 1)
+
+
+def test_validate_and_count_member_unique_only_for_household(mocker: MockerFixture) -> None:
+    mocker.patch.object(validate_mod, "validate_alien_fields")
+    mocker.patch.object(validate_mod, "batch_ctx")
+    member_state = MagicMock(spec=UniqueValidationState)
+    member_state.validate.return_value = set()
+    obj = MagicMock(pk=1, batch_id=1)
+    obj.validate_with_checker.return_value = True
+
+    valid, invalid = _validate_and_count([obj], member_unique_state=member_state)
+
+    assert (valid, invalid) == (1, 0)
+    member_state.validate.assert_not_called()
