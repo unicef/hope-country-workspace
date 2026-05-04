@@ -9,10 +9,12 @@ from country_workspace.contrib.aurora.import_processing import (
 from country_workspace.contrib.kobo.sync import (
     build_household_processor as build_kobo_household_processor,
     build_individual_processor as build_kobo_individual_processor,
+    set_roles_and_relationships,
 )
 from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual, Transformer, Program
 from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +176,23 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         for individual in individuals_to_process:
             is_applied = _apply_transformations(individual, individual_processor)
             mapped_individuals += int(is_applied)
-
         logger.info("Applied transformations to %d individuals", mapped_individuals)
+
+    if batch.source == Batch.BatchSource.KOBO and household_count > 0 and is_master_detail:
+        for household in households_to_process.prefetch_related("members"):
+            for field in ("primary_collector_id", "alternate_collector_id", "head_of_household_id"):
+                household.flex_fields.pop(field, None)
+            set_roles_and_relationships(
+                household,
+                [member for member in household.members.all() if not member.removed],
+            )
+
+    if batch.source == Batch.BatchSource.KOBO and household_count > 0 and is_master_detail:
+        for household in households_to_process:
+            set_roles_and_relationships(
+                household,
+                list(household.members.filter(removed=False).only("id", "flex_fields")),
+            )
 
     if household_count > 0 and is_master_detail:
         create_validation_jobs(
