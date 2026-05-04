@@ -38,9 +38,11 @@ class Rdp(BaseModel):
         related_name="children",
         help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
     )
-    is_deduplication_started = models.BooleanField(
+    is_dedup_settings_locked = models.BooleanField(
         default=False,
-        help_text=_("Indicates whether the deduplication process has been started for this RDP."),
+        help_text=_(
+            "Blocks changes to program deduplication settings after deduplication has been started for this RDP."
+        ),
     )
     deduplication_snapshots = models.JSONField(default=dict, blank=True)
 

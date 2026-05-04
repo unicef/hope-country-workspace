@@ -73,7 +73,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         ]
         if obj and obj.program.biometric_deduplication_enabled:
             fields.extend(
-                ("dedup_engine_state", "deduplication_set_id", "is_deduplication_started", "deduplication_snapshots")
+                ("dedup_engine_state", "deduplication_set_id", "is_dedup_settings_locked", "deduplication_snapshots")
             )
         fields.append("related_jobs")
         return fields
@@ -140,7 +140,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
         visible=lambda btn: _is_visible(btn, "is_deduplicate_visible"),
-        enabled=lambda btn: _is_allowed(btn, "deduplicate_check"),
+        enabled=lambda btn: _is_allowed(btn, "claim_deduplication_check"),
         html_attrs={"title": "Run Deduplication process on DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:

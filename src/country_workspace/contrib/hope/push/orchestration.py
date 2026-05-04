@@ -40,13 +40,11 @@ def require_policy_check(check: Callable[[], ActionCheck]) -> None:
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     """Validate and mark RDP deduplication as requested inside an active transaction."""
     rdp = lock_rdp_for_update(pk=rdp_id)
-    if rdp.is_deduplication_started:
-        return ActionCheck(False, "RDP: deduplication has already been started for this RDP."), None
-    check = get_rdp_policy(rdp).deduplicate_check()
+    check = get_rdp_policy(rdp).claim_deduplication_check()
     if not check.allowed:
         return check, None
-    rdp.is_deduplication_started = True
-    rdp.save(update_fields=["is_deduplication_started"])
+    rdp.is_dedup_settings_locked = True
+    rdp.save(update_fields=["is_dedup_settings_locked"])
     return ActionCheck(True), rdp
 
 
@@ -170,10 +168,15 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 raise HopePushError({"errors": ["DedupEngine: can not retrieve deduplication set status."]})
 
             reuse_dedup_set = status.deduplication_set_status == DeduplicationSetState.DEDUPLICATED
-
+            update_fields: list[str] = []
             if source.status == Rdp.PushStatus.PENDING:
                 source.status = Rdp.PushStatus.CANCELLED
-                source.save(update_fields=["status"])
+                update_fields.append("status")
+            if source.is_dedup_settings_locked:
+                source.is_dedup_settings_locked = False
+                update_fields.append("is_dedup_settings_locked")
+            if update_fields:
+                source.save(update_fields=update_fields)
 
             return Rdp.objects.create(
                 country_office_id=owner.country_office_id,
@@ -183,9 +186,10 @@ def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
                 parent=owner,
                 status=Rdp.PushStatus.PENDING,
                 deduplication_set_id=source.deduplication_set_id if reuse_dedup_set else None,
-                is_deduplication_started=reuse_dedup_set,
+                is_dedup_settings_locked=False,
                 hope_rdi_id="",
             )
+
     except IntegrityError as e:
         raise HopePushError({"errors": [f"RDP: can not clone record: {e}"]}) from e
 
@@ -229,6 +233,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             rdp=locked,
             status=Rdp.PushStatus.CANCELLED,
             hope_rdi_id=locked.hope_rdi_id or "N/A",
+            is_dedup_settings_locked=False,
         )
 
     return {

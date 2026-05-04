@@ -6,7 +6,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db.models import QuerySet, Field
+from django.db.models import Field, Q, QuerySet
 from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -20,7 +20,7 @@ from country_workspace.contrib.aurora.import_processing import (
     import_data as import_from_aurora,
 )
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual, Rdp
 from country_workspace.models.base import Validable
 from country_workspace.state import state
@@ -42,8 +42,6 @@ from ...datasources.rdi import (
     import_from_rdi,
 )
 from ...models import AsyncJob
-
-from country_workspace.contrib.hope.push.policy import get_rdp_policy
 
 
 if TYPE_CHECKING:
@@ -219,14 +217,11 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
     @staticmethod
     def _can_update_dedup_settings(program: CountryProgram) -> bool:
-        if Rdp.objects.filter(program=program, status=Rdp.PushStatus.SUCCESS).exists():
-            return False
-        pending_started = Rdp.objects.filter(
-            program=program,
-            status=Rdp.PushStatus.PENDING,
-            is_deduplication_started=True,
+        return (
+            not Rdp.objects.filter(program=program)
+            .filter(Q(status=Rdp.PushStatus.SUCCESS) | Q(status=Rdp.PushStatus.PENDING, is_dedup_settings_locked=True))
+            .exists()
         )
-        return all(get_rdp_policy(rdp).allows_program_dedup_settings_update() for rdp in pending_started)
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_dedup_client(program_id=program.unicef_id) as client:
@@ -239,7 +234,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         try:
             settings = self._get_dedup_settings(obj)
-        except RemoteError:
+        except (RemoteError, RemoteUnavailableError):
             return "N/A"
 
         if not settings:
@@ -604,7 +599,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
                 request,
                 _(
                     "Deduplication settings cannot be updated because the program has a successful RDP "
-                    "or a pending RDP whose deduplication set is not deduplicated yet."
+                    "or a pending RDP with started deduplication. Clone or reject the RDP first."
                 ),
                 messages.ERROR,
             )
@@ -612,7 +607,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
 
         try:
             settings = self._get_dedup_settings(program)
-        except RemoteError as exc:
+        except (RemoteError, RemoteUnavailableError) as exc:
             self.message_user(
                 request,
                 _("Failed to fetch Deduplication settings from DedupEngine. %(error)s") % {"error": str(exc)},
@@ -630,12 +625,7 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
             try:
                 with make_dedup_client(program_id=program.unicef_id) as client:
                     client.post_deduplication_set_group_config(payload=form.get_payload())
-                    Rdp.objects.filter(
-                        program=program,
-                        status=Rdp.PushStatus.PENDING,
-                        is_deduplication_started=True,
-                    ).update(is_deduplication_started=False)
-            except RemoteError as exc:
+            except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(
                     request,
                     _("Failed to update Deduplication settings on DedupEngine. %(error)s") % {"error": str(exc)},
