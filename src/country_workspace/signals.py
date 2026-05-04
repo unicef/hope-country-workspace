@@ -1,3 +1,6 @@
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from django.db.models import Q
@@ -8,12 +11,27 @@ from hope_flex_fields.models import DataChecker, DataCheckerFieldset, Fieldset, 
 from country_workspace.models import Program
 from country_workspace.workspaces.models import CountryProgram
 
+_invalidation_state = threading.local()
+
+
+@contextmanager
+def collect_invalidations() -> Iterator[None]:
+    _invalidation_state.deferred_program_pks = set()
+    try:
+        yield
+    finally:
+        program_pks = _invalidation_state.deferred_program_pks
+        _invalidation_state.deferred_program_pks = None
+        for program in Program.objects.filter(pk__in=program_pks):
+            _process_program(program=program)
+
 
 def _get_dc_associated_programs(dc: DataChecker) -> Any:
     return Program.objects.filter(Q(household_checker=dc) | Q(individual_checker=dc))
 
 
 def _invalidate_qs(qs: Any) -> None:
+    qs = qs.filter(last_checked__isnull=False)
     batch_size = 500
     pks = list(qs.values_list("pk", flat=True))
 
@@ -32,6 +50,11 @@ def _process_program(program: Program) -> None:
 
 def _process_datachecker_change(dc: DataChecker) -> None:
     if not (programs := _get_dc_associated_programs(dc=dc)):
+        return
+
+    deferred = getattr(_invalidation_state, "deferred_program_pks", None)
+    if deferred is not None:
+        deferred.update(programs.values_list("pk", flat=True))
         return
 
     for program in programs:

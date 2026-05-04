@@ -17,8 +17,11 @@ if TYPE_CHECKING:
 
 class SyncManager(BaseManager):
     def refresh(self) -> None:
-        for record in self.all():
-            record.refresh()
+        from country_workspace.signals import collect_invalidations
+
+        with collect_invalidations():
+            for record in self.all():
+                record.refresh()
 
     def create_lookups(self) -> None:
         from hope_flex_fields.models import FieldDefinition
@@ -77,8 +80,10 @@ class SyncLog(BaseModel):
         client = HopeClient()
         choices = list(client.get_lookup(self.data["remote_url"]).items())
         for obj in (fd, *FlexField.objects.filter(definition=fd)):
-            obj.attrs = {**(obj.attrs or {}), "choices": choices}
-            obj.save(update_fields=["attrs"])
+            new_attrs = {**(obj.attrs or {}), "choices": choices}
+            if new_attrs != obj.attrs:
+                obj.attrs = new_attrs
+                obj.save(update_fields=["attrs"])
 
         self.last_update_date = timezone.now()
         self.save(update_fields=["last_update_date"])
