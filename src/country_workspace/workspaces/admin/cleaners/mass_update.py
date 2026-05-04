@@ -108,11 +108,12 @@ def mass_update_impl(
     config: "FormOperations",
     create_missing_fields: bool = False,
 ) -> None:
-    program = None
+    first = queryset.select_related("batch__program").only("batch__program").first()
+    if first is None:
+        return
+    program = first.program
     with transaction.atomic(), suppress_cache_updates():
         for record in queryset.defer("raw_data").iterator(chunk_size=20):
-            if program is None:
-                program = record.program
             for field_name, attrs in config.items():
                 op, new_value = attrs
                 if field_name in record.flex_fields:
@@ -123,5 +124,4 @@ def mass_update_impl(
                     func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func("", new_value)
             record.save(update_fields=["flex_fields"])
-    if program:
-        cache_manager.incr_cache_version(program=program)
+    cache_manager.incr_cache_version(program=program)
