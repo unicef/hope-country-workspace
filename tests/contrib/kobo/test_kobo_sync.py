@@ -80,6 +80,8 @@ def test_make_client(
     expected_project_view_id: str | None,
 ) -> None:
     session_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Session")
+    retry_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Retry")
+    http_adapter_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.HTTPAdapter")
     auth_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Auth")
     client_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Client")
     data_getter_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.DataGetter")
@@ -95,6 +97,15 @@ def test_make_client(
 
     assert client is client_class_mock.return_value
     session_class_mock.assert_called_once_with()
+    retry_class_mock.assert_called_once_with(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=(429, 502, 503, 504),
+        allowed_methods=frozenset(("GET",)),
+        respect_retry_after_header=True,
+    )
+    http_adapter_class_mock.assert_called_once_with(max_retries=retry_class_mock.return_value)
+    session_class_mock.return_value.mount.assert_called_once_with("https://", http_adapter_class_mock.return_value)
     auth_class_mock.assert_called_once_with(expected_token)
     data_getter_class_mock.assert_called_once_with(
         session=session_class_mock.return_value,

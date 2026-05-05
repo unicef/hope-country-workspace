@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any, TypedDict
 
 from django.core.cache import cache
@@ -71,7 +72,8 @@ class DataGetter:
             # don't cache failed response
             return response
 
-        value: ResponseDict = {"json": response.json(), "status_code": response.status_code}
-        cache.set(cache_key, value, self._cache_ttl)
+        with suppress(ValueError):
+            value: ResponseDict = {"json": response.json(), "status_code": response.status_code}
+            cache.set(cache_key, value, self._cache_ttl)
 
         return response
