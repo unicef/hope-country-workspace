@@ -17,6 +17,7 @@ class ResponseDict(TypedDict):
 class CachedResponse:
     """Wrapper resembling requests.Response."""
 
+    # comment
     def __init__(self, response_dict: ResponseDict) -> None:
         self._response_dict = response_dict
 
