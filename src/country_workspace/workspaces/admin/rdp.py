@@ -69,7 +69,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             "parent",
             "push_date",
             "status",
-            "biometric_deduplication_enabled",
         ]
         if obj and obj.program.biometric_deduplication_enabled:
             fields.extend(
@@ -80,9 +79,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def get_readonly_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
         return self.get_fields(request, obj)
-
-    def biometric_deduplication_enabled(self, obj: CountryRdp) -> bool:
-        return obj.program.biometric_deduplication_enabled
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
@@ -134,6 +130,21 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except NoReverseMatch:
             return reverse("workspace:workspaces_countryrdp_changelist")
 
+    def _deny_if_not_allowed(self, request: HttpRequest, obj: CountryRdp, action: str) -> HttpResponse | None:
+        def deny(message: str) -> HttpResponse:
+            messages.error(request, message)
+            return redirect(self._change_url(obj))
+
+        try:
+            check = getattr(get_rdp_policy(obj), action)()
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            return deny(str(exc))
+        except RemoteError as exc:
+            return deny(str(exc))
+
+        return None if check.allowed else deny(check.reason or "Action is not allowed.")
+
     @button(
         label="Deduplicate",
         change_form=True,
@@ -148,22 +159,29 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        with transaction.atomic():
-            check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
-            if not check.allowed:
-                messages.error(request, check.reason or "Action is not allowed.")
-                return redirect(self._change_url(obj))
-
-            job = AsyncJob.objects.create(
-                description="Run Deduplication process on DedupEngine",
-                type=AsyncJob.JobType.TASK,
-                owner=request.user,
-                action=fqn(dedup_existing_rdp_core),
-                program=locked.program,
-                rdp=locked,
-                config={"rdp_id": locked.pk},
-            )
-            job.queue()
+        try:
+            with transaction.atomic():
+                check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
+                if not check.allowed or locked is None:
+                    messages.error(request, check.reason or "Action is not allowed.")
+                    return redirect(self._change_url(obj))
+                job = AsyncJob.objects.create(
+                    description="Run Deduplication process on DedupEngine",
+                    type=AsyncJob.JobType.TASK,
+                    owner=request.user,
+                    action=fqn(dedup_existing_rdp_core),
+                    program=locked.program,
+                    rdp=locked,
+                    config={"rdp_id": locked.pk},
+                )
+                transaction.on_commit(job.queue)
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            messages.error(request, str(exc))
+            return redirect(self._change_url(obj))
+        except RemoteError as exc:
+            messages.error(request, str(exc))
+            return redirect(self._change_url(obj))
 
         messages.success(request, "Dedup task scheduled")
         return redirect(self._change_url(obj))
@@ -181,6 +199,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
+        if response := self._deny_if_not_allowed(request, obj, "reject_ds_check"):
+            return response
 
         job = AsyncJob.objects.create(
             description="Reject RDP by rejecting its active DE deduplication set",
@@ -210,6 +230,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
+        if response := self._deny_if_not_allowed(request, obj, "clone_check"):
+            return response
 
         if request.method == "POST" and "_clone" in request.POST:
             if (form := CreateRDPForm(request.POST)).is_valid():
@@ -258,6 +280,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
+        if response := self._deny_if_not_allowed(request, obj, "push_check"):
+            return response
 
         config: PushExistingRdpConfig = {"rdp_id": obj.pk}
         job = AsyncJob.objects.create(

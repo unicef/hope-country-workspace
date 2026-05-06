@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
             name="is_dedup_settings_locked",
             field=models.BooleanField(
                 default=False,
-                help_text="Blocks changes to program deduplication settings after deduplication has been started for this RDP.",
+                help_text="Locks program-level deduplication settings while this pending RDP has requested a new deduplication run.",
             ),
         ),
     ]

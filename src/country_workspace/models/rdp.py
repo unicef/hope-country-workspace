@@ -41,7 +41,7 @@ class Rdp(BaseModel):
     is_dedup_settings_locked = models.BooleanField(
         default=False,
         help_text=_(
-            "Blocks changes to program deduplication settings after deduplication has been started for this RDP."
+            "Locks program-level deduplication settings while this pending RDP has requested a new deduplication run."
         ),
     )
     deduplication_snapshots = models.JSONField(default=dict, blank=True)

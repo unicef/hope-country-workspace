@@ -41,10 +41,19 @@ def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     """Validate and mark RDP deduplication as requested inside an active transaction."""
     rdp = lock_rdp_for_update(pk=rdp_id)
     check = get_rdp_policy(rdp).claim_deduplication_check()
+    policy = get_rdp_policy(rdp)
+    check = policy.claim_deduplication_check()
     if not check.allowed:
         return check, None
+
+    update_fields = ["is_dedup_settings_locked"]
     rdp.is_dedup_settings_locked = True
-    rdp.save(update_fields=["is_dedup_settings_locked"])
+
+    if rdp.deduplication_set_id and policy.can_create_deduplication_set:
+        rdp.deduplication_set_id = None
+        update_fields.append("deduplication_set_id")
+
+    rdp.save(update_fields=update_fields)
     return ActionCheck(True), rdp
 
 
