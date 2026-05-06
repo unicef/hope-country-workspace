@@ -6,7 +6,8 @@ from django.forms import MultiValueField, widgets
 from django.utils.text import slugify
 from hope_flex_fields.fields import FlexFormMixin
 from strategy_field.utils import fqn
-
+from country_workspace.cache.handlers import suppress_cache_updates
+from country_workspace.cache.manager import cache_manager
 from .base import BaseActionForm
 
 if TYPE_CHECKING:
@@ -107,8 +108,12 @@ def mass_update_impl(
     config: "FormOperations",
     create_missing_fields: bool = False,
 ) -> None:
-    with transaction.atomic():
-        for record in queryset.all():
+    first = queryset.select_related("batch__program").only("batch__program").first()
+    if first is None:
+        return
+    program = first.program
+    with transaction.atomic(), suppress_cache_updates():
+        for record in queryset.defer("raw_data").iterator(chunk_size=20):
             for field_name, attrs in config.items():
                 op, new_value = attrs
                 if field_name in record.flex_fields:
@@ -118,4 +123,5 @@ def mass_update_impl(
                 elif create_missing_fields:
                     func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func("", new_value)
-            record.save()
+            record.save(update_fields=["flex_fields"])
+    cache_manager.incr_cache_version(program=program)
