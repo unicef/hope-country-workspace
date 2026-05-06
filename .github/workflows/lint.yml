@@ -56,6 +56,9 @@ jobs:
           architecture: 'x64'
       - uses: astral-sh/setup-uv@v7
 
+      - name: Clean internal uv cache
+        run: uv cache clean
+
       - name: Install deps
         run: uv sync --group dev
 
