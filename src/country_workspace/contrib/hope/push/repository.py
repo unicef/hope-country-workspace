@@ -119,7 +119,7 @@ def preflight_errors(
 ) -> list[str]:
     """Return preflight validation errors for the given selection."""
     if not pks:
-        return []
+        return ["RDP: no beneficiaries selected"]
 
     rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
     if excluded := tuple(exclude_rdp_ids):

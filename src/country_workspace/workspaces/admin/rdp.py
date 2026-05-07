@@ -17,14 +17,15 @@ from strategy_field.utils import fqn
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
+    DedupEngineState,
     PushExistingRdpConfig,
+    claim_rdp_deduplication,
     clone_rdp_core,
+    get_rdp_policy,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
 )
-from country_workspace.contrib.hope.push.policy import DedupEngineState, get_rdp_policy
-from country_workspace.contrib.hope.push.orchestration import claim_rdp_deduplication
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import rdi_name_default
@@ -71,9 +72,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             "status",
         ]
         if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(
-                ("dedup_engine_state", "deduplication_set_id", "is_dedup_settings_locked", "deduplication_snapshots")
-            )
+            fields.extend(("dedup_engine_state", "deduplication_set_id", "deduplication_snapshots"))
         fields.append("related_jobs")
         return fields
 

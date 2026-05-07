@@ -1,12 +1,13 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState
-from country_workspace.contrib.dedup_engine.deduplication_status import (
+from country_workspace.contrib.dedup_engine import (
     CLONEABLE_DEDUPLICATION_SET_STATES,
     DedupClientStatus,
     DedupResponseStatus,
+    DeduplicationSetState,
     PROCESSABLE_DEDUPLICATION_SET_STATES,
+    PUSHABLE_DEDUPLICATION_SET_STATES,
 )
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.policy import (
@@ -15,6 +16,7 @@ from country_workspace.contrib.hope.push.policy import (
     RdpActionPolicy,
     get_rdp_policy,
 )
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import Rdp
 
 MOD = "country_workspace.contrib.hope.push.policy"
@@ -52,22 +54,41 @@ def test_action_check_require_enabled() -> None:
 def test_action_check_require_disabled(reason: str | None, expected: str, err_contains) -> None:
     with pytest.raises(HopePushError) as exc:
         ActionCheck(False, reason).require()
-
     assert err_contains(exc.value.args[0]["errors"], expected)
 
 
 def test_policy_owner(mocker: MockerFixture, rdp) -> None:
     owner = mocker.MagicMock()
     spy = mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
-
     assert RdpActionPolicy(rdp).owner is owner
-
     spy.assert_called_once_with(rdp=rdp)
+
+
+@pytest.mark.parametrize(
+    ("source_set_id", "owner_set_id", "expected"),
+    [
+        ("ds-source", "ds-owner", "source"),
+        ("", "ds-owner", "owner"),
+        ("", "", None),
+    ],
+    ids=["source_first", "owner_fallback", "missing"],
+)
+def test_clone_deduplication_source(
+    mocker: MockerFixture,
+    rdp,
+    source_set_id: str,
+    owner_set_id: str,
+    expected: str | None,
+) -> None:
+    owner = mocker.MagicMock(deduplication_set_id=owner_set_id)
+    rdp.deduplication_set_id = source_set_id
+    mocker.patch.object(RdpActionPolicy, "owner", new_callable=mocker.PropertyMock, return_value=owner)
+    result = RdpActionPolicy(rdp).clone_deduplication_source()
+    assert result is {"source": rdp, "owner": owner, None: None}[expected]
 
 
 def test_deduplication_status_without_set_id(rdp) -> None:
     rdp.deduplication_set_id = ""
-
     assert RdpActionPolicy.deduplication_status(rdp) is None
 
 
@@ -78,13 +99,11 @@ def test_deduplication_status_calls_remote(mocker: MockerFixture, rdp) -> None:
         findings_count=0,
     )
     spy = mocker.patch(f"{MOD}.get_deduplication_status", return_value=status)
-
     assert RdpActionPolicy.deduplication_status(rdp) == status
-
     spy.assert_called_once_with("program-1", "ds-1")
 
 
-def test__can_create_deduplication_set_cached_property(
+def test_can_create_deduplication_set_cached_property(
     mocker: MockerFixture,
     rdp,
     dedup_api_cm,
@@ -95,8 +114,8 @@ def test__can_create_deduplication_set_cached_property(
 
     policy = RdpActionPolicy(rdp)
 
-    assert policy._can_create_deduplication_set is True
-    assert policy._can_create_deduplication_set is True
+    assert policy.can_create_deduplication_set is True
+    assert policy.can_create_deduplication_set is True
 
     make_client.assert_called_once_with("program-1")
     client.can_create_deduplication_set.assert_called_once_with()
@@ -178,32 +197,6 @@ def test_visibility_methods(
             True,
             ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program."),
         ),
-        *[
-            (
-                Rdp.PushStatus.PENDING,
-                True,
-                "ds-1",
-                state,
-                True,
-                ActionCheck(True),
-            )
-            for state in PROCESSABLE_DEDUPLICATION_SET_STATES
-        ],
-        *[
-            (
-                Rdp.PushStatus.PENDING,
-                True,
-                "ds-1",
-                state,
-                True,
-                ActionCheck(
-                    False,
-                    f"DedupEngine: can not run dedup for deduplication set in state={state!r}.",
-                ),
-            )
-            for state in DeduplicationSetState
-            if state not in PROCESSABLE_DEDUPLICATION_SET_STATES
-        ],
         (
             Rdp.PushStatus.PENDING,
             True,
@@ -220,18 +213,53 @@ def test_visibility_methods(
             True,
             ActionCheck(True),
         ),
+        (
+            Rdp.PushStatus.PENDING,
+            True,
+            "ds-1",
+            DeduplicationSetState.APPROVED,
+            True,
+            ActionCheck(True),
+        ),
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                False,
+                ActionCheck(True),
+            )
+            for state in PROCESSABLE_DEDUPLICATION_SET_STATES
+        ],
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                False,
+                ActionCheck(
+                    False,
+                    f"DedupEngine: can not process deduplication set in state={state!r}.",
+                ),
+            )
+            for state in DeduplicationSetState
+            if state not in PROCESSABLE_DEDUPLICATION_SET_STATES
+        ],
     ],
     ids=[
         "not_pending",
         "disabled",
+        "cannot_create_without_set",
+        "can_create_without_set",
+        "can_create_with_stale_set",
         *(f"processable_{state.name.lower()}" for state in PROCESSABLE_DEDUPLICATION_SET_STATES),
         *(
             f"blocked_{state.name.lower()}"
             for state in DeduplicationSetState
             if state not in PROCESSABLE_DEDUPLICATION_SET_STATES
         ),
-        "cannot_create",
-        "can_create",
     ],
 )
 def test_deduplicate_check(
@@ -256,7 +284,7 @@ def test_deduplicate_check(
     )
     mocker.patch.object(
         RdpActionPolicy,
-        "_can_create_deduplication_set",
+        "can_create_deduplication_set",
         new_callable=mocker.PropertyMock,
         return_value=can_create,
     )
@@ -332,172 +360,181 @@ def test_reject_ds_check(
 
 
 @pytest.mark.parametrize(
-    (
-        "rdp_status",
-        "enabled",
-        "has_pending",
-        "dedup_status",
-        "expected",
-        "exclude_ids",
-        "pending_called",
-        "status_called",
-    ),
+    ("status", "enabled", "has_pending", "dedup_check", "expected"),
     [
         (
             Rdp.PushStatus.PENDING,
             False,
             False,
-            None,
+            ActionCheck(True),
             ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program."),
-            (1,),
+        ),
+        (
+            Rdp.PushStatus.SUCCESS,
+            True,
             False,
-            False,
+            ActionCheck(True),
+            ActionCheck(False, "RDP: can not clone a successful RDP."),
         ),
         (
             Rdp.PushStatus.PENDING,
             True,
             True,
-            None,
+            ActionCheck(True),
             ActionCheck(False, "RDP: can not clone while another RDP is pending"),
-            (1,),
-            True,
-            False,
         ),
         (
             Rdp.PushStatus.PENDING,
             True,
             False,
-            None,
-            ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP."),
-            (1,),
-            True,
-            True,
+            ActionCheck(False, "blocked"),
+            ActionCheck(False, "blocked"),
         ),
         (
             Rdp.PushStatus.PENDING,
             True,
             False,
+            ActionCheck(True),
+            ActionCheck(True),
+        ),
+    ],
+    ids=["disabled", "success", "other_pending", "dedup_blocked", "ok"],
+)
+def test_clone_check(
+    mocker: MockerFixture,
+    rdp,
+    status: str,
+    enabled: bool,
+    has_pending: bool,
+    dedup_check: ActionCheck,
+    expected: ActionCheck,
+) -> None:
+    owner = mocker.MagicMock()
+    rdp.status = status
+    rdp.program.biometric_deduplication_enabled = enabled
+
+    mocker.patch.object(RdpActionPolicy, "owner", new_callable=mocker.PropertyMock, return_value=owner)
+    pending = mocker.patch(f"{MOD}.has_other_pending_rdp", return_value=has_pending)
+    dedup = mocker.patch.object(RdpActionPolicy, "_clone_deduplication_check", return_value=dedup_check)
+
+    assert RdpActionPolicy(rdp).clone_check() == expected
+
+    if enabled and status != Rdp.PushStatus.SUCCESS:
+        pending.assert_called_once_with(owner=owner, exclude_ids=(1,))
+    else:
+        pending.assert_not_called()
+
+    if enabled and status != Rdp.PushStatus.SUCCESS and not has_pending:
+        dedup.assert_called_once_with()
+    else:
+        dedup.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("source_exists", "status", "expected"),
+    [
+        (False, None, ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")),
+        (True, None, ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")),
+        (
+            True,
             DedupClientStatus(DedupResponseStatus.STATUS_UNAVAILABLE, None, -1),
             ActionCheck(False, "DedupEngine: can not retrieve deduplication set status."),
-            (1,),
-            True,
-            True,
         ),
         (
-            Rdp.PushStatus.PENDING,
             True,
-            False,
             DedupClientStatus(DedupResponseStatus.OK, DeduplicationSetState.READY, 0),
             ActionCheck(
                 False,
                 f"DedupEngine: can not clone RDP for deduplication set in state={DeduplicationSetState.READY!r}.",
             ),
-            (1,),
-            True,
-            True,
         ),
         (
-            Rdp.PushStatus.SUCCESS,
             True,
-            False,
             DedupClientStatus(DedupResponseStatus.OK, CLONEABLE_DEDUPLICATION_SET_STATES[0], 0),
             ActionCheck(True),
-            (),
-            True,
-            True,
         ),
     ],
-    ids=["disabled", "other_pending", "missing_status", "status_unavailable", "state_not_cloneable", "ok"],
+    ids=["missing_source", "missing_status", "unavailable", "not_cloneable", "ok"],
 )
-def test_clone_check(
+def test_clone_deduplication_check(
     mocker: MockerFixture,
     rdp,
-    rdp_status: str,
-    enabled: bool,
-    has_pending: bool,
-    dedup_status: DedupClientStatus | None,
+    source_exists: bool,
+    status: DedupClientStatus | None,
     expected: ActionCheck,
-    exclude_ids: tuple[int, ...],
-    pending_called: bool,
-    status_called: bool,
 ) -> None:
-    owner = mocker.MagicMock()
-    rdp.status = rdp_status
-    rdp.program.biometric_deduplication_enabled = enabled
+    source = rdp if source_exists else None
+    mocker.patch.object(RdpActionPolicy, "clone_deduplication_source", return_value=source)
+    status_spy = mocker.patch.object(RdpActionPolicy, "deduplication_status", return_value=status)
 
-    mocker.patch.object(RdpActionPolicy, "owner", new_callable=mocker.PropertyMock, return_value=owner)
-    pending_spy = mocker.patch(f"{MOD}.has_other_pending_rdp", return_value=has_pending)
-    status_spy = mocker.patch.object(RdpActionPolicy, "deduplication_status", return_value=dedup_status)
+    assert RdpActionPolicy(rdp)._clone_deduplication_check() == expected
 
-    assert RdpActionPolicy(rdp).clone_check() == expected
-
-    if pending_called:
-        pending_spy.assert_called_once_with(owner=owner, exclude_ids=exclude_ids)
-    else:
-        pending_spy.assert_not_called()
-
-    if status_called:
-        status_spy.assert_called_once_with(owner)
+    if source_exists:
+        status_spy.assert_called_once_with(rdp)
     else:
         status_spy.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    ("status", "enabled", "set_id", "can_create", "state", "expected"),
+    ("status", "enabled", "set_id", "state", "expected"),
     [
         (
             Rdp.PushStatus.SUCCESS,
             True,
             "ds-1",
-            False,
-            DeduplicationSetState.READY,
+            DeduplicationSetState.DEDUPLICATED,
             ActionCheck(False, f"RDP: can not push in status={Rdp.PushStatus.SUCCESS}"),
         ),
         (
             Rdp.PushStatus.PENDING,
             False,
             "ds-1",
-            False,
-            DeduplicationSetState.READY,
-            ActionCheck(True),
-        ),
-        (
-            Rdp.PushStatus.PENDING,
-            True,
-            "",
-            False,
-            DeduplicationSetState.READY,
-            ActionCheck(True),
-        ),
-        (
-            Rdp.PushStatus.PENDING,
-            True,
-            "ds-1",
-            True,
-            DeduplicationSetState.READY,
-            ActionCheck(True),
-        ),
-        (
-            Rdp.PushStatus.PENDING,
-            True,
-            "ds-1",
-            False,
             DeduplicationSetState.DEDUPLICATED,
             ActionCheck(True),
         ),
         (
             Rdp.PushStatus.PENDING,
             True,
-            "ds-1",
-            False,
-            DeduplicationSetState.READY,
-            ActionCheck(
-                False,
-                f"DedupEngine: can not push with deduplication set in state={DeduplicationSetState.READY!r}.",
-            ),
+            "",
+            DeduplicationSetState.DEDUPLICATED,
+            ActionCheck(True),
+        ),
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                ActionCheck(True),
+            )
+            for state in PUSHABLE_DEDUPLICATION_SET_STATES
+        ],
+        *[
+            (
+                Rdp.PushStatus.PENDING,
+                True,
+                "ds-1",
+                state,
+                ActionCheck(
+                    False,
+                    f"DedupEngine: can not push with deduplication set in state={state!r}.",
+                ),
+            )
+            for state in DeduplicationSetState
+            if state not in PUSHABLE_DEDUPLICATION_SET_STATES
+        ],
+    ],
+    ids=[
+        "not_pending",
+        "disabled",
+        "missing_set_id",
+        *(f"pushable_{state.name.lower()}" for state in PUSHABLE_DEDUPLICATION_SET_STATES),
+        *(
+            f"blocked_{state.name.lower()}"
+            for state in DeduplicationSetState
+            if state not in PUSHABLE_DEDUPLICATION_SET_STATES
         ),
     ],
-    ids=["not_pending", "disabled", "missing_set_id", "can_create", "deduplicated", "blocked_state"],
 )
 def test_push_check(
     mocker: MockerFixture,
@@ -505,7 +542,6 @@ def test_push_check(
     status: str,
     enabled: bool,
     set_id: str,
-    can_create: bool,
     state: str,
     expected: ActionCheck,
 ) -> None:
@@ -515,18 +551,66 @@ def test_push_check(
 
     mocker.patch.object(
         RdpActionPolicy,
-        "_can_create_deduplication_set",
-        new_callable=mocker.PropertyMock,
-        return_value=can_create,
-    )
-    mocker.patch.object(
-        RdpActionPolicy,
         "deduplication_set_state",
         new_callable=mocker.PropertyMock,
         return_value=state,
     )
 
     assert RdpActionPolicy(rdp).push_check() == expected
+
+
+def test_claim_deduplication_check_blocks_locked_active_dedup(
+    mocker: MockerFixture,
+    rdp,
+) -> None:
+    rdp.is_dedup_settings_locked = True
+    mocker.patch.object(
+        RdpActionPolicy,
+        "can_create_deduplication_set",
+        new_callable=mocker.PropertyMock,
+        return_value=False,
+    )
+    deduplicate_check = mocker.patch.object(RdpActionPolicy, "deduplicate_check")
+
+    check = RdpActionPolicy(rdp).claim_deduplication_check()
+
+    assert check.allowed is False
+    assert "already been started" in check.reason
+    deduplicate_check.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("locked", "can_create"),
+    [
+        (False, False),
+        (False, True),
+        (True, True),
+    ],
+    ids=["unlocked_cannot_create", "unlocked_can_create", "locked_can_create"],
+)
+def test_claim_deduplication_check_delegates_to_deduplicate_check(
+    mocker: MockerFixture,
+    rdp,
+    locked: bool,
+    can_create: bool,
+) -> None:
+    expected = ActionCheck(True)
+    rdp.is_dedup_settings_locked = locked
+
+    mocker.patch.object(
+        RdpActionPolicy,
+        "can_create_deduplication_set",
+        new_callable=mocker.PropertyMock,
+        return_value=can_create,
+    )
+    deduplicate_check = mocker.patch.object(
+        RdpActionPolicy,
+        "deduplicate_check",
+        return_value=expected,
+    )
+
+    assert RdpActionPolicy(rdp).claim_deduplication_check() == expected
+    deduplicate_check.assert_called_once_with()
 
 
 def test_dedup_engine_state_unavailable() -> None:
@@ -624,7 +708,7 @@ def test_dedup_engine_state(
     status_spy = mocker.patch.object(RdpActionPolicy, "deduplication_status", return_value=status_obj)
     mocker.patch.object(
         RdpActionPolicy,
-        "_can_create_deduplication_set",
+        "can_create_deduplication_set",
         new_callable=mocker.PropertyMock,
         return_value=can_create,
     )
@@ -657,9 +741,57 @@ def test_dedup_engine_state_remote_error(mocker: MockerFixture, rdp) -> None:
     assert str(state) == "Remote error"
 
 
-def test_get_rdp_policy_caches_on_rdp(rdp) -> None:
-    policy1 = get_rdp_policy(rdp)
-    policy2 = get_rdp_policy(rdp)
+@pytest.mark.parametrize(
+    ("can_create", "expected"),
+    [
+        (True, DedupEngineState(can_create_deduplication_set=True)),
+        (False, None),
+    ],
+    ids=["can_create", "cannot_create"],
+)
+def test_dedup_engine_state_handles_stale_remote_error(
+    mocker: MockerFixture,
+    rdp,
+    can_create: bool,
+    expected: DedupEngineState | None,
+) -> None:
+    rdp.status = Rdp.PushStatus.PENDING
+    mocker.patch.object(
+        RdpActionPolicy,
+        "deduplication_status",
+        side_effect=RemoteError("not found"),
+    )
+    mocker.patch.object(
+        RdpActionPolicy,
+        "can_create_deduplication_set",
+        new_callable=mocker.PropertyMock,
+        return_value=can_create,
+    )
 
-    assert policy1 is policy2
-    assert rdp._rdp_policy is policy1
+    if expected is None:
+        with pytest.raises(RemoteError, match="not found"):
+            RdpActionPolicy(rdp).dedup_engine_state()
+        return
+
+    state = RdpActionPolicy(rdp).dedup_engine_state()
+
+    assert state == expected
+    assert str(state) == "Ready to start"
+
+
+def test_get_rdp_policy_caches_policy_on_rdp(rdp) -> None:
+    rdp._rdp_policy = None
+
+    policy = get_rdp_policy(rdp)
+
+    assert isinstance(policy, RdpActionPolicy)
+    assert policy.rdp is rdp
+    assert rdp._rdp_policy is policy
+    assert get_rdp_policy(rdp) is policy
+
+
+def test_get_rdp_policy_reuses_existing_policy(mocker: MockerFixture, rdp) -> None:
+    policy = mocker.MagicMock()
+    rdp._rdp_policy = policy
+
+    assert get_rdp_policy(rdp) is policy

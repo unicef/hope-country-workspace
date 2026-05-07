@@ -12,7 +12,7 @@ from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
@@ -92,7 +92,7 @@ class ProcessorBase:
     ) -> Any | None:
         try:
             return fn()
-        except RemoteError as e:
+        except (RemoteError, RemoteUnavailableError) as e:
             self.fail(subject, f"request failed. {e}", ids=ids)
             return None
 
@@ -105,7 +105,7 @@ class ProcessorBase:
     ) -> bool:
         try:
             fn()
-        except RemoteError as e:
+        except (RemoteError, RemoteUnavailableError) as e:
             self.fail(subject, f"request failed. {e}", ids=ids)
             return False
         return True
@@ -299,6 +299,8 @@ class PushProcessor(ProcessorBase):
 
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
             ids, payload = prepare(batch)
+            if self.has_errors:
+                return
             if not ids:
                 continue
             resp = self.try_remote(name, lambda payload=payload: post(self.hope_rdi_id, payload), ids=ids)
@@ -394,7 +396,6 @@ class DedupProcessor(ProcessorBase):
             return None
 
     def upload_images(self, client: Any) -> tuple[bool, int]:
-        """Upload image batches, mark the set as ready, and return sent images count."""
         images_sent = 0
 
         for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
@@ -402,6 +403,10 @@ class DedupProcessor(ProcessorBase):
             if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
                 return False, images_sent
             images_sent += len(payload)
+
+        if not images_sent:
+            self.fail("create_images", "no images to deduplicate")
+            return False, images_sent
 
         if not self.run_remote("ready", client.ready):
             return False, images_sent

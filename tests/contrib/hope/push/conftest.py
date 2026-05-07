@@ -5,7 +5,7 @@ from typing import Any
 from hope_flex_fields.models import DataChecker
 
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG
-from country_workspace.contrib.hope.push.processor import PushProcessor
+from country_workspace.contrib.hope.push import PushProcessor
 from country_workspace.models import AsyncJob, Office, User
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryProgram, CountryRdp
@@ -23,6 +23,18 @@ def office() -> Office:
 @pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
 def master_detail(request: pytest.FixtureRequest) -> bool:
     return request.param
+
+
+@pytest.fixture
+def only_master_detail(master_detail: bool) -> None:
+    if not master_detail:
+        pytest.skip("Not applicable for people-only mode")
+
+
+@pytest.fixture
+def only_people_only(master_detail: bool) -> None:
+    if master_detail:
+        pytest.skip("Not applicable for master-detail mode")
 
 
 @pytest.fixture

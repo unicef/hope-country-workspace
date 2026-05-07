@@ -8,6 +8,7 @@ from requests.exceptions import (
 )
 
 from country_workspace.contrib.dedup_engine.client import Client
+from country_workspace.contrib.dedup_engine import resource
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 
@@ -38,17 +39,37 @@ def test_client_create_deduplication_set(
     collection_cls.return_value.create.assert_called_once_with({"reference_pk": "PROGRAM_ID"})
 
 
+@pytest.mark.parametrize("can_create", [True, False], ids=["can_create", "cannot_create"])
 def test_client_can_create_deduplication_set(
     client_ctx: tuple[Client, object, object],
+    can_create: bool,
 ) -> None:
     client, session, api_root = client_ctx
     group_endpoint = api_root.deduplication_set_groups.deduplication_set_group.return_value
-    session.get.return_value.json.return_value = {"can_create": True}
+    session.get.return_value.json.return_value = {"can_create": can_create}
 
-    assert client.can_create_deduplication_set() is True
+    assert client.can_create_deduplication_set() is can_create
 
     api_root.deduplication_set_groups.deduplication_set_group.assert_called_once_with("PROGRAM_ID")
-    session.get.assert_called_once_with(str(group_endpoint.status))
+    session.get.assert_called_once_with(str(group_endpoint.status), timeout=resource.TIMEOUT)
+    session.get.return_value.raise_for_status.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "can_create",
+    ["true", "false", 1, 0, None, {}, []],
+    ids=["str_true", "str_false", "int_1", "int_0", "none", "dict", "list"],
+)
+def test_client_can_create_deduplication_set_rejects_invalid_value(
+    client_ctx: tuple[Client, object, object],
+    can_create: object,
+) -> None:
+    client, session, _ = client_ctx
+    session.get.return_value.json.return_value = {"can_create": can_create}
+
+    with pytest.raises(RemoteError, match="invalid can_create value"):
+        client.can_create_deduplication_set()
+
     session.get.return_value.raise_for_status.assert_called_once_with()
 
 

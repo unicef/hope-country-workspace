@@ -1,6 +1,8 @@
 from constance.test import override_config
 from pytest_mock import MockerFixture
 
+from country_workspace.contrib.dedup_engine.factory import make_client
+
 
 def test_make_client(mocker: MockerFixture) -> None:
     session_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Session")
@@ -9,7 +11,9 @@ def test_make_client(mocker: MockerFixture) -> None:
     adapter_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.HTTPAdapter")
     api_root_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.APIRoot")
 
-    from country_workspace.contrib.dedup_engine.factory import make_client
+    https_adapter = mocker.MagicMock()
+    http_adapter = mocker.MagicMock()
+    adapter_cls.side_effect = [https_adapter, http_adapter]
 
     with override_config(
         DEDUP_API_URL=(url := "https://test.org"),
@@ -21,10 +25,13 @@ def test_make_client(mocker: MockerFixture) -> None:
     session_cls.assert_called_once_with()
     session = session_cls.return_value.__enter__.return_value
 
-    assert adapter_cls.call_args_list == [mocker.call(max_retries=3), mocker.call(max_retries=3)]
+    assert adapter_cls.call_args_list == [
+        mocker.call(max_retries=3),
+        mocker.call(max_retries=3),
+    ]
     assert session.mount.call_args_list == [
-        mocker.call("https://", adapter_cls.return_value),
-        mocker.call("http://", adapter_cls.return_value),
+        mocker.call("https://", https_adapter),
+        mocker.call("http://", http_adapter),
     ]
 
     assert session.auth is auth_cls.return_value

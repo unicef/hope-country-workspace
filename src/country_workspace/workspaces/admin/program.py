@@ -20,7 +20,7 @@ from country_workspace.contrib.aurora.import_processing import (
     import_data as import_from_aurora,
 )
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.contrib.hope.push.policy import get_program_dedup_settings_policy
+from country_workspace.contrib.hope.push import get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable

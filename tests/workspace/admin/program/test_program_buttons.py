@@ -7,7 +7,6 @@ from country_workspace.workspaces.admin import program as program_admin_mod
 from country_workspace.workspaces.admin.program import CountryProgramAdmin
 from country_workspace.workspaces.models import CountryProgram
 from country_workspace.models import User
-from testutils.factories import CountryProgramFactory, OfficeFactory
 from testutils.perms import user_grant_permissions
 
 
@@ -25,43 +24,20 @@ def country_program_admin_instance(admin_site) -> CountryProgramAdmin:
 
 
 @pytest.fixture
-def country_office():
-    return OfficeFactory()
-
-
-@pytest.fixture
 def country_program(country_office):
+    from testutils.factories import CountryProgramFactory
+
     program = CountryProgramFactory(country_office=country_office)
     program.biometric_deduplication_enabled = True
+    program.save(update_fields=["biometric_deduplication_enabled"])
     return program
 
 
 @pytest.fixture
 def country_program_md_true(country_program):
     country_program.beneficiary_group.master_detail = True
-    country_program.save()
+    country_program.beneficiary_group.save(update_fields=["master_detail"])
     return country_program
-
-
-@pytest.fixture
-def dedup_settings_data():
-    return {
-        "settings": {
-            "threshold_1": 0.1,
-            "threshold_2": 0.2,
-            "threshold_3": 0.3,
-        },
-        "post_data": {
-            "threshold_1": "0.11",
-            "threshold_2": "0.22",
-            "threshold_3": "0.33",
-        },
-        "payload": {
-            "threshold_1": 0.11,
-            "threshold_2": 0.22,
-            "threshold_3": 0.33,
-        },
-    }
 
 
 @pytest.mark.parametrize(
@@ -156,13 +132,13 @@ def test_update_dedup_settings_permissions(
     user: User,
     client,
     country_program,
+    mock_dedup_settings_policy,
     mocker: MockerFixture,
 ) -> None:
     url = reverse("workspace:workspaces_countryprogram_update_dedup_settings", args=[country_program.pk])
 
+    mock_dedup_settings_policy(allowed=True)
     mocker.patch.object(CountryProgramAdmin, "_get_dedup_settings", return_value={})
-    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=True)
-
     client.force_login(user)
     client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
     response = client.get(url)
@@ -178,6 +154,8 @@ def test_update_dedup_settings_post_success(
     user: User,
     client,
     country_program,
+    mock_dedup_settings_policy,
+    mock_dedup_client,
     mocker: MockerFixture,
     dedup_settings_data,
 ) -> None:
@@ -188,22 +166,14 @@ def test_update_dedup_settings_post_success(
         "_get_dedup_settings",
         return_value=dedup_settings_data["settings"],
     )
-    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=True)
+    mock_dedup_settings_policy(allowed=True)
 
     form = mocker.MagicMock()
     form.is_valid.return_value = True
     form.get_payload.return_value = dedup_settings_data["payload"]
     form_cls = mocker.patch.object(program_admin_mod, "DedupSettingsForm", return_value=form)
 
-    dedup_client = mocker.MagicMock()
-    dedup_client_cm = mocker.MagicMock()
-    dedup_client_cm.__enter__.return_value = dedup_client
-    dedup_client_cm.__exit__.return_value = False
-    make_client = mocker.patch.object(
-        program_admin_mod,
-        "make_dedup_client",
-        return_value=dedup_client_cm,
-    )
+    make_client, dedup_client = mock_dedup_client
     mocker.patch.object(
         type(country_program),
         "unicef_id",
@@ -227,16 +197,17 @@ def test_update_dedup_settings_post_success(
     dedup_client.post_deduplication_set_group_config.assert_called_once_with(payload=dedup_settings_data["payload"])
 
 
-def test_update_dedup_settings_post_blocked_for_successful_rdp(
+def test_update_dedup_settings_post_blocked_by_policy(
     user: User,
     client,
     country_program,
+    mock_dedup_settings_policy,
     mocker: MockerFixture,
 ) -> None:
     url = reverse("workspace:workspaces_countryprogram_update_dedup_settings", args=[country_program.pk])
 
     get_settings = mocker.patch.object(CountryProgramAdmin, "_get_dedup_settings")
-    mocker.patch.object(CountryProgramAdmin, "_can_update_dedup_settings", return_value=False)
+    mock_dedup_settings_policy(allowed=False)
     form_cls = mocker.patch.object(program_admin_mod, "DedupSettingsForm")
     make_client = mocker.patch.object(program_admin_mod, "make_dedup_client")
 

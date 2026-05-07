@@ -1,9 +1,13 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Final
 
 from requests import Session
 
-from country_workspace.contrib.dedup_engine import endpoint, request, response
+from . import endpoint, request, response
+
+
+TIMEOUT: Final[tuple[int, int]] = (10, 20)
 
 
 @dataclass(slots=True)
@@ -14,21 +18,21 @@ class GenericResource[T]:
 
 class CreateMixin[T, R]:
     def create(self: GenericResource, body: T, *, params: Mapping[str, str] | None = None) -> R:
-        result = self.session.post(str(self.endpoint), json=body, params=params)
+        result = self.session.post(str(self.endpoint), json=body, params=params, timeout=TIMEOUT)
         result.raise_for_status()
         return result.json()
 
 
 class RetrieveMixin[R]:
     def retrieve(self: GenericResource) -> R:
-        result = self.session.get(str(self.endpoint))
+        result = self.session.get(str(self.endpoint), timeout=TIMEOUT)
         result.raise_for_status()
         return result.json()
 
 
 class UpdateMixin[T, R]:
     def update(self: GenericResource, body: T) -> R:
-        result = self.session.post(str(self.endpoint), json=body)
+        result = self.session.post(str(self.endpoint), json=body, timeout=TIMEOUT)
         result.raise_for_status()
         return result.json()
 
@@ -36,7 +40,7 @@ class UpdateMixin[T, R]:
 class ActionMixin[T]:
     def call(self: GenericResource, body: T | None = None, *, params: Mapping[str, str] | None = None) -> None:
         kwargs = {"json": body} if body is not None else {}
-        result = self.session.post(str(self.endpoint), params=params, **kwargs)
+        result = self.session.post(str(self.endpoint), params=params, timeout=TIMEOUT, **kwargs)
         result.raise_for_status()
 
 
