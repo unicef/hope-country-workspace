@@ -31,16 +31,10 @@ def _get_dc_associated_programs(dc: DataChecker) -> Any:
 
 
 def _invalidate_qs(qs: Any) -> None:
-    qs = qs.filter(last_checked__isnull=False)
-    batch_size = 500
-    pks = list(qs.values_list("pk", flat=True))
-
-    for start in range(0, len(pks), batch_size):
-        batch_pks = pks[start : start + batch_size]
-        qs.filter(pk__in=batch_pks).update(
-            errors={"data_checker": "Invalidated due to DataChecker change."},
-            last_checked=None,
-        )
+    qs.filter(last_checked__isnull=False).update(
+        errors={"data_checker": "Invalidated due to DataChecker change."},
+        last_checked=None,
+    )
 
 
 def _process_program(program: Program) -> None:
