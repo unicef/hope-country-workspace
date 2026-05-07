@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     Operations = dict[str, Operation]
 
 
+MASS_UPDATE_ITERATOR_CHUNK_SIZE = 50
+
+
 class OperationManager:
     def __init__(self) -> None:
         self._dict: Operations = {}
@@ -113,7 +116,7 @@ def mass_update_impl(
         return
     program = first.program
     with transaction.atomic(), suppress_cache_updates():
-        for record in queryset.defer("raw_data").iterator(chunk_size=20):
+        for record in queryset.defer("raw_data").iterator(chunk_size=MASS_UPDATE_ITERATOR_CHUNK_SIZE):
             for field_name, attrs in config.items():
                 op, new_value = attrs
                 if field_name in record.flex_fields:

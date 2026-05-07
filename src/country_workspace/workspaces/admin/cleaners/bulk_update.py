@@ -72,6 +72,9 @@ if TYPE_CHECKING:
 """
 
 
+ITERATOR_CHUNK_SIZE = 50
+
+
 class XlsValidateRule:
     validate = ""
 
@@ -116,6 +119,14 @@ TYPES = {
 def get_validation_for_field(fld: "FlexField") -> dict[str, Any]:
     validate = TYPES.get(fld.definition.field_type, XlsValidateRule)(fld)
     return validate()
+
+
+def _build_field_lookup(dc: "DataChecker") -> dict[str, "FlexField"]:
+    lookup: dict[str, FlexField] = {}
+    for member in dc.members.select_related("fieldset").all():
+        for field in member.fieldset.fields.select_related("definition").all():
+            lookup[field.name] = field
+    return lookup
 
 
 def dc_get_field(dc: "DataChecker", name: str) -> "FlexField | None":
@@ -192,6 +203,7 @@ def _get_header_format(workbook: Workbook) -> Format:
 def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
+    field_lookup = _build_field_lookup(dc)
 
     with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
         header_format = _get_header_format(workbook)
@@ -201,7 +213,7 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
 
         field_to_choices = {}
         for i, fld_name in enumerate(columns):
-            fld = dc_get_field(dc, fld_name)
+            fld = field_lookup.get(fld_name)
             if fld:
                 worksheet.write(0, i, fld.name, header_format)
                 cell_format = _get_cell_format(workbook, fld)
@@ -217,7 +229,7 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
         worksheet.freeze_panes(1, 0)
 
         fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
-        for row, record in enumerate(queryset, 1):
+        for row, record in enumerate(queryset.iterator(chunk_size=ITERATOR_CHUNK_SIZE), 1):
             for col, fld in enumerate(columns):
                 value = getattr(record, fld, record.flex_fields.get(fld))
                 worksheet.write(row, col, fmt(value))
@@ -338,7 +350,11 @@ def export_bulk_update_template(job: AsyncJob) -> str:
 
 
 def _get_queryset_with_is_valid_annotation(model: Validable, job: AsyncJob) -> QuerySet:
-    qs = model.objects.filter(pk__in=job.config["pks"])
+    qs = model.objects.filter(pk__in=job.config["pks"]).defer(
+        "raw_data",
+        "system_fields",
+        "flex_files",
+    )
     if (columns := job.config.get("columns")) and ("is_valid" in columns and "errors" in columns):
         qs = qs.annotate(
             is_valid=Case(
