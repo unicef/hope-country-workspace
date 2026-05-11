@@ -121,14 +121,6 @@ def get_validation_for_field(fld: "FlexField") -> dict[str, Any]:
     return validate()
 
 
-def _build_field_lookup(dc: "DataChecker") -> dict[str, "FlexField"]:
-    lookup: dict[str, FlexField] = {}
-    for member in dc.members.select_related("fieldset").all():
-        for field in member.fieldset.fields.select_related("definition").all():
-            lookup[field.name] = field
-    return lookup
-
-
 def dc_get_field(dc: "DataChecker", name: str) -> "FlexField | None":
     for fs in dc.members.all():
         for field in fs.fieldset.fields.filter():
@@ -203,7 +195,7 @@ def _get_header_format(workbook: Workbook) -> Format:
 def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
-    field_lookup = _build_field_lookup(dc)
+    field_lookup = {field.name: field for _, field in dc.get_fields()}
 
     with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
         header_format = _get_header_format(workbook)
