@@ -5,7 +5,7 @@ from django.core.management import BaseCommand
 
 from country_workspace.contrib.hope.sync.base import log_to
 from country_workspace.contrib.hope.sync.context_programs import sync_beneficiary_groups, sync_offices, sync_programs
-from country_workspace.contrib.hope.sync.context_geo import sync_area_types, sync_countries, sync_areas
+from country_workspace.contrib.hope.sync.context_geo import sync_area_types, sync_countries, sync_areas, sync_currencies
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ def run_program_sync() -> None:
 
 
 def run_geo_sync() -> None:
+    sync_currencies()
     sync_countries()
     sync_area_types()
     sync_areas()

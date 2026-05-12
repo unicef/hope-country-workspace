@@ -21,6 +21,19 @@ class Country(BaseModel):
         return self.name
 
 
+class Currency(BaseModel):
+    hope_id = models.CharField(max_length=200, unique=True, editable=False)
+    code = models.CharField(max_length=10, unique=True, db_index=True)
+    name = models.CharField(max_length=255, db_index=True)
+
+    class Meta:
+        verbose_name_plural = "Currencies"
+        ordering = ("code",)
+
+    def __str__(self) -> str:
+        return f"{self.code} - {self.name}"
+
+
 class AreaType(MPTTModel):
     hope_id = models.CharField(max_length=200, unique=True, editable=False)
     name = models.CharField(max_length=255, db_index=True)

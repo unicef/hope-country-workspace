@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 
 from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, CountryChoice
-from .lookups import FinancialInstitutionChoice
+from .lookups import CurrencyChoice, FinancialInstitutionChoice
 from .phone_numbers import PhoneNumberField
 from .beneficiary_reference import BeneficiaryReferenceModelChoiceField
 from .required_choice_field import ChoiceFieldWithEmptyDisplay
@@ -20,6 +20,7 @@ class Config(AppConfig):
 
         attributes_registry.register(CountryAttributeHandler)
         field_registry.register(CountryChoice)
+        field_registry.register(CurrencyChoice)
         field_registry.register(Admin1Choice)
         field_registry.register(Admin2Choice)
         field_registry.register(Admin3Choice)

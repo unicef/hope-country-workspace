@@ -4,7 +4,7 @@ from .data_serializer import DataSerializer
 from .household import Household
 from .individual import Individual
 from .jobs import AsyncJob
-from .locations import Area, AreaType, Country
+from .locations import Area, AreaType, Country, Currency
 from .mapping_importer import MappingImporter
 from .office import Office
 from .program import Program
@@ -22,6 +22,7 @@ __all__ = [
     "Batch",
     "BeneficiaryGroup",
     "Country",
+    "Currency",
     "DataSerializer",
     "Household",
     "Individual",

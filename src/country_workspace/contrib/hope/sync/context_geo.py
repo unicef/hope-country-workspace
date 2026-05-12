@@ -13,13 +13,25 @@ from country_workspace.contrib.hope.sync.base import (
     build_endpoint,
     format_msg,
 )
-from country_workspace.models import Country, AreaType, Area
+from country_workspace.models import Country, Currency, AreaType, Area
 
 logger = logging.getLogger(__name__)
 
 
-MODELS: Final[tuple[type[Model], ...]] = (Country,)
+MODELS: Final[tuple[type[Model], ...]] = (Country, Currency)
 """List of models to synchronize."""
+
+
+def sync_currencies(delta_sync: bool = False) -> Stats:
+    return sync_entity(
+        SyncConfig(
+            model=Currency,
+            reference_id="hope_id",
+            endpoint=build_endpoint("lookups/currency", Currency, ParamDateName.UPDATED, delta_sync),
+            prepare_defaults=lambda r: {"code": r.get("code"), "name": r.get("name")},
+            delta_sync=delta_sync,
+        )
+    )
 
 
 def sync_countries(delta_sync: bool = False) -> Stats:

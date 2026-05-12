@@ -9,7 +9,7 @@ from django.contrib.admin import ModelAdmin, RelatedFieldListFilter
 from django.db.models import Field
 from django.forms import FileField, FileInput, Form
 
-from country_workspace.models.locations import Area, AreaType, Country
+from country_workspace.models.locations import Area, AreaType, Country, Currency
 from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 
 if TYPE_CHECKING:
@@ -36,9 +36,21 @@ class CountryAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     )
     sync_config = SyncAdminConfig(
         targets=[
+            TargetConfig(target=Target.CURRENCIES),
             TargetConfig(target=Target.COUNTRIES),
             TargetConfig(target=Target.AREA_TYPES),
             TargetConfig(target=Target.AREAS),
+        ],
+    )
+
+
+@admin.register(Currency)
+class CurrencyAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
+    list_display = ("code", "name")
+    search_fields = ("code", "name")
+    sync_config = SyncAdminConfig(
+        targets=[
+            TargetConfig(target=Target.CURRENCIES),
         ],
     )
 
@@ -52,6 +64,8 @@ class AreaTypeAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     raw_id_fields = ("country", "parent")
     sync_config = SyncAdminConfig(
         targets=[
+            TargetConfig(target=Target.CURRENCIES),
+            TargetConfig(target=Target.COUNTRIES),
             TargetConfig(target=Target.AREA_TYPES),
             TargetConfig(target=Target.AREAS),
         ],

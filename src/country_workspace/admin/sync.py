@@ -19,6 +19,7 @@ class Target(StrEnum):
     AREA_TYPES = auto()
     BENEFICIARY_GROUPS = auto()
     COUNTRIES = auto()
+    CURRENCIES = auto()
     OFFICES = auto()
     PROGRAMS = auto()
     PROJECTS = auto()
@@ -83,6 +84,7 @@ TARGET_TO_HANDLER_PATH_MAPPING: Final[Mapping[Target, str]] = {
     Target.AREA_TYPES: "country_workspace.contrib.hope.sync.context_geo.sync_area_types",
     Target.BENEFICIARY_GROUPS: "country_workspace.contrib.hope.sync.context_programs.sync_beneficiary_groups",
     Target.COUNTRIES: "country_workspace.contrib.hope.sync.context_geo.sync_countries",
+    Target.CURRENCIES: "country_workspace.contrib.hope.sync.context_geo.sync_currencies",
     Target.OFFICES: "country_workspace.contrib.hope.sync.context_programs.sync_offices",
     Target.PROGRAMS: "country_workspace.contrib.hope.sync.context_programs.sync_programs",
     Target.PROJECTS: "country_workspace.contrib.aurora.context_aurora.sync_projects",
