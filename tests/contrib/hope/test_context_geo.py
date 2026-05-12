@@ -6,8 +6,14 @@ from mptt.exceptions import InvalidMove
 from uuid import uuid4
 
 from country_workspace.contrib.hope.sync.base import SkipRecordError, ParamDateName
-from country_workspace.contrib.hope.sync.context_geo import sync_countries, sync_area_types, sync_areas, _assign_parents
-from country_workspace.models import Country, AreaType, Area
+from country_workspace.contrib.hope.sync.context_geo import (
+    sync_currencies,
+    sync_countries,
+    sync_area_types,
+    sync_areas,
+    _assign_parents,
+)
+from country_workspace.models import Country, Currency, AreaType, Area
 
 _today = datetime.now(timezone.utc).date()
 
@@ -22,6 +28,18 @@ COUNTRY = {
             "iso_code3": "TLD",
             "short_name": "Testland",
         },
+    ],
+}
+
+CURRENCY = {
+    "path": "lookups/currency",
+    "updated_at_after": "2025-05-05",
+    "results": [
+        {
+            "id": str(uuid4()),
+            "code": "USD",
+            "name": "US Dollar",
+        }
     ],
 }
 
@@ -85,6 +103,25 @@ def test_sync_countries(mocker: MockerFixture, delta_sync: bool) -> None:
 
     expected_defaults = {k: COUNTRY["results"][0][k] for k in ("name", "iso_code2", "iso_code3")}
     defaults = config["prepare_defaults"](COUNTRY["results"][0])
+    assert defaults == expected_defaults
+
+
+def test_sync_currencies(mocker: MockerFixture, delta_sync: bool) -> None:
+    sync_entity_mock = mocker.patch("country_workspace.contrib.hope.sync.context_geo.sync_entity")
+    mocker.patch(
+        "country_workspace.contrib.hope.sync.base._get_last_updated_date", return_value=CURRENCY["updated_at_after"]
+    )
+
+    sync_currencies(delta_sync=delta_sync)
+
+    sync_entity_mock.assert_called_once()
+    config = sync_entity_mock.call_args.args[0]
+    assert config["model"] is Currency
+    assert config["endpoint"]["path"] == CURRENCY["path"]
+    _assert_params(delta_sync, config, CURRENCY["updated_at_after"])
+
+    expected_defaults = {k: CURRENCY["results"][0][k] for k in ("code", "name")}
+    defaults = config["prepare_defaults"](CURRENCY["results"][0])
     assert defaults == expected_defaults
 
 

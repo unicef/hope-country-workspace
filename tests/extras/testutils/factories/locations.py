@@ -2,7 +2,7 @@ import factory
 from factory import fuzzy
 from faker import Faker
 
-from country_workspace.models import Area, AreaType, Country
+from country_workspace.models import Area, AreaType, Country, Currency
 from testutils.factories import AutoRegisterModelFactory
 
 faker = Faker()
@@ -41,3 +41,13 @@ class AreaFactory(AutoRegisterModelFactory):
     parent = None
     p_code = factory.LazyFunction(lambda: faker.bothify(text="AF@@@@@@"))
     area_type = factory.SubFactory(AreaTypeFactory)
+
+
+class CurrencyFactory(AutoRegisterModelFactory):
+    class Meta:
+        model = Currency
+        django_get_or_create = ("code",)
+
+    hope_id = factory.Sequence(lambda n: f"currency-{n}")
+    code = factory.Sequence(lambda n: f"C{n:03d}")
+    name = factory.Sequence(lambda n: f"Currency {n}")

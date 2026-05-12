@@ -156,12 +156,14 @@ def test_run_program_sync(mocker: MockerFixture) -> None:
 
 
 def test_run_geo_sync(mocker: MockerFixture) -> None:
+    sync_currencies_mock = mocker.patch("country_workspace.management.commands.sync.sync_currencies")
     sync_countries_mock = mocker.patch("country_workspace.management.commands.sync.sync_countries")
     sync_area_types_mock = mocker.patch("country_workspace.management.commands.sync.sync_area_types")
     sync_areas_mock = mocker.patch("country_workspace.management.commands.sync.sync_areas")
 
     run_geo_sync()
 
+    sync_currencies_mock.assert_called_once()
     sync_countries_mock.assert_called_once()
     sync_area_types_mock.assert_called_once()
     sync_areas_mock.assert_called_once()

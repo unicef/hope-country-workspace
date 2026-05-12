@@ -16,7 +16,7 @@ from country_workspace.admin.sync import (
     TargetArgs,
 )
 from country_workspace.contrib.aurora.models import Project
-from country_workspace.models import Office, Program, Country, AreaType, Area
+from country_workspace.models import Office, Program, Country, Currency, AreaType, Area
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -36,12 +36,13 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
     [
         (Office, "country_workspace"),
         (Program, "country_workspace"),
+        (Currency, "country_workspace"),
         (Country, "country_workspace"),
         (AreaType, "country_workspace"),
         (Area, "country_workspace"),
         (Project, "aurora"),
     ],
-    ids=["Office", "Program", "Country", "AreaType", "Area", "Project"],
+    ids=["Office", "Program", "Currency", "Country", "AreaType", "Area", "Project"],
 )
 @pytest.mark.parametrize("delta_sync", [False, True], ids=["full", "delta"])
 @pytest.mark.parametrize("scenario", ["success", "error"], ids=["success", "error"])
@@ -96,6 +97,7 @@ def test_admin_sync(
         Target.OFFICES,
         Target.BENEFICIARY_GROUPS,
         Target.PROGRAMS,
+        Target.CURRENCIES,
         Target.COUNTRIES,
         Target.AREA_TYPES,
         Target.AREAS,
