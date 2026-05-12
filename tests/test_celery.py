@@ -7,7 +7,7 @@ from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
-from country_workspace.tasks import removed_expired_jobs, clean_program_data, sync_job_task
+from country_workspace.tasks import batch_cleanup, removed_expired_jobs, clean_program_data, sync_job_task
 from tests.extras.testutils.factories import (
     ProgramFactory,
     BatchFactory,
@@ -271,3 +271,80 @@ def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
             "exc_message": reason,
         },
     )
+
+
+@pytest.fixture
+def batch_cleanup_job(program, batch):
+    return AsyncJobFactory.create(program=program, batch=batch)
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_no_batch_raises(job):
+    with pytest.raises(ValueError, match="batch is required"):
+        batch_cleanup(job)
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_empty_batch(batch_cleanup_job, batch):
+    result = batch_cleanup(batch_cleanup_job)
+
+    assert result == {"batches": 1, "households": 0, "individuals": 0}
+    assert not Batch.objects.filter(pk=batch.pk).exists()
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_with_records(batch_cleanup_job, batch, households, individuals):
+    initial_households = Household.objects.filter(batch=batch).count()
+    initial_individuals = Individual.objects.filter(batch=batch).count()
+
+    assert initial_households > 0
+    assert initial_individuals > 0
+
+    result = batch_cleanup(batch_cleanup_job)
+
+    assert result["batches"] == 1
+    assert result["households"] == initial_households
+    assert result["individuals"] == initial_individuals
+    assert not Batch.objects.filter(pk=batch.pk).exists()
+    assert Household.objects.filter(batch_id=batch.pk).count() == 0
+    assert Individual.objects.filter(batch_id=batch.pk).count() == 0
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_does_not_affect_other_batches(batch_cleanup_job, batch, households):
+    other_program = ProgramFactory.create()
+    other_batch = BatchFactory.create(program=other_program)
+    HouseholdFactory.create_batch(3, individuals=[], batch=other_batch, removed=False)
+
+    other_household_count = Household.objects.filter(batch=other_batch).count()
+
+    batch_cleanup(batch_cleanup_job)
+
+    assert Batch.objects.filter(pk=other_batch.pk).exists()
+    assert Household.objects.filter(batch=other_batch).count() == other_household_count
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_stops_when_cancellation_requested(batch_cleanup_job, households):
+    initial_batches = Batch.objects.count()
+
+    with patch(
+        "country_workspace.models.AsyncJob.is_termination_requested",
+        new_callable=PropertyMock,
+    ) as requested:
+        requested.return_value = True
+        with pytest.raises(GracefulJobCancellationError):
+            batch_cleanup(batch_cleanup_job)
+
+    assert Batch.objects.count() == initial_batches
+
+
+@pytest.mark.django_db
+def test_batch_cleanup_bumps_cache_version_exactly_once(batch_cleanup_job, batch, households, individuals):
+    program = batch_cleanup_job.program
+    version_before = cache_manager.get_cache_version(program=program)
+
+    batch_cleanup(batch_cleanup_job)
+
+    version_after = cache_manager.get_cache_version(program=program)
+    assert version_after == version_before + 1
