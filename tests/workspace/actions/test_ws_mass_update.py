@@ -70,6 +70,27 @@ def test_mass_update_impl(household):
     assert household.flex_fields["address"] == "__NEW VALUE__"
 
 
+def test_mass_update_impl_empty_queryset():
+    from country_workspace.models import Household
+
+    mass_update_impl(Household.objects.none(), {"address": ("djangoformsfieldsfield_set_lambda", "__NEW VALUE__")})
+
+
+def test_mass_update_impl_create_missing_fields(household):
+    from country_workspace.models import Household
+
+    assert "new_field" not in household.flex_fields
+
+    mass_update_impl(
+        Household.objects.all(),
+        {"new_field": ("djangoformsfieldsfield_set_lambda", "created_value")},
+        create_missing_fields=True,
+    )
+
+    household.refresh_from_db()
+    assert household.flex_fields["new_field"] == "created_value"
+
+
 @override_config(HOPE_API_URL="https://hope-dummy.org/api/rest", HOPE_API_TOKEN="dummy_token")
 def test_mass_update(app: "DjangoTestApp", household: "CountryHousehold", mocked_responses: RequestsMock) -> None:
     mocked_responses.add(
