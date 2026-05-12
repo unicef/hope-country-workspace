@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("last_modified", models.DateTimeField(auto_now=True, editable=False)),
                 ("version", concurrency.fields.IntegerVersionField(db_index=True, verbose_name="Version")),
-                ("hope_id", models.CharField(editable=False, max_length=200, unique=True)),
+                ("hope_id", models.BigIntegerField(editable=False, unique=True)),
                 ("code", models.CharField(db_index=True, max_length=10, unique=True)),
                 ("name", models.CharField(db_index=True, max_length=255)),
             ],

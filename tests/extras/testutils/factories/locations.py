@@ -48,6 +48,6 @@ class CurrencyFactory(AutoRegisterModelFactory):
         model = Currency
         django_get_or_create = ("code",)
 
-    hope_id = factory.Sequence(lambda n: f"currency-{n}")
+    hope_id = factory.Sequence(lambda n: n + 1)
     code = factory.Sequence(lambda n: f"C{n:03d}")
     name = factory.Sequence(lambda n: f"Currency {n}")

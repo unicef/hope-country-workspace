@@ -36,7 +36,6 @@ class CountryAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     )
     sync_config = SyncAdminConfig(
         targets=[
-            TargetConfig(target=Target.CURRENCIES),
             TargetConfig(target=Target.COUNTRIES),
             TargetConfig(target=Target.AREA_TYPES),
             TargetConfig(target=Target.AREAS),
@@ -64,8 +63,6 @@ class AreaTypeAdmin(SyncAdminMixin, AdminFiltersMixin, admin.ModelAdmin):
     raw_id_fields = ("country", "parent")
     sync_config = SyncAdminConfig(
         targets=[
-            TargetConfig(target=Target.CURRENCIES),
-            TargetConfig(target=Target.COUNTRIES),
             TargetConfig(target=Target.AREA_TYPES),
             TargetConfig(target=Target.AREAS),
         ],

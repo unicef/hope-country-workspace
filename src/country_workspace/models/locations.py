@@ -22,7 +22,7 @@ class Country(BaseModel):
 
 
 class Currency(BaseModel):
-    hope_id = models.CharField(max_length=200, unique=True, editable=False)
+    hope_id = models.BigIntegerField(unique=True, editable=False)
     code = models.CharField(max_length=10, unique=True, db_index=True)
     name = models.CharField(max_length=255, db_index=True)
 
