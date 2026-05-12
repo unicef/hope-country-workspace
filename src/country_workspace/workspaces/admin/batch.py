@@ -3,7 +3,7 @@ from typing import Any
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
 from django import forms
-from django.contrib import messages
+from django.contrib import admin, messages
 from django.contrib.admin import register
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -20,6 +20,33 @@ from ..permissions import can_reprocess_batch
 from ..sites import workspace
 from .filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from .hh_ind import SelectedProgramMixin
+
+
+@admin.action(description="Batch Cleanup")
+def batch_cleanup_action(
+    model_admin: "CountryBatchAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[CountryBatch]",
+) -> None:
+    batch_ids = list(queryset.values_list("pk", flat=True))
+    if not batch_ids:
+        model_admin.message_user(request, _("No batches selected."), messages.WARNING)
+        return
+
+    job = AsyncJob.objects.create(
+        description="Batch Cleanup",
+        type=AsyncJob.JobType.TASK,
+        owner=request.user,
+        action=fqn("country_workspace.workspaces.admin.batch_cleanup.batch_cleanup"),
+        program=state.program,
+        config={"batch_ids": batch_ids},
+    )
+    job.queue()
+    model_admin.message_user(
+        request,
+        _("Batch cleanup has been scheduled for %d batch(es).") % len(batch_ids),
+        messages.SUCCESS,
+    )
 
 
 class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
@@ -98,6 +125,10 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
     readonly_fields = fields = ("name", "source", "status")
+    actions = [batch_cleanup_action]
+
+    def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
+        return False
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["modeladmin"] = self
