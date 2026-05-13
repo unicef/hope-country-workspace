@@ -11,13 +11,6 @@
                 <h1 class="block text-2xl mb-5">
                     {% translate "Update deduplication settings" %}
                 </h1>
-                {% if not can_update_dedup_settings %}
-                    <ul class="messagelist">
-                        <li class="warning">
-                            {% translate "Deduplication settings cannot be updated because the program already has an RDP in SUCCESS status." %}
-                        </li>
-                    </ul>
-                {% endif %}
                 <form method="post" id="dedup-settings-form" novalidate>
                     {% csrf_token %}
                     <table>
@@ -52,12 +45,7 @@
                         </tbody>
                     </table>
                     <div class="submit-row">
-                        <input type="submit"
-                               value="{% translate 'Send to Dedup Engine' %}"
-                               class="default"
-                               name="_save"
-                               title="{% if not can_update_dedup_settings %}{% translate 'Disabled because the program already has an RDP in SUCCESS status.' %}{% endif %}"
-                               {% if not can_update_dedup_settings %} disabled style="opacity: 0.5; cursor: not-allowed;" {% endif %} />
+                        <input type="submit" value="{% translate 'Send to Dedup Engine' %}" class="default" name="_save" />
                         {% url opts|workspace_urlname:'change' original.pk as change_url %}
                         <a href="{% add_preserved_filters change_url %}" class="closelink">
                             {% translate 'Close' %}
