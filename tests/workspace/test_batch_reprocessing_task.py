@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from country_workspace.models import Batch, User
-from country_workspace.workspaces.admin.batch_reprocessing import reprocess_batch
+from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch
 
 
 pytestmark = [pytest.mark.django_db]
@@ -81,7 +81,7 @@ def test_reprocess_batch_with_households(program, user: User, force_migrated_rec
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -111,7 +111,7 @@ def test_reprocess_batch_with_individuals_only(program, user: User, force_migrat
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -123,18 +123,18 @@ def test_reprocess_batch_with_individuals_only(program, user: User, force_migrat
 
 def test_build_processor_uses_kobo_builders(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
-    from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+    from country_workspace.workspaces.admin.batch.reprocessing import _build_processor
     from country_workspace.models import Household, Individual
 
     batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO)
 
     with (
         patch(
-            "country_workspace.workspaces.admin.batch_reprocessing.build_kobo_household_processor",
+            "country_workspace.workspaces.admin.batch.reprocessing.build_kobo_household_processor",
             return_value=Mock(name="kobo_hh"),
         ) as build_hh,
         patch(
-            "country_workspace.workspaces.admin.batch_reprocessing.build_kobo_individual_processor",
+            "country_workspace.workspaces.admin.batch.reprocessing.build_kobo_individual_processor",
             return_value=Mock(name="kobo_ind"),
         ) as build_ind,
     ):
@@ -165,18 +165,18 @@ def test_build_processor_uses_kobo_builders(program, user: User) -> None:
 
 def test_build_processor_uses_aurora_builders(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
-    from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+    from country_workspace.workspaces.admin.batch.reprocessing import _build_processor
     from country_workspace.models import Household, Individual
 
     batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.AURORA)
 
     with (
         patch(
-            "country_workspace.workspaces.admin.batch_reprocessing.build_aurora_household_processor",
+            "country_workspace.workspaces.admin.batch.reprocessing.build_aurora_household_processor",
             return_value=Mock(name="aurora_hh"),
         ) as build_hh,
         patch(
-            "country_workspace.workspaces.admin.batch_reprocessing.build_aurora_individual_processor",
+            "country_workspace.workspaces.admin.batch.reprocessing.build_aurora_individual_processor",
             return_value=Mock(name="aurora_ind"),
         ) as build_ind,
     ):
@@ -207,13 +207,13 @@ def test_build_processor_uses_aurora_builders(program, user: User) -> None:
 
 def test_build_processor_uses_default_builder(program, user: User) -> None:
     from testutils.factories import CountryBatchFactory
-    from country_workspace.workspaces.admin.batch_reprocessing import _build_processor
+    from country_workspace.workspaces.admin.batch.reprocessing import _build_processor
     from country_workspace.models import Household
 
     batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.RDI)
 
     with patch(
-        "country_workspace.workspaces.admin.batch_reprocessing.build_import_processor",
+        "country_workspace.workspaces.admin.batch.reprocessing.build_import_processor",
         return_value=Mock(name="default_processor"),
     ) as build_default:
         result = _build_processor(
@@ -261,7 +261,7 @@ def test_reprocess_batch_with_mixed_content(program, user: User, force_migrated_
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -295,7 +295,7 @@ def test_reprocess_batch_multiple_households(program, user: User, force_migrated
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
         is_master_detail = batch.program.is_master_detail
         if is_master_detail:
@@ -324,7 +324,7 @@ def test_reprocess_batch_queryset_prefetching(program, user: User, force_migrate
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         reprocess_batch(job)
         is_master_detail = batch.program.is_master_detail
         calls = [c.kwargs for c in mock_create.call_args_list]
@@ -350,7 +350,7 @@ def test_reprocess_batch_result_structure(program, user: User, force_migrated_re
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert "batch_id" in result
@@ -391,7 +391,7 @@ def test_reprocess_batch_household_mapping_not_found(program, user: User, force_
         config={"batch_id": batch.pk, "household_mapping_id": 99999},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -417,7 +417,7 @@ def test_reprocess_batch_individual_mapping_not_found(program, user: User, force
         config={"batch_id": batch.pk, "individual_mapping_id": 99999},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -426,7 +426,7 @@ def test_reprocess_batch_individual_mapping_not_found(program, user: User, force
 
 def test_apply_transformations_no_raw_data(program, user: User) -> None:
     """Test _apply_transformations returns False when record has no raw_data."""
-    from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+    from country_workspace.workspaces.admin.batch.reprocessing import _apply_transformations
     from testutils.factories import CountryHouseholdFactory
 
     hh = CountryHouseholdFactory(
@@ -445,7 +445,7 @@ def test_apply_transformations_no_raw_data(program, user: User) -> None:
 
 def test_apply_transformations_successful(program, user: User) -> None:
     """Test _apply_transformations with only mapping (no transformer)."""
-    from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+    from country_workspace.workspaces.admin.batch.reprocessing import _apply_transformations
     from country_workspace.models import Batch, Household
     from country_workspace.utils.import_processing import build_import_processor
     from testutils.factories import CountryHouseholdFactory, MappingImporterFactory
@@ -478,7 +478,7 @@ def test_apply_transformations_successful(program, user: User) -> None:
 
 def test_apply_transformations_with_mapping_then_transformer(program, user: User) -> None:
     """Test _apply_transformations with mapping first, then transformer - correct flow."""
-    from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+    from country_workspace.workspaces.admin.batch.reprocessing import _apply_transformations
     from country_workspace.models import Batch, Household
     from country_workspace.utils.import_processing import build_import_processor
     from testutils.factories import CountryHouseholdFactory, MappingImporterFactory, TransformerFactory
@@ -514,7 +514,7 @@ def test_apply_transformations_with_mapping_then_transformer(program, user: User
 
 def test_apply_transformations_with_transformer_only(program, user: User) -> None:
     """Test _apply_transformations with only transformer (no mapping)."""
-    from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+    from country_workspace.workspaces.admin.batch.reprocessing import _apply_transformations
     from country_workspace.models import Batch, Household
     from country_workspace.utils.import_processing import build_import_processor
     from testutils.factories import CountryHouseholdFactory, TransformerFactory
@@ -548,7 +548,7 @@ def test_apply_transformations_with_transformer_only(program, user: User) -> Non
 
 def test_apply_transformations_with_neither_transformer_nor_mapping(program, user: User) -> None:
     """Test _apply_transformations with neither transformer nor mapping (both None)."""
-    from country_workspace.workspaces.admin.batch_reprocessing import _apply_transformations
+    from country_workspace.workspaces.admin.batch.reprocessing import _apply_transformations
     from country_workspace.models import Batch, Household
     from country_workspace.utils.import_processing import build_import_processor
     from testutils.factories import CountryHouseholdFactory
@@ -606,7 +606,7 @@ def test_reprocess_batch_household_mapping_applied(program, user: User, force_mi
         config={"batch_id": batch.pk, "household_mapping_id": household_mapping.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -662,7 +662,7 @@ def test_reprocess_batch_household_mapping_then_transformer_applied(
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -717,7 +717,7 @@ def test_reprocess_batch_individual_mapping_then_transformer_applied(
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -763,7 +763,7 @@ def test_reprocess_batch_transformer_not_found(program, user: User, force_migrat
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -802,7 +802,7 @@ def test_reprocess_batch_individual_transformer_not_found(program, user: User, f
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         with caplog.at_level("WARNING"):
             result = reprocess_batch(job)
 
@@ -851,7 +851,7 @@ def test_reprocess_batch_household_transformer_only(program, user: User, force_m
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -889,7 +889,7 @@ def test_reprocess_batch_individual_transformer_only(program, user: User, force_
         },
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -924,7 +924,7 @@ def test_reprocess_batch_individual_mapping_applied(program, user: User, force_m
         config={"batch_id": batch.pk, "individual_mapping_id": individual_mapping.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -962,7 +962,7 @@ def test_reprocess_batch_household_mapping_not_applied_when_no_households(progra
         config={"batch_id": empty_batch.pk, "household_mapping_id": household_mapping.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == empty_batch.pk
@@ -1000,7 +1000,7 @@ def test_reprocess_batch_household_mapping_not_applied_when_not_master_detail(
         config={"batch_id": batch.pk, "household_mapping_id": household_mapping.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch.pk
@@ -1028,7 +1028,7 @@ def test_reprocess_batch_individual_mapping_not_applied_when_no_individuals(prog
         config={"batch_id": empty_batch.pk, "individual_mapping_id": individual_mapping.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result["batch_id"] == empty_batch.pk
@@ -1061,8 +1061,8 @@ def test_reprocess_batch_logs_skipped_records(program, user: User, force_migrate
         config={"batch_id": batch.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
-        with patch("country_workspace.workspaces.admin.batch_reprocessing.logger") as mock_logger:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
+        with patch("country_workspace.workspaces.admin.batch.reprocessing.logger") as mock_logger:
             result = reprocess_batch(job)
 
             assert result.get("skipped_households", 0) == 1
@@ -1074,3 +1074,71 @@ def test_reprocess_batch_logs_skipped_records(program, user: User, force_migrate
                 0,
                 batch.name,
             )
+
+
+def test_reprocess_rdi_resolves_household_refs(program, user: User, force_migrated_records) -> None:
+    from testutils.factories import (
+        AsyncJobFactory,
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+    )
+    from testutils.factories.program import BeneficiaryGroupFactory
+
+    bg = BeneficiaryGroupFactory(master_detail=True)
+    program.beneficiary_group = bg
+    program.save()
+
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.RDI)
+    household = CountryHouseholdFactory(
+        batch=batch,
+        raw_data={
+            "head_of_household": "IND-1",
+            "primary_collector": "IND-2",
+            "alternate_collector": "IND-3",
+        },
+    )
+    head = CountryIndividualFactory(batch=batch, household=household, raw_data={"individual_id": "IND-1"})
+    primary = CountryIndividualFactory(batch=batch, household=household, raw_data={"individual_id": "IND-2"})
+    alternate = CountryIndividualFactory(batch=batch, household=household, raw_data={"individual_id": "IND-3"})
+
+    job = AsyncJobFactory(program=program, batch=batch, owner=user, config={"batch_id": batch.pk})
+
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
+        reprocess_batch(job)
+
+    household.refresh_from_db()
+    assert household.flex_fields["head_of_household_id"] == head.pk
+    assert household.flex_fields["primary_collector_id"] == primary.pk
+    assert household.flex_fields["alternate_collector_id"] == alternate.pk
+
+
+def test_reprocess_kobo_resolves_household_refs(program, user: User, force_migrated_records) -> None:
+    from testutils.factories import (
+        AsyncJobFactory,
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+    )
+    from testutils.factories.program import BeneficiaryGroupFactory
+
+    bg = BeneficiaryGroupFactory(master_detail=True)
+    program.beneficiary_group = bg
+    program.save()
+
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO)
+    household = CountryHouseholdFactory(batch=batch, raw_data={"household_id": 1})
+    household.members.all().delete()
+    head = CountryIndividualFactory(batch=batch, household=household, raw_data={"relationship": "HEAD"})
+    primary = CountryIndividualFactory(batch=batch, household=household, raw_data={"role": "PRIMARY"})
+    alternate = CountryIndividualFactory(batch=batch, household=household, raw_data={"role": "ALTERNATE"})
+
+    job = AsyncJobFactory(program=program, batch=batch, owner=user, config={"batch_id": batch.pk})
+
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
+        reprocess_batch(job)
+
+    household.refresh_from_db()
+    assert household.flex_fields["head_of_household_id"] == head.pk
+    assert household.flex_fields["primary_collector_id"] == primary.pk
+    assert household.flex_fields["alternate_collector_id"] == alternate.pk
