@@ -36,7 +36,7 @@ def change_url(url: str, path: str | None = None, query: dict[str, Any] | None =
     if path:
         parsed_url = parsed_url._replace(path=path)
 
-    if query:
+    if query is not None:
         parsed_url = parsed_url._replace(query=urlencode(query, safe=safe))
 
     return str(urlunparse(parsed_url))
