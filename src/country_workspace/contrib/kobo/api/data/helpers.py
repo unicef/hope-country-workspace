@@ -17,8 +17,8 @@ VALUE_FORMAT = "data:{mimetype};base64,{content}"
 def download_attachments(data_getter: Callable[[str], Response], submission: Submission) -> Submission:
     for attachment in submission.attachments:
         content = b64encode(data_getter(attachment["download_url"]).content).decode()
-        value = VALUE_FORMAT.format(mimetype=attachment["mimetype"], content=content)
-        key = attachment["question_xpath"]
+        value = VALUE_FORMAT.format(mimetype=attachment.get("mimetype", "application/octet-stream"), content=content)
+        key = attachment.get("question_xpath", "")
         if key in submission:
             submission[key] = value
         elif key:

@@ -98,3 +98,17 @@ def test_response_is_cached(
         },
         CACHE_TTL,
     )
+
+
+def test_non_json_response_is_not_cached(cache_mock: Mock, session_mock: Mock) -> None:
+    cache_mock.get.return_value = None
+    session_mock.get.return_value.json.side_effect = ValueError("not json")
+
+    data_getter = DataGetter(
+        session=session_mock,
+        cache_ttl=CACHE_TTL,
+    )
+    response = data_getter(URL)
+
+    assert response == session_mock.get.return_value
+    cache_mock.set.assert_not_called()

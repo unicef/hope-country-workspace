@@ -8,6 +8,7 @@ from country_workspace.contrib.kobo.api.client.helpers import (
     get_asset,
     get_asset_list,
     get_asset_list_url,
+    has_active_deployment,
     get_raw_asset_list,
     get_raw_submission_list,
     get_submission_list,
@@ -22,6 +23,8 @@ from country_workspace.contrib.kobo.api.client.helpers import (
     START_PARAMETER_VALUE,
     LIMIT_PARAMETER_NAME,
     LIMIT_PARAMETER_VALUE,
+    ASSET_TYPE_PARAMETER_NAME,
+    ASSET_TYPE_SURVEY,
 )
 from country_workspace.contrib.kobo.api.data.helpers import download_attachments
 from typing import TYPE_CHECKING
@@ -72,7 +75,9 @@ def test_change_url(url: str, params: dict[str, str], expected_url: str) -> None
 def test_get_asset_list_url(mocker: MockerFixture, project_view_id: str | None, country_code: str | None) -> None:
     change_url_mock = mocker.patch("country_workspace.contrib.kobo.api.client.helpers.change_url")
     expected_path = PROJECT_VIEW_ASSETS_PATH.format(project_view_id=project_view_id) if project_view_id else ASSETS_PATH
-    expected_query = {"q": f"{COUNTRY_CODE_SELECTOR}:{country_code}"} if country_code else {}
+    expected_query = {ASSET_TYPE_PARAMETER_NAME: ASSET_TYPE_SURVEY}
+    if country_code:
+        expected_query["q"] = f"{COUNTRY_CODE_SELECTOR}:{country_code}"
 
     get_asset_list_url(BASE_URL, project_view_id, country_code)
 
@@ -115,22 +120,36 @@ def test_handle_paginated_response() -> None:
     assert result == (mapped0, mapped1)
 
 
+def test_has_active_deployment() -> None:
+    assert has_active_deployment({"has_deployment": True}) is True
+    assert has_active_deployment({"deployment__active": True}) is True
+    assert has_active_deployment({"has_deployment": False, "deployment__active": False}) is False
+
+
 def test_get_raw_asset_list() -> None:
-    asset0, asset1 = (
-        {
-            "has_deployment": True,
-        },
-        {
-            "has_deployment": False,
-        },
-    )
+    asset0 = {
+        "has_deployment": True,
+        "asset_type": "survey",
+    }
+    asset1 = {
+        "deployment__active": True,
+        "asset_type": "survey",
+    }
+    asset2 = {
+        "has_deployment": False,
+        "asset_type": "survey",
+    }
+    asset3 = {
+        "has_deployment": True,
+        "asset_type": "collection",
+    }
     data = {
         "count": 0,
         "next": None,
         "previous": None,
-        "results": [asset0, asset1],
+        "results": [asset0, asset1, asset2, asset3],
     }
-    assert get_raw_asset_list(cast("ListResponse", data)) == [asset0]
+    assert get_raw_asset_list(cast("ListResponse", data)) == [asset0, asset1, asset3]
 
 
 def test_get_raw_submission_list() -> None:
