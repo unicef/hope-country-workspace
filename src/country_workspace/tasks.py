@@ -20,9 +20,6 @@ from country_workspace.models.jobs import GracefulJobCancellationError
 logger = logging.getLogger(__name__)
 
 
-SYNC_HOPE_DATA_PERIODIC_TASK_NAME = "sync-hope-data-hourly"
-
-
 @app.task()
 def cleanup_merged_rdp_data() -> None:
     days = constance_config.RDP_CLEANUP_DAYS

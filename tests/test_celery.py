@@ -8,7 +8,6 @@ from country_workspace.config.celery import app, init_sentry
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.tasks import (
-    SYNC_HOPE_DATA_PERIODIC_TASK_NAME,
     clean_program_data,
     removed_expired_jobs,
     sync_hope_data,
@@ -308,35 +307,13 @@ def test_sync_hope_data_isolates_failures(mocker):
     assert result == {"programs": False, "geo": True, "flex_fields": True}
 
 
-@pytest.mark.django_db
-def test_register_hope_sync_periodic_task_script_is_idempotent():
-    import importlib.util
-    from pathlib import Path
+def test_sync_hope_data_is_registered_in_beat_schedule():
+    from celery.schedules import crontab
+    from django.conf import settings
 
-    from django.core.management import call_command
-    from django_celery_beat.models import IntervalSchedule, PeriodicTask
-
-    call_command("upgradescripts", ["apply"])
-    call_command("upgradescripts", ["apply"])
-
-    task = PeriodicTask.objects.get(name=SYNC_HOPE_DATA_PERIODIC_TASK_NAME)
-    assert task.task == "country_workspace.tasks.sync_hope_data"
-    assert task.queue == "queue_hcw"
-    assert task.enabled is True
-    assert task.interval is not None
-    assert task.interval.every == 1
-    assert task.interval.period == IntervalSchedule.HOURS
-
-    script_path = (
-        Path(__file__).resolve().parents[1]
-        / "src"
-        / "country_workspace"
-        / "versioning"
-        / "scripts"
-        / "0033_register_hope_sync_periodic_task.py"
-    )
-    spec = importlib.util.spec_from_file_location("_hcw_periodic_sync_script", script_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.backward()
-    assert not PeriodicTask.objects.filter(name=SYNC_HOPE_DATA_PERIODIC_TASK_NAME).exists()
+    entry = settings.CELERY_BEAT_SCHEDULE["sync-hope-data-hourly"]
+    assert entry["task"] == "country_workspace.tasks.sync_hope_data"
+    assert entry["options"]["queue"] == settings.CELERY_TASK_DEFAULT_QUEUE
+    schedule = entry["schedule"]
+    assert isinstance(schedule, crontab)
+    assert schedule.minute == {0}

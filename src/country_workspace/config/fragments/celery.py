@@ -1,3 +1,5 @@
+from celery.schedules import crontab
+
 from ..settings import env  # type: ignore[attr-defined]
 
 CELERY_ACCEPT_CONTENT = ["pickle", "json", "application/text", "application/json"]
@@ -43,3 +45,11 @@ CELERY_BROKER_CONNECTION_RETRY = False
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = False
 
 CELERY_TRACK_STARTED = True
+
+CELERY_BEAT_SCHEDULE = {
+    "sync-hope-data-hourly": {
+        "task": "country_workspace.tasks.sync_hope_data",
+        "schedule": crontab(minute="0"),
+        "options": {"queue": CELERY_TASK_DEFAULT_QUEUE},
+    },
+}
