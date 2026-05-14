@@ -1,6 +1,7 @@
 {% extends "workspace/layout.html" %}
 {% load feature_flags i18n static %}
 {% block extrahead %}
+    {{ block.super }}
     <script src="{% static "d3.min.js" %}"></script>
 {% endblock extrahead %}
 {% block logo %}
@@ -8,42 +9,64 @@
 {% block sidebar %}
 {% endblock %}
 {% block content-header %}
-    <div class="flex flex-1 flex-col bg-unicef-blue">
-        <div class="flex-grow">
-            <img src="{% static "hope_logo.png" %}" class="pl-8 h-16" />
+    <div class="flex flex-1 items-center bg-unicef-blue h-16 px-6 shadow-md">
+        <a href="/" class="flex items-center">
+            <img src="{% static "hope_logo.png" %}" class="h-10" alt="HOPE" />
+        </a>
+        <div class="flex-1">
         </div>
+        <span class="text-white text-sm font-medium tracking-wide hidden md:flex">
+            {% trans "Country Workspace" %}
+        </span>
     </div>
 {% endblock content-header %}
 {% block content %}
     {% flag_enabled 'LOCAL_LOGIN' as FLAG_LOCAL_LOGIN %}
-    <div class="flex items-center justify-center">
-        <div class="text-5xl pt-20">
-            HOPE Workspace
-        </div>
-    </div>
-    <div class="flex items-center justify-center">
-        <div class="w-1/4 pt-10">
-            <div class="text-center">
-                <a class="button primary" href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">{% translate "SSO Login" %}</a>
+    <div class="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-light text-gray-800 tracking-tight">
+                    {% trans "Welcome to" %}
+                </h1>
+                <h2 class="text-4xl font-medium text-unicef-dark mt-1">
+                    HOPE Workspace
+                </h2>
+                <p class="text-sm text-gray-500 mt-3">
+                    {% trans "Please sign in to continue" %}
+                </p>
+            </div>
+            <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-8">
+                <div class="text-center">
+                    <a class="button primary inline-block w-full text-center" href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">
+                        {% translate "Sign in with SSO" %}
+                    </a>
+                </div>
                 {% if FLAG_LOCAL_LOGIN %}
-                    <div class="m-5">
-                        OR
+                    <div class="flex items-center my-6">
+                        <div class="flex-grow border-t border-gray-200">
+                        </div>
+                        <span class="px-3 text-xs uppercase tracking-wider text-gray-400">
+                            {% trans "or" %}
+                        </span>
+                        <div class="flex-grow border-t border-gray-200">
+                        </div>
                     </div>
-                    <div class="my-5 border-2 rounded">
-                        <form id="login-form" method="post">
-                            {% csrf_token %}
-                            <table>
-                                {{ form.as_table }}
-                            </table>
-                            <div class="text-center mt-3">
-                                <button class="button primary" type="submit">
-                                    {% translate "Login" %}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                    <form id="login-form" method="post" class="space-y-4">
+                        {% csrf_token %}
+                        <table class="w-full">
+                            {{ form.as_table }}
+                        </table>
+                        <div class="text-center pt-2">
+                            <button class="button primary w-full" type="submit">
+                                {% translate "Sign in" %}
+                            </button>
+                        </div>
+                    </form>
                 {% endif %}
             </div>
+            <p class="text-center text-xs text-gray-400 mt-6">
+                {% blocktranslate %}© UNICEF — All rights reserved{% endblocktranslate %}
+            </p>
         </div>
     </div>
 {% endblock content %}

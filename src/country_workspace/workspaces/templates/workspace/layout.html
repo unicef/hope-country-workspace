@@ -6,11 +6,13 @@
         {% block meta %}
             <meta name="view" content="{{ view_name }}" />
             <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         {% endblock meta %}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
         {% block stylesheet %}
-            {# <link rel="stylesheet" href="{% static "power_query.css" %}" type="text/css" /> #}
             <link rel="stylesheet" href="{% static "icons.css" %}" type="text/css" />
-            {# <link rel="stylesheet" href="{% static "css/styles.css" %}" type="text/css" /> #}
         {% endblock stylesheet %}
         {% block scripts %}
             <script src="{% static "admin/js/vendor/jquery/jquery.js" %}"></script>
@@ -23,18 +25,31 @@
         document.addEventListener("DOMContentLoaded", function (event) {
             const url = window.location.href;
             let color = '';
+            let envLabel = '';
             if (window.location.hostname === 'localhost') {
                 color = '#FF6600';
+                envLabel = 'LOCAL';
             } else if (url.includes('-trn')) {
                 color = '#BF360C';
+                envLabel = 'TRAINING';
             } else if (url.includes('-stg')) {
                 color = '#673AB7';
+                envLabel = 'STAGING';
             } else if (url.includes('-dev')) {
                 color = '#00796B';
+                envLabel = 'DEV';
             } else {
                 color = '#00ADEF';
             }
-            document.getElementById("header-bar").style.backgroundColor = color;
+            const headerBar = document.getElementById("header-bar");
+            if (headerBar) {
+                headerBar.style.backgroundColor = color;
+            }
+            const envBadge = document.getElementById("env-badge");
+            if (envBadge && envLabel) {
+                envBadge.textContent = envLabel;
+                envBadge.classList.remove('hidden');
+            }
 
             document.querySelectorAll('li a.aeb-disable-on-click').forEach(function (link) {
                 link.addEventListener('click', function () {
@@ -56,7 +71,7 @@
             </script>
         {% endblock extrahead %}
     </head>
-    <body class="web">
+    <body class="web bg-gray-100 text-gray-800 antialiased">
         {% if messages %}
             <div class="messages">
                 <div class="flex-grow">
@@ -77,13 +92,15 @@
             </div>
         {% endif %}
         <main class="flex flex-col h-screen">
-            <header class="flex drop-shadow-md">
+            <header class="flex shadow-md z-20">
                 {% block logo %}
                     <div class="w-52 bg-unicef-blue p-0 flex-none h-16 items-center display-open">
-                        <div class="inline-flex">
-                            <img src="{% static "hope_logo.png" %}" class="pl-8 h-16" />
-                            <div class="cursor-pointer" id="close-sidebar">
-                                <svg focusable="false" class="sidebar-button text-white align-middle mt-5" viewBox="0 0 24 24" aria-hidden="true">
+                        <div class="inline-flex items-center w-full h-full">
+                            <a href="/" class="flex items-center pl-6">
+                                <img src="{% static "hope_logo.png" %}" class="h-10" alt="HOPE" />
+                            </a>
+                            <div class="cursor-pointer ml-auto pr-3" id="close-sidebar" title="Collapse menu">
+                                <svg focusable="false" class="sidebar-button text-white align-middle" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z">
                                     </path>
                                 </svg>
@@ -93,11 +110,11 @@
                 {% endblock logo %}
                 {% block content-header %}
                     <div class="flex flex-1 flex-col">
-                        <div id="header-bar" class="flex h-16 bg-unicef-gray text-white align-middle">
+                        <div id="header-bar" class="flex h-16 bg-unicef-gray text-white items-center px-2 gap-3">
                             {% block areas %}
-                                <div class="text-white cursor-pointer w-16">
-                                    <div id="open-sidebar" class="hidden p-5">
-                                        <svg class="sidebar-button text-white hidden" focusable="false" viewBox="0 0 24 24" aria-hidden="true">
+                                <div class="text-white cursor-pointer w-12 flex items-center justify-center">
+                                    <div id="open-sidebar" class="hidden p-2 hover:bg-white/10 rounded">
+                                        <svg class="sidebar-button text-white" focusable="false" viewBox="0 0 24 24" aria-hidden="true">
                                             <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z">
                                             </path>
                                         </svg>
@@ -108,18 +125,25 @@
                                 {% block select_ba_form %}
                                 {% endblock %}
                             {% endblock header %}
+                            <div class="flex-1">
+                            </div>
+                            <span id="env-badge"
+                                  class="hidden uppercase text-[0.65rem] font-bold tracking-wider bg-white/20 border border-white/30 rounded px-2 py-0.5 mr-2"></span>
+                            <div class="text-sm font-medium tracking-wide hidden md:flex items-center pr-4 opacity-90">
+                                HOPE Workspace
+                            </div>
                         </div>
                     </div>
                 {% endblock content-header %}
             </header>
-            <div class="flex flex-1">
+            <div class="flex flex-1 min-h-0">
                 {% block sidebar %}
-                    <div id="sidebar" class="w-52 bg-gray-100 open-show">
+                    <aside id="sidebar" class="w-52 bg-white border-r border-gray-200 open-show overflow-y-auto">
                         {% block menu %}
                         {% endblock %}
-                    </div>
+                    </aside>
                 {% endblock sidebar %}
-                <div class="overflow-y-auto p-1 bg-gray-200 w-full flex flex-1 flex-col">
+                <div class="overflow-y-auto p-4 bg-gray-100 w-full flex flex-1 flex-col">
                     {% block breadcrumbs %}
                     {% endblock %}
                     {% block page-top %}
@@ -128,12 +152,12 @@
                     {% endblock %}
                 </div>
             </div>
-            <div class="footer-signature">
+            <div class="footer-signature border-t border-gray-200 bg-white">
                 <div>
-                    <span>HOPE Workspace</span>
-                    <span>{{ app.version }}</span>
+                    <span class="font-medium text-gray-500">HOPE Workspace</span>
+                    <span>v{{ app.version }}</span>
                     <span>{{ app.build_date }}</span>
-                    <span>{{ app.commit }}</span>
+                    <span class="font-mono">{{ app.commit }}</span>
                 </div>
             </div>
         </main>

@@ -1,19 +1,90 @@
 {% extends "workspace/_base.html" %}
+{% load i18n %}
 {% block page-top %}
     <div class="title-top">
         <h2>
             {% block page-title %}
-                {{ title|default_if_none:"" }}
+                {{ title|default_if_none:_("Welcome") }}
             {% endblock %}
         </h2>
-        {% if program %}
-            <p class="flex w-full px-4">
-                At the moment you are in {{ program }}.
-            </p>
-        {% else %}
-            <p class="flex w-full px-4">
-                Please go ahead and select the Programme in the menu
-            </p>
-        {% endif %}
     </div>
 {% endblock page-top %}
+{% block content %}
+    <div class="p-2">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-6xl mx-auto pt-4">
+            <div class="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-start gap-4">
+                    <div class="hidden sm:flex w-12 h-12 rounded-full bg-unicef-blue/10 items-center justify-center flex-shrink-0">
+                        <span class="icon icon-home text-2xl text-unicef-blue"></span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-medium text-gray-800">
+                            {% if program %}
+                                {% blocktrans with program_name=program %}You are working on {{ program_name }}{% endblocktrans %}
+                            {% else %}
+                                {% trans "Welcome to HOPE Workspace" %}
+                            {% endif %}
+                        </h3>
+                        <p class="text-sm text-gray-600 mt-2 leading-relaxed">
+                            {% if program %}
+                                {% trans "Use the menu on the left to manage households, individuals, batches, and other resources for the selected programme." %}
+                            {% else %}
+                                {% trans "To get started, please select a Programme from the dropdown in the top header. Once selected, the available resources will appear in the side menu." %}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h4 class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-3">
+                    {% trans "Current context" %}
+                </h4>
+                <dl class="space-y-3 text-sm">
+                    <div>
+                        <dt class="text-gray-500">
+                            {% trans "Office" %}
+                        </dt>
+                        <dd class="font-medium text-gray-800">
+                            {{ active_tenant|default:_("Not selected") }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">
+                            {% trans "Programme" %}
+                        </dt>
+                        <dd class="font-medium text-gray-800">
+                            {{ active_program|default:_("Not selected") }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-gray-500">
+                            {% trans "User" %}
+                        </dt>
+                        <dd class="font-medium text-gray-800">
+                            {{ request.user }}
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+        {% if menu_items %}
+            <div class="max-w-6xl mx-auto mt-6">
+                <h4 class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-3 pl-1">
+                    {% trans "Quick navigation" %}
+                </h4>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {% for item in menu_items %}
+                        {% if not item.is_form and not item.selected %}
+                            <a href="{{ item.url }}"
+                               {% if item.target %}target="{{ item.target }}"{% endif %}
+                               class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center gap-3 hover:shadow-md hover:border-unicef-blue/40 transition">
+                                <span class="icon {{ item.icon }} text-2xl text-unicef-blue"></span>
+                                <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
+                            </a>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+{% endblock content %}

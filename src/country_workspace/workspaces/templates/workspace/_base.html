@@ -2,42 +2,54 @@
 {% load feature_flags i18n workspace_urls %}
 {% block header %}
     {{ program_form.media.css }}
-    <div class="pr-10 flex-grow align-middle pt-3">
-        <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}">
-            {% csrf_token %}
-            <span class="flex align-middle">{{ tenant_form.tenant }}{% admin_url active_tenant %}</span>
-        </form>
-    </div>
-    {% if active_tenant %}
-        <div class="pr-10 flex-grow align-middle pt-3">
-            <form id="select-program" method="post" action="{% url "workspace:select_program" %}">
+    <div class="flex-grow flex items-center gap-3">
+        <div class="flex items-center gap-2">
+            <label for="id_tenant" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+                {% trans "Office" %}
+            </label>
+            <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="flex items-center">
                 {% csrf_token %}
-                <span class="flex align-middle">{{ program_form.program }}{% admin_url active_program %}</span>
+                <span class="flex items-center">
+                    {{ tenant_form.tenant }}
+                    {% admin_url active_tenant %}
+                </span>
             </form>
-            {{ program_form.media.js }}
         </div>
-    {% endif %}
+        {% if active_tenant %}
+            <div class="flex items-center gap-2">
+                <label for="id_program" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+                    {% trans "Programme" %}
+                </label>
+                <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="flex items-center">
+                    {% csrf_token %}
+                    <span class="flex items-center">
+                        {{ program_form.program }}
+                        {% admin_url active_program %}
+                    </span>
+                </form>
+                {{ program_form.media.js }}
+            </div>
+        {% endif %}
+    </div>
 {% endblock header %}
 {% block menu %}
-    <ul class="menu p-0 w-full h-5/6 mt-10">
+    <ul class="menu p-0 w-full pt-4 pb-8">
         {% for item in menu_items %}
-            <li class="flex {% if item.selected %}selected{% endif %}{% if forloop.first %}h-12{% endif %}{% if item.indent %}pl-5{% endif %}">
+            <li class="menu-item flex {% if item.selected %}selected{% endif %}{% if item.indent %} pl-3{% endif %}">
                 {% if item.is_form %}
-                    <form method="post" action="{{ item.url }}">
+                    <form method="post" action="{{ item.url }}" class="w-full">
                         {% csrf_token %}
-                        <span class="flex w-full px-4">
-                            <span class="flex text-2xl pt-2 pr-4 icon {{ item.icon }}"></span>
-                            <button class="display-open" type="submit">
-                                {{ item.name }}
-                            </button>
-                        </span>
+                        <button type="submit" class="flex w-full items-center px-4 py-2.5 text-left">
+                            <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
+                            <span class="display-open flex-grow text-sm font-medium">{{ item.name }}</span>
+                        </button>
                     </form>
                 {% else %}
-                    <a class="flex w-full px-4" href="{{ item.url }}" {% if item.target %}target="{{ item.target }}"{% endif %}>
-                        <span class="flex text-2xl pt-2 pr-4 icon {{ item.icon }}"></span>
-                        <div class="flex-grow pt-3 display-open">
-                            {{ item.name }}
-                        </div>
+                    <a class="flex w-full items-center px-4 py-2.5"
+                       href="{{ item.url }}"
+                       {% if item.target %}target="{{ item.target }}"{% endif %}>
+                        <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
+                        <span class="display-open flex-grow text-sm font-medium">{{ item.name }}</span>
                     </a>
                 {% endif %}
             </li>

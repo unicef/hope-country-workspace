@@ -1,61 +1,105 @@
 form {
-  input[type=text], input[type=number], input[type=password], input [ type = date ], select {
-    @apply text-xs py-2 font-normal rounded border border-gray-500;
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="email"],
+  input[type="date"],
+  select,
+  textarea {
+    @apply text-sm py-2 px-3 font-normal rounded border border-gray-300 bg-white;
+    transition:
+      border-color 200ms ease,
+      box-shadow 200ms ease;
+
+    &:focus {
+      @apply outline-none border-unicef-blue;
+      box-shadow: 0 0 0 3px rgba(0, 173, 239, 0.15);
+    }
+
+    &:disabled {
+      @apply bg-gray-100 text-gray-500 cursor-not-allowed;
+    }
   }
 
   .helptext {
-    @apply text-xs italic;
+    @apply text-xs italic text-gray-500 mt-1 block;
   }
 }
 
-
-a.button, input[type=submit], input[type=button], button.button, a.closelink, a.deletelink {
+a.button,
+input[type="submit"],
+input[type="button"],
+button.button,
+a.closelink,
+a.deletelink {
   margin: 0;
   color: white;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   vertical-align: middle;
+  text-align: center;
   justify-content: center;
   min-width: 64px;
-  box-shadow: rgba(0, 0, 0, 0.2) 0px 3px 1px -2px, rgba(0, 0, 0, 0.14) 0px 2px 2px 0px, rgba(0, 0, 0, 0.12) 0px 1px 5px 0px;
+  box-shadow:
+    0 2px 4px -1px rgba(0, 0, 0, 0.2),
+    0 4px 5px 0 rgba(0, 0, 0, 0.14);
   outline: 0;
-  border-width: 0;
-  border-style: initial;
-  border-color: initial;
-  border-image: initial;
+  border: none;
   text-decoration: none;
-  line-height: inherit;
-  height: 33px;
+  line-height: 1.4;
+  height: auto;
   display: inline-block;
-  padding: 6px 16px;
+  padding: 8px 18px;
   border-radius: 4px;
-  transition: background-color 250ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1), border-color 250ms cubic-bezier(0.4, 0, 0.2, 1), color 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 250ms cubic-bezier(0.4, 0, 0.2, 1);
   background-color: rgb(0, 60, 143);
-  &.default{
+
+  &:hover {
+    background-color: rgb(0, 50, 120);
+    box-shadow:
+      0 2px 4px -1px rgba(0, 0, 0, 0.3),
+      0 5px 8px 0 rgba(0, 0, 0, 0.2);
+  }
+
+  &.default {
     background-color: rgb(0, 60, 143);
   }
-  &.closelink{
-    background-color: rgba(99, 92, 15, 0.53);
+
+  &.closelink {
+    background-color: #6b7280;
+
+    &:hover {
+      background-color: #4b5563;
+    }
   }
 }
 
 .submit-row {
-  @apply mt-5;
+  @apply mt-5 flex flex-wrap items-center gap-2;
+
   a.closelink {
-    @extend a.button;
-    background-color: rgba(99, 92, 15, 0.53);
+    background-color: #6b7280;
   }
 
   a.deletelink {
     background-color: rgb(207, 34, 34);
-    float: right;
+    margin-left: auto;
+
+    &:hover {
+      background-color: rgb(180, 28, 28);
+    }
   }
 }
 
 fieldset.module {
   border: none;
-  margin: 0;
-  margin-bottom: 30px;
+  margin: 0 0 1.5rem 0;
   background: var(--body-bg);
   min-width: 0;
   padding: 0;
@@ -66,13 +110,14 @@ fieldset.module {
 
   .form-row {
     overflow: hidden;
-    padding: 10px;
+    padding: 12px 4px;
     font-size: 0.8125rem;
     border-bottom: 1px solid var(--hairline-color);
     margin-bottom: 0;
 
-    input, select {
-      @apply text-sm py-1;
+    input,
+    select {
+      @apply text-sm py-1.5;
     }
 
     .flex-container {
@@ -94,17 +139,21 @@ fieldset.module {
       width: 160px;
       word-wrap: break-word;
       color: var(--body-quiet-color);
-      font-size: 0.8125rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 500;
     }
   }
 }
 
 .beneficiary-form {
-  input[type=text], select {
+  input[type="text"],
+  select {
     @apply min-w-full;
   }
 
   .validation-error {
-    @apply italic;
+    @apply italic text-red-600;
   }
 }
