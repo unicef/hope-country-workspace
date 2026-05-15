@@ -16,7 +16,7 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
 from country_workspace.utils.collector_linkage import sync_collector_links
-from country_workspace.utils.import_processing import build_import_processor
+from country_workspace.utils.import_processing import build_import_processor, apply_transformers
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 
@@ -46,23 +46,21 @@ def _build_processor(
     program: Program,
     model: type[Household] | type[Individual],
     mapping_id: int | None,
-    transformer_id: int | None,
 ) -> Callable[[Any], dict[str, Any]]:
     if batch.source == Batch.BatchSource.KOBO:
         if model is Household:
-            return build_kobo_household_processor(program, mapping_id, transformer_id)
-        return build_kobo_individual_processor(program, mapping_id, transformer_id)
+            return build_kobo_household_processor(program, mapping_id)
+        return build_kobo_individual_processor(program, mapping_id)
 
     if batch.source == Batch.BatchSource.AURORA:
         if model is Household:
-            return build_aurora_household_processor(program, mapping_id, transformer_id)
-        return build_aurora_individual_processor(program, mapping_id, transformer_id)
+            return build_aurora_household_processor(program, mapping_id)
+        return build_aurora_individual_processor(program, mapping_id)
 
     return build_import_processor(
         program=program,
         model=model,
         mapping_id=mapping_id,
-        transformer_id=transformer_id,
         source=batch.source,
     )
 
@@ -231,21 +229,18 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         program=batch.program,
         model=Household,
         mapping_id=household_mapping_id,
-        transformer_id=household_transformer_id,
     )
     individual_processor = _build_processor(
         batch=batch,
         program=batch.program,
         model=Individual,
         mapping_id=individual_mapping_id,
-        transformer_id=individual_transformer_id,
     )
 
     if household_count > 0 and is_master_detail:
         logger.info(
-            "Applying household transformations to %d households (transformer: %s, mapping: %s)",
+            "Applying household import processors to %d households (mapping: %s)",
             household_count,
-            household_transformer.name if household_transformer else None,
             household_mapping.name if household_mapping else None,
         )
         for household in households_to_process.iterator():
@@ -256,9 +251,8 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
 
     if individual_count > 0:
         logger.info(
-            "Applying individual transformations to %d individuals (transformer: %s, mapping: %s)",
+            "Applying individual import processors to %d individuals (mapping: %s)",
             individual_count,
-            individual_transformer.name if individual_transformer else None,
             individual_mapping.name if individual_mapping else None,
         )
         for individual in individuals_to_process.iterator():
@@ -274,6 +268,12 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             case Batch.BatchSource.RDI:
                 _sync_rdi_household_refs(batch)
     sync_collector_links(individuals_to_process)
+
+    apply_transformers(
+        batch,
+        household_transformer_id=household_transformer_id,
+        individual_transformer_id=individual_transformer_id,
+    )
 
     if household_count > 0 and is_master_detail:
         create_validation_jobs(

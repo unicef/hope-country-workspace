@@ -36,7 +36,7 @@ class BatchReprocessForm(forms.Form):
         required=False,
         label=_("Household Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Optional: Transform values after applying mapping. Flow: mapping => transformer"),
+        help_text=_("Optional: Transform values at the end of reprocessing."),
     )
     household_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),
@@ -50,7 +50,7 @@ class BatchReprocessForm(forms.Form):
         required=False,
         label=_("Individual Transformer (optional)"),
         empty_label=_("No transformer"),
-        help_text=_("Optional: Transform values after applying mapping. Flow: mapping => transformer"),
+        help_text=_("Optional: Transform values at the end of reprocessing."),
     )
     individual_mapping = forms.ModelChoiceField(
         queryset=MappingImporter.objects.none(),

@@ -1,16 +1,16 @@
-from __future__ import annotations
-
 import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from constance import config as constance_config
+from django.db.models import QuerySet
 
-from country_workspace.models import Batch, Household, Individual, Program
+from country_workspace.models import Batch, Household, Individual, Program, Transformer
 from country_workspace.utils.document_columns import expand_document_columns
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS, clean_field_names
 
 Processor = Callable[[dict[str, Any]], dict[str, Any]]
+type Transformable = Household | Individual
 
 
 def _split_ignored_fields(value: str | None) -> set[str]:
@@ -61,7 +61,6 @@ def process_import_record(  # noqa: PLR0913
     program: Program,
     model: type[Household | Individual],
     mapping_id: int | None = None,
-    transformer_id: int | None = None,
     fields_to_uppercase: Iterable[str] | None = None,
     pre_processors: Iterable[Processor] | None = None,
     post_processors: Iterable[Processor] | None = None,
@@ -77,7 +76,7 @@ def process_import_record(  # noqa: PLR0913
 
     data = dict(clean_field_names(data, fields_to_uppercase=fields_to_uppercase or TO_UPPERCASE_FIELDS))
     if apply_mapping:
-        data = program.apply_mapping_importer(model, data, mapping_id=mapping_id, transformer_id=transformer_id)
+        data = program.apply_mapping_importer(model, data, mapping_id=mapping_id)
 
     data = expand_document_columns(data)
 
@@ -99,7 +98,6 @@ def build_import_processor(  # noqa: PLR0913
     program: Program,
     model: type[Household | Individual],
     mapping_id: int | None = None,
-    transformer_id: int | None = None,
     fields_to_uppercase: Iterable[str] | None = None,
     pre_processors: Iterable[Processor] | None = None,
     post_processors: Iterable[Processor] | None = None,
@@ -114,7 +112,6 @@ def build_import_processor(  # noqa: PLR0913
             program=program,
             model=model,
             mapping_id=mapping_id,
-            transformer_id=transformer_id,
             fields_to_uppercase=fields_to_uppercase,
             pre_processors=pre_processors,
             post_processors=post_processors,
@@ -125,3 +122,54 @@ def build_import_processor(  # noqa: PLR0913
         )
 
     return processor
+
+
+def _apply_transformer(
+    qs: QuerySet[Transformable],
+    *,
+    batch: Batch,
+    transformer_id: int | None,
+) -> int:
+    if not transformer_id:
+        return 0
+
+    transformer = Transformer.objects.filter(pk=transformer_id, office=batch.country_office).first()
+    if not transformer:
+        return 0
+
+    count = 0
+    for record in qs.only("pk", "flex_fields").iterator():
+        record.flex_fields = transformer.apply(dict(record.flex_fields or {}))
+        record.last_checked = None
+        record.errors = {}
+        record.save(update_fields=["flex_fields", "last_checked", "errors"])
+        count += 1
+
+    return count
+
+
+def apply_transformers(
+    batch: Batch,
+    *,
+    household_transformer_id: int | None = None,
+    individual_transformer_id: int | None = None,
+) -> dict[str, int]:
+    transformed_households = 0
+
+    if batch.program.is_master_detail:
+        transformed_households = _apply_transformer(
+            batch.household_set.filter(removed=False),
+            batch=batch,
+            transformer_id=household_transformer_id,
+        )
+
+    transformed_individuals = _apply_transformer(
+        batch.individual_set.filter(removed=False),
+        batch=batch,
+        transformer_id=individual_transformer_id,
+    )
+
+    return {
+        "transformed_households": transformed_households,
+        "transformed_individuals": transformed_individuals,
+    }
