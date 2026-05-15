@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any
 
-from admin_extra_buttons.decorators import button
+from admin_extra_buttons.buttons import LinkButton
+from admin_extra_buttons.decorators import button, link
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
@@ -18,6 +19,7 @@ from ...cache.manager import cache_manager
 from ...state import state
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
+from ..permissions import can_import_program_data
 from ...models import Batch
 from ...utils.imports import validate_alien_fields
 from .cleaners import actions
@@ -195,6 +197,24 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
             queryset=queryset,
         )
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
+
+    @link(
+        label=_("Import Data"),
+        change_list=True,
+        change_form=False,
+        permission=can_import_program_data,
+        html_attrs={"title": _("Import Data using XLS/RDI, Kobo or Aurora.")},
+    )
+    def import_data(self, btn: "LinkButton") -> None:
+        program = state.program
+        if program:
+            btn.href = reverse(
+                "workspace:workspaces_countryprogram_import_data",
+                args=[program.pk],
+            )
+            btn.visible = True
+        else:
+            btn.visible = False
 
     @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
