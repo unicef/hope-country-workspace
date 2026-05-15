@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
-from admin_extra_buttons.buttons import LinkButton
+from admin_extra_buttons.buttons import LinkButton  # noqa: TC002
 from admin_extra_buttons.decorators import button, link
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from django.contrib import messages
