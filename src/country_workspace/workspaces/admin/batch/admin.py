@@ -115,6 +115,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def has_add_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
         return False
 
+    def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
+        return False
+
     @link(change_list=False, html_attrs={"title": "Shows related Household records."})
     def imported_records(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryhousehold_changelist")
