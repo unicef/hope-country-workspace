@@ -22,9 +22,9 @@ from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
-from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_processing import build_import_processor, apply_transformers
+from country_workspace.utils.import_flow.records import build_import_processor
+from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -448,12 +448,11 @@ def import_data(job: AsyncJob) -> ImportResult:
         job=job,
         timebox_seconds=timebox_seconds,
     )
-    sync_collector_links(batch.individual_set.filter(removed=False))  # type: ignore[attr-defined]
     household_counter += asset_import_result["households"]
     individual_counter += asset_import_result["individuals"]
 
     if asset_import_result["completed"]:
-        apply_transformers(
+        run_batch_postprocessing(
             batch,
             household_transformer_id=config.get("household_transformer_id"),
             individual_transformer_id=config.get("individual_transformer_id"),

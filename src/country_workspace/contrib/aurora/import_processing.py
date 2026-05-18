@@ -11,9 +11,9 @@ from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.imports import get_aurora_originating_id
-from country_workspace.utils.import_processing import build_import_processor, apply_transformers
+from country_workspace.utils.import_flow.records import build_import_processor
+from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,8 @@ def import_data(job: AsyncJob) -> ImportResult:
         total_households += imported.households
 
     job.ensure_not_cancelled(refresh=True)
-    sync_collector_links(batch.individual_set.filter(removed=False))  # type: ignore[attr-defined]
-    apply_transformers(
+
+    run_batch_postprocessing(
         batch,
         household_transformer_id=config.get("household_transformer_id"),
         individual_transformer_id=config.get("individual_transformer_id"),

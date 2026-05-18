@@ -1,8 +1,9 @@
 import logging
 from collections.abc import Callable
-from typing import Any
+from functools import partial
+from typing import Any, NamedTuple
 
-from django.db.models import F, Value
+from django.db.models import Count, F, Q, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform
 
@@ -15,25 +16,32 @@ from country_workspace.contrib.kobo.sync import (
     build_individual_processor as build_kobo_individual_processor,
 )
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
-from country_workspace.utils.collector_linkage import sync_collector_links
-from country_workspace.utils.import_processing import build_import_processor, apply_transformers
+from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
+from country_workspace.utils.import_flow.records import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_transformations(
+class ResolvedReprocessConfig(NamedTuple):
+    household_transformer_id: int | None
+    individual_transformer_id: int | None
+    household_mapping_id: int | None
+    individual_mapping_id: int | None
+    household_mapping: MappingImporter | None
+    individual_mapping: MappingImporter | None
+
+
+def _apply_import_processor(
     record: Household | Individual,
     processor: Callable[[Any], dict[str, Any]],
 ) -> bool:
     if not record.raw_data:
-        logger.warning("Record %s has no raw data, skipping transformations", record)
+        logger.warning("Record %s has no raw data, skipping import processor", record)
         return False
 
-    data = processor(record.raw_data)
-
-    record.flex_fields = data
+    record.flex_fields = processor(record.raw_data)
     record.last_checked = None
     record.errors = {}
     record.save(update_fields=["flex_fields", "last_checked", "errors"])
@@ -63,6 +71,13 @@ def _build_processor(
         mapping_id=mapping_id,
         source=batch.source,
     )
+
+
+def _process_records(
+    records: QuerySet[Household | Individual],
+    processor: Callable[[Any], dict[str, Any]],
+) -> int:
+    return sum(int(_apply_import_processor(record, processor)) for record in records.iterator())
 
 
 def _sync_rdi_household_refs(batch: Batch) -> None:
@@ -149,70 +164,109 @@ def _sync_kobo_household_refs(batch: Batch) -> None:
         )
 
 
-def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
-    batch_id = job.config.get("batch_id")
-    if not batch_id:
-        raise ValueError("batch_id is required in job config")
+def _sync_household_refs(batch: Batch) -> None:
+    match batch.source:
+        case Batch.BatchSource.KOBO:
+            _sync_kobo_household_refs(batch)
+        case Batch.BatchSource.RDI:
+            _sync_rdi_household_refs(batch)
 
-    batch = Batch.objects.select_related("program", "country_office").filter(pk=batch_id).first()
-    if not batch:
+
+def _resolve_config_object[T: MappingImporter | Transformer](
+    model: type[T],
+    object_id: int | None,
+    label: str,
+) -> tuple[int | None, T | None]:
+    if not object_id:
+        return None, None
+    try:
+        obj = model.objects.get(pk=object_id)
+    except model.DoesNotExist:
+        logger.warning("%s %s not found, skipping %s", label, object_id, label.lower())
+        return None, None
+    logger.info("Using %s: %s", label.lower(), obj)
+    return object_id, obj
+
+
+def _resolve_reprocess_config(config: dict[str, Any]) -> ResolvedReprocessConfig:
+    household_transformer_id, _ = _resolve_config_object(
+        Transformer,
+        config.get("household_transformer_id"),
+        "Household transformer",
+    )
+    individual_transformer_id, _ = _resolve_config_object(
+        Transformer,
+        config.get("individual_transformer_id"),
+        "Individual transformer",
+    )
+    household_mapping_id, household_mapping = _resolve_config_object(
+        MappingImporter,
+        config.get("household_mapping_id"),
+        "Household mapping",
+    )
+    individual_mapping_id, individual_mapping = _resolve_config_object(
+        MappingImporter,
+        config.get("individual_mapping_id"),
+        "Individual mapping",
+    )
+    return ResolvedReprocessConfig(
+        household_transformer_id=household_transformer_id,
+        individual_transformer_id=individual_transformer_id,
+        household_mapping_id=household_mapping_id,
+        individual_mapping_id=individual_mapping_id,
+        household_mapping=household_mapping,
+        individual_mapping=individual_mapping,
+    )
+
+
+def _run_import_processors(
+    *,
+    label: str,
+    records: QuerySet[Household | Individual],
+    count: int,
+    mapping: MappingImporter | None,
+    processor: Callable[[Any], dict[str, Any]],
+) -> int:
+    if count == 0:
+        return 0
+    logger.info(
+        "Applying %s import processors to %d records (mapping: %s)",
+        label,
+        count,
+        mapping.name if mapping else None,
+    )
+    processed = _process_records(records, processor)
+    logger.info("Applied %s import processors to %d records", label, processed)
+    return processed
+
+
+def _active_records(
+    records: QuerySet[Household | Individual],
+) -> tuple[QuerySet[Household | Individual], int, int]:
+    stats = records.aggregate(
+        total=Count("pk"),
+        active=Count("pk", filter=Q(removed=False)),
+    )
+    active = stats["active"] or 0
+    total = stats["total"] or 0
+    return records.filter(removed=False), active, total - active
+
+
+def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
+    if not (batch_id := job.config.get("batch_id")):
+        raise ValueError("batch_id is required in job config")
+    if not (batch := Batch.objects.select_related("program", "country_office").filter(pk=batch_id).first()):
         logger.error("Batch %s not found", batch_id)
         raise Batch.DoesNotExist(f"Batch {batch_id} not found")
 
-    household_transformer_id = job.config.get("household_transformer_id")
-    individual_transformer_id = job.config.get("individual_transformer_id")
-    household_mapping_id = job.config.get("household_mapping_id")
-    individual_mapping_id = job.config.get("individual_mapping_id")
+    config = _resolve_reprocess_config(job.config)
+    is_master_detail = batch.program.is_master_detail
 
-    household_transformer = None
-    individual_transformer = None
-    household_mapping = None
-    individual_mapping = None
-
-    if household_transformer_id:
-        try:
-            household_transformer = Transformer.objects.get(pk=household_transformer_id)
-            logger.info("Using household transformer: %s", household_transformer)
-        except Transformer.DoesNotExist:
-            logger.warning("Household transformer %s not found, skipping transformer", household_transformer_id)
-            household_transformer_id = None
-
-    if individual_transformer_id:
-        try:
-            individual_transformer = Transformer.objects.get(pk=individual_transformer_id)
-            logger.info("Using individual transformer: %s", individual_transformer)
-        except Transformer.DoesNotExist:
-            logger.warning("Individual transformer %s not found, skipping transformer", individual_transformer_id)
-            individual_transformer_id = None
-
-    if household_mapping_id:
-        try:
-            household_mapping = MappingImporter.objects.get(pk=household_mapping_id)
-            logger.info("Using household mapping: %s", household_mapping)
-        except MappingImporter.DoesNotExist:
-            logger.warning("Household mapping %s not found, skipping mapping", household_mapping_id)
-            household_mapping_id = None
-
-    if individual_mapping_id:
-        try:
-            individual_mapping = MappingImporter.objects.get(pk=individual_mapping_id)
-            logger.info("Using individual mapping: %s", individual_mapping)
-        except MappingImporter.DoesNotExist:
-            logger.warning("Individual mapping %s not found, skipping mapping", individual_mapping_id)
-            individual_mapping_id = None
-
-    total_households = batch.household_set.count()
-    total_individuals = batch.individual_set.count()
-
-    households_to_process = batch.household_set.filter(removed=False).only("pk", "name", "raw_data")
-    individuals_to_process = batch.individual_set.filter(removed=False).only("pk", "name", "raw_data")
-
-    household_count = households_to_process.count()
-    individual_count = individuals_to_process.count()
-
-    skipped_households = total_households - household_count
-    skipped_individuals = total_individuals - individual_count
-    if skipped_households > 0 or skipped_individuals > 0:
+    households, household_count, skipped_households = (
+        _active_records(batch.household_set.all()) if is_master_detail else (batch.household_set.none(), 0, 0)
+    )
+    individuals, individual_count, skipped_individuals = _active_records(batch.individual_set.all())
+    if skipped_households or skipped_individuals:
         logger.info(
             "Skipping %d household(s) and %d individual(s) already pushed to HOPE (removed=True) in batch %s",
             skipped_households,
@@ -220,59 +274,35 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             batch.name,
         )
 
-    mapped_households = 0
-    mapped_individuals = 0
-    is_master_detail = batch.program.is_master_detail
-
-    household_processor = _build_processor(
-        batch=batch,
-        program=batch.program,
-        model=Household,
-        mapping_id=household_mapping_id,
-    )
-    individual_processor = _build_processor(
-        batch=batch,
-        program=batch.program,
-        model=Individual,
-        mapping_id=individual_mapping_id,
-    )
-
-    if household_count > 0 and is_master_detail:
-        logger.info(
-            "Applying household import processors to %d households (mapping: %s)",
-            household_count,
-            household_mapping.name if household_mapping else None,
+    build_processor = partial(_build_processor, batch=batch, program=batch.program)
+    processed_households = (
+        _run_import_processors(
+            label="household",
+            records=households.only("pk", "name", "raw_data"),
+            count=household_count,
+            mapping=config.household_mapping,
+            processor=build_processor(model=Household, mapping_id=config.household_mapping_id),
         )
-        for household in households_to_process.iterator():
-            is_applied = _apply_transformations(household, household_processor)
-            mapped_households += int(is_applied)
-
-        logger.info("Applied transformations to %d households", mapped_households)
-
-    if individual_count > 0:
-        logger.info(
-            "Applying individual import processors to %d individuals (mapping: %s)",
-            individual_count,
-            individual_mapping.name if individual_mapping else None,
+        if is_master_detail and household_count
+        else 0
+    )
+    processed_individuals = (
+        _run_import_processors(
+            label="individual",
+            records=individuals.only("pk", "name", "raw_data"),
+            count=individual_count,
+            mapping=config.individual_mapping,
+            processor=build_processor(model=Individual, mapping_id=config.individual_mapping_id),
         )
-        for individual in individuals_to_process.iterator():
-            is_applied = _apply_transformations(individual, individual_processor)
-            mapped_individuals += int(is_applied)
+        if individual_count
+        else 0
+    )
 
-        logger.info("Applied transformations to %d individuals", mapped_individuals)
-
-    if is_master_detail:
-        match batch.source:
-            case Batch.BatchSource.KOBO:
-                _sync_kobo_household_refs(batch)
-            case Batch.BatchSource.RDI:
-                _sync_rdi_household_refs(batch)
-    sync_collector_links(individuals_to_process)
-
-    apply_transformers(
+    run_batch_postprocessing(
         batch,
-        household_transformer_id=household_transformer_id,
-        individual_transformer_id=individual_transformer_id,
+        household_transformer_id=config.household_transformer_id,
+        individual_transformer_id=config.individual_transformer_id,
+        sync_household_refs=_sync_household_refs,
     )
 
     if household_count > 0 and is_master_detail:
@@ -280,14 +310,14 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=batch.program,
-            queryset=households_to_process.prefetch_related("members"),
+            queryset=households.prefetch_related("members"),
         )
     elif individual_count > 0:
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",
             owner=job.owner,
             program=batch.program,
-            queryset=individuals_to_process,
+            queryset=individuals,
         )
 
     response = {
@@ -295,7 +325,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
         "batch_name": batch.name,
         "individuals": individual_count,
         "skipped_individuals": skipped_individuals,
-        "mapped_individuals": mapped_individuals,
+        "mapped_individuals": processed_individuals,
     }
 
     if is_master_detail:
@@ -303,7 +333,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             {
                 "households": household_count,
                 "skipped_households": skipped_households,
-                "mapped_households": mapped_households,
+                "mapped_households": processed_households,
             }
         )
 

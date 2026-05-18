@@ -16,8 +16,8 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
-from country_workspace.utils.import_processing import build_import_processor, apply_transformers
-from country_workspace.utils.collector_linkage import sync_collector_links
+from country_workspace.utils.import_flow.records import build_import_processor
+from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 from .config import Config, SheetName, Sheet
@@ -208,7 +208,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             else:
                 result = _import_people_only(job, batch, config)
 
-    apply_transformers(
+    run_batch_postprocessing(
         batch,
         household_transformer_id=config.get("household_transformer_id"),
         individual_transformer_id=config.get("individual_transformer_id"),
@@ -241,19 +241,15 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 
 def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
-
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     _sync_ind_pks(household_mapping, individuals_mapping)
-    sync_collector_links(batch.individual_set.filter(removed=False))
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-
     people_mapping = process_beneficiaries(people_sheet, job, batch, config)
-    sync_collector_links(batch.individual_set.filter(removed=False))
     return {"people": len(people_mapping)}
 
 
