@@ -41,7 +41,9 @@
                         {% csrf_token %}
                         <button type="submit" class="flex w-full items-center px-4 py-2.5 text-left">
                             <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                            <span class="display-open flex-grow text-sm font-medium">{{ item.name }}</span>
+                            <div class="display-open flex-grow text-sm font-medium">
+                                {{ item.name }}
+                            </div>
                         </button>
                     </form>
                 {% else %}
@@ -49,7 +51,9 @@
                        href="{{ item.url }}"
                        {% if item.target %}target="{{ item.target }}"{% endif %}>
                         <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                        <span class="display-open flex-grow text-sm font-medium">{{ item.name }}</span>
+                        <div class="display-open flex-grow text-sm font-medium">
+                            {{ item.name }}
+                        </div>
                     </a>
                 {% endif %}
             </li>
