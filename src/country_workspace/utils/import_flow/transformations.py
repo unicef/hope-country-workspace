@@ -1,7 +1,11 @@
-from django.db.models import QuerySet
+from typing import TYPE_CHECKING
 
 from country_workspace.models import Batch, Transformer
-from country_workspace.types import Beneficiary  # pyright: ignore[reportMissingModuleSource]
+
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from country_workspace.types import Beneficiary  # pyright: ignore[reportMissingModuleSource]
 
 
 def _get_transformer(batch: Batch, transformer_id: int | None) -> Transformer | None:
@@ -10,7 +14,7 @@ def _get_transformer(batch: Batch, transformer_id: int | None) -> Transformer | 
     return batch.country_office.transformers.filter(pk=transformer_id).first()
 
 
-def _apply_transformer(qs: QuerySet[Beneficiary], transformer: Transformer | None) -> int:
+def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | None) -> int:
     if transformer is None:
         return 0
 

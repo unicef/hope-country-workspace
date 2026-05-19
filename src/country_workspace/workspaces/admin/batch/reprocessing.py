@@ -1,11 +1,11 @@
 import logging
 from collections.abc import Callable
 from functools import partial
-from typing import Any, NamedTuple
+from typing import Any, Final, NamedTuple
 
 from django.db.models import Count, F, Q, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
-from django.db.models.fields.json import JSONField, KeyTextTransform
+from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransform
 
 from country_workspace.contrib.aurora.import_processing import (
     build_household_transform as build_aurora_household_processor,
@@ -23,6 +23,12 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 
 logger = logging.getLogger(__name__)
 
+PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[str, ...]]]] = {
+    Batch.BatchSource.KOBO: {
+        Household: ("household_id",),
+    },
+}
+
 
 class ResolvedReprocessConfig(NamedTuple):
     household_transformer_id: int | None
@@ -33,15 +39,34 @@ class ResolvedReprocessConfig(NamedTuple):
     individual_mapping: MappingImporter | None
 
 
+def _preserve_flex_fields(
+    records: QuerySet[Household | Individual],
+    batch: Batch,
+    model: type[Household | Individual],
+) -> tuple[QuerySet[Household | Individual], dict[str, str] | None]:
+    if not (fields := PRESERVED_FLEX_FIELDS.get(batch.source, {}).get(model, ())):
+        return records, None
+    preserved = {field: f"_preserved_flex_field_{i}" for i, field in enumerate(fields)}
+    return records.annotate(
+        **{attr: KeyTransform(field, "flex_fields") for field, attr in preserved.items()}
+    ), preserved
+
+
 def _apply_import_processor(
     record: Household | Individual,
     processor: Callable[[Any], dict[str, Any]],
+    preserved: dict[str, str] | None = None,
 ) -> bool:
     if not record.raw_data:
         logger.warning("Record %s has no raw data, skipping import processor", record)
         return False
 
-    record.flex_fields = processor(record.raw_data)
+    flex_fields = processor(record.raw_data)
+    if preserved:
+        flex_fields |= {
+            field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
+        }
+    record.flex_fields = flex_fields
     record.last_checked = None
     record.errors = {}
     record.save(update_fields=["flex_fields", "last_checked", "errors"])
@@ -76,8 +101,9 @@ def _build_processor(
 def _process_records(
     records: QuerySet[Household | Individual],
     processor: Callable[[Any], dict[str, Any]],
+    preserved: dict[str, str] | None = None,
 ) -> int:
-    return sum(int(_apply_import_processor(record, processor)) for record in records.iterator())
+    return sum(int(_apply_import_processor(record, processor, preserved)) for record in records.iterator())
 
 
 def _sync_rdi_household_refs(batch: Batch) -> None:
@@ -219,13 +245,13 @@ def _resolve_reprocess_config(config: dict[str, Any]) -> ResolvedReprocessConfig
     )
 
 
-def _run_import_processors(
-    *,
+def _run_import_processors(  # noqa: PLR0913
     label: str,
     records: QuerySet[Household | Individual],
     count: int,
     mapping: MappingImporter | None,
     processor: Callable[[Any], dict[str, Any]],
+    preserved: dict[str, str] | None = None,
 ) -> int:
     if count == 0:
         return 0
@@ -235,7 +261,7 @@ def _run_import_processors(
         count,
         mapping.name if mapping else None,
     )
-    processed = _process_records(records, processor)
+    processed = _process_records(records, processor, preserved)
     logger.info("Applied %s import processors to %d records", label, processed)
     return processed
 
@@ -275,13 +301,20 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
         )
 
     build_processor = partial(_build_processor, batch=batch, program=batch.program)
+
+    household_records, household_preserved = _preserve_flex_fields(
+        households.only("pk", "name", "raw_data"),
+        batch,
+        Household,
+    )
     processed_households = (
         _run_import_processors(
             label="household",
-            records=households.only("pk", "name", "raw_data"),
+            records=household_records,
             count=household_count,
             mapping=config.household_mapping,
             processor=build_processor(model=Household, mapping_id=config.household_mapping_id),
+            preserved=household_preserved,
         )
         if is_master_detail and household_count
         else 0
