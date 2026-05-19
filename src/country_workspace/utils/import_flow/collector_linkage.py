@@ -6,26 +6,11 @@ from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform
 
 from country_workspace.models import Individual
+from country_workspace.utils.fields import to_reference_key
+
 
 COLLECTOR_ID_FIELD = "collector_id"
 REFERENCE_FIELDS = ("individual_id", "index_id")
-
-
-def _normalize_reference(value: Any) -> str | None:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(value))
-        return str(value).strip() or None
-    if isinstance(value, str):
-        cleaned = value.strip()
-        return cleaned or None
-
-    cleaned = str(value).strip()
-    return cleaned or None
 
 
 def sync_collector_links(qs: QuerySet) -> int:
@@ -46,11 +31,11 @@ def sync_collector_links(qs: QuerySet) -> int:
 
     for pk, individual_id, index_id, collector_id in annotated.iterator():
         for ref_val in (individual_id, index_id):
-            ref = _normalize_reference(ref_val)
+            ref = to_reference_key(ref_val)
             if ref:
                 reference_pk_map[ref] = pk
 
-        collector_ref = _normalize_reference(collector_id)
+        collector_ref = to_reference_key(collector_id)
         if collector_ref:
             candidates.append((pk, collector_ref, collector_id))
 
@@ -59,7 +44,7 @@ def sync_collector_links(qs: QuerySet) -> int:
         collector_pk = reference_pk_map.get(collector_ref)
         if collector_pk is None:
             continue
-        if _normalize_reference(current_val) == str(collector_pk):
+        if to_reference_key(current_val) == str(collector_pk):
             continue
         updates_by_value[collector_pk].append(pk)
 

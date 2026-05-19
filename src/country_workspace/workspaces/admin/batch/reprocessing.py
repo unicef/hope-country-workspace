@@ -16,6 +16,7 @@ from country_workspace.contrib.kobo.sync import (
     build_individual_processor as build_kobo_individual_processor,
 )
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
+from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
 from country_workspace.utils.import_flow.records import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
@@ -112,7 +113,7 @@ def _sync_rdi_household_refs(batch: Batch) -> None:
         .annotate(_individual_id=KeyTextTransform("individual_id", "flex_fields"))
         .values_list("pk", "_individual_id")
     )
-    pk_mapping = {individual_id: pk for pk, individual_id in individuals.iterator()}
+    pk_mapping = {ref: pk for pk, individual_id in individuals.iterator() if (ref := to_reference_key(individual_id))}
 
     households = (
         batch.household_set.filter(removed=False)
@@ -136,14 +137,15 @@ def _sync_rdi_household_refs(batch: Batch) -> None:
     )
 
     for pk, hoh_id, hoh, primary_id, primary, alt_id, alt in households.iterator():
+        hoh_ref = to_reference_key(hoh_id or hoh)
+        primary_ref = to_reference_key(primary_id or primary)
+        alt_ref = to_reference_key(alt_id or alt)
         patch = {
-            "head_of_household_id": pk_mapping.get(hoh_id or hoh),
-            "primary_collector_id": pk_mapping.get(primary_id or primary),
+            "head_of_household_id": pk_mapping.get(hoh_ref),
+            "primary_collector_id": pk_mapping.get(primary_ref),
         }
-
-        if alt_ref := alt_id or alt:
+        if alt_ref:
             patch["alternate_collector_id"] = pk_mapping.get(alt_ref)
-
         Household.objects.filter(pk=pk).update(
             flex_fields=CombinedExpression(
                 F("flex_fields"),
