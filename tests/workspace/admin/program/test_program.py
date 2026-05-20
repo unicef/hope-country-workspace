@@ -11,6 +11,56 @@ from country_workspace.workspaces.admin._import_data import KOBO_IMPORT_JOB_DESC
 pytestmark = pytest.mark.django_db
 
 
+def test_import_rdi_returns_form_when_invalid(
+    program_admin,
+    mock_request,
+    program,
+    mocker: MockerFixture,
+) -> None:
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+    form_cls = mocker.patch.object(import_data_mod, "ImportFileForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
+
+    mock_request.method = "POST"
+    mock_request.POST = {"_selected_tab": "rdi"}
+
+    result = program_admin.import_rdi(mock_request, program)
+
+    form_cls.assert_called_once_with(
+        mock_request.POST,
+        mock_request.FILES,
+        prefix="rdi",
+        beneficiary_group=program.beneficiary_group,
+        program=program,
+    )
+    create.assert_not_called()
+    program_admin.message_user.assert_not_called()
+    assert result is form
+
+
+def test_import_aurora_returns_form_when_invalid(
+    program_admin,
+    mock_request,
+    program,
+    mocker: MockerFixture,
+) -> None:
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+    form_cls = mocker.patch.object(import_data_mod, "ImportAuroraForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
+
+    mock_request.method = "POST"
+    mock_request.POST = {"_selected_tab": "aurora"}
+
+    result = program_admin.import_aurora(mock_request, program)
+
+    form_cls.assert_called_once_with(mock_request.POST, prefix="aurora", program=program)
+    create.assert_not_called()
+    program_admin.message_user.assert_not_called()
+    assert result is form
+
+
 def test_import_kobo_returns_form_when_invalid(
     program_admin,
     mock_request,
