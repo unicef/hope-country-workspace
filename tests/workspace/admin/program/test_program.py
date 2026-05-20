@@ -1,64 +1,14 @@
 import pytest
 from django.contrib import messages
-from django.contrib.auth.models import User
-from django.http import HttpRequest, HttpResponseRedirect, QueryDict
+from django.http import HttpResponseRedirect, QueryDict
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError
-from country_workspace.state import state
 from country_workspace.workspaces.admin import _import_data as import_data_mod
 from country_workspace.workspaces.admin import program as program_admin_mod
 from country_workspace.workspaces.admin._import_data import KOBO_IMPORT_JOB_DESCRIPTION
-from country_workspace.workspaces.admin.program import CountryProgramAdmin
-from country_workspace.workspaces.models import CountryProgram
-
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture
-def program(country_office):
-    from testutils.factories import CountryProgramFactory
-
-    state.tenant = country_office
-    country_office.kobo_country_code = "ABC"
-    country_office.save(update_fields=["kobo_country_code"])
-
-    program = CountryProgramFactory(country_office=country_office, beneficiary_group__master_detail=True)
-    program.household_checker = None
-    program.individual_checker = None
-    program.biometric_deduplication_enabled = True
-    program.save(update_fields=["household_checker", "individual_checker", "biometric_deduplication_enabled"])
-    return program
-
-
-class _CountryProgramAdminUnderTest(CountryProgramAdmin):
-    def __init__(self, program: CountryProgram, admin_site) -> None:
-        super().__init__(model=CountryProgram, admin_site=admin_site)
-        self._program = program
-
-    def get_object(self, request, object_id):
-        return self._program
-
-    def get_common_context(self, request, object_id=None, **kwargs):
-        return {"original": self._program, "opts": self.admin_site, **kwargs}
-
-
-@pytest.fixture
-def program_admin(program, mocker: MockerFixture):
-    admin = _CountryProgramAdminUnderTest(program, mocker.MagicMock())
-    admin.message_user = mocker.MagicMock()
-    return admin
-
-
-@pytest.fixture
-def mock_request(mocker: MockerFixture):
-    request = mocker.MagicMock(spec=HttpRequest)
-    request.user = mocker.MagicMock(spec=User)
-    request.method = "GET"
-    request.POST = {}
-    request.FILES = {}
-    return request
 
 
 def test_import_kobo_returns_form_when_invalid(
