@@ -5,8 +5,10 @@ from collections.abc import Mapping
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
+from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.contrib.aurora.client import AuroraClient
 from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
@@ -66,6 +68,16 @@ def import_data(job: AsyncJob) -> ImportResult:
         household_transformer_id=config.get("household_transformer_id"),
         individual_transformer_id=config.get("individual_transformer_id"),
     )
+
+    job.ensure_not_cancelled(refresh=True)
+    if config.get("validate_after_import"):
+        create_validation_jobs(
+            description=f"Validate records for batch {batch.pk}",
+            owner=job.owner,
+            program=job.program,
+            queryset=_validation_queryset(batch, config),
+        )
+
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])
     return ImportResult(people=total_people, households=total_households)
@@ -216,8 +228,8 @@ def create_household_and_individuals(
                 household=household,
             )
             people_counter += 1
-        except Exception as exception:  # noqa: BLE001
-            logger.error("Error creating individual %s: %s", str(idx), str(exception))
+        except Exception as exc:
+            raise ImportError(f"Failed to create Aurora individual #{idx} for record {originating_id}") from exc
 
     return 1, people_counter
 
@@ -280,3 +292,9 @@ def build_household_transform(
         post_processors=(make_full_name,),
         source=Batch.BatchSource.AURORA,
     )
+
+
+def _validation_queryset(batch: Batch, config: Config) -> QuerySet[Household | Individual]:
+    if config.get("master_detail"):
+        return batch.household_set.filter(removed=False).prefetch_related("members")
+    return batch.individual_set.filter(household=None, removed=False)
