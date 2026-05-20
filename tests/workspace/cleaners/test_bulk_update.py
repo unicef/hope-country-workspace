@@ -210,10 +210,9 @@ def test_validate_date_format():
 
 def test_validate_date_datetime_fields():
     from django.forms.fields import DateField, DateTimeField
-    from hope_flex_fields.models import DataChecker, FlexField, FieldDefinition
+    from hope_flex_fields.models import FlexField, FieldDefinition
     from unittest.mock import Mock
 
-    mock_dc = Mock(spec=DataChecker)
     mock_date_field = Mock(spec=FlexField)
     mock_datetime_field = Mock(spec=FlexField)
 
@@ -225,12 +224,10 @@ def test_validate_date_datetime_fields():
     mock_date_field.definition = date_def
     mock_datetime_field.definition = datetime_def
 
-    def mock_dc_get_field(dc, name):
-        if name == "birth_date":
-            return mock_date_field
-        if name == "created_at":
-            return mock_datetime_field
-        return None
+    field_lookup = {
+        "birth_date": mock_date_field,
+        "created_at": mock_datetime_field,
+    }
 
     row = {
         "flex_fields__birth_date": "not-a-date",
@@ -239,10 +236,7 @@ def test_validate_date_datetime_fields():
     errors = {}
     line_number = 1
 
-    with pytest.MonkeyPatch().context() as m:
-        m.setattr("country_workspace.workspaces.admin.cleaners.bulk_update.dc_get_field", mock_dc_get_field)
-
-        validate_date_datetime_fields(row, mock_dc, line_number, errors)
+    validate_date_datetime_fields(row, field_lookup, line_number, errors)
 
     assert "Invalid date format for field 'flex_fields__birth_date' on line" in errors
     assert "Invalid datetime format for field 'flex_fields__created_at' on line" in errors
@@ -251,9 +245,6 @@ def test_validate_date_datetime_fields():
 
 
 def test_validate_date_datetime_fields_with_empty_values():
-    from unittest.mock import Mock
-
-    mock_dc = Mock()
     row = {
         "birth_date": None,
         "created_at": "",
@@ -262,10 +253,7 @@ def test_validate_date_datetime_fields_with_empty_values():
     errors = {}
     line_number = 1
 
-    with pytest.MonkeyPatch().context() as m:
-        m.setattr("country_workspace.workspaces.admin.cleaners.bulk_update.dc_get_field", lambda dc, name: None)
-
-        validate_date_datetime_fields(row, mock_dc, line_number, errors)
+    validate_date_datetime_fields(row, {}, line_number, errors)
 
     assert not errors
 

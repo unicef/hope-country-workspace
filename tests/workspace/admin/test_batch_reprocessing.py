@@ -9,7 +9,7 @@ from country_workspace.models import User
 from country_workspace.models import AsyncJob, Batch
 from country_workspace.workspaces.admin import CountryBatchAdmin
 from country_workspace.workspaces.admin.batch import BatchReprocessForm
-from country_workspace.workspaces.admin.batch_reprocessing import reprocess_batch
+from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch
 from country_workspace.workspaces.models import CountryBatch
 from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.perms import user_grant_permissions
@@ -131,7 +131,7 @@ def test_reprocess_batch_with_households(
         config={"batch_id": batch_with_households.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch_with_households.pk
@@ -155,7 +155,7 @@ def test_reprocess_batch_with_individuals(
         config={"batch_id": batch_with_individuals.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["batch_id"] == batch_with_individuals.pk
@@ -219,7 +219,7 @@ def test_reprocess_batch_mixed_content(
         config={"batch_id": batch_with_households.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         is_master_detail = batch_with_households.program.is_master_detail
@@ -288,7 +288,7 @@ def test_reprocess_button_creates_job(
         job = AsyncJob.objects.latest("id")
         assert job.batch == batch_with_households
         assert job.type == AsyncJob.JobType.TASK
-        assert "batch_reprocessing.reprocess_batch" in job.action
+        assert "batch.reprocessing.reprocess_batch" in job.action
 
 
 def test_reprocess_button_confirmation_message(app: "DjangoTestApp", batch_with_households: "CountryBatch") -> None:
@@ -462,7 +462,7 @@ def test_reprocess_batch_excludes_removed_households(
         config={"batch_id": batch_with_households.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         if (
@@ -513,7 +513,7 @@ def test_reprocess_batch_excludes_removed_individuals(
         config={"batch_id": batch_with_individuals.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         assert result["individuals"] == not_removed_count
@@ -538,7 +538,7 @@ def test_reprocess_batch_all_removed(batch_with_households: "CountryBatch", user
         config={"batch_id": batch_with_households.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs") as mock_create:
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs") as mock_create:
         result = reprocess_batch(job)
 
         if (
@@ -590,7 +590,7 @@ def test_reprocess_batch_mixed_removed_status(
         config={"batch_id": batch_with_households.pk},
     )
 
-    with patch("country_workspace.workspaces.admin.batch_reprocessing.create_validation_jobs"):
+    with patch("country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs"):
         result = reprocess_batch(job)
 
         assert result.get("skipped_households", 0) == 1

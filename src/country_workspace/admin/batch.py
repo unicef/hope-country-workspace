@@ -7,9 +7,12 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from strategy_field.utils import fqn
 
-from ..models import Batch
-from .base import BaseModelAdmin
+from country_workspace.admin.base import BaseModelAdmin
+from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.models import Batch, AsyncJob
+from country_workspace.tasks import batch_cleanup
 
 
 @admin.register(Batch)
@@ -31,6 +34,9 @@ class BatchAdmin(BaseModelAdmin):
         return super().get_queryset(request).select_related("program", "program__beneficiary_group", "country_office")
 
     def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Batch | None = None) -> bool:
         return False
 
     def _get_beneficiary_labels(self, batch: Batch) -> tuple[str, str]:
@@ -91,3 +97,30 @@ class BatchAdmin(BaseModelAdmin):
             req = btn.context["request"]
             base = reverse("workspace:workspaces_countrybatch_changelist")
             btn.href = f"{base}?%s" % req.META["QUERY_STRING"]
+
+    @button()
+    def batch_cleanup(self, request: HttpRequest, pk: str) -> HttpResponse:
+        obj: Batch = self.get_object(request, pk)
+
+        def _action(_: HttpRequest) -> None:
+            job = AsyncJob.objects.create(
+                description=f"Batch cleanup: {obj.name}",
+                program=obj.program,
+                batch=obj,
+                owner=request.user,
+                type=AsyncJob.JobType.TASK,
+                action=fqn(batch_cleanup),
+                config={},
+            )
+            job.queue()
+
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Confirm action",
+            description=(
+                f"Continuing will permanently delete batch '{obj.name}' and all its related households and individuals."
+            ),
+            success_message="Job for batch cleanup is scheduled",
+        )
