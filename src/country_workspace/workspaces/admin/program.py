@@ -7,7 +7,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.db.models import QuerySet, Field
-from django.forms import Media
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -15,32 +14,18 @@ from django.utils.translation import gettext as _
 from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.aurora.import_processing import (
-    Config as AuroraConfig,
-    import_data as import_from_aurora,
-)
 from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import Household, Individual, Rdp
 from country_workspace.models.base import Validable
 from country_workspace.state import state
-from country_workspace.utils.fields import batch_name_default
+from ._import_data import ImportDataMixin
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, ImportFileForm, MassDefaultsForm, DedupSettingsForm
+from .forms import BulkUpdateImportForm, MassDefaultsForm, DedupSettingsForm
 from ..permissions import can_change_country_program, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
-from ...contrib.aurora.forms import ImportAuroraForm
-from ...contrib.kobo.forms import ImportKoboForm
-from ...contrib.kobo.sync import (
-    Config as KoboConfig,
-    import_data as import_from_kobo,
-)
-from ...datasources.rdi import (
-    Config as RDIConfig,
-    import_from_rdi,
-)
 from ...models import AsyncJob
 
 if TYPE_CHECKING:
@@ -105,11 +90,8 @@ class ProgramForm(forms.ModelForm):
         )
 
 
-KOBO_IMPORT_JOB_DESCRIPTION = "Kobo import: {program_name}"
-
-
 @register(CountryProgram, site=workspace)
-class CountryProgramAdmin(WorkspaceModelAdmin):
+class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     list_display = (
         "name",
         "sector",
@@ -644,188 +626,5 @@ class CountryProgramAdmin(WorkspaceModelAdmin):
         html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora."},
     )
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
-        context = self.get_common_context(request, pk, title="Import Data")
-        context["selected_program"] = program = context["original"]
-        context["media"] = Media(js=["admin/js/vendor/jquery/jquery.js", "workspace/js/import_data.js"], css={})
-
-        form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program)
-        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-        form_kobo = ImportKoboForm(
-            prefix="kobo", kobo_country_code=program.country_office.kobo_country_code, program=program
-        )
-
-        if request.method == "POST":
-            match request.POST.get("_selected_tab"):
-                case "rdi":
-                    if not (form_rdi := self.import_rdi(request, program)):
-                        return HttpResponseRedirect(
-                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
-                        )
-                case "aurora":
-                    if not (form_aurora := self.import_aurora(request, program)):
-                        return HttpResponseRedirect(
-                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
-                        )
-                case "kobo":
-                    if not (form_kobo := self.import_kobo(request, program)):
-                        return HttpResponseRedirect(
-                            reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
-                        )
-
-        context["form_rdi"] = form_rdi
-        context["form_aurora"] = form_aurora
-        context["form_kobo"] = form_kobo
-
-        return render(request, "workspace/program/import.html", context)
-
-    def import_rdi(self, request: HttpRequest, program: CountryProgram) -> "ImportFileForm | None":
-        form = ImportFileForm(
-            request.POST,
-            request.FILES,
-            prefix="rdi",
-            beneficiary_group=program.beneficiary_group,
-            program=program,
-        )
-        if form.is_valid():
-            config: RDIConfig = {
-                "master_detail": (
-                    master_detail := (program.beneficiary_group.master_detail if program.beneficiary_group else False)
-                ),
-                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
-                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
-                "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
-                **(
-                    {
-                        "household_id_column": form.cleaned_data.get("household_id_column"),
-                        "household_label": form.cleaned_data.get("household_label"),
-                    }
-                    if master_detail
-                    else {
-                        "people_prefix": form.cleaned_data.get("people_prefix"),
-                    }
-                ),
-                "first_line": form.cleaned_data["first_line"],
-                "send_to": request.user.email,
-                "household_mapping_id": household_mapping.id
-                if (household_mapping := form.cleaned_data.get("household_mapping"))
-                else None,
-                "individual_mapping_id": individual_mapping.id
-                if (individual_mapping := form.cleaned_data.get("individual_mapping"))
-                else None,
-                "household_transformer_id": (
-                    form.cleaned_data.get("household_transformer").id
-                    if form.cleaned_data.get("household_transformer")
-                    else None
-                ),
-                "individual_transformer_id": (
-                    form.cleaned_data.get("individual_transformer").id
-                    if form.cleaned_data.get("individual_transformer")
-                    else None
-                ),
-            }
-            job: AsyncJob = AsyncJob.objects.create(
-                description="RDI import",
-                type=AsyncJob.JobType.TASK,
-                action=fqn(import_from_rdi),
-                file=request.FILES["rdi-file"],
-                program=program,
-                owner=request.user,
-                config=config,
-            )
-            job.queue()
-            self.message_user(request, _("Import scheduled"), messages.SUCCESS)
-            return None
-        return form
-
-    def import_aurora(self, request: HttpRequest, program: "CountryProgram") -> "ImportAuroraForm|None":
-        form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
-        if form.is_valid():
-            config: AuroraConfig = {
-                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
-                "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
-                "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
-                "household_mapping_id": form.cleaned_data.get("household_mapping").id
-                if form.cleaned_data.get("household_mapping")
-                else None,
-                "individual_mapping_id": form.cleaned_data.get("individual_mapping").id
-                if form.cleaned_data.get("individual_mapping")
-                else None,
-                "household_transformer_id": (
-                    form.cleaned_data.get("household_transformer").id
-                    if form.cleaned_data.get("household_transformer")
-                    else None
-                ),
-                "individual_transformer_id": (
-                    form.cleaned_data.get("individual_transformer").id
-                    if form.cleaned_data.get("individual_transformer")
-                    else None
-                ),
-            }
-            job: AsyncJob = AsyncJob.objects.create(
-                description="Aurora importing",
-                type=AsyncJob.JobType.TASK,
-                action=fqn(import_from_aurora),
-                file=None,
-                program=program,
-                owner=request.user,
-                config=config,
-            )
-            job.queue()
-            self.message_user(request, _("Import scheduled"), messages.SUCCESS)
-            return None
-        return form
-
-    def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> ImportKoboForm | None:
-        form = ImportKoboForm(
-            request.POST,
-            prefix="kobo",
-            kobo_country_code=program.country_office.kobo_country_code,
-            program=program,
-        )
-        if form.is_valid():
-            config: KoboConfig = {
-                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
-                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
-                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
-                "project_id": form.cleaned_data["project_id"],
-                "individual_records_field": form.cleaned_data["individual_records_field"],
-                "household_mapping_id": (
-                    household_mapping.id if (household_mapping := form.cleaned_data.get("household_mapping")) else None
-                ),
-                "individual_mapping_id": (
-                    individual_mapping.id
-                    if (individual_mapping := form.cleaned_data.get("individual_mapping"))
-                    else None
-                ),
-                "household_transformer_id": (
-                    form.cleaned_data.get("household_transformer").id
-                    if form.cleaned_data.get("household_transformer")
-                    else None
-                ),
-                "individual_transformer_id": (
-                    form.cleaned_data.get("individual_transformer").id
-                    if form.cleaned_data.get("individual_transformer")
-                    else None
-                ),
-            }
-            job: AsyncJob = AsyncJob.objects.create(
-                description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
-                type=AsyncJob.JobType.TASK,
-                action=fqn(import_from_kobo),
-                file=None,
-                program=program,
-                owner=request.user,
-                config=config,
-            )
-            job.queue()
-            self.message_user(
-                request,
-                _("The Kobo data import task has been successfully queued. Job #{0}.").format(job.id),
-                level=messages.SUCCESS,
-            )
-            return None
-
-        return form
+        program: "CountryProgram" = self.get_object(request, pk)
+        return self._render_import_data(request, program=program, pk=pk)

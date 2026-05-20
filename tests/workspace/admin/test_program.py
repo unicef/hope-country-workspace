@@ -6,11 +6,10 @@ from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError
 from country_workspace.state import state
+from country_workspace.workspaces.admin import _import_data as import_data_mod
 from country_workspace.workspaces.admin import program as program_admin_mod
-from country_workspace.workspaces.admin.program import (
-    CountryProgramAdmin,
-    KOBO_IMPORT_JOB_DESCRIPTION,
-)
+from country_workspace.workspaces.admin._import_data import KOBO_IMPORT_JOB_DESCRIPTION
+from country_workspace.workspaces.admin.program import CountryProgramAdmin
 from country_workspace.workspaces.models import CountryProgram
 
 
@@ -75,8 +74,8 @@ def test_import_kobo_returns_form_when_invalid(
 ) -> None:
     form = mocker.MagicMock()
     form.is_valid.return_value = False
-    form_cls = mocker.patch.object(program_admin_mod, "ImportKoboForm", return_value=form)
-    create = mocker.patch.object(program_admin_mod.AsyncJob.objects, "create")
+    form_cls = mocker.patch.object(import_data_mod, "ImportKoboForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
 
     mock_request.method = "POST"
     mock_request.POST = {"kobo-project_id": "p1"}
@@ -112,10 +111,10 @@ def test_import_kobo_schedules_job(
         "household_transformer": None,
         "individual_transformer": None,
     }
-    mocker.patch.object(program_admin_mod, "ImportKoboForm", return_value=form)
-    mocker.patch.object(program_admin_mod, "batch_name_default", return_value="AUTO-BATCH")
+    mocker.patch.object(import_data_mod, "ImportKoboForm", return_value=form)
+    mocker.patch.object(import_data_mod, "batch_name_default", return_value="AUTO-BATCH")
     job = mocker.MagicMock(id=123)
-    create = mocker.patch.object(program_admin_mod.AsyncJob.objects, "create", return_value=job)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create", return_value=job)
 
     mock_request.method = "POST"
     mock_request.POST = {"_selected_tab": "kobo"}
@@ -124,8 +123,8 @@ def test_import_kobo_schedules_job(
 
     create.assert_called_once_with(
         description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
-        type=program_admin_mod.AsyncJob.JobType.TASK,
-        action=program_admin_mod.fqn(program_admin_mod.import_from_kobo),
+        type=import_data_mod.AsyncJob.JobType.TASK,
+        action=import_data_mod.fqn(import_data_mod.import_from_kobo),
         file=None,
         program=program,
         owner=mock_request.user,

@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
-from admin_extra_buttons.buttons import LinkButton  # noqa: TC002
-from admin_extra_buttons.decorators import button, link
+from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
@@ -17,6 +16,7 @@ from django.utils.translation import gettext_lazy as _
 
 from ...cache.manager import cache_manager
 from ...state import state
+from ._import_data import ImportDataMixin
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from ..permissions import can_import_program_data
@@ -57,7 +57,12 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
         super().delete_model(request, obj)
 
 
-class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, WorkspaceModelAdmin):
+class BeneficiaryBaseAdmin(
+    AdminAutoCompleteSearchMixin,
+    ImportDataMixin,
+    SelectedProgramMixin,
+    WorkspaceModelAdmin,
+):
     actions = [
         actions.bulk_update_export,
         actions.calculate_checksum,
@@ -198,23 +203,26 @@ class BeneficiaryBaseAdmin(AdminAutoCompleteSearchMixin, SelectedProgramMixin, W
         )
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 
-    @link(
+    @button(
         label=_("Import Data"),
         change_list=True,
         change_form=False,
         permission=can_import_program_data,
+        visible=lambda btn: state.program is not None,
         html_attrs={"title": _("Import Data using XLS/RDI, Kobo or Aurora.")},
     )
-    def import_data(self, btn: "LinkButton") -> None:
-        program = state.program
-        if program:
-            btn.href = reverse(
-                "workspace:workspaces_countryprogram_import_data",
-                args=[program.pk],
-            )
-            btn.visible = True
-        else:
-            btn.visible = False
+    def import_data(self, request: HttpRequest) -> "HttpResponse":
+        """Render the same Import Data page as the Programme admin.
+
+        The view runs inside *this* model admin so the sidebar/breadcrumbs
+        stay anchored to the page the user came from (Households,
+        Individuals or People).
+        """
+        return self._render_import_data(request, program=state.program)
+
+    def _get_import_success_url(self, request: HttpRequest, program: "CountryProgram") -> str:
+        """Send the user back to the originating change-list after a queued import."""
+        return self.get_changelist_url()
 
     @button(html_attrs={"title": "Shows raw data as stored, ready to be sent to HOPE"})
     def view_raw_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
