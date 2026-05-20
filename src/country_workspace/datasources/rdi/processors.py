@@ -9,6 +9,7 @@ from hope_smart_import.readers import open_xls_multi, SheetNotError
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as RDIImage
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.context import batch_ctx
 from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
@@ -16,8 +17,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
-from country_workspace.utils.import_flow.records import build_import_processor
-from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 from .config import Config, SheetName, Sheet
@@ -254,18 +254,20 @@ def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str
 
 
 def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
-    pk_mapping = {v.flex_fields.get("individual_id"): v.pk for _, v in individuals_mapping.items()}
+    pk_mapping = {
+        individual_ref: individual.pk
+        for individual in individuals_mapping.values()
+        if (individual_ref := individual.flex_fields.get("individual_id"))
+    }
 
-    for v in households_mapping.values():
-        hh_flex_fields = v.flex_fields.copy()
-        hh_flex_fields["head_of_household_id"] = pk_mapping.get(
-            v.flex_fields.get("head_of_household_id", v.flex_fields.get("head_of_household"))
-        )
-        hh_flex_fields["primary_collector_id"] = pk_mapping.get(
-            v.flex_fields.get("primary_collector_id", v.flex_fields.get("primary_collector"))
-        )
-        if alt_id := v.flex_fields.get("alternate_collector_id", v.flex_fields.get("alternate_collector")):
-            hh_flex_fields["alternate_collector_id"] = pk_mapping.get(alt_id)
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    for household in households_mapping.values():
+        flex_fields = household.flex_fields.copy()
+        flex_fields[fields.head_of_household] = pk_mapping.get(flex_fields.get(fields.head_of_household))
+        flex_fields[fields.primary_collector] = pk_mapping.get(flex_fields.get(fields.primary_collector))
 
-        v.flex_fields = hh_flex_fields
-        v.save(update_fields=["flex_fields"])
+        if alt_id := flex_fields.get(fields.alternate_collector):
+            flex_fields[fields.alternate_collector] = pk_mapping.get(alt_id)
+
+        household.flex_fields = flex_fields
+        household.save(update_fields=["flex_fields"])

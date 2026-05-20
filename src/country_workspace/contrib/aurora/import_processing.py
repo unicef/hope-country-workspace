@@ -10,12 +10,10 @@ from django.utils import timezone
 
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.imports import get_aurora_originating_id
-from country_workspace.utils.import_flow.records import build_import_processor
-from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
 
 logger = logging.getLogger(__name__)
@@ -83,23 +81,6 @@ def import_data(job: AsyncJob) -> ImportResult:
     return ImportResult(people=total_people, households=total_households)
 
 
-# TODO(Data): This function and related tests should be removed!
-def check_alien_fields(fields: dict, program: Program) -> None:
-    if not program.individual_checker:
-        return
-
-    transform_individual_row = build_individual_transform(
-        program,
-        mapping_id=None,
-    )
-
-    flex_fields = set(transform_individual_row(fields).keys())
-    dc_fields = {f.name for _, f in program.individual_checker.get_fields()}
-    if not flex_fields.issubset(dc_fields):
-        aliens = flex_fields - dc_fields
-        raise AuroraAlienFieldError(aliens)
-
-
 def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
     people_counter = 0
     household_counter = 0
@@ -155,7 +136,7 @@ def create_individual(
     **extras: Any,
 ) -> Individual:
     row = record.get("fields", record)
-    transform_individual_row = build_individual_transform(
+    individual_row_processor = build_individual_processor(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
     )
@@ -164,7 +145,7 @@ def create_individual(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=transform_individual_row(row),
+        flex_fields=individual_row_processor(row),
         raw_data=record,
         **extras,
     )
@@ -172,7 +153,7 @@ def create_individual(
 
 def create_household(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Household:
     row = record.get("fields", record)
-    transform_household_row = build_household_transform(
+    household_row_processor = build_household_processor(
         batch.program,
         mapping_id=config.get("household_mapping_id"),
     )
@@ -180,7 +161,7 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=transform_household_row(row),
+        flex_fields=household_row_processor(row),
         raw_data=record,
     )
 
@@ -268,7 +249,7 @@ def make_full_name(row: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
     return row
 
 
-def build_individual_transform(
+def build_individual_processor(
     program: Program, mapping_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return build_import_processor(
@@ -281,7 +262,7 @@ def build_individual_transform(
     )
 
 
-def build_household_transform(
+def build_household_processor(
     program: Program, mapping_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return build_import_processor(
@@ -297,4 +278,4 @@ def build_household_transform(
 def _validation_queryset(batch: Batch, config: Config) -> QuerySet[Household | Individual]:
     if config.get("master_detail"):
         return batch.household_set.filter(removed=False).prefetch_related("members")
-    return batch.individual_set.filter(household=None, removed=False)
+    return batch.individual_set.filter(household__isnull=True, removed=False)

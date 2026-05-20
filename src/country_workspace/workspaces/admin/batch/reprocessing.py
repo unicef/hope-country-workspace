@@ -7,18 +7,18 @@ from django.db.models import Count, F, Q, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransform
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.aurora.import_processing import (
-    build_household_transform as build_aurora_household_processor,
-    build_individual_transform as build_aurora_individual_processor,
+    build_household_processor as build_aurora_household_processor,
+    build_individual_processor as build_aurora_individual_processor,
 )
 from country_workspace.contrib.kobo.sync import (
     build_household_processor as build_kobo_household_processor,
     build_individual_processor as build_kobo_individual_processor,
 )
-from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
+from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
 from country_workspace.utils.fields import to_reference_key
-from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
-from country_workspace.utils.import_flow.records import build_import_processor
+from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 
@@ -115,37 +115,24 @@ def _sync_rdi_household_refs(batch: Batch) -> None:
     )
     pk_mapping = {ref: pk for pk, individual_id in individuals.iterator() if (ref := to_reference_key(individual_id))}
 
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
     households = (
         batch.household_set.filter(removed=False)
         .annotate(
-            _head_of_household_id=KeyTextTransform("head_of_household_id", "flex_fields"),
-            _head_of_household=KeyTextTransform("head_of_household", "flex_fields"),
-            _primary_collector_id=KeyTextTransform("primary_collector_id", "flex_fields"),
-            _primary_collector=KeyTextTransform("primary_collector", "flex_fields"),
-            _alternate_collector_id=KeyTextTransform("alternate_collector_id", "flex_fields"),
-            _alternate_collector=KeyTextTransform("alternate_collector", "flex_fields"),
+            _hoh_ref=KeyTextTransform(fields.head_of_household, "flex_fields"),
+            _primary_ref=KeyTextTransform(fields.primary_collector, "flex_fields"),
+            _alternate_ref=KeyTextTransform(fields.alternate_collector, "flex_fields"),
         )
-        .values_list(
-            "pk",
-            "_head_of_household_id",
-            "_head_of_household",
-            "_primary_collector_id",
-            "_primary_collector",
-            "_alternate_collector_id",
-            "_alternate_collector",
-        )
+        .values_list("pk", "_hoh_ref", "_primary_ref", "_alternate_ref")
     )
 
-    for pk, hoh_id, hoh, primary_id, primary, alt_id, alt in households.iterator():
-        hoh_ref = to_reference_key(hoh_id or hoh)
-        primary_ref = to_reference_key(primary_id or primary)
-        alt_ref = to_reference_key(alt_id or alt)
+    for pk, hoh_ref, primary_ref, alternate_ref in households.iterator():
         patch = {
-            "head_of_household_id": pk_mapping.get(hoh_ref),
-            "primary_collector_id": pk_mapping.get(primary_ref),
+            fields.head_of_household: pk_mapping.get(to_reference_key(hoh_ref)),
+            fields.primary_collector: pk_mapping.get(to_reference_key(primary_ref)),
         }
-        if alt_ref:
-            patch["alternate_collector_id"] = pk_mapping.get(alt_ref)
+        if alternate_ref := to_reference_key(alternate_ref):
+            patch[fields.alternate_collector] = pk_mapping.get(alternate_ref)
         Household.objects.filter(pk=pk).update(
             flex_fields=CombinedExpression(
                 F("flex_fields"),
@@ -170,17 +157,18 @@ def _sync_kobo_household_refs(batch: Batch) -> None:
         .order_by("household_id", "pk")
     )
 
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
     patches: dict[int, dict[str, int]] = {}
 
     for household_id, pk, role, relationship in members.iterator():
         patch = patches.setdefault(household_id, {})
 
-        if role == "PRIMARY" and "primary_collector_id" not in patch:
-            patch["primary_collector_id"] = pk
-        if role == "ALTERNATE" and "alternate_collector_id" not in patch:
-            patch["alternate_collector_id"] = pk
-        if relationship == "HEAD" and "head_of_household_id" not in patch:
-            patch["head_of_household_id"] = pk
+        if role == "PRIMARY" and fields.primary_collector not in patch:
+            patch[fields.primary_collector] = pk
+        if role == "ALTERNATE" and fields.alternate_collector not in patch:
+            patch[fields.alternate_collector] = pk
+        if relationship == "HEAD" and fields.head_of_household not in patch:
+            patch[fields.head_of_household] = pk
 
     for household_id, patch in patches.items():
         Household.objects.filter(pk=household_id).update(
@@ -200,43 +188,59 @@ def _sync_household_refs(batch: Batch) -> None:
             _sync_rdi_household_refs(batch)
 
 
-def _resolve_config_object[T: MappingImporter | Transformer](
-    model: type[T],
+def _resolve_config_object[T](
+    queryset: QuerySet[T],
     object_id: int | None,
     label: str,
 ) -> tuple[int | None, T | None]:
-    if not object_id:
+    if object_id is None:
         return None, None
-    try:
-        obj = model.objects.get(pk=object_id)
-    except model.DoesNotExist:
-        logger.warning("%s %s not found, skipping %s", label, object_id, label.lower())
-        return None, None
-    logger.info("Using %s: %s", label.lower(), obj)
-    return object_id, obj
+    if obj := queryset.filter(pk=object_id).first():
+        logger.info("Using %s: %s", label.lower(), obj)
+        return object_id, obj
+    raise ValueError(f"{label} {object_id} is not available for this batch")
 
 
-def _resolve_reprocess_config(config: dict[str, Any]) -> ResolvedReprocessConfig:
+def _resolve_reprocess_config(batch: Batch, config: dict[str, Any]) -> ResolvedReprocessConfig:
+    program = batch.program
+
     household_transformer_id, _ = _resolve_config_object(
-        Transformer,
+        batch.country_office.transformers.all(),
         config.get("household_transformer_id"),
         "Household transformer",
     )
     individual_transformer_id, _ = _resolve_config_object(
-        Transformer,
+        batch.country_office.transformers.all(),
         config.get("individual_transformer_id"),
         "Individual transformer",
     )
-    household_mapping_id, household_mapping = _resolve_config_object(
-        MappingImporter,
-        config.get("household_mapping_id"),
-        "Household mapping",
+
+    household_mapping_id, household_mapping = (
+        _resolve_config_object(
+            MappingImporter.objects.filter(
+                office=batch.country_office,
+                data_checker=program.household_checker,
+            ),
+            config.get("household_mapping_id"),
+            "Household mapping",
+        )
+        if program.is_master_detail and program.household_checker
+        else (None, None)
     )
-    individual_mapping_id, individual_mapping = _resolve_config_object(
-        MappingImporter,
-        config.get("individual_mapping_id"),
-        "Individual mapping",
+
+    individual_mapping_id, individual_mapping = (
+        _resolve_config_object(
+            MappingImporter.objects.filter(
+                office=batch.country_office,
+                data_checker=program.individual_checker,
+            ),
+            config.get("individual_mapping_id"),
+            "Individual mapping",
+        )
+        if program.individual_checker
+        else (None, None)
     )
+
     return ResolvedReprocessConfig(
         household_transformer_id=household_transformer_id,
         individual_transformer_id=individual_transformer_id,
@@ -287,7 +291,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
         logger.error("Batch %s not found", batch_id)
         raise Batch.DoesNotExist(f"Batch {batch_id} not found")
 
-    config = _resolve_reprocess_config(job.config)
+    config = _resolve_reprocess_config(batch, job.config)
     is_master_detail = batch.program.is_master_detail
 
     households, household_count, skipped_households = (

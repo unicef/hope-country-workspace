@@ -13,7 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
-
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.utils.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.common import DataGetter
@@ -23,8 +23,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual, Pro
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_flow.records import build_import_processor
-from country_workspace.utils.import_flow.batch_postprocessing import run_batch_postprocessing
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -226,15 +225,13 @@ def _is_head_of_household(individual: Individual) -> bool:
 
 
 def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
-        household.flex_fields["primary_collector_id"] = getattr(primary_collector, "id", None)
-
+        household.flex_fields[fields.primary_collector] = primary_collector.id
     if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
-        household.flex_fields["alternate_collector_id"] = getattr(alternate_collector, "id", None)
-
+        household.flex_fields[fields.alternate_collector] = alternate_collector.id
     if head_of_household := next(filter(_is_head_of_household, individuals), None):
-        household.flex_fields["head_of_household_id"] = getattr(head_of_household, "id", None)
-
+        household.flex_fields[fields.head_of_household] = head_of_household.id
     household.save(update_fields=["flex_fields"])
 
 

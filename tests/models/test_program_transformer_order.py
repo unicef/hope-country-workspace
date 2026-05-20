@@ -1,11 +1,19 @@
 import pytest
 
 from country_workspace.models import Individual
-from testutils.factories import CountryProgramFactory, MappingImporterFactory, TransformerFactory
+from country_workspace.utils.import_flow import build_import_processor
+from country_workspace.utils.import_flow.transformations import apply_batch_transformers
+from testutils.factories import (
+    BatchFactory,
+    CountryIndividualFactory,
+    CountryProgramFactory,
+    MappingImporterFactory,
+    TransformerFactory,
+)
 
 
 @pytest.mark.django_db
-def test_mapping_runs_before_transformer():
+def test_mapping_runs_before_transformer() -> None:
     program = CountryProgramFactory()
     mapping = MappingImporterFactory(
         office=program.country_office,
@@ -14,11 +22,35 @@ def test_mapping_runs_before_transformer():
     )
     transformer = TransformerFactory(
         office=program.country_office,
-        value_transformations="function t(d){ if(d['sex']){ d['sex'] = d['sex'] + '!'; } return d; }",
+        value_transformations=(
+            "function transform(record) { if (record['sex']) { record['sex'] = record['sex'] + '!'; } return record; }"
+        ),
+    )
+    batch = BatchFactory(program=program, country_office=program.country_office)
+
+    processor = build_import_processor(
+        program=program,
+        model=Individual,
+        mapping_id=mapping.id,
+        source=batch.source,
+    )
+    mapped = processor({"gender": "M"})
+
+    assert mapped["sex"] == "M"
+    assert "gender" not in mapped
+
+    individual = CountryIndividualFactory(
+        batch=batch,
+        household=None,
+        flex_fields=mapped,
+        errors={"old": "error"},
     )
 
-    data = {"gender": "M"}
-    result = program.apply_mapping_importer(Individual, data, mapping_id=mapping.id, transformer_id=transformer.id)
+    result = apply_batch_transformers(batch, individual_transformer_id=transformer.id)
 
-    assert result.get("sex") == "M!"
-    assert "gender" not in result
+    individual.refresh_from_db()
+    assert result["transformed_individuals"] == 1
+    assert individual.flex_fields["sex"] == "M!"
+    assert "gender" not in individual.flex_fields
+    assert individual.last_checked is None
+    assert individual.errors == {}

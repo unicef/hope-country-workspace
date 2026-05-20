@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG, ErrorConfig
 from country_workspace.contrib.hope.push.processor import DedupProcessor, ProcessorBase, PushProcessor
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
@@ -43,7 +44,7 @@ def test_err_truncates_and_caps(mocker: MockerFixture) -> None:
 
 @pytest.mark.django_db
 def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor) -> None:
-    serializer = mocker.Mock()
+    serializer = mocker.MagicMock()
     spy = mocker.patch(f"{MOD}.serializer_for_program", return_value=serializer)
 
     assert processor.serializer is serializer
@@ -180,7 +181,7 @@ def test_push_batched_happy_path(mocker: MockerFixture, processor: PushProcessor
 
     prepare = mocker.Mock(return_value=([1], [{"n": 1}]))
     post = mocker.Mock(return_value={"ok": True})
-    process = mocker.Mock()
+    process = mocker.MagicMock()
 
     processor._push_batched("People", prepare, post, process)
 
@@ -214,8 +215,8 @@ def test_push_batched_skips_empty_ids(
     processor.queryset = qs([1])
 
     prepare = mocker.Mock(return_value=([], []))
-    post = mocker.Mock()
-    process = mocker.Mock()
+    post = mocker.MagicMock()
+    process = mocker.MagicMock()
     spy_try_remote = mocker.patch.object(processor, "try_remote")
 
     processor._push_batched("People", prepare, post, process)
@@ -235,8 +236,8 @@ def test_push_batched_skips_processing_when_remote_failed(
     processor.queryset = qs([1])
 
     prepare = mocker.Mock(return_value=([1], [{"n": 1}]))
-    post = mocker.Mock()
-    process = mocker.Mock()
+    post = mocker.MagicMock()
+    process = mocker.MagicMock()
     mocker.patch.object(processor, "try_remote", return_value=None)
 
     processor._push_batched("People", prepare, post, process)
@@ -258,8 +259,8 @@ def test_push_batched_stops_when_prepare_added_errors(
         processor._err("mapping failed")
         return [1], [{"n": 1}]
 
-    post = mocker.Mock()
-    process = mocker.Mock()
+    post = mocker.MagicMock()
+    process = mocker.MagicMock()
     spy_try_remote = mocker.patch.object(processor, "try_remote")
 
     processor._push_batched("Households", prepare, post, process)
@@ -312,7 +313,8 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     serializer_identity: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
-    mocker.patch(f"{MOD}.ROLE_FIELDS", ("head_of_household",))
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+
     mocker.patch(
         f"{MOD}.map_role_value",
         side_effect=lambda ind_map, _err, _hh_pk, _key, value: ind_map.get(value),
@@ -324,7 +326,13 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
 
     members = [beneficiary_stub(id=1), beneficiary_stub(id=2)]
     hh = beneficiary_stub(pk=777, prefetched_members=members)
-    hh._group = {"head_of_household": 1, "keep": "x", "drop": None}
+    hh._group = {
+        fields.head_of_household: 1,
+        fields.primary_collector: None,
+        fields.alternate_collector: None,
+        "keep": "x",
+        "drop": None,
+    }
 
     processor.ind_id_map = {1: "IND-1.1", 2: "IND-2.1"}
 
@@ -333,7 +341,7 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     assert ids == [777]
     assert payload == [
         {
-            "head_of_household": "IND-1.1",
+            fields.head_of_household: "IND-1.1",
             "members": ["IND-1.1", "IND-2.1"],
             "keep": "x",
             "originating_id": 777,
@@ -348,7 +356,7 @@ def test_prepare_households_batch_uses_members_queryset_when_not_prefetched(
     serializer_identity: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
-    mocker.patch(f"{MOD}.ROLE_FIELDS", ())
+    mocker.patch(f"{MOD}.HOUSEHOLD_ROLE_REF_FIELDS", ())
     mocker.patch(f"{MOD}.map_members", return_value=["IND-1.1", "IND-2.1"])
 
     hh = beneficiary_stub(pk=777)
@@ -567,7 +575,7 @@ def test_run_with_uses_temporary_queryset(
     qs: Callable[[list], object],
 ) -> None:
     queryset = qs([1])
-    step = mocker.Mock()
+    step = mocker.MagicMock()
 
     processor.run_with(queryset, step)
 

@@ -1,11 +1,12 @@
-from typing import cast
-from unittest.mock import ANY, Mock, MagicMock
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from constance.test.unittest import override_config
 from django.contrib.contenttypes.models import ContentType
 from pytest_mock import MockerFixture
-from typing import TYPE_CHECKING
+
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
     AlienFieldsError,
@@ -26,8 +27,8 @@ from country_workspace.contrib.kobo.sync import (
     get_alien_fields,
     check_for_alien_fields,
 )
-from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.models import Program, SyncLog
+from country_workspace.models.jobs import GracefulJobCancellationError
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
@@ -41,6 +42,7 @@ from testutils.factories.smart_fields import DataCheckerFieldsetFactory
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.data.submission import Submission
+
 
 EMPTY = ""
 TOKEN = "token"
@@ -61,6 +63,16 @@ def config() -> Config:
         "validate_after_import": True,
         "fail_if_alien": False,
     }
+
+
+@pytest.fixture
+def submission(mocker: MockerFixture) -> Callable[[int], object]:
+    def create(pk: int) -> object:
+        obj = mocker.MagicMock()
+        obj.id = pk
+        return obj
+
+    return create
 
 
 @pytest.mark.parametrize(
@@ -126,7 +138,9 @@ def test_extract_household_data() -> None:
         (household_field := "a"): 1,
         (individual_records_field := "b"): 2,
     }
+
     household_data = extract_household_data(cast("Submission", data), individual_records_field)
+
     assert individual_records_field not in household_data
     assert household_field in household_data
     assert household_data[household_field] == data[household_field]
@@ -136,34 +150,36 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
-    processor_result = MagicMock()
+
+    processor_result = mocker.MagicMock()
     processor_result.get.return_value = "Full Name"
-    processor_mock = Mock(return_value=processor_result)
+    processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
 
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
             (
                 individual_data := {
-                    "full_name": (_full_name := "Full Name"),
+                    "full_name": "Full Name",
                 }
             ),
         ],
     }
     originating_id = "KOB#1#1"
+    batch_mock = mocker.MagicMock(name="batch")
+    household_mock = mocker.MagicMock(name="household")
+
     individuals = create_individuals(
-        batch_mock := Mock(name="batch"),
-        household_mock := Mock(name="household"),
+        batch_mock,
+        household_mock,
         cast("Submission", data),
         config,
         originating_id,
     )
 
     assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
-
-    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    build_processor_mock.assert_called_once_with(batch_mock.program, None)
     processor_mock.assert_called_once_with(individual_data)
-
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
@@ -179,17 +195,21 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
     extract_household_data_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.extract_household_data", return_value={"field": "value"}
+        "country_workspace.contrib.kobo.sync.extract_household_data",
+        return_value={"field": "value"},
     )
-    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")  # noqa
-    id_generator_mock = mocker.Mock(name="id_generator")
-    processor_result = MagicMock()
-    processor_mock = Mock(return_value=processor_result)
+    id_generator_mock = mocker.MagicMock(name="id_generator")
+    processor_result = mocker.MagicMock()
+    processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
+
     originating_id = "KOB#1#1"
+    batch_mock = mocker.MagicMock(name="batch")
+    submission_mock = mocker.MagicMock(name="submission")
+
     household = create_household(
-        batch_mock := Mock(name="batch"),
-        submission_mock := Mock(name="submission"),
+        batch_mock,
+        submission_mock,
         config,
         id_generator_mock,
         originating_id,
@@ -197,12 +217,10 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
 
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
-
-    build_processor_mock.assert_called_once_with(batch_mock.program, None, None)
+    build_processor_mock.assert_called_once_with(batch_mock.program, None)
     processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
     processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
-
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock,
         flex_fields=processor_result,
@@ -211,45 +229,46 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     )
 
 
-def test_create_individuals_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
+def test_create_individuals_passes_mapping_id(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
-    individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")  # noqa
-    build_processor_mock.return_value = Mock(return_value={})
+    mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+    build_processor_mock.return_value = mocker.MagicMock(return_value={})
 
-    config_with_transformer = {**config, "individual_transformer_id": 99}
+    config_with_mapping = {**config, "individual_mapping_id": 99}
+    batch_mock = mocker.MagicMock()
+
     create_individuals(
-        batch_mock := Mock(),
-        household_mock := Mock(),  # noqa
+        batch_mock,
+        mocker.MagicMock(),
         cast("Submission", {INDIVIDUAL_RECORDS_FIELD: [{}]}),
-        config_with_transformer,
-        originating_id := "orig",  # noqa
+        config_with_mapping,
+        "orig",
     )
 
-    build_processor_mock.assert_called_once_with(batch_mock.program, None, 99)
+    build_processor_mock.assert_called_once_with(batch_mock.program, 99)
 
 
-def test_create_household_passes_transformer_id(mocker: MockerFixture, config: Config) -> None:
+def test_create_household_passes_mapping_id(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
-    extract_household_data_mock = mocker.patch(  # noqa
-        "country_workspace.contrib.kobo.sync.extract_household_data", return_value={}
-    )
-    household_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Household")  # noqa
-    build_processor_mock.return_value = Mock(return_value={})
+    mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data", return_value={})
+    build_processor_mock.return_value = mocker.MagicMock(return_value={})
 
-    config_with_transformer = {**config, "household_transformer_id": 77}
+    config_with_mapping = {**config, "household_mapping_id": 77}
+    batch_mock = mocker.MagicMock()
+
     create_household(
-        batch_mock := Mock(),
-        submission_mock := Mock(),  # noqa
-        config_with_transformer,
-        id_generator_mock := Mock(return_value=1),  # noqa
-        originating_id := "orig",  # noqa
+        batch_mock,
+        mocker.MagicMock(),
+        config_with_mapping,
+        mocker.MagicMock(return_value=1),
+        "orig",
     )
 
-    build_processor_mock.assert_called_once_with(batch_mock.program, None, 77)
+    build_processor_mock.assert_called_once_with(batch_mock.program, 77)
 
 
 @pytest.mark.django_db
-def test_import_asset(mocker: MockerFixture, config: Config) -> None:
+def test_import_asset(mocker: MockerFixture, config: Config, submission) -> None:
     batch = BatchFactory()
     program_ct = ContentType.objects.get_for_model(Program)
     sync_log = SyncLogFactory(
@@ -261,20 +280,18 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
 
     mocker.patch("django.db.transaction.atomic")
 
-    id_generator_mock = mocker.Mock(name="id_generator")
+    id_generator_mock = mocker.MagicMock(name="id_generator")
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    individual_mocks = [mocker.Mock(), mocker.Mock()]
+    individual_mocks = [mocker.MagicMock(), mocker.MagicMock()]
     create_individuals_mock.return_value = individual_mocks
     set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
 
-    asset_mock = Mock()
+    asset_mock = mocker.MagicMock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock(spec=dict)
-    submission_1.id = 101
-    submission_2 = Mock(spec=dict)
-    submission_2.id = 102
-    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+    submission_1 = submission(101)
+    submission_2 = submission(102)
+    asset_mock.submissions.return_value = iter([submission_1, submission_2])
 
     result = import_asset(
         batch,
@@ -284,20 +301,17 @@ def test_import_asset(mocker: MockerFixture, config: Config) -> None:
     )
 
     assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2, completed=True)
-
     asset_mock.submissions.assert_called_once_with(min_id=100)
-
     assert create_household_mock.call_count == 2
     assert create_individuals_mock.call_count == 2
     assert set_roles_and_relationships_mock.call_count == 2
 
-    # Verify sync log was updated
     sync_log.refresh_from_db()
     assert sync_log.last_id == "102"
 
 
 @pytest.mark.django_db
-def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
+def test_import_asset_with_error(mocker: MockerFixture, config: Config, submission) -> None:
     batch = BatchFactory()
     program_ct = ContentType.objects.get_for_model(Program)
     sync_log = SyncLogFactory(
@@ -309,22 +323,22 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
 
     mocker.patch("django.db.transaction.atomic")
 
-    id_generator_mock = mocker.Mock(name="id_generator")
+    id_generator_mock = mocker.MagicMock(name="id_generator")
     mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    individual_mocks = [mocker.Mock(), mocker.Mock()]
+    individual_mocks = [mocker.MagicMock(), mocker.MagicMock()]
     create_individuals_mock.return_value = individual_mocks
 
     set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
     set_roles_and_relationships_mock.side_effect = [None, ValueError("Test error")]
 
-    asset_mock = Mock()
+    asset_mock = mocker.MagicMock()
     asset_mock.uid = "test_asset_uid"
-    submission_1 = Mock(spec=dict)
-    submission_1.id = 101
-    submission_2 = Mock(spec=dict)
-    submission_2.id = 102
-    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+    submission_1 = submission(101)
+    submission_2 = submission(102)
+
+    asset_mock.submissions.return_value = iter([submission_1, submission_2])
+
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
 
@@ -334,13 +348,11 @@ def test_import_asset_with_error(mocker: MockerFixture, config: Config) -> None:
 
 
 @pytest.mark.django_db
-def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, config: Config) -> None:
-    """
-    When import_asset fails on a later submission, earlier data are persisted:
-    each submission runs in its own transaction, so a failure rolls back only
-    that submission; we assert the first household (and its individuals) remain
-    in the DB and the watermark is updated for recovery.
-    """
+def test_import_asset_on_error_persists_previous_data(
+    mocker: MockerFixture,
+    config: Config,
+    submission,
+) -> None:
     batch = BatchFactory()
     program_ct = ContentType.objects.get_for_model(Program)
     SyncLogFactory(
@@ -350,7 +362,7 @@ def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, con
         last_id="100",
     )
 
-    id_generator_mock = mocker.Mock(name="id_generator")
+    id_generator_mock = mocker.MagicMock(name="id_generator")
 
     def create_household_real(batch, submission, config, id_generator, originating_id):
         return HouseholdFactory(batch=batch, individuals=[])
@@ -369,13 +381,12 @@ def test_import_asset_on_error_persists_previous_data(mocker: MockerFixture, con
     set_roles_and_relationships_mock = mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
     set_roles_and_relationships_mock.side_effect = [None, ValueError("fail on second")]
 
-    submission_1 = Mock(spec=dict)
-    submission_1.id = 101
-    submission_2 = Mock(spec=dict)
-    submission_2.id = 102
-    asset_mock = Mock()
+    submission_1 = submission(101)
+    submission_2 = submission(102)
+
+    asset_mock = mocker.MagicMock()
     asset_mock.uid = "test_asset_uid"
-    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+    asset_mock.submissions.return_value = iter([submission_1, submission_2])
 
     with pytest.raises(ImportError, match=r"Successfully imported.*at submission 102"):
         import_asset(batch, asset_mock, config, id_generator_mock)
@@ -404,11 +415,10 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
     )
     initial_last_id = sync_log.last_id
 
-    id_generator_mock = mocker.Mock(name="id_generator")
-
-    asset_mock = Mock()
+    id_generator_mock = mocker.MagicMock(name="id_generator")
+    asset_mock = mocker.MagicMock()
     asset_mock.uid = "test_asset_uid"
-    asset_mock.submissions = Mock(return_value=iter([]))  # No submissions
+    asset_mock.submissions.return_value = iter([])
 
     result = import_asset(
         batch,
@@ -418,7 +428,6 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
     )
 
     assert result == ImportResult(households=0, individuals=0, completed=True)
-
     asset_mock.submissions.assert_called_once_with(min_id=100)
 
     sync_log.refresh_from_db()
@@ -426,32 +435,37 @@ def test_import_asset_no_new_submissions(mocker: MockerFixture, config: Config) 
 
 
 def test_import_data(mocker: MockerFixture, config: Config) -> None:
-    asset_mock = Mock(name="asset")
+    asset_mock = mocker.MagicMock(name="asset")
     asset_mock.uid = config["project_id"]
-    job_mock = Mock(name="job")
+
+    job_mock = mocker.MagicMock(name="job")
     job_mock.config = config
-    job_mock.program = Mock()
-    job_mock.program.country_office = Mock()
     job_mock.program.country_office.kobo_country_code = "ABC"
-    job_mock.owner = Mock()
     job_mock.batch_id = None
     job_mock.type = "TASK"
     job_mock.action = "import_action"
     job_mock.description = "desc"
     job_mock.file = None
+
+    mocker.patch("country_workspace.contrib.kobo.sync.transaction.atomic")
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
+
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
     make_client_mock.return_value.get_asset.return_value = asset_mock
+
     import_asset_mock = mocker.patch("country_workspace.contrib.kobo.sync.import_asset")
     import_asset_mock.return_value = ImportResult(
-        households=(household_counter := 1), individuals=(individual_counter := 2), completed=True
+        households=(household_counter := 1),
+        individuals=(individual_counter := 2),
+        completed=True,
     )
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
-
     create_validation_jobs_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+    postprocessing_mock = mocker.patch("country_workspace.contrib.kobo.sync.run_batch_postprocessing")
 
-    result = import_data(job_mock)
+    with override_config(KOBO_IMPORT_TIMEBOX_MINUTES=30):
+        result = import_data(job_mock)
 
     assert result == ImportResult(households=household_counter, individuals=individual_counter, completed=True)
     batch_class_mock.objects.create.assert_called_once_with(
@@ -472,12 +486,59 @@ def test_import_data(mocker: MockerFixture, config: Config) -> None:
         timebox_seconds=1800,
     )
     get_id_generator_mock.assert_called_once()
-
+    postprocessing_mock.assert_called_once_with(
+        batch_mock,
+        household_transformer_id=None,
+        individual_transformer_id=None,
+    )
     create_validation_jobs_mock.assert_called_once()
 
 
+def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture, config: Config) -> None:
+    asset_mock = mocker.MagicMock(name="asset")
+    asset_mock.uid = config["project_id"]
+
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.config = {
+        **config,
+        "household_transformer_id": 10,
+        "individual_transformer_id": 20,
+    }
+    job_mock.program.country_office.kobo_country_code = "ABC"
+    job_mock.batch_id = None
+    job_mock.type = "TASK"
+    job_mock.action = "import_action"
+    job_mock.description = "desc"
+    job_mock.file = None
+
+    mocker.patch("country_workspace.contrib.kobo.sync.transaction.atomic")
+    batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
+    batch_mock = batch_class_mock.objects.create.return_value
+
+    mocker.patch("country_workspace.contrib.kobo.sync.make_client").return_value.get_asset.return_value = asset_mock
+    mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.import_asset",
+        return_value=ImportResult(households=0, individuals=0, completed=True),
+    )
+    mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+    postprocessing_mock = mocker.patch("country_workspace.contrib.kobo.sync.run_batch_postprocessing")
+
+    import_data(job_mock)
+
+    postprocessing_mock.assert_called_once_with(
+        batch_mock,
+        household_transformer_id=10,
+        individual_transformer_id=20,
+    )
+
+
 @pytest.mark.django_db
-def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(mocker: MockerFixture, config: Config) -> None:
+def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(
+    mocker: MockerFixture,
+    config: Config,
+    submission,
+) -> None:
     batch = BatchFactory()
     program_ct = ContentType.objects.get_for_model(Program)
     SyncLogFactory(
@@ -487,52 +548,49 @@ def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(mocker: M
         last_id="0",
     )
 
-    submission_1 = Mock(spec=dict)
-    submission_1.id = 1
-    submission_2 = Mock(spec=dict)
-    submission_2.id = 2
+    submission_1 = submission(1)
+    submission_2 = submission(2)
 
-    asset_mock = Mock()
+    asset_mock = mocker.MagicMock()
     asset_mock.uid = "test_asset_uid"
-    asset_mock.submissions = Mock(return_value=iter([submission_1, submission_2]))
+    asset_mock.submissions.return_value = iter([submission_1, submission_2])
 
     create_household_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_household")
     create_individuals_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_individuals")
-    create_individuals_mock.return_value = [Mock()]
+    create_individuals_mock.return_value = [mocker.MagicMock()]
     mocker.patch("country_workspace.contrib.kobo.sync.set_roles_and_relationships")
 
-    res = import_asset(
+    id_generator_mock = mocker.MagicMock(name="id_generator")
+    result = import_asset(
         batch,
         asset_mock,
         config,
-        id_generator_mock := mocker.Mock(name="id_generator"),
+        id_generator_mock,
         timebox_seconds=0,
     )
 
-    assert res == ImportResult(households=1, individuals=1, completed=False)
-    create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, ANY)
+    assert result == ImportResult(households=1, individuals=1, completed=False)
+    create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, mocker.ANY)
     create_individuals_mock.assert_called_once()
     assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"
 
 
 def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: Config) -> None:
-    asset_mock = Mock(name="asset")
+    asset_mock = mocker.MagicMock(name="asset")
     asset_mock.uid = config["project_id"]
-    job_mock = Mock(name="job")
+
+    job_mock = mocker.MagicMock(name="job")
     job_mock.config = config
-    job_mock.program = Mock()
-    job_mock.program.country_office = Mock()
     job_mock.program.country_office.kobo_country_code = "ABC"
-    job_mock.owner = Mock()
     job_mock.batch_id = None
     job_mock.type = "TASK"
     job_mock.action = "import_action"
     job_mock.description = "desc"
     job_mock.file = None
 
+    mocker.patch("country_workspace.contrib.kobo.sync.transaction.atomic")
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
     batch_mock = batch_class_mock.objects.create.return_value
-    batch_mock.BatchStatus.LOADING = "LOADING"
 
     make_client_mock = mocker.patch("country_workspace.contrib.kobo.sync.make_client")
     make_client_mock.return_value.get_asset.return_value = asset_mock
@@ -543,14 +601,16 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
     create_validation_jobs_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
 
-    new_job_mock = Mock()
+    new_job_mock = mocker.MagicMock()
     async_create_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.AsyncJob.objects.create", return_value=new_job_mock
+        "country_workspace.contrib.kobo.sync.AsyncJob.objects.create",
+        return_value=new_job_mock,
     )
 
-    res = import_data(job_mock)
+    with override_config(KOBO_IMPORT_TIMEBOX_MINUTES=30):
+        result = import_data(job_mock)
 
-    assert res == ImportResult(households=0, individuals=0, completed=False)
+    assert result == ImportResult(households=0, individuals=0, completed=False)
     import_asset_mock.assert_called_once_with(
         batch_mock,
         asset_mock,
@@ -566,27 +626,23 @@ def test_import_data_reschedules_when_incomplete(mocker: MockerFixture, config: 
 
 
 def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Config) -> None:
-    """When job.batch_id is set, import_data uses select_for_update().get() and does not create a new batch."""
-    asset_mock = Mock(name="asset")
+    asset_mock = mocker.MagicMock(name="asset")
     asset_mock.uid = config["project_id"]
-    job_mock = Mock(name="job")
+
+    job_mock = mocker.MagicMock(name="job")
     job_mock.config = config
-    job_mock.program = Mock()
-    job_mock.program.country_office = Mock()
     job_mock.program.country_office.kobo_country_code = "ABC"
-    job_mock.owner = Mock()
     job_mock.batch_id = 42
     job_mock.type = "TASK"
     job_mock.action = "import_action"
     job_mock.description = "desc"
     job_mock.file = None
-    job_mock.save = Mock()
 
+    mocker.patch("country_workspace.contrib.kobo.sync.transaction.atomic")
     batch_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Batch")
-    resumed_batch = Mock()
+    resumed_batch = mocker.MagicMock()
     resumed_batch.pk = 42
     resumed_batch.status = batch_class_mock.BatchStatus.LOADING
-    mocker.patch("country_workspace.contrib.kobo.sync.sync_collector_links")
     qs = batch_class_mock.objects.select_for_update.return_value
     qs.select_related.return_value.get.return_value = resumed_batch
 
@@ -598,8 +654,10 @@ def test_import_data_resumes_existing_batch(mocker: MockerFixture, config: Confi
 
     get_id_generator_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_id_generator")
     create_validation_mock = mocker.patch("country_workspace.contrib.kobo.sync.create_validation_jobs")
+    mocker.patch("country_workspace.contrib.kobo.sync.run_batch_postprocessing")
 
-    result = import_data(job_mock)
+    with override_config(KOBO_IMPORT_TIMEBOX_MINUTES=30):
+        result = import_data(job_mock)
 
     assert result == ImportResult(households=2, individuals=3, completed=True)
     batch_class_mock.objects.create.assert_not_called()
@@ -627,25 +685,25 @@ def test_import_asset_re_raises_graceful_cancellation(mocker: MockerFixture, con
         object_id=batch.program.id,
         last_id="100",
     )
-    asset = Mock()
+    asset = mocker.MagicMock()
     asset.uid = "asset-id"
-    submission = Mock(spec=dict)
+    submission = mocker.MagicMock(spec=dict)
     submission.id = 101
     asset.submissions.return_value = iter([submission])
 
-    job = Mock()
+    job = mocker.MagicMock()
     job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
 
     with pytest.raises(GracefulJobCancellationError):
-        import_asset(batch, asset, config, id_generator=Mock(), job=job)
+        import_asset(batch, asset, config, id_generator=mocker.MagicMock(), job=job)
 
 
 @pytest.mark.django_db
-def test_create_individuals_checks_cancellation_per_individual(config: Config) -> None:
+def test_create_individuals_checks_cancellation_per_individual(mocker: MockerFixture, config: Config) -> None:
     batch = BatchFactory()
     household = HouseholdFactory(batch=batch, individuals=[])
 
-    job = Mock()
+    job = mocker.MagicMock()
     job.ensure_not_cancelled.side_effect = GracefulJobCancellationError("cancel requested")
 
     submission = {config["individual_records_field"]: [{"some_field": "value"}]}
@@ -656,25 +714,30 @@ def test_create_individuals_checks_cancellation_per_individual(config: Config) -
     job.ensure_not_cancelled.assert_called_once_with(refresh=True)
 
 
-def test_create_individuals_with_job_checks_cancellation_and_continues(mocker: MockerFixture, config: Config) -> None:
+def test_create_individuals_with_job_checks_cancellation_and_continues(
+    mocker: MockerFixture,
+    config: Config,
+) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.get_fullname_key", return_value="full_name"
+        "country_workspace.contrib.kobo.sync.get_fullname_key",
+        return_value="full_name",
     )
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
-    build_processor_mock.return_value = Mock(side_effect=[{"full_name": "Name 1"}, {"full_name": "Name 2"}])
+    build_processor_mock.return_value = mocker.MagicMock(side_effect=[{"full_name": "Name 1"}, {"full_name": "Name 2"}])
 
-    job = Mock()
+    job = mocker.MagicMock()
     submission = {
         config["individual_records_field"]: [
             {"full_name": "Name 1"},
             {"full_name": "Name 2"},
         ]
     }
+    household_mock = mocker.MagicMock(name="household")
 
     individuals = create_individuals(
-        Mock(name="batch"),
-        household_mock := Mock(name="household"),
+        mocker.MagicMock(name="batch"),
+        household_mock,
         cast("Submission", submission),
         config,
         "originating_id",
@@ -696,17 +759,17 @@ def test_get_fullname_key_key_does_not_exist() -> None:
     assert get_fullname_key(()) is None
 
 
-def test_build_individual_processor() -> None:
+def test_build_individual_processor(mocker: MockerFixture) -> None:
     from country_workspace.models import Individual
 
-    program_mock = Mock()
-    program_mock.apply_mapping_importer.side_effect = lambda model, data, mapping_id=None, transformer_id=None: {
+    program_mock = mocker.MagicMock()
+    program_mock.apply_mapping_importer.side_effect = lambda model, data, mapping_id=None: {
         **data,
         "mapped": True,
     }
     program_mock.apply_default_fields.side_effect = lambda model, data: {**data, "defaulted": True}
 
-    processor = build_individual_processor(program_mock, mapping_id=1, transformer_id=2)
+    processor = build_individual_processor(program_mock, mapping_id=1)
     result = processor({"group/Field": "value", "relationship": "head"})
 
     assert result["field"] == "value"
@@ -717,30 +780,35 @@ def test_build_individual_processor() -> None:
     args, kwargs = program_mock.apply_mapping_importer.call_args
     assert args[0] is Individual
     assert kwargs["mapping_id"] == 1
-    assert kwargs["transformer_id"] == 2
+    assert "transformer_id" not in kwargs
+
     program_mock.apply_default_fields.assert_called_once()
     default_args, _ = program_mock.apply_default_fields.call_args
     assert default_args[0] is Individual
 
 
 @pytest.mark.parametrize(
-    ("individual_flex_fields", "individual_key"),
+    ("individual_flex_fields", "field_name"),
     [
-        pytest.param({"role": "PRIMARY"}, "primary_collector_id", id="primary collector"),
-        pytest.param({"role": "ALTERNATE"}, "alternate_collector_id", id="alternate collector"),
-        pytest.param({"relationship": "HEAD"}, "head_of_household_id", id="head of household"),
+        pytest.param({"role": "PRIMARY"}, HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, id="primary collector"),
+        pytest.param({"role": "ALTERNATE"}, HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector, id="alternate collector"),
+        pytest.param({"relationship": "HEAD"}, HOUSEHOLD_ROLE_REF_FIELDS.head_of_household, id="head of household"),
     ],
 )
 def test_set_roles_and_relationships(
-    mocker: MockerFixture, individual_flex_fields: dict[str, str], individual_key: str
+    mocker: MockerFixture,
+    individual_flex_fields: dict[str, str],
+    field_name: str,
 ) -> None:
-    household_mock = mocker.Mock()
+    household_mock = mocker.MagicMock()
     household_mock.flex_fields = {}
-    individual_mock = mocker.Mock()
+    individual_mock = mocker.MagicMock()
     individual_mock.flex_fields = individual_flex_fields
+
     set_roles_and_relationships(household_mock, [individual_mock])
-    assert individual_key in household_mock.flex_fields
-    assert household_mock.flex_fields[individual_key] == individual_mock.id
+
+    assert household_mock.flex_fields[field_name] == individual_mock.id
+    household_mock.save.assert_called_once_with(update_fields=["flex_fields"])
 
 
 def test_get_id_generator() -> None:
@@ -802,36 +870,36 @@ def test_get_alien_fields_none_found() -> None:
 def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config) -> None:
     from hope_flex_fields.models import DataChecker
 
-    batch_mock = Mock()
-    batch_mock.program.household_checker = Mock(spec=DataChecker)
-    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+    batch_mock = mocker.MagicMock()
+    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
+    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
 
-    submission_mock = Mock()
+    submission_mock = mocker.MagicMock()
     submission_mock.get.return_value = [{"individual_field": "value"}]
 
     get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
     get_allowed_fields_mock.return_value = {"household_field", "individual_field"}
 
-    household_processor = Mock(return_value={"household_field": "value"})
-    individual_processor = Mock(return_value={"individual_field": "value"})
+    household_processor = mocker.MagicMock(return_value={"household_field": "value"})
+    individual_processor = mocker.MagicMock(return_value={"individual_field": "value"})
     build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+        "country_workspace.contrib.kobo.sync.build_household_processor",
+        return_value=household_processor,
     )
     build_individual_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_individual_processor", return_value=individual_processor
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=individual_processor,
     )
 
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"household_field": "value"}
 
-    # Should not raise
-    mapping_importer = Mock()
+    mapping_importer = mocker.MagicMock()
     check_for_alien_fields(batch_mock, submission_mock, config, mapping_importer)
 
     build_household_processor_mock.assert_called_once_with(
         batch_mock.program,
         mapping_id=None,
-        transformer_id=None,
         apply_defaults=False,
         apply_mapping=False,
         post_processors=(mapping_importer,),
@@ -839,7 +907,6 @@ def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config)
     build_individual_processor_mock.assert_called_once_with(
         batch_mock.program,
         mapping_id=None,
-        transformer_id=None,
         apply_defaults=False,
         apply_mapping=False,
         post_processors=(mapping_importer,),
@@ -851,26 +918,27 @@ def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config)
 def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, config: Config) -> None:
     from hope_flex_fields.models import DataChecker
 
-    batch_mock = Mock()
-    batch_mock.program.household_checker = Mock(spec=DataChecker)
-    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+    batch_mock = mocker.MagicMock()
+    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
+    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
 
-    submission_mock = Mock()
+    submission_mock = mocker.MagicMock()
     submission_mock.get.return_value = []
 
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"known_field": "value", "alien_field": "value"}
 
-    household_processor = Mock(return_value={"known_field": "value", "alien_field": "value"})
+    household_processor = mocker.MagicMock(return_value={"known_field": "value", "alien_field": "value"})
     build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+        "country_workspace.contrib.kobo.sync.build_household_processor",
+        return_value=household_processor,
     )
 
     get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
     get_allowed_fields_mock.return_value = {"known_field"}
 
     with pytest.raises(AlienFieldsError) as exc_info:
-        check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+        check_for_alien_fields(batch_mock, submission_mock, config, mocker.MagicMock())
 
     assert exc_info.value.household_alien_fields == {"alien_field"}
     assert exc_info.value.individual_alien_fields == set()
@@ -881,23 +949,25 @@ def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, con
 def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, config: Config) -> None:
     from hope_flex_fields.models import DataChecker
 
-    batch_mock = Mock()
-    batch_mock.program.household_checker = Mock(spec=DataChecker)
-    batch_mock.program.individual_checker = Mock(spec=DataChecker)
+    batch_mock = mocker.MagicMock()
+    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
+    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
 
-    submission_mock = Mock()
+    submission_mock = mocker.MagicMock()
     submission_mock.get.return_value = [{"known_field": "value", "alien_individual_field": "value"}]
 
     extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
     extract_household_data_mock.return_value = {"household_field": "value"}
 
-    household_processor = Mock(return_value={"household_field": "value"})
-    individual_processor = Mock(return_value={"known_field": "value", "alien_individual_field": "value"})
+    household_processor = mocker.MagicMock(return_value={"household_field": "value"})
+    individual_processor = mocker.MagicMock(return_value={"known_field": "value", "alien_individual_field": "value"})
     build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor", return_value=household_processor
+        "country_workspace.contrib.kobo.sync.build_household_processor",
+        return_value=household_processor,
     )
     build_individual_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_individual_processor", return_value=individual_processor
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=individual_processor,
     )
 
     def get_allowed_fields_side_effect(checker):
@@ -909,7 +979,7 @@ def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, co
     get_allowed_fields_mock.side_effect = get_allowed_fields_side_effect
 
     with pytest.raises(AlienFieldsError) as exc_info:
-        check_for_alien_fields(batch_mock, submission_mock, config, Mock())
+        check_for_alien_fields(batch_mock, submission_mock, config, mocker.MagicMock())
 
     assert exc_info.value.household_alien_fields == set()
     assert exc_info.value.individual_alien_fields == {"alien_individual_field"}

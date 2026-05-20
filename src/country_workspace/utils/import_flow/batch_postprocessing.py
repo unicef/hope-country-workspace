@@ -1,8 +1,8 @@
 from collections.abc import Callable
 
 from country_workspace.models import Batch
-from country_workspace.utils.import_flow.transformations import apply_batch_transformers
-from country_workspace.utils.import_flow.collector_linkage import sync_collector_links
+from .collector_linkage import sync_collector_links
+from .transformations import apply_batch_transformers
 
 
 type HouseholdRefsSyncer = Callable[[Batch], None]

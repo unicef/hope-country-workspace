@@ -11,7 +11,6 @@ type Serializer = Callable[[list[dict]], Any]
 
 # Matches tags like: IND-25-0000.0051
 IND_TAG_RE = re.compile(r"^IND(?:-\d+)+\.\d+$")
-ROLE_FIELDS: Final[tuple[str, ...]] = ("head_of_household_id", "primary_collector_id", "alternate_collector_id")
 
 
 class SelectionConfig(TypedDict):

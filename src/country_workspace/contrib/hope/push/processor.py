@@ -7,13 +7,14 @@ from uuid import UUID
 
 from django.db.models import QuerySet
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from .config import ROLE_FIELDS, Serializer, ERROR_CONFIG, PushWorkflowConfig
+from .config import Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
     qs_individuals_for_rdp,
@@ -194,7 +195,7 @@ class PushProcessor(ProcessorBase):
         for hh in batch:
             ids.append(hh.id)
             flex_fields = hh.apply_grouping()
-            for key in ROLE_FIELDS:
+            for key in HOUSEHOLD_ROLE_REF_FIELDS:
                 flex_fields[key] = map_role_value(self.ind_id_map, self._err, hh.pk, key, flex_fields.get(key))
             prefetched = getattr(hh, "prefetched_members", None)
             member_ids = (

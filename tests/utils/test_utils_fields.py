@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 
 
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
-from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names
+from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
     Base64ImageInput,
     Base64ImageField,
@@ -127,3 +127,30 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_split_options(
     ConsentSharingChoice.prepare_value(instance, value)
 
     split_options_mock.assert_has_calls([c := call(value), c])
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (True, None),
+        (False, None),
+        (0, "0"),
+        (42, "42"),
+        (2.0, "2"),
+        (2.5, "2.5"),
+        ("  abc  ", "abc"),
+        ("   ", None),
+        ("0", "0"),
+    ],
+)
+def test_normalize_reference_primitives(value, expected) -> None:
+    assert to_reference_key(value) == expected
+
+
+def test_normalize_reference_fallback_object_string() -> None:
+    class Obj:
+        def __str__(self) -> str:
+            return "  x-ref  "
+
+    assert to_reference_key(Obj()) == "x-ref"

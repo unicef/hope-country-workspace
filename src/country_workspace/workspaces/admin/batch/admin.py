@@ -20,6 +20,7 @@ from ...permissions import can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from ..hh_ind import SelectedProgramMixin
+from .reprocessing import reprocess_batch as reprocess_batch_task
 
 
 class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
@@ -165,7 +166,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     description=f"Reprocess batch: {obj.name}",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
-                    action=fqn("country_workspace.workspaces.admin.batch.reprocessing.reprocess_batch"),
+                    action=fqn(reprocess_batch_task),
                     program=obj.program,
                     batch=obj,
                     config=config,

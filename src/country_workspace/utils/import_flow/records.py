@@ -5,8 +5,8 @@ from typing import Any
 from constance import config as constance_config
 
 from country_workspace.models import Batch, Household, Individual, Program
-from country_workspace.utils.import_flow.document_columns import expand_document_columns
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS, clean_field_names
+from .document_columns import expand_document_columns
 
 Processor = Callable[[dict[str, Any]], dict[str, Any]]
 

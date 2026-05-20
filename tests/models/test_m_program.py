@@ -1,38 +1,35 @@
+from typing import Any
+
 import pytest
-from unittest.mock import MagicMock, patch
 from django.core.exceptions import ImproperlyConfigured
+from pytest_mock import MockerFixture
+
+from country_workspace.models import DataSerializer, Household, Individual, MappingImporter, Program
 from tests.extras.testutils.factories import (
-    ProgramFactory,
-    IndividualFactory,
     HouseholdFactory,
+    IndividualFactory,
     MappingImporterFactory,
     OfficeFactory,
-)
-
-from country_workspace.models import (
-    Program,
-    DataSerializer,
-    Individual,
-    Household,
-    MappingImporter,
-    Transformer,
+    ProgramFactory,
 )
 from tests.extras.testutils.factories.serializer import DataSerializerFactory
-from typing import Any
+
+
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def program():
+def program() -> Program:
     return ProgramFactory()
 
 
 @pytest.fixture
-def program_without_serializer():
+def program_without_serializer() -> Program:
     return ProgramFactory(serializer=None)
 
 
 @pytest.fixture
-def custom_serializer():
+def custom_serializer() -> DataSerializer:
     code = """function replaceEmptyStrings(data) {
     var result = [];
     for (var i = 0; i < data.length; i++) {
@@ -50,22 +47,23 @@ def custom_serializer():
     return DataSerializerFactory(code=code)
 
 
-def test_program_serialize(program: Program):
+def test_program_serialize(program: Program) -> None:
     data = [{"foo": "bar"}]
-    result = program.serialize(data)
-    assert result == data
+
+    assert program.serialize(data) == data
 
 
-def test_program_no_serializer(program: Program):
+def test_program_no_serializer(program: Program) -> None:
     program.serializer = None
     data = [{"foo": "bar"}]
-    result = program.serialize(data)
-    assert result == data
+
+    assert program.serialize(data) == data
 
 
-def test_program_serializer_for_individuals(program: Program):
+def test_program_serializer_for_individuals(program: Program) -> None:
     IndividualFactory.create_batch(3, batch__program=program)
     individuals_data = [ind.apply_grouping() for ind in program.individuals.all()]
+
     result = program.serialize(individuals_data)
 
     assert isinstance(result, list)
@@ -75,9 +73,10 @@ def test_program_serializer_for_individuals(program: Program):
         assert set(result[0].keys()) == set(individuals_data[0].keys())
 
 
-def test_program_serializer_for_households(program: Program):
+def test_program_serializer_for_households(program: Program) -> None:
     HouseholdFactory.create_batch(3, batch__program=program)
     households_data = [hh.apply_grouping() for hh in program.households.all()]
+
     result = program.serialize(households_data)
 
     assert isinstance(result, list)
@@ -87,40 +86,32 @@ def test_program_serializer_for_households(program: Program):
         assert set(result[0].keys()) == set(households_data[0].keys())
 
 
-def _find_empty_fields(data):
-    empty_fields = []
-    for item in data:
-        for key, value in item.items():
-            if value == "":
-                empty_fields.append((key, value))
-    return empty_fields
+def _find_empty_fields(data: list[dict[str, Any]]) -> list[tuple[str, Any]]:
+    return [(key, value) for item in data for key, value in item.items() if value == ""]
 
 
-def _verify_empty_strings_replaced(result, individuals_data):
+def _verify_empty_strings_replaced(result: list[dict[str, Any]], source: list[dict[str, Any]]) -> None:
     for item in result:
         for key, value in item.items():
             if value == "IS_EMPTY":
-                original_item = next((orig for orig in individuals_data if orig.get(key) == ""), None)
-                assert original_item is not None, f"Field {key} was not originally empty"
+                assert next((original for original in source if original.get(key) == ""), None) is not None
 
 
-def _verify_non_empty_values_unchanged(result, individuals_data):
-    for i, item in enumerate(result):
-        original_item = individuals_data[i]
+def _verify_non_empty_values_unchanged(result: list[dict[str, Any]], source: list[dict[str, Any]]) -> None:
+    for item, original_item in zip(result, source, strict=True):
         for key, value in item.items():
             if value != "IS_EMPTY":
-                assert value == original_item.get(key), f"Non-empty value for {key} was changed"
+                assert value == original_item.get(key)
 
 
-def _verify_mutation_occurred(result, empty_fields):
+def _verify_mutation_occurred(result: list[dict[str, Any]], empty_fields: list[tuple[str, Any]]) -> None:
     if empty_fields:
-        is_empty_count = sum(1 for item in result for value in item.values() if value == "IS_EMPTY")
-        assert is_empty_count > 0, "No empty strings were replaced with IS_EMPTY"
+        assert any(value == "IS_EMPTY" for item in result for value in item.values())
 
 
-def test_program_serializer_mutation_for_individuals(program: Program, custom_serializer: DataSerializer):
+def test_program_serializer_mutation_for_individuals(program: Program, custom_serializer: DataSerializer) -> None:
     program.serializer = custom_serializer
-    program.save()
+    program.save(update_fields=["serializer"])
 
     IndividualFactory.create_batch(3, batch__program=program)
     individuals_data = [ind.apply_grouping() for ind in program.individuals.all()]
@@ -136,20 +127,18 @@ def test_program_serializer_mutation_for_individuals(program: Program, custom_se
     _verify_mutation_occurred(result, empty_fields)
 
 
-def test_program_serializer_for_individuals_with_empty_serializer(program_without_serializer: Program):
+def test_program_serializer_for_individuals_with_empty_serializer(program_without_serializer: Program) -> None:
     IndividualFactory.create_batch(3, batch__program=program_without_serializer)
     individuals_data = list(program_without_serializer.individuals.values())
 
-    result = program_without_serializer.serialize(individuals_data)
-    assert result == individuals_data
+    assert program_without_serializer.serialize(individuals_data) == individuals_data
 
 
-def test_program_serializer_for_households_with_empty_serializer(program_without_serializer: Program):
+def test_program_serializer_for_households_with_empty_serializer(program_without_serializer: Program) -> None:
     HouseholdFactory.create_batch(3, batch__program=program_without_serializer)
     households_data = list(program_without_serializer.households.values())
 
-    result = program_without_serializer.serialize(households_data)
-    assert result == households_data
+    assert program_without_serializer.serialize(households_data) == households_data
 
 
 @pytest.mark.parametrize(
@@ -169,8 +158,15 @@ def test_program_serializer_for_households_with_empty_serializer(program_without
         ),
     ],
 )
-def test_program_get_columns_for(program: Program, attr_name: str, model_cls: type, value: str, expected: list) -> None:
+def test_program_get_columns_for(
+    program: Program,
+    attr_name: str,
+    model_cls: type,
+    value: str,
+    expected: list[str],
+) -> None:
     setattr(program, attr_name, value)
+
     assert program.get_columns_for(model_cls) == expected
 
 
@@ -186,13 +182,14 @@ def test_program_get_columns_for_unsupported_model_raises(program: Program) -> N
         (Individual, {"i": 2}),
     ],
 )
-def test_program_get_default_fields_for_scope(program: Program, model_cls: type, expected: dict) -> None:
+def test_program_get_default_fields_for_scope(program: Program, model_cls: type, expected: dict[str, int]) -> None:
     program.system_fields = {
         "default_fields": {
             "household": {"h": 1},
             "individual": {"i": 2},
         }
     }
+
     assert program.get_default_fields_for(model_cls) == expected
 
 
@@ -237,228 +234,104 @@ def test_program_apply_default_fields_applies_only_missing_or_none(program: Prog
     assert result == {"a": "keep", "b": 2, "c": 3}
 
 
-def test_apply_mapping_importer_with_mapping_id(program: Program):
+def test_apply_mapping_importer_with_mapping_id(program: Program, mocker: MockerFixture) -> None:
     mapping_id = 123
     data: dict[str, Any] = {"name": "Test"}
-    mock_importer = MagicMock(spec=MappingImporter)
-    mock_importer.apply.return_value = data
+    importer = mocker.MagicMock(spec=MappingImporter)
+    importer.apply.return_value = data
 
-    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
-        mock_filter.return_value.first.return_value = mock_importer
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
+    mapping_filter.return_value.first.return_value = importer
 
-        mock_filter.assert_called_once_with(id=mapping_id)
-        mock_importer.apply.assert_called_once_with(data)
-        assert result == data
+    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+    mapping_filter.assert_called_once_with(id=mapping_id)
+    importer.apply.assert_called_once_with(data)
+    assert result == data
 
 
-def test_apply_mapping_importer_with_invalid_mapping_id(program: Program):
+def test_apply_mapping_importer_with_invalid_mapping_id(program: Program, mocker: MockerFixture) -> None:
     mapping_id = 999
     data: dict[str, Any] = {"name": "Test"}
 
-    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_filter:
-        mock_filter.return_value.first.return_value = None
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
+    mapping_filter.return_value.first.return_value = None
 
-        mock_filter.assert_called_once_with(id=mapping_id)
-        assert result == data
+    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+    mapping_filter.assert_called_once_with(id=mapping_id)
+    assert result == data
 
 
-def test_apply_mapping_importer_from_checker(program: Program):
+def test_apply_mapping_importer_from_checker(program: Program, mocker: MockerFixture) -> None:
     data: dict[str, Any] = {"name": "Test"}
-
     office = program.country_office
     other_office = OfficeFactory()
 
-    # Importer for the correct office - should be used
     importer1 = MappingImporterFactory(office=office)
-    importer1.apply = MagicMock()
-    importer1.apply.return_value = data
+    importer1.apply = mocker.MagicMock(return_value=data)
 
-    # Second importer for the correct office - should be used
     importer2 = MappingImporterFactory(office=office)
-    importer2.apply = MagicMock()
-    importer2.apply.return_value = data
+    importer2.apply = mocker.MagicMock(return_value=data)
 
-    # Importer for another office - should NOT be used
     importer3 = MappingImporterFactory(office=other_office)
-    importer3.apply = MagicMock()
+    importer3.apply = mocker.MagicMock()
 
-    mock_checker = MagicMock()
-    mock_checker.mapping_importers.filter.return_value = [importer1, importer2]
+    checker = mocker.MagicMock()
+    checker.mapping_importers.filter.return_value = [importer1, importer2]
 
-    with patch.object(program, "get_checker_for", return_value=mock_checker) as mock_get_checker_for:
-        result = program.apply_mapping_importer(Household, data)
+    get_checker = mocker.patch.object(program, "get_checker_for", return_value=checker)
 
-        mock_get_checker_for.assert_called_once_with(Household)
-        mock_checker.mapping_importers.filter.assert_called_once_with(office=office)
-        importer1.apply.assert_called_once_with(data)
-        importer2.apply.assert_called_once_with(data)
-        importer3.apply.assert_not_called()
-        assert result == data
+    result = program.apply_mapping_importer(Household, data)
+
+    get_checker.assert_called_once_with(Household)
+    checker.mapping_importers.filter.assert_called_once_with(office=office)
+    importer1.apply.assert_called_once_with(data)
+    importer2.apply.assert_called_once_with(data)
+    importer3.apply.assert_not_called()
+    assert result == data
 
 
-def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Program) -> None:
+def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Program, mocker: MockerFixture) -> None:
     data: dict[str, Any] = {"name": "Test"}
 
-    with (
-        patch.object(program, "get_checker_for", return_value=None) as mock_get_checker_for,
-        patch("country_workspace.models.MappingImporter.objects.filter"),
-    ):
-        program.apply_mapping_importer(Household, data)
+    get_checker = mocker.patch.object(program, "get_checker_for", return_value=None)
+    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
 
-    mock_get_checker_for.assert_called_once_with(Household)
+    result = program.apply_mapping_importer(Household, data)
+
+    get_checker.assert_called_once_with(Household)
+    mapping_filter.assert_not_called()
+    assert result == data
 
 
-def test_apply_mapping_importer_with_transformer_id(program: Program):
-    transformer_id = 456
+def test_apply_mapping_importer_mapping_id_only(program: Program, mocker: MockerFixture) -> None:
     mapping_id = 123
     data: dict[str, Any] = {"gender": "M"}
-    mock_transformer = MagicMock(spec=Transformer)
-    mock_importer = MagicMock(spec=MappingImporter)
-    mock_importer.apply.return_value = data
-    mock_transformer.apply.return_value = data
+    importer = mocker.MagicMock(spec=MappingImporter)
+    importer.apply.return_value = {"sex": "M"}
 
-    with (
-        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
-        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
-    ):
-        mock_transformer_filter.return_value.first.return_value = mock_transformer
-        mock_mapping_filter.return_value.first.return_value = mock_importer
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
+    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
+    mapping_filter.return_value.first.return_value = importer
 
-        # Mapping should be applied first
-        mock_mapping_filter.assert_called_once_with(id=mapping_id)
-        mock_importer.apply.assert_called_once_with(data)
-        # Then transformer
-        mock_transformer_filter.assert_called_once_with(id=transformer_id)
-        mock_transformer.apply.assert_called_once_with(data)
-        assert result == data
+    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
+
+    mapping_filter.assert_called_once_with(id=mapping_id)
+    importer.apply.assert_called_once_with(data)
+    assert result == {"sex": "M"}
 
 
-def test_apply_mapping_importer_mapping_then_transformer_flow(program: Program):
-    """Test the correct flow: mapping first (field-level), then transformer (record-level)."""
-    from tests.extras.testutils.factories import TransformerFactory
-
-    data: dict[str, Any] = {"gender": "M", "age": 25}
-    office = program.country_office
-
-    # Mapping renames fields (field-level)
-    mapping = MappingImporterFactory(office=office, rules="gender=sex")
-    # Transformer transforms values (record-level)
-    transformer = TransformerFactory(
-        office=office, value_transformations="function t(d) { if(d['sex']=='M') d['sex']='MALE'; return d; }"
-    )
-
-    mock_checker = MagicMock()
-    mock_checker.mapping_importers.filter.return_value = [mapping]
-
-    with patch.object(program, "get_checker_for", return_value=mock_checker):
-        # Apply transformer via transformer_id (transformers are not linked to checkers)
-        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
-
-        # After mapping: {"sex": "M", "age": 25}
-        # After transformer: {"sex": "MALE", "age": 25}
-        assert result["sex"] == "MALE"
-        assert result["age"] == 25
-        assert "gender" not in result
-
-
-def test_apply_mapping_importer_transformer_id_not_found(program: Program):
-    """Test apply_mapping_importer when transformer_id is provided but transformer not found."""
-    transformer_id = 999
-    mapping_id = 123
+def test_apply_mapping_importer_checker_with_no_mappings(program: Program, mocker: MockerFixture) -> None:
     data: dict[str, Any] = {"gender": "M"}
-    mock_importer = MagicMock(spec=MappingImporter)
-    mock_importer.apply.return_value = data
+    checker = mocker.MagicMock()
+    checker.mapping_importers.filter.return_value = []
 
-    with (
-        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
-        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
-    ):
-        mock_transformer_filter.return_value.first.return_value = None  # Transformer not found
-        mock_mapping_filter.return_value.first.return_value = mock_importer
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
+    mocker.patch.object(program, "get_checker_for", return_value=checker)
 
-        mock_transformer_filter.assert_called_once_with(id=transformer_id)
-        mock_mapping_filter.assert_called_once_with(id=mapping_id)
-        mock_importer.apply.assert_called_once_with(data)  # Mapping should still be applied
-        assert result == data
+    result = program.apply_mapping_importer(Household, data)
 
-
-def test_apply_mapping_importer_mapping_id_not_found(program: Program):
-    """Test apply_mapping_importer when mapping_id is provided but importer not found."""
-    transformer_id = 456
-    mapping_id = 999
-    data: dict[str, Any] = {"gender": "M"}
-    mock_transformer = MagicMock(spec=Transformer)
-    mock_transformer.apply.return_value = data
-
-    with (
-        patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter,
-        patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter,
-    ):
-        mock_transformer_filter.return_value.first.return_value = mock_transformer
-        mock_mapping_filter.return_value.first.return_value = None  # Mapping not found
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id, transformer_id=transformer_id)
-
-        mock_transformer_filter.assert_called_once_with(id=transformer_id)
-        mock_transformer.apply.assert_called_once_with(data)  # Transformer should still be applied
-        mock_mapping_filter.assert_called_once_with(id=mapping_id)
-        assert result == data
-
-
-def test_apply_mapping_importer_transformer_id_only(program: Program):
-    """Test apply_mapping_importer with only transformer_id (no mapping_id)."""
-    transformer_id = 456
-    data: dict[str, Any] = {"gender": "M"}
-    mock_transformer = MagicMock(spec=Transformer)
-    mock_transformer.apply.return_value = data
-
-    with patch("country_workspace.models.Transformer.objects.filter") as mock_transformer_filter:
-        mock_transformer_filter.return_value.first.return_value = mock_transformer
-        result = program.apply_mapping_importer(Household, data, transformer_id=transformer_id)
-
-        mock_transformer_filter.assert_called_once_with(id=transformer_id)
-        mock_transformer.apply.assert_called_once_with(data)
-        assert result == data
-
-
-def test_apply_mapping_importer_mapping_id_only(program: Program):
-    """Test apply_mapping_importer with only mapping_id (no transformer_id)."""
-    mapping_id = 123
-    data: dict[str, Any] = {"gender": "M"}
-    mock_importer = MagicMock(spec=MappingImporter)
-    mock_importer.apply.return_value = data
-
-    with patch("country_workspace.models.MappingImporter.objects.filter") as mock_mapping_filter:
-        mock_mapping_filter.return_value.first.return_value = mock_importer
-        result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
-
-        mock_mapping_filter.assert_called_once_with(id=mapping_id)
-        mock_importer.apply.assert_called_once_with(data)
-        assert result == data
-
-
-def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
-    """Test apply_mapping_importer when checker exists but has no mappings."""
-    from tests.extras.testutils.factories import TransformerFactory
-
-    data: dict[str, Any] = {"gender": "M"}
-    office = program.country_office
-    transformer = TransformerFactory(
-        office=office, value_transformations="function t(d) { if(d['gender']=='M') d['gender']='MALE'; return d; }"
-    )
-
-    mock_checker = MagicMock()
-    mock_checker.mapping_importers.filter.return_value = []  # No mappings
-
-    with patch.object(program, "get_checker_for", return_value=mock_checker):
-        # Apply transformer via transformer_id (transformers are not linked to checkers)
-        result = program.apply_mapping_importer(Household, data, transformer_id=transformer.id)
-
-        # Transformer should still be applied
-        assert result["gender"] == "MALE"
+    checker.mapping_importers.filter.assert_called_once_with(office=program.country_office)
+    assert result == data
 
 
 @pytest.mark.parametrize(
@@ -472,6 +345,7 @@ def test_apply_mapping_importer_checker_with_no_mappings(program: Program):
 def test_program_unicef_id(program: Program, code: str | None, slug: str | None, expected: str | None) -> None:
     program.code = code
     program.country_office.slug = slug
+
     if expected is None:
         with pytest.raises(ImproperlyConfigured):
             _ = program.unicef_id
