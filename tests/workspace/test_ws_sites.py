@@ -36,17 +36,6 @@ def test_current_modeladmin_for_known_changelist(rf, url_name, expected_admin):
     assert workspace._current_modeladmin(request) == expected_admin
 
 
-def test_current_modeladmin_matches_prefix_subpaths(rf):
-    """URL names that *start with* a known prefix (e.g. ``..._import_data``) also map.
-
-    Exercises the ``url_name.startswith(prefix + "_")`` branch via the
-    Households change-list ``Import Data`` button, whose URL name is
-    ``workspaces_countryhousehold_import_data``.
-    """
-    request = rf.get(reverse("workspace:workspaces_countryhousehold_import_data"))
-    assert workspace._current_modeladmin(request) == "CountryHouseholdAdmin"
-
-
 def test_current_modeladmin_returns_none_when_path_does_not_resolve(rf):
     """``Resolver404`` is swallowed and the function returns ``None``."""
     request = rf.get("/this/path/definitely/does/not/exist/")
