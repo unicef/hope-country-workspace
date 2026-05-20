@@ -1,5 +1,4 @@
 from ..settings import env  # type: ignore[attr-defined]
-from .celery_beat_schedule import TASKS_SCHEDULES
 
 CELERY_ACCEPT_CONTENT = ["pickle", "json", "application/text", "application/json"]
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
@@ -9,7 +8,7 @@ CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 CELERY_BROKER_VISIBILITY_VAR = env("CELERY_VISIBILITY_TIMEOUT")
 CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": CELERY_BROKER_VISIBILITY_VAR}
 
-CELERY_BEAT_SCHEDULER = "country_workspace.config.scheduler.CountryWorkspaceDatabaseScheduler"
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
 CELERY_CREATE_MISSING_QUEUES = True
 
 CELERY_TASK_ACKS_LATE = True
@@ -44,5 +43,3 @@ CELERY_BROKER_CONNECTION_RETRY = False
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = False
 
 CELERY_TRACK_STARTED = True
-
-CELERY_BEAT_SCHEDULE = TASKS_SCHEDULES
