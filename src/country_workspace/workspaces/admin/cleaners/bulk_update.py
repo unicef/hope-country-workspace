@@ -72,6 +72,9 @@ if TYPE_CHECKING:
 """
 
 
+ITERATOR_CHUNK_SIZE = 50
+
+
 class XlsValidateRule:
     validate = ""
 
@@ -118,14 +121,6 @@ def get_validation_for_field(fld: "FlexField") -> dict[str, Any]:
     return validate()
 
 
-def dc_get_field(dc: "DataChecker", name: str) -> "FlexField | None":
-    for fs in dc.members.all():
-        for field in fs.fieldset.fields.filter():
-            if field.name == name:
-                return field
-    return None
-
-
 def _validate_date_format(value: str) -> bool:
     for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"]:
         try:
@@ -150,12 +145,14 @@ def _validate_datetime_format(value: str) -> bool:
     return False
 
 
-def validate_date_datetime_fields(row: dict, dc: DataChecker, line_number: int, errors: dict) -> None:
+def validate_date_datetime_fields(
+    row: dict, field_lookup: dict[str, "FlexField"], line_number: int, errors: dict
+) -> None:
     for k, v in row.items():
         if v is None or v == "":
             continue
 
-        fld = dc_get_field(dc=dc, name=k.split("__")[-1])
+        fld = field_lookup.get(k.split("__")[-1])
         if not fld or fld.definition.field_type not in (DateField, DateTimeField) or not isinstance(v, str):
             continue
 
@@ -192,6 +189,7 @@ def _get_header_format(workbook: Workbook) -> Format:
 def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Program, columns: list[str]) -> BytesIO:
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
+    field_lookup = {field.name: field for _, field in dc.get_fields()}
 
     with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
         header_format = _get_header_format(workbook)
@@ -201,7 +199,7 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
 
         field_to_choices = {}
         for i, fld_name in enumerate(columns):
-            fld = dc_get_field(dc, fld_name)
+            fld = field_lookup.get(fld_name)
             if fld:
                 worksheet.write(0, i, fld.name, header_format)
                 cell_format = _get_cell_format(workbook, fld)
@@ -217,7 +215,7 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
         worksheet.freeze_panes(1, 0)
 
         fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
-        for row, record in enumerate(queryset, 1):
+        for row, record in enumerate(queryset.iterator(chunk_size=ITERATOR_CHUNK_SIZE), 1):
             for col, fld in enumerate(columns):
                 value = getattr(record, fld, record.flex_fields.get(fld))
                 worksheet.write(row, col, fmt(value))
@@ -338,7 +336,11 @@ def export_bulk_update_template(job: AsyncJob) -> str:
 
 
 def _get_queryset_with_is_valid_annotation(model: Validable, job: AsyncJob) -> QuerySet:
-    qs = model.objects.filter(pk__in=job.config["pks"])
+    qs = model.objects.filter(pk__in=job.config["pks"]).defer(
+        "raw_data",
+        "system_fields",
+        "flex_files",
+    )
     if (columns := job.config.get("columns")) and ("is_valid" in columns and "errors" in columns):
         qs = qs.annotate(
             is_valid=Case(
@@ -363,6 +365,7 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
         rows = open_xls(io.BytesIO(file_data))
 
         with transaction.atomic():
+            field_lookup: dict[str, FlexField] | None = None
             for line_number, row_data in enumerate(rows, start=1):
                 try:
                     if not row_data or all(v in (None, "", []) for v in row_data.values()):
@@ -378,8 +381,10 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                             continue
 
                     if row_data:
-                        dc: DataChecker = job.program.get_checker_for(entity.__class__)
-                        validate_date_datetime_fields(row_data, dc, line_number, total["errors"])
+                        if field_lookup is None:
+                            dc: DataChecker = job.program.get_checker_for(entity.__class__)
+                            field_lookup = {field.name: field for _, field in dc.get_fields()}
+                        validate_date_datetime_fields(row_data, field_lookup, line_number, total["errors"])
                         validate_individual_reference_ids(row_data, line_number, total["errors"])
 
                         entity.flex_fields.update(**row_data)

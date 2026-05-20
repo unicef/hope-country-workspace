@@ -7,7 +7,7 @@ requires = [
 
 [project]
 name = "hope-country-workspace"
-version = "0.4.4"
+version = "0.4.6"
 description = "HOPE Country Workspace (HCW)"
 readme = "README.md"
 license = { text = "MIT" }

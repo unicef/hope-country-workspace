@@ -17,23 +17,18 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def office():
-    from testutils.factories import OfficeFactory
-
-    co = OfficeFactory()
-    state.tenant = co
-    return co
-
-
-@pytest.fixture
-def program(office):
+def program(country_office):
     from testutils.factories import CountryProgramFactory
 
-    program = CountryProgramFactory(country_office=office, beneficiary_group__master_detail=True)
-    program.country_office.kobo_country_code = "ABC"
+    state.tenant = country_office
+    country_office.kobo_country_code = "ABC"
+    country_office.save(update_fields=["kobo_country_code"])
+
+    program = CountryProgramFactory(country_office=country_office, beneficiary_group__master_detail=True)
     program.household_checker = None
     program.individual_checker = None
     program.biometric_deduplication_enabled = True
+    program.save(update_fields=["household_checker", "individual_checker", "biometric_deduplication_enabled"])
     return program
 
 
@@ -226,40 +221,15 @@ def test_set_defaults_post(
         assert response is render.return_value
 
 
-@pytest.mark.parametrize(
-    ("exists", "expected"), [(False, True), (True, False)], ids=["no_success_rdp", "has_success_rdp"]
-)
-def test_can_update_dedup_settings(
-    program_admin,
-    program,
-    mocker: MockerFixture,
-    exists: bool,
-    expected: bool,
-) -> None:
-    rdp_filter = mocker.patch.object(program_admin_mod.Rdp.objects, "filter")
-    rdp_filter.return_value.exists.return_value = exists
-
-    assert program_admin._can_update_dedup_settings(program) is expected
-
-
 def test_get_dedup_settings(
     program_admin,
     program,
+    mock_dedup_client,
     mocker: MockerFixture,
 ) -> None:
     settings = {"threshold_1": 0.1}
-    client = mocker.MagicMock()
+    make_client, client = mock_dedup_client
     client.get_deduplication_set_group_config.return_value = settings
-
-    cm = mocker.MagicMock()
-    cm.__enter__.return_value = client
-    cm.__exit__.return_value = False
-
-    make_client = mocker.patch.object(
-        program_admin_mod,
-        "make_dedup_client",
-        return_value=cm,
-    )
     mocker.patch.object(type(program), "unicef_id", new_callable=mocker.PropertyMock, return_value="prg-1")
 
     result = program_admin._get_dedup_settings(program)
@@ -316,18 +286,19 @@ def test_update_dedup_settings_redirects_when_cannot_update(
     program_admin,
     mock_request,
     program,
+    mock_dedup_settings_policy,
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch.object(program_admin, "_can_update_dedup_settings", return_value=False)
+    reason = (
+        "Deduplication settings cannot be updated after a successful RDP "
+        "or while a pending RDP has requested a new deduplication run."
+    )
+    mock_dedup_settings_policy(allowed=False, reason=reason)
     mocker.patch.object(program_admin_mod, "reverse", return_value="/program/1/change/")
 
     response = program_admin.update_dedup_settings.func(program_admin, mock_request, pk=str(program.pk))
 
-    program_admin.message_user.assert_called_once_with(
-        mock_request,
-        "Deduplication settings cannot be updated because the program already has a successful RDP.",
-        messages.ERROR,
-    )
+    program_admin.message_user.assert_called_once_with(mock_request, reason, messages.ERROR)
     assert isinstance(response, HttpResponseRedirect)
     assert response.url == "/program/1/change/"
 
@@ -336,9 +307,10 @@ def test_update_dedup_settings_redirects_when_fetch_fails(
     program_admin,
     mock_request,
     program,
+    mock_dedup_settings_policy,
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch.object(program_admin, "_can_update_dedup_settings", return_value=True)
+    mock_dedup_settings_policy(allowed=True)
     mocker.patch.object(program_admin, "_get_dedup_settings", side_effect=RemoteError("boom"))
     mocker.patch.object(program_admin_mod, "reverse", return_value="/program/1/change/")
 
@@ -346,7 +318,7 @@ def test_update_dedup_settings_redirects_when_fetch_fails(
 
     program_admin.message_user.assert_called_once_with(
         mock_request,
-        "Failed to fetch Deduplication settings from DedupEngine.",
+        "Failed to fetch Deduplication settings from DedupEngine. boom",
         messages.ERROR,
     )
     assert isinstance(response, HttpResponseRedirect)
@@ -357,6 +329,8 @@ def test_update_dedup_settings_post_success(
     program_admin,
     mock_request,
     program,
+    mock_dedup_settings_policy,
+    mock_dedup_client,
     mocker: MockerFixture,
 ) -> None:
     settings = {"threshold_1": 0.1}
@@ -365,7 +339,7 @@ def test_update_dedup_settings_post_success(
     mock_request.method = "POST"
     mock_request.POST = {"threshold_1": "0.2"}
 
-    mocker.patch.object(program_admin, "_can_update_dedup_settings", return_value=True)
+    mock_dedup_settings_policy(allowed=True)
     mocker.patch.object(program_admin, "_get_dedup_settings", return_value=settings)
 
     form = mocker.MagicMock()
@@ -373,16 +347,7 @@ def test_update_dedup_settings_post_success(
     form.get_payload.return_value = payload
     form_cls = mocker.patch.object(program_admin_mod, "DedupSettingsForm", return_value=form)
 
-    client = mocker.MagicMock()
-    cm = mocker.MagicMock()
-    cm.__enter__.return_value = client
-    cm.__exit__.return_value = False
-
-    make_client = mocker.patch.object(
-        program_admin_mod,
-        "make_dedup_client",
-        return_value=cm,
-    )
+    make_client, client = mock_dedup_client
     mocker.patch.object(type(program), "unicef_id", new_callable=mocker.PropertyMock, return_value="prg-1")
     mocker.patch.object(program_admin_mod, "reverse", return_value="/program/1/change/")
 

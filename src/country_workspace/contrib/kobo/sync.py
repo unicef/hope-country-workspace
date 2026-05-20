@@ -1,11 +1,13 @@
 import re
 from collections.abc import Callable, Iterable
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
+from urllib.parse import urlparse
 from constance import config as constance_config
 from django.utils import timezone
 from django.db import transaction
 from requests import Session
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from django.contrib.contenttypes.models import ContentType
 
@@ -42,19 +44,31 @@ class Config(BatchNameConfig, ValidateModeConfig):
 
 ACCEPT_JSON_HEADERS: Final[dict[str, str]] = {"Accept": "application/json"}
 
-SUBMISSION_URL_RE = re.compile(".+/assets/[^/]+/data/.*")
+RETRY_TOTAL: Final[int] = 5
+RETRY_BACKOFF_FACTOR: Final[float] = 1.0
+RETRY_STATUS_FORCELIST: Final[tuple[int, ...]] = (429, 502, 503, 504)
+RETRY_ALLOWED_METHODS: Final[frozenset[str]] = frozenset(("GET", "HEAD", "OPTIONS"))
+
+SUBMISSION_PATH_RE = re.compile(r".*/assets/[^/]+/data(?:/.*)?$")
 
 INDIVIDUAL_FIELDS_TO_UPPERCASE = ("role",)
 HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method", "residence_status", "consent_sharing")
 
 
 def is_submission_data_url(url: str) -> bool:
-    return bool(SUBMISSION_URL_RE.match(url))
+    return bool(SUBMISSION_PATH_RE.match(urlparse(url).path))
 
 
 def make_client(country_code: str) -> Client:
     session = Session()
-    session.mount("https://", HTTPAdapter(max_retries=3))
+    retries = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=(429, 502, 503, 504),
+        allowed_methods=frozenset(("GET",)),
+        respect_retry_after_header=True,
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
     token = constance_config.KOBO_MASTER_API_TOKEN or constance_config.KOBO_API_TOKEN
     session.auth = Auth(token)
     data_getter = DataGetter(

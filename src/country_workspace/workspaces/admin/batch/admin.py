@@ -13,13 +13,13 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, MappingImporter, Program, Transformer
-from ...state import state
-from ..models import CountryBatch
-from ..options import WorkspaceModelAdmin
-from ..permissions import can_reprocess_batch
-from ..sites import workspace
-from .filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
-from .hh_ind import SelectedProgramMixin
+from ....state import state
+from ...models import CountryBatch
+from ...options import WorkspaceModelAdmin
+from ...permissions import can_reprocess_batch
+from ...sites import workspace
+from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
+from ..hh_ind import SelectedProgramMixin
 
 
 class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
@@ -115,6 +115,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def has_add_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
         return False
 
+    def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
+        return False
+
     @link(change_list=False, html_attrs={"title": "Shows related Household records."})
     def imported_records(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryhousehold_changelist")
@@ -162,7 +165,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     description=f"Reprocess batch: {obj.name}",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
-                    action=fqn("country_workspace.workspaces.admin.batch_reprocessing.reprocess_batch"),
+                    action=fqn("country_workspace.workspaces.admin.batch.reprocessing.reprocess_batch"),
                     program=obj.program,
                     batch=obj,
                     config=config,

@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from uuid import UUID
+from typing import Any
 
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
 
@@ -118,7 +119,7 @@ def preflight_errors(
 ) -> list[str]:
     """Return preflight validation errors for the given selection."""
     if not pks:
-        return []
+        return ["RDP: no beneficiaries selected"]
 
     rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
     if excluded := tuple(exclude_rdp_ids):
@@ -164,11 +165,26 @@ def set_rdp_deduplication_set_id(*, rdp_id: int, deduplication_set_id: UUID) -> 
     Rdp.objects.filter(pk=rdp_id).update(deduplication_set_id=deduplication_set_id)
 
 
-def set_rdp_push_status(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -> None:
+def set_rdp_push_status(
+    *, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str, is_dedup_settings_locked: bool | None = None
+) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
     rdp.hope_rdi_id = hope_rdi_id
-    rdp.save(update_fields=["status", "hope_rdi_id"])
+    update_fields = ["status", "hope_rdi_id"]
+    if is_dedup_settings_locked is not None:
+        rdp.is_dedup_settings_locked = is_dedup_settings_locked
+        update_fields.append("is_dedup_settings_locked")
+    rdp.save(update_fields=update_fields)
+
+
+def set_rdp_deduplication_snapshot(*, rdp: Rdp, key: str, snapshot: dict[str, Any]) -> None:
+    """Persist a deduplication snapshot for an already-locked RDP."""
+    rdp.deduplication_snapshots = {
+        **(rdp.deduplication_snapshots or {}),
+        key: snapshot,
+    }
+    rdp.save(update_fields=["deduplication_snapshots"])
 
 
 def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:

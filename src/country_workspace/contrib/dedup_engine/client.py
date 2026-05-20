@@ -10,8 +10,8 @@ from requests.exceptions import (
     Timeout as RequestsTimeout,
 )
 
-from country_workspace.contrib.dedup_engine import endpoint, request, resource, response
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from . import endpoint, request, resource, response
 
 
 @dataclass(slots=True)
@@ -84,9 +84,12 @@ class Client:
 
     def can_create_deduplication_set(self) -> bool:
         def fetch() -> bool:
-            result = self.session.get(str(self.deduplication_set_group_endpoint.status))
+            result = self.session.get(str(self.deduplication_set_group_endpoint.status), timeout=resource.TIMEOUT)
             result.raise_for_status()
-            return cast("bool", result.json()["can_create"])
+            value = result.json()["can_create"]
+            if not isinstance(value, bool):
+                raise RemoteError("DedupEngine: status response has invalid can_create value")
+            return value
 
         return self._request("can_create_deduplication_set", fetch)
 

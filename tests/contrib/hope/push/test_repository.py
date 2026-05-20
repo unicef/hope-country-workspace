@@ -278,8 +278,9 @@ def test_qs_individuals_for_rdp_delegates(
         by_households.assert_not_called()
 
 
-def test_preflight_errors_empty_selection() -> None:
-    assert repo.preflight_errors(pks=[], master_detail=True) == []
+@pytest.mark.parametrize("master_detail", [True, False], ids=["master_detail", "flat"])
+def test_preflight_errors_rejects_empty_selection(master_detail: bool) -> None:
+    assert repo.preflight_errors(pks=[], master_detail=master_detail) == ["RDP: no beneficiaries selected"]
 
 
 def test_preflight_errors_flat() -> None:
@@ -335,16 +336,89 @@ def test_set_rdp_deduplication_set_id(rdp) -> None:
     assert rdp.deduplication_set_id == deduplication_set_id
 
 
-def test_set_rdp_push_status(rdp) -> None:
-    repo.set_rdp_push_status(
-        rdp=rdp,
-        status=RdpModel.PushStatus.SUCCESS,
-        hope_rdi_id="RDI-1",
-    )
-    rdp.refresh_from_db()
+@pytest.mark.parametrize(
+    ("initial", "key", "snapshot", "expected"),
+    [
+        (
+            None,
+            "before_push",
+            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
+            {"before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3}},
+        ),
+        (
+            {"before_clone": {"deduplication_set_status": "Ready", "findings_count": 0}},
+            "before_push",
+            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
+            {
+                "before_clone": {"deduplication_set_status": "Ready", "findings_count": 0},
+                "before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3},
+            },
+        ),
+        (
+            {"before_push": {"deduplication_set_status": "Ready", "findings_count": 0}},
+            "before_push",
+            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
+            {"before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3}},
+        ),
+    ],
+    ids=["empty", "merge", "overwrite"],
+)
+def test_set_rdp_deduplication_snapshot(
+    mocker: MockerFixture,
+    rdp,
+    initial,
+    key: str,
+    snapshot: dict,
+    expected: dict,
+) -> None:
+    rdp.deduplication_snapshots = initial
+    save = mocker.patch.object(rdp, "save", wraps=rdp.save)
 
+    repo.set_rdp_deduplication_snapshot(rdp=rdp, key=key, snapshot=snapshot)
+
+    save.assert_called_once_with(update_fields=["deduplication_snapshots"])
+    assert rdp.deduplication_snapshots == expected
+
+    rdp.refresh_from_db()
+    assert rdp.deduplication_snapshots == expected
+
+
+@pytest.mark.parametrize(
+    ("lock_value", "expected_locked", "expected_update_fields"),
+    [
+        (None, True, ["status", "hope_rdi_id"]),
+        (False, False, ["status", "hope_rdi_id", "is_dedup_settings_locked"]),
+        (True, True, ["status", "hope_rdi_id", "is_dedup_settings_locked"]),
+    ],
+    ids=["preserve_lock", "unlock", "lock"],
+)
+def test_set_rdp_push_status(
+    mocker: MockerFixture,
+    rdp,
+    lock_value: bool | None,
+    expected_locked: bool,
+    expected_update_fields: list[str],
+) -> None:
+    rdp.is_dedup_settings_locked = True
+    rdp.save(update_fields=["is_dedup_settings_locked"])
+    save = mocker.patch.object(rdp, "save", wraps=rdp.save)
+
+    kwargs = {
+        "rdp": rdp,
+        "status": RdpModel.PushStatus.SUCCESS,
+        "hope_rdi_id": "RDI-1",
+    }
+    if lock_value is not None:
+        kwargs["is_dedup_settings_locked"] = lock_value
+
+    repo.set_rdp_push_status(**kwargs)
+
+    save.assert_called_once_with(update_fields=expected_update_fields)
+
+    rdp.refresh_from_db()
     assert rdp.status == RdpModel.PushStatus.SUCCESS
     assert rdp.hope_rdi_id == "RDI-1"
+    assert rdp.is_dedup_settings_locked is expected_locked
 
 
 def test_has_other_pending_rdp(program_with_serializer, pushed_by_user) -> None:

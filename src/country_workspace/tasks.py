@@ -13,7 +13,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual
+from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 logger = logging.getLogger(__name__)
@@ -45,25 +45,35 @@ def cleanup_merged_rdp_data() -> None:
     batch_size = constance_config.RDP_CLEANUP_BATCH_SIZE
     deleted_h = 0
     deleted_i = 0
+    affected_programs: set[int] = set()
 
     with suppress_cache_updates():
-        # Process Households in batches. Deleting households also deletes their individuals via CASCADE.
         while True:
-            batch_h_pks = list(households_to_delete.values_list("pk", flat=True)[:batch_size])
+            batch_h_pks = list(households_to_delete.order_by("pk").values_list("pk", flat=True)[:batch_size])
             if not batch_h_pks:
                 break
+            affected_programs.update(
+                Batch.objects.filter(household__pk__in=batch_h_pks).values_list("program_id", flat=True).distinct()
+            )
+            _clear_heavy_fields(Individual, {"household_id__in": batch_h_pks})
+            _clear_heavy_fields(Household, {"pk__in": batch_h_pks})
             _, counts = Household.objects.filter(pk__in=batch_h_pks).delete()
             deleted_h += counts.get("country_workspace.Household", 0)
             deleted_i += counts.get("country_workspace.Individual", 0)
 
-        # Process remaining Individuals in batches
-        # those not linked to households or whose households were already deleted.
         while True:
-            batch_i_pks = list(individuals_to_delete.values_list("pk", flat=True)[:batch_size])
+            batch_i_pks = list(individuals_to_delete.order_by("pk").values_list("pk", flat=True)[:batch_size])
             if not batch_i_pks:
                 break
+            affected_programs.update(
+                Batch.objects.filter(individual__pk__in=batch_i_pks).values_list("program_id", flat=True).distinct()
+            )
+            _clear_heavy_fields(Individual, {"pk__in": batch_i_pks})
             _, counts = Individual.objects.filter(pk__in=batch_i_pks).delete()
             deleted_i += counts.get("country_workspace.Individual", 0)
+
+    for program in Program.objects.filter(pk__in=affected_programs):
+        cache_manager.incr_cache_version(program=program)
 
     logger.info(
         "Deleted %s households and %s individuals from merged RDPs older than %s days",
@@ -129,6 +139,37 @@ def removed_expired_jobs(**kwargs: Any) -> None:
     AsyncJob.objects.filter(**kwargs).delete()
 
 
+def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
+    model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
+
+
+def _cleanup_batches(batch_ids: list, job: AsyncJob, batch_size: int = 5) -> dict[str, int]:
+    """Delete the given batches and their related households/individuals in chunks.
+
+    Clears heavy fields before deletion to avoid loading large JSON payloads.
+    Caller is responsible for `suppress_cache_updates()` wrapping and cache invalidation.
+    """
+    deleted_counts = {"batches": 0, "households": 0, "individuals": 0}
+
+    for i in range(0, len(batch_ids), batch_size):
+        job.ensure_not_cancelled(refresh=True)
+        chunk = batch_ids[i : i + batch_size]
+
+        _clear_heavy_fields(Individual, {"batch_id__in": chunk})
+        _clear_heavy_fields(Household, {"batch_id__in": chunk})
+
+        _, counts = Individual.objects.filter(batch_id__in=chunk).delete()
+        deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
+
+        _, counts = Household.objects.filter(batch_id__in=chunk).delete()
+        deleted_counts["households"] += counts.get("country_workspace.Household", 0)
+
+        _, counts = Batch.objects.filter(id__in=chunk).delete()
+        deleted_counts["batches"] += counts.get("country_workspace.Batch", 0)
+
+    return deleted_counts
+
+
 def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
     job.ensure_not_cancelled(refresh=True)
     program = job.program
@@ -140,13 +181,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
 
     try:
         with suppress_cache_updates():
-            for i in range(0, len(batch_ids), batch_size):
-                job.ensure_not_cancelled(refresh=True)
-                chunk = batch_ids[i : i + batch_size]
-                _, counts = Batch.objects.filter(id__in=chunk).delete()
-                deleted_counts["batches"] += counts.get("country_workspace.Batch", 0)
-                deleted_counts["households"] += counts.get("country_workspace.Household", 0)
-                deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
+            deleted_counts.update(_cleanup_batches(batch_ids, job, batch_size=batch_size))
 
             job.ensure_not_cancelled(refresh=True)
             _, counts = Rdp.objects.filter(program_id=program_id).delete()
@@ -162,4 +197,24 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
     finally:
         cache_manager.incr_cache_version(program=program)
 
+    return deleted_counts
+
+
+def batch_cleanup(job: AsyncJob) -> dict[str, int]:
+    job.ensure_not_cancelled(refresh=True)
+    batch = job.batch
+    if not batch:
+        raise ValueError("batch is required for batch cleanup job")
+
+    program = batch.program
+    deleted_counts = {"batches": 0, "households": 0, "individuals": 0}
+
+    try:
+        with suppress_cache_updates():
+            deleted_counts.update(_cleanup_batches([batch.pk], job))
+    finally:
+        if program:
+            cache_manager.incr_cache_version(program=program)
+
+    logger.info("Batch cleanup completed: %s", deleted_counts)
     return deleted_counts

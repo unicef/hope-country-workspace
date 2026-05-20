@@ -15,10 +15,12 @@ from country_workspace.contrib.kobo.api.raw import (
 )
 
 API_ROOT: Final[str] = "api/v2"
-ASSETS_PATH: Final[str] = f"{API_ROOT}/assets.json"
+ASSETS_PATH: Final[str] = f"{API_ROOT}/assets/"
 ASSET_PATH: Final[str] = f"{API_ROOT}/assets/{{asset_id}}/"
 PROJECT_VIEW_ASSETS_PATH: Final[str] = f"{API_ROOT}/project-views/{{project_view_id}}/assets/"  # last / is important
 COUNTRY_CODE_SELECTOR: Final[str] = "settings__country_codes__contains"
+ASSET_TYPE_PARAMETER_NAME: Final[str] = "asset_type"
+ASSET_TYPE_SURVEY: Final[str] = "survey"
 QUERY_PARAMETER_NAME: Final[str] = "q"
 START_PARAMETER_NAME: Final[str] = "start"
 START_PARAMETER_VALUE: Final[int] = 0
@@ -34,7 +36,7 @@ def change_url(url: str, path: str | None = None, query: dict[str, Any] | None =
     if path:
         parsed_url = parsed_url._replace(path=path)
 
-    if query:
+    if query is not None:
         parsed_url = parsed_url._replace(query=urlencode(query, safe=safe))
 
     return str(urlunparse(parsed_url))
@@ -42,7 +44,7 @@ def change_url(url: str, path: str | None = None, query: dict[str, Any] | None =
 
 def get_asset_list_url(base_url: str, project_view_id: str | None = None, country_code: str | None = None) -> str:
     path = PROJECT_VIEW_ASSETS_PATH.format(project_view_id=project_view_id) if project_view_id else ASSETS_PATH
-    query = {}
+    query: dict[str, str] = {ASSET_TYPE_PARAMETER_NAME: ASSET_TYPE_SURVEY}
     if country_code:
         query[QUERY_PARAMETER_NAME] = f"{COUNTRY_CODE_SELECTOR}:{country_code}"
 
@@ -69,8 +71,12 @@ def handle_paginated_response[T, U](
         next_url = cast("str | None", data["next"])
 
 
+def has_active_deployment(asset: raw_asset_list.Asset) -> bool:
+    return asset.get("has_deployment") or asset.get("deployment__active", False)
+
+
 def get_raw_asset_list(data: raw_common.ListResponse) -> list[raw_asset_list.Asset]:
-    return [datum for datum in cast("raw_asset_list.AssetList", data)["results"] if datum["has_deployment"]]
+    return [datum for datum in cast("raw_asset_list.AssetList", data)["results"] if has_active_deployment(datum)]
 
 
 def get_raw_submission_list(data: raw_common.ListResponse) -> list[raw_submission_list.Submission]:

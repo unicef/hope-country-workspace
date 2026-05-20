@@ -2,6 +2,10 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from django.db.models import F, Value
+from django.db.models.expressions import CombinedExpression
+from django.db.models.fields.json import JSONField, KeyTextTransform
+
 from country_workspace.contrib.aurora.import_processing import (
     build_household_transform as build_aurora_household_processor,
     build_individual_transform as build_aurora_individual_processor,
@@ -10,9 +14,11 @@ from country_workspace.contrib.kobo.sync import (
     build_household_processor as build_kobo_household_processor,
     build_individual_processor as build_kobo_individual_processor,
 )
-from country_workspace.models import AsyncJob, Batch, Household, MappingImporter, Individual, Transformer, Program
+from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
+from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.import_processing import build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +65,90 @@ def _build_processor(
         transformer_id=transformer_id,
         source=batch.source,
     )
+
+
+def _sync_rdi_household_refs(batch: Batch) -> None:
+    individuals = (
+        batch.individual_set.filter(removed=False)
+        .annotate(_individual_id=KeyTextTransform("individual_id", "flex_fields"))
+        .values_list("pk", "_individual_id")
+    )
+    pk_mapping = {individual_id: pk for pk, individual_id in individuals.iterator()}
+
+    households = (
+        batch.household_set.filter(removed=False)
+        .annotate(
+            _head_of_household_id=KeyTextTransform("head_of_household_id", "flex_fields"),
+            _head_of_household=KeyTextTransform("head_of_household", "flex_fields"),
+            _primary_collector_id=KeyTextTransform("primary_collector_id", "flex_fields"),
+            _primary_collector=KeyTextTransform("primary_collector", "flex_fields"),
+            _alternate_collector_id=KeyTextTransform("alternate_collector_id", "flex_fields"),
+            _alternate_collector=KeyTextTransform("alternate_collector", "flex_fields"),
+        )
+        .values_list(
+            "pk",
+            "_head_of_household_id",
+            "_head_of_household",
+            "_primary_collector_id",
+            "_primary_collector",
+            "_alternate_collector_id",
+            "_alternate_collector",
+        )
+    )
+
+    for pk, hoh_id, hoh, primary_id, primary, alt_id, alt in households.iterator():
+        patch = {
+            "head_of_household_id": pk_mapping.get(hoh_id or hoh),
+            "primary_collector_id": pk_mapping.get(primary_id or primary),
+        }
+
+        if alt_ref := alt_id or alt:
+            patch["alternate_collector_id"] = pk_mapping.get(alt_ref)
+
+        Household.objects.filter(pk=pk).update(
+            flex_fields=CombinedExpression(
+                F("flex_fields"),
+                "||",
+                Value(patch, output_field=JSONField()),
+            )
+        )
+
+
+def _sync_kobo_household_refs(batch: Batch) -> None:
+    members = (
+        batch.individual_set.filter(
+            removed=False,
+            household__removed=False,
+            household_id__isnull=False,
+        )
+        .annotate(
+            _role=KeyTextTransform("role", "flex_fields"),
+            _relationship=KeyTextTransform("relationship", "flex_fields"),
+        )
+        .values_list("household_id", "pk", "_role", "_relationship")
+        .order_by("household_id", "pk")
+    )
+
+    patches: dict[int, dict[str, int]] = {}
+
+    for household_id, pk, role, relationship in members.iterator():
+        patch = patches.setdefault(household_id, {})
+
+        if role == "PRIMARY" and "primary_collector_id" not in patch:
+            patch["primary_collector_id"] = pk
+        if role == "ALTERNATE" and "alternate_collector_id" not in patch:
+            patch["alternate_collector_id"] = pk
+        if relationship == "HEAD" and "head_of_household_id" not in patch:
+            patch["head_of_household_id"] = pk
+
+    for household_id, patch in patches.items():
+        Household.objects.filter(pk=household_id).update(
+            flex_fields=CombinedExpression(
+                F("flex_fields"),
+                "||",
+                Value(patch, output_field=JSONField()),
+            )
+        )
 
 
 def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
@@ -116,8 +206,8 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     total_households = batch.household_set.count()
     total_individuals = batch.individual_set.count()
 
-    households_to_process = batch.household_set.filter(removed=False)
-    individuals_to_process = batch.individual_set.filter(removed=False)
+    households_to_process = batch.household_set.filter(removed=False).only("pk", "name", "raw_data")
+    individuals_to_process = batch.individual_set.filter(removed=False).only("pk", "name", "raw_data")
 
     household_count = households_to_process.count()
     individual_count = individuals_to_process.count()
@@ -158,7 +248,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             household_transformer.name if household_transformer else None,
             household_mapping.name if household_mapping else None,
         )
-        for household in households_to_process:
+        for household in households_to_process.iterator():
             is_applied = _apply_transformations(household, household_processor)
             mapped_households += int(is_applied)
 
@@ -171,11 +261,19 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             individual_transformer.name if individual_transformer else None,
             individual_mapping.name if individual_mapping else None,
         )
-        for individual in individuals_to_process:
+        for individual in individuals_to_process.iterator():
             is_applied = _apply_transformations(individual, individual_processor)
             mapped_individuals += int(is_applied)
 
         logger.info("Applied transformations to %d individuals", mapped_individuals)
+
+    if is_master_detail:
+        match batch.source:
+            case Batch.BatchSource.KOBO:
+                _sync_kobo_household_refs(batch)
+            case Batch.BatchSource.RDI:
+                _sync_rdi_household_refs(batch)
+    sync_collector_links(individuals_to_process)
 
     if household_count > 0 and is_master_detail:
         create_validation_jobs(
@@ -184,7 +282,6 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             program=batch.program,
             queryset=households_to_process.prefetch_related("members"),
         )
-
     elif individual_count > 0:
         create_validation_jobs(
             description=f"Validate records for batch {batch.pk}",

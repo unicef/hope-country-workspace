@@ -38,6 +38,13 @@ class Rdp(BaseModel):
         related_name="children",
         help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
     )
+    is_dedup_settings_locked = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Locks program-level deduplication settings while this pending RDP has requested a new deduplication run."
+        ),
+    )
+    deduplication_snapshots = models.JSONField(default=dict, blank=True)
 
     class Meta:
         constraints = [

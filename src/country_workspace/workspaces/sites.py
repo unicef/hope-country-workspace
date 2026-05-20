@@ -10,7 +10,7 @@ from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import NoReverseMatch, Resolver404, URLPattern, URLResolver, resolve, reverse
+from django.urls import NoReverseMatch, URLPattern, URLResolver, resolve, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from django.views import View
@@ -200,10 +200,7 @@ class TenantAdminSite(admin.AdminSite):
             "workspaces_countryrdp": "CountryRdpAdmin",
             "workspaces_countryasyncjob": "CountryJobAdmin",
         }
-        try:
-            match = resolve(request.path)
-        except Resolver404:
-            return None
+        match = resolve(request.path)
         url_name = match.url_name or ""
         for prefix, admin_name in url_to_admin.items():
             if url_name == prefix or url_name.startswith(prefix + "_"):

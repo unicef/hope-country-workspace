@@ -6,7 +6,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db.models import QuerySet, Field
+from django.db.models import Field, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -15,8 +15,9 @@ from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.exceptions import RemoteError
-from country_workspace.models import Household, Individual, Rdp
+from country_workspace.contrib.hope.push import get_program_dedup_settings_policy
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
 from country_workspace.state import state
 from ._import_data import ImportDataMixin
@@ -27,6 +28,7 @@ from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
 from ...models import AsyncJob
+
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -196,13 +198,6 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
 
         return fieldsets
 
-    @staticmethod
-    def _can_update_dedup_settings(program: CountryProgram) -> bool:
-        return not Rdp.objects.filter(
-            program=program,
-            status=Rdp.PushStatus.SUCCESS,
-        ).exists()
-
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_dedup_client(program_id=program.unicef_id) as client:
             return client.get_deduplication_set_group_config()
@@ -214,7 +209,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
 
         try:
             settings = self._get_dedup_settings(obj)
-        except RemoteError:
+        except (RemoteError, RemoteUnavailableError):
             return "N/A"
 
         if not settings:
@@ -559,65 +554,59 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         label=_("Update Dedup Settings"),
         permission=can_change_country_program,
         visible=lambda btn: bool(
-            btn.context.get("original") and btn.context["original"].biometric_deduplication_enabled
+            (program := btn.context.get("original"))
+            and get_program_dedup_settings_policy(program).is_update_dedup_settings_visible()
         ),
         enabled=lambda btn: bool(
-            btn.context.get("original")
-            and btn.context["original"].biometric_deduplication_enabled
-            and CountryProgramAdmin._can_update_dedup_settings(btn.context["original"])
+            (program := btn.context.get("original"))
+            and get_program_dedup_settings_policy(program).update_dedup_settings_check().allowed
         ),
         html_attrs={"title": "Update Deduplication settings on DedupEngine."},
     )
     def update_dedup_settings(self, request: HttpRequest, pk: str) -> HttpResponse:
         context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
         program: CountryProgram = context["original"]
-        can_update = self._can_update_dedup_settings(program)
         change_url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
 
-        if not can_update:
-            self.message_user(
-                request,
-                _("Deduplication settings cannot be updated because the program already has a successful RDP."),
-                messages.ERROR,
-            )
+        def deny_if_not_allowed() -> HttpResponseRedirect | None:
+            check = get_program_dedup_settings_policy(program).update_dedup_settings_check()
+            if check.allowed:
+                return None
+            self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
             return HttpResponseRedirect(change_url)
+
+        if response := deny_if_not_allowed():
+            return response
 
         try:
             settings = self._get_dedup_settings(program)
-        except RemoteError:
+        except (RemoteError, RemoteUnavailableError) as exc:
             self.message_user(
                 request,
-                _("Failed to fetch Deduplication settings from DedupEngine."),
+                _("Failed to fetch Deduplication settings from DedupEngine. %(error)s") % {"error": str(exc)},
                 messages.ERROR,
             )
             return HttpResponseRedirect(change_url)
 
-        form = (
-            DedupSettingsForm(request.POST, settings=settings)
-            if request.method == "POST"
-            else DedupSettingsForm(settings=settings)
-        )
-
+        form = DedupSettingsForm(request.POST or None, settings=settings)
         if request.method == "POST" and form.is_valid():
+            if response := deny_if_not_allowed():
+                return response
+
             try:
                 with make_dedup_client(program_id=program.unicef_id) as client:
                     client.post_deduplication_set_group_config(payload=form.get_payload())
-            except RemoteError:
+            except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(
                     request,
-                    _("Failed to update Deduplication settings on DedupEngine."),
+                    _("Failed to update Deduplication settings on DedupEngine. %(error)s") % {"error": str(exc)},
                     messages.ERROR,
                 )
             else:
-                self.message_user(
-                    request,
-                    _("Deduplication settings have been updated."),
-                    messages.SUCCESS,
-                )
+                self.message_user(request, _("Deduplication settings have been updated."), messages.SUCCESS)
                 return HttpResponseRedirect(change_url)
 
         context["form"] = form
-        context["can_update_dedup_settings"] = can_update
         return render(request, "workspace/program/dedup_settings.html", context)
 
     @button(

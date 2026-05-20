@@ -67,3 +67,19 @@ def test_download_attachments_empty_xpath(mocker: MockerFixture) -> None:
 
     assert download_attachments(data_getter, cast("Submission", submission)) == submission
     submission.__setitem__.assert_not_called()
+
+
+def test_download_attachments_defaults_mimetype_and_xpath(mocker: MockerFixture) -> None:
+    data_getter = Mock()
+    b64encode = mocker.patch("country_workspace.contrib.kobo.api.data.helpers.b64encode")
+    submission = MagicMock()
+    submission.attachments = [
+        {
+            "download_url": "https://test.org",
+        }
+    ]
+    submission.__contains__.return_value = False
+
+    assert download_attachments(data_getter, cast("Submission", submission)) == submission
+    b64encode.assert_called_once_with(data_getter.return_value.content)
+    submission.__setitem__.assert_not_called()

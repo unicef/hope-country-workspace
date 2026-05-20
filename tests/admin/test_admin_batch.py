@@ -3,9 +3,11 @@ from django.contrib.admin import AdminSite
 from django.test import Client
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from strategy_field.utils import fqn
 
 from country_workspace.admin.batch import BatchAdmin
-from country_workspace.models import Batch
+from country_workspace.models import AsyncJob, Batch
+from country_workspace.tasks import batch_cleanup as batch_cleanup_task
 
 
 pytestmark = [pytest.mark.django_db]
@@ -247,3 +249,41 @@ class TestBatchAdminBeneficiariesButton:
         response = client.get(url)
 
         assert response.status_code == 200
+
+
+@pytest.fixture
+def admin_client():
+    from testutils.factories import SuperUserFactory
+
+    user = SuperUserFactory(username="batch_cleanup_admin")
+    client = Client()
+    client.force_login(user)
+    return client
+
+
+def test_batch_cleanup_button_shows_confirmation(admin_client, empty_batch):
+    url = reverse("admin:country_workspace_batch_batch_cleanup", args=[empty_batch.pk])
+    response = admin_client.get(url)
+
+    assert response.status_code == 200
+    assert AsyncJob.objects.filter(batch=empty_batch).count() == 0
+
+
+def test_batch_cleanup_button_schedules_job_on_confirm(admin_client, empty_batch, mocker):
+    spy = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
+
+    url = reverse("admin:country_workspace_batch_batch_cleanup", args=[empty_batch.pk])
+    response = admin_client.post(url)
+
+    assert response.status_code == 302
+    job = AsyncJob.objects.filter(batch=empty_batch).first()
+    assert job is not None
+    assert job.type == AsyncJob.JobType.TASK
+    assert job.action == fqn(batch_cleanup_task)
+    assert job.program == empty_batch.program
+    assert spy.call_count == 1
+
+
+def test_batch_admin_disables_default_delete(batch_admin_instance):
+    assert batch_admin_instance.has_delete_permission(request=None) is False
+    assert batch_admin_instance.has_delete_permission(request=None, obj=None) is False
