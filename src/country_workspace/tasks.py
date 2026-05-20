@@ -144,8 +144,8 @@ def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
     model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
 
 
-@app.task(bind=True)
-def sync_hope_data(task: Any) -> dict[str, bool]:
+@app.task()
+def sync_hope_data() -> dict[str, dict[str, Any]]:
     """Periodic job that pulls reference data from HOPE.
 
     Runs the same routines exposed by the ``sync`` management command:
@@ -161,8 +161,27 @@ def sync_hope_data(task: Any) -> dict[str, bool]:
     running; failures are logged and reported to Sentry instead of being
     re-raised, so a transient HOPE outage does not flood the worker with
     retries.
+
+    Returns a per-block dict with the underlying sync stats so the result
+    is inspectable from Flower / the Django admin. Successful entries look
+    like::
+
+        {
+            "programs": {
+                "status": "ok",
+                "details": {
+                    "offices": {"add": 1, "upd": 2, "errors": []},
+                    ...
+                },
+            },
+            "geo": {"status": "ok", "details": {...}},
+            "flex_fields": {"status": "ok", "details": {"refreshed": 5}},
+        }
+
+    On failure the corresponding block carries ``{"status": "error",
+    "error": "<message>"}`` instead of ``details``.
     """
-    results: dict[str, bool] = {}
+    results: dict[str, dict[str, Any]] = {}
     runners = (
         ("programs", lambda: run_program_sync(delta_sync=True)),
         ("geo", lambda: run_geo_sync(delta_sync=True)),
@@ -170,13 +189,13 @@ def sync_hope_data(task: Any) -> dict[str, bool]:
     )
     for label, runner in runners:
         try:
-            runner()
+            details = runner()
         except Exception as exc:
             logger.exception("Periodic HOPE %s sync failed", label)
             sentry_sdk.capture_exception(exc)
-            results[label] = False
+            results[label] = {"status": "error", "error": str(exc)}
         else:
-            results[label] = True
+            results[label] = {"status": "ok", "details": details}
     return results
 
 

@@ -150,36 +150,55 @@ def test_upgrade_sync(mocker: MockerFixture, environment: dict[str, str]) -> Non
 
 @pytest.mark.parametrize("delta_sync", [False, True])
 def test_run_program_sync(mocker: MockerFixture, delta_sync: bool) -> None:
-    sync_offices_mock = mocker.patch("country_workspace.management.commands.sync.sync_offices")
-    sync_beneficiary_groups_mock = mocker.patch("country_workspace.management.commands.sync.sync_beneficiary_groups")
-    sync_programs_mock = mocker.patch("country_workspace.management.commands.sync.sync_programs")
+    offices_stats = {"add": 1, "upd": 2, "errors": []}
+    bg_stats = {"add": 0, "upd": 0, "errors": []}
+    programs_stats = {"add": 3, "upd": 4, "errors": []}
+    sync_offices_mock = mocker.patch(
+        "country_workspace.management.commands.sync.sync_offices", return_value=offices_stats
+    )
+    sync_beneficiary_groups_mock = mocker.patch(
+        "country_workspace.management.commands.sync.sync_beneficiary_groups", return_value=bg_stats
+    )
+    sync_programs_mock = mocker.patch(
+        "country_workspace.management.commands.sync.sync_programs", return_value=programs_stats
+    )
 
-    run_program_sync(delta_sync=delta_sync)
+    result = run_program_sync(delta_sync=delta_sync)
 
     sync_offices_mock.assert_called_once_with(delta_sync=delta_sync)
     sync_beneficiary_groups_mock.assert_called_once_with(delta_sync=delta_sync)
     sync_programs_mock.assert_called_once_with(delta_sync=delta_sync)
+    assert result == {"offices": offices_stats, "beneficiary_groups": bg_stats, "programs": programs_stats}
 
 
 @pytest.mark.parametrize("delta_sync", [False, True])
 def test_run_geo_sync(mocker: MockerFixture, delta_sync: bool) -> None:
-    sync_countries_mock = mocker.patch("country_workspace.management.commands.sync.sync_countries")
-    sync_area_types_mock = mocker.patch("country_workspace.management.commands.sync.sync_area_types")
-    sync_areas_mock = mocker.patch("country_workspace.management.commands.sync.sync_areas")
+    countries_stats = {"add": 1, "upd": 0, "errors": []}
+    area_types_stats = {"add": 0, "upd": 2, "errors": []}
+    areas_stats = {"add": 5, "upd": 1, "errors": []}
+    sync_countries_mock = mocker.patch(
+        "country_workspace.management.commands.sync.sync_countries", return_value=countries_stats
+    )
+    sync_area_types_mock = mocker.patch(
+        "country_workspace.management.commands.sync.sync_area_types", return_value=area_types_stats
+    )
+    sync_areas_mock = mocker.patch("country_workspace.management.commands.sync.sync_areas", return_value=areas_stats)
 
-    run_geo_sync(delta_sync=delta_sync)
+    result = run_geo_sync(delta_sync=delta_sync)
 
     sync_countries_mock.assert_called_once_with(delta_sync=delta_sync)
     sync_area_types_mock.assert_called_once_with(delta_sync=delta_sync)
     sync_areas_mock.assert_called_once_with(delta_sync=delta_sync)
+    assert result == {"countries": countries_stats, "area_types": area_types_stats, "areas": areas_stats}
 
 
 def test_run_flex_fields_sync(mocker: MockerFixture) -> None:
-    refresh = mocker.patch("country_workspace.management.commands.sync.SyncLog.objects.refresh")
+    refresh = mocker.patch("country_workspace.management.commands.sync.SyncLog.objects.refresh", return_value=7)
 
-    run_flex_fields_sync()
+    result = run_flex_fields_sync()
 
     refresh.assert_called_once_with()
+    assert result == {"refreshed": 7}
 
 
 @pytest.mark.django_db(transaction=True)

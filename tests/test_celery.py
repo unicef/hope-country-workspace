@@ -358,23 +358,32 @@ def test_batch_cleanup_bumps_cache_version_exactly_once(batch_cleanup_job, batch
 
 @pytest.mark.django_db
 def test_sync_hope_data_runs_delta_and_flex_fields(mocker):
-    program_runner = mocker.patch("country_workspace.tasks.run_program_sync")
-    geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
-    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync")
+    program_details = {"offices": {"add": 1, "upd": 0, "errors": []}}
+    geo_details = {"countries": {"add": 0, "upd": 3, "errors": []}}
+    flex_details = {"refreshed": 5}
+    program_runner = mocker.patch("country_workspace.tasks.run_program_sync", return_value=program_details)
+    geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync", return_value=geo_details)
+    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync", return_value=flex_details)
 
     result = sync_hope_data.run()
 
     program_runner.assert_called_once_with(delta_sync=True)
     geo_runner.assert_called_once_with(delta_sync=True)
     flex_runner.assert_called_once_with()
-    assert result == {"programs": True, "geo": True, "flex_fields": True}
+    assert result == {
+        "programs": {"status": "ok", "details": program_details},
+        "geo": {"status": "ok", "details": geo_details},
+        "flex_fields": {"status": "ok", "details": flex_details},
+    }
 
 
 @pytest.mark.django_db
 def test_sync_hope_data_isolates_failures(mocker):
     mocker.patch("country_workspace.tasks.run_program_sync", side_effect=RuntimeError("boom"))
-    geo_runner = mocker.patch("country_workspace.tasks.run_geo_sync")
-    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync")
+    geo_runner = mocker.patch(
+        "country_workspace.tasks.run_geo_sync", return_value={"countries": {"add": 0, "upd": 0, "errors": []}}
+    )
+    flex_runner = mocker.patch("country_workspace.tasks.run_flex_fields_sync", return_value={"refreshed": 0})
     capture = mocker.patch("country_workspace.tasks.sentry_sdk.capture_exception")
 
     result = sync_hope_data.run()
@@ -382,4 +391,6 @@ def test_sync_hope_data_isolates_failures(mocker):
     geo_runner.assert_called_once_with(delta_sync=True)
     flex_runner.assert_called_once_with()
     capture.assert_called_once()
-    assert result == {"programs": False, "geo": True, "flex_fields": True}
+    assert result["programs"] == {"status": "error", "error": "boom"}
+    assert result["geo"]["status"] == "ok"
+    assert result["flex_fields"]["status"] == "ok"

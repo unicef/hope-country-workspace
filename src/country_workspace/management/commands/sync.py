@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 from typing import Any
 from django.core.management import BaseCommand
 
-from country_workspace.contrib.hope.sync.base import log_to
+from country_workspace.contrib.hope.sync.base import Stats, log_to
 from country_workspace.contrib.hope.sync.context_programs import sync_beneficiary_groups, sync_offices, sync_programs
 from country_workspace.contrib.hope.sync.context_geo import sync_area_types, sync_countries, sync_areas
 from country_workspace.models import SyncLog
@@ -16,20 +16,24 @@ ONLY_CONTEXT_GEO = "only_context_geo"
 ONLY_FLEX_FIELDS = "only_flex_fields"
 
 
-def run_program_sync(delta_sync: bool = False) -> None:
-    sync_offices(delta_sync=delta_sync)
-    sync_beneficiary_groups(delta_sync=delta_sync)
-    sync_programs(delta_sync=delta_sync)
+def run_program_sync(delta_sync: bool = False) -> dict[str, Stats]:
+    return {
+        "offices": sync_offices(delta_sync=delta_sync),
+        "beneficiary_groups": sync_beneficiary_groups(delta_sync=delta_sync),
+        "programs": sync_programs(delta_sync=delta_sync),
+    }
 
 
-def run_geo_sync(delta_sync: bool = False) -> None:
-    sync_countries(delta_sync=delta_sync)
-    sync_area_types(delta_sync=delta_sync)
-    sync_areas(delta_sync=delta_sync)
+def run_geo_sync(delta_sync: bool = False) -> dict[str, Stats]:
+    return {
+        "countries": sync_countries(delta_sync=delta_sync),
+        "area_types": sync_area_types(delta_sync=delta_sync),
+        "areas": sync_areas(delta_sync=delta_sync),
+    }
 
 
-def run_flex_fields_sync() -> None:
-    SyncLog.objects.refresh()
+def run_flex_fields_sync() -> dict[str, int]:
+    return {"refreshed": SyncLog.objects.refresh()}
 
 
 class Command(BaseCommand):
