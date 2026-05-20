@@ -317,3 +317,31 @@ def test_sync_hope_data_is_registered_in_beat_schedule():
     schedule = entry["schedule"]
     assert isinstance(schedule, crontab)
     assert schedule.minute == {0}
+
+
+def test_custom_scheduler_is_configured():
+    from django.conf import settings
+
+    assert settings.CELERY_BEAT_SCHEDULER == "country_workspace.config.scheduler.CountryWorkspaceDatabaseScheduler"
+
+
+@pytest.mark.django_db
+def test_custom_model_entry_preserves_admin_changes():
+    from celery.schedules import crontab
+    from django_celery_beat.models import PeriodicTask
+
+    from country_workspace.config.scheduler import CountryWorkspaceModelEntry
+
+    defaults = {
+        "task": "country_workspace.tasks.sync_hope_data",
+        "schedule": crontab(minute="0"),
+        "options": {"queue": "queue_hcw"},
+    }
+
+    CountryWorkspaceModelEntry.from_entry("sync-hope-data-hourly", **defaults)
+    PeriodicTask.objects.filter(name="sync-hope-data-hourly").update(enabled=False)
+
+    CountryWorkspaceModelEntry.from_entry("sync-hope-data-hourly", **defaults)
+
+    assert PeriodicTask.objects.get(name="sync-hope-data-hourly").enabled is False
+    assert PeriodicTask.objects.filter(name="sync-hope-data-hourly").count() == 1
