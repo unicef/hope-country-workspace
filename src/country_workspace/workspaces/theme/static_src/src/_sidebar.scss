@@ -1,8 +1,56 @@
+aside#sidebar,
+#sidebar {
+  ul.menu {
+    li.menu-item {
+      @apply relative;
+      transition: background-color 150ms ease;
+
+      a,
+      button {
+        @apply text-gray-700;
+        text-decoration: none;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        transition:
+          background-color 150ms ease,
+          color 150ms ease;
+
+        &:hover {
+          @apply bg-gray-100 text-unicef-dark;
+          .icon {
+            @apply text-unicef-blue;
+          }
+        }
+      }
+
+      &.selected {
+        background-color: rgba(0, 173, 239, 0.08);
+
+        > a,
+        > form > button {
+          @apply text-unicef-dark font-semibold;
+          .icon {
+            @apply text-unicef-blue;
+          }
+        }
+
+        &::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background-color: #00ADEF;
+        }
+      }
+    }
+  }
+}
+
 ul.menu {
   li.selected {
-    background-color: $admin-main;
-  }
-  li:hover{
-    background-color: #c9cacf;
+    background-color: rgba(0, 173, 239, 0.08);
   }
 }

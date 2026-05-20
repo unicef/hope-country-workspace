@@ -1,9 +1,16 @@
 div.footer-signature {
-  @apply block items-center p-2 text-center text-sm;
+  @apply block items-center px-4 py-2 text-center text-xs;
+  background-color: #ffffff;
+
   div {
-    @apply m-auto;
+    @apply m-auto flex flex-wrap justify-center items-center gap-2;
     span {
       @apply text-gray-400;
+      &:not(:last-child)::after {
+        content: "·";
+        margin-left: 0.5rem;
+        color: #d1d5db;
+      }
     }
   }
 }

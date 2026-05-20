@@ -10,7 +10,7 @@ from django.db.models import QuerySet
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
-from django.urls import NoReverseMatch, URLPattern, URLResolver, reverse
+from django.urls import NoReverseMatch, URLPattern, URLResolver, resolve, reverse
 from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from django.views import View
@@ -183,14 +183,41 @@ class TenantAdminSite(admin.AdminSite):
 
         return app_dict
 
+    def _current_modeladmin(self, request: "HttpRequest") -> str | None:
+        """Return the active modeladmin class name based on the resolved request URL.
+
+        ``modeladmin_name`` is added to the per-view template context by individual
+        ModelAdmin views; it is **not** an attribute of the AdminSite, so it cannot
+        be read from ``self`` while building the menu. We instead resolve the current
+        URL name and map its model prefix to the matching admin class.
+        """
+        url_to_admin = {
+            "workspaces_countryprogram": "CountryProgramAdmin",
+            "workspaces_countryhousehold": "CountryHouseholdAdmin",
+            "workspaces_countryindividual": "CountryIndividualAdmin",
+            "workspaces_countrybatch": "CountryBatchAdmin",
+            "workspaces_countrymappingimporter": "CountryMappingImporterAdmin",
+            "workspaces_countryrdp": "CountryRdpAdmin",
+            "workspaces_countryasyncjob": "CountryJobAdmin",
+        }
+        match = resolve(request.path)
+        url_name = match.url_name or ""
+        for prefix, admin_name in url_to_admin.items():
+            if url_name == prefix or url_name.startswith(prefix + "_"):
+                return admin_name
+        return None
+
     def get_menu_items(self, request: "HttpRequest") -> list[dict[str, Any]]:
         """Return a simplified list of menu items based on the current program."""
+        current_admin = self._current_modeladmin(request)
+        is_index = request.path == reverse("workspace:index")
+
         items = [
             {
                 "name": _("Home"),
                 "url": reverse("workspace:index"),
                 "icon": "icon-home",
-                "selected": not hasattr(self, "modeladmin_name"),
+                "selected": is_index,
             },
         ]
 
@@ -202,7 +229,7 @@ class TenantAdminSite(admin.AdminSite):
                     "name": program._meta.verbose_name,
                     "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
                     "icon": "icon-equalizer",
-                    "selected": getattr(self, "modeladmin_name", None) == "CountryProgramAdmin",
+                    "selected": current_admin == "CountryProgramAdmin",
                 },
             )
 
@@ -213,13 +240,13 @@ class TenantAdminSite(admin.AdminSite):
                             "name": bg.group_label_plural,
                             "url": reverse("workspace:workspaces_countryhousehold_changelist"),
                             "icon": "icon-members",
-                            "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
+                            "selected": current_admin == "CountryHouseholdAdmin",
                         },
                         {
                             "name": bg.member_label_plural,
                             "url": reverse("workspace:workspaces_countryindividual_changelist"),
                             "icon": "icon-user",
-                            "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                            "selected": current_admin == "CountryIndividualAdmin",
                             "indent": True,
                         },
                     )
@@ -230,7 +257,7 @@ class TenantAdminSite(admin.AdminSite):
                         "name": bg.member_label_plural,
                         "url": reverse("workspace:workspaces_countryindividual_changelist"),
                         "icon": "icon-user",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                        "selected": current_admin == "CountryIndividualAdmin",
                     }
                 )
             else:
@@ -240,13 +267,13 @@ class TenantAdminSite(admin.AdminSite):
                             "name": _("Households"),
                             "url": reverse("workspace:workspaces_countryhousehold_changelist"),
                             "icon": "icon-members",
-                            "selected": getattr(self, "modeladmin_name", None) == "CountryHouseholdAdmin",
+                            "selected": current_admin == "CountryHouseholdAdmin",
                         },
                         {
                             "name": _("Individuals"),
                             "url": reverse("workspace:workspaces_countryindividual_changelist"),
                             "icon": "icon-user",
-                            "selected": getattr(self, "modeladmin_name", None) == "CountryIndividualAdmin",
+                            "selected": current_admin == "CountryIndividualAdmin",
                             "indent": True,
                         },
                     )
@@ -258,25 +285,25 @@ class TenantAdminSite(admin.AdminSite):
                         "name": apps.get_model("country_workspace", "Batch")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countrybatch_changelist"),
                         "icon": "icon-sign",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryBatchAdmin",
+                        "selected": current_admin == "CountryBatchAdmin",
                     },
                     {
                         "name": _("Mappings"),
                         "url": reverse("workspace:workspaces_countrymappingimporter_changelist"),
                         "icon": "icon-loop",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryMappingImporterAdmin",
+                        "selected": current_admin == "CountryMappingImporterAdmin",
                     },
                     {
                         "name": apps.get_model("country_workspace", "Rdp")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryrdp_changelist"),
                         "icon": "icon-mail-envelope",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryRdpAdmin",
+                        "selected": current_admin == "CountryRdpAdmin",
                     },
                     {
                         "name": apps.get_model("country_workspace", "AsyncJob")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryasyncjob_changelist"),
                         "icon": "icon-globe",
-                        "selected": getattr(self, "modeladmin_name", None) == "CountryJobAdmin",
+                        "selected": current_admin == "CountryJobAdmin",
                     },
                 )
             )
