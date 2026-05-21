@@ -16,12 +16,15 @@ if TYPE_CHECKING:
 
 
 class SyncManager(BaseManager):
-    def refresh(self) -> None:
+    def refresh(self) -> int:
         from country_workspace.signals import collect_invalidations
 
+        refreshed = 0
         with collect_invalidations():
             for record in self.all():
-                record.refresh()
+                if record.refresh():
+                    refreshed += 1
+        return refreshed
 
     def create_lookups(self) -> None:
         from hope_flex_fields.models import FieldDefinition
@@ -73,9 +76,9 @@ class SyncLog(BaseModel):
         ]
         permissions = [("can_synchronize", _("Can synchronize objects with HOPE"))]
 
-    def refresh(self) -> None:
+    def refresh(self) -> bool:
         if not (fd := self.content_object) or "remote_url" not in self.data:
-            return
+            return False
 
         client = HopeClient()
         choices = list(client.get_lookup(self.data["remote_url"]).items())
@@ -87,3 +90,4 @@ class SyncLog(BaseModel):
 
         self.last_update_date = timezone.now()
         self.save(update_fields=["last_update_date"])
+        return True

@@ -13,6 +13,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
+from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
 
@@ -141,6 +142,61 @@ def removed_expired_jobs(**kwargs: Any) -> None:
 
 def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
     model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
+
+
+@app.task()
+def sync_hope_data() -> dict[str, dict[str, Any]]:
+    """Periodic job that pulls reference data from HOPE.
+
+    Runs the same routines exposed by the ``sync`` management command:
+
+    * programs / offices / beneficiary groups (delta sync);
+    * countries / area types / areas (delta sync);
+    * HOPE flex field lookups (equivalent of the ``sync_flex_fields`` admin
+      button).
+
+    Programs and geo run in *delta* mode so each hourly tick only fetches
+    records changed since the previous successful sync, keeping load on
+    HOPE small. Errors in one block do not prevent the others from
+    running; failures are logged and reported to Sentry instead of being
+    re-raised, so a transient HOPE outage does not flood the worker with
+    retries.
+
+    Returns a per-block dict with the underlying sync stats so the result
+    is inspectable from Flower / the Django admin. Successful entries look
+    like::
+
+        {
+            "programs": {
+                "status": "ok",
+                "details": {
+                    "offices": {"add": 1, "upd": 2, "errors": []},
+                    ...
+                },
+            },
+            "geo": {"status": "ok", "details": {...}},
+            "flex_fields": {"status": "ok", "details": {"refreshed": 5}},
+        }
+
+    On failure the corresponding block carries ``{"status": "error",
+    "error": "<message>"}`` instead of ``details``.
+    """
+    results: dict[str, dict[str, Any]] = {}
+    runners = (
+        ("programs", lambda: run_program_sync(delta_sync=True)),
+        ("geo", lambda: run_geo_sync(delta_sync=True)),
+        ("flex_fields", run_flex_fields_sync),
+    )
+    for label, runner in runners:
+        try:
+            details = runner()
+        except Exception as exc:
+            logger.exception("Periodic HOPE %s sync failed", label)
+            sentry_sdk.capture_exception(exc)
+            results[label] = {"status": "error", "error": str(exc)}
+        else:
+            results[label] = {"status": "ok", "details": details}
+    return results
 
 
 def _cleanup_batches(batch_ids: list, job: AsyncJob, batch_size: int = 5) -> dict[str, int]:
