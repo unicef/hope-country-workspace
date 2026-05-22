@@ -1,65 +1,64 @@
 import pytest
 from django.contrib import messages
-from django.contrib.auth.models import User
-from django.http import HttpRequest, HttpResponseRedirect, QueryDict
+from django.http import HttpResponseRedirect, QueryDict
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError
-from country_workspace.state import state
+from country_workspace.workspaces.admin import _import_data as import_data_mod
 from country_workspace.workspaces.admin import program as program_admin_mod
-from country_workspace.workspaces.admin.program import (
-    CountryProgramAdmin,
-    KOBO_IMPORT_JOB_DESCRIPTION,
-)
-from country_workspace.workspaces.models import CountryProgram
-
+from country_workspace.workspaces.admin._import_data import KOBO_IMPORT_JOB_DESCRIPTION
 
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture
-def program(country_office):
-    from testutils.factories import CountryProgramFactory
+def test_import_rdi_returns_form_when_invalid(
+    program_admin,
+    mock_request,
+    program,
+    mocker: MockerFixture,
+) -> None:
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+    form_cls = mocker.patch.object(import_data_mod, "ImportFileForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
 
-    state.tenant = country_office
-    country_office.kobo_country_code = "ABC"
-    country_office.save(update_fields=["kobo_country_code"])
+    mock_request.method = "POST"
+    mock_request.POST = {"_selected_tab": "rdi"}
 
-    program = CountryProgramFactory(country_office=country_office, beneficiary_group__master_detail=True)
-    program.household_checker = None
-    program.individual_checker = None
-    program.biometric_deduplication_enabled = True
-    program.save(update_fields=["household_checker", "individual_checker", "biometric_deduplication_enabled"])
-    return program
+    result = program_admin.import_rdi(mock_request, program)
 
-
-class _CountryProgramAdminUnderTest(CountryProgramAdmin):
-    def __init__(self, program: CountryProgram, admin_site) -> None:
-        super().__init__(model=CountryProgram, admin_site=admin_site)
-        self._program = program
-
-    def get_object(self, request, object_id):
-        return self._program
-
-    def get_common_context(self, request, object_id=None, **kwargs):
-        return {"original": self._program, "opts": self.admin_site, **kwargs}
-
-
-@pytest.fixture
-def program_admin(program, mocker: MockerFixture):
-    admin = _CountryProgramAdminUnderTest(program, mocker.MagicMock())
-    admin.message_user = mocker.MagicMock()
-    return admin
+    form_cls.assert_called_once_with(
+        mock_request.POST,
+        mock_request.FILES,
+        prefix="rdi",
+        beneficiary_group=program.beneficiary_group,
+        program=program,
+    )
+    create.assert_not_called()
+    program_admin.message_user.assert_not_called()
+    assert result is form
 
 
-@pytest.fixture
-def mock_request(mocker: MockerFixture):
-    request = mocker.MagicMock(spec=HttpRequest)
-    request.user = mocker.MagicMock(spec=User)
-    request.method = "GET"
-    request.POST = {}
-    request.FILES = {}
-    return request
+def test_import_aurora_returns_form_when_invalid(
+    program_admin,
+    mock_request,
+    program,
+    mocker: MockerFixture,
+) -> None:
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+    form_cls = mocker.patch.object(import_data_mod, "ImportAuroraForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
+
+    mock_request.method = "POST"
+    mock_request.POST = {"_selected_tab": "aurora"}
+
+    result = program_admin.import_aurora(mock_request, program)
+
+    form_cls.assert_called_once_with(mock_request.POST, prefix="aurora", program=program)
+    create.assert_not_called()
+    program_admin.message_user.assert_not_called()
+    assert result is form
 
 
 def test_import_kobo_returns_form_when_invalid(
@@ -70,8 +69,8 @@ def test_import_kobo_returns_form_when_invalid(
 ) -> None:
     form = mocker.MagicMock()
     form.is_valid.return_value = False
-    form_cls = mocker.patch.object(program_admin_mod, "ImportKoboForm", return_value=form)
-    create = mocker.patch.object(program_admin_mod.AsyncJob.objects, "create")
+    form_cls = mocker.patch.object(import_data_mod, "ImportKoboForm", return_value=form)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create")
 
     mock_request.method = "POST"
     mock_request.POST = {"kobo-project_id": "p1"}
@@ -107,10 +106,10 @@ def test_import_kobo_schedules_job(
         "household_transformer": None,
         "individual_transformer": None,
     }
-    mocker.patch.object(program_admin_mod, "ImportKoboForm", return_value=form)
-    mocker.patch.object(program_admin_mod, "batch_name_default", return_value="AUTO-BATCH")
+    mocker.patch.object(import_data_mod, "ImportKoboForm", return_value=form)
+    mocker.patch.object(import_data_mod, "batch_name_default", return_value="AUTO-BATCH")
     job = mocker.MagicMock(id=123)
-    create = mocker.patch.object(program_admin_mod.AsyncJob.objects, "create", return_value=job)
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create", return_value=job)
 
     mock_request.method = "POST"
     mock_request.POST = {"_selected_tab": "kobo"}
@@ -119,8 +118,8 @@ def test_import_kobo_schedules_job(
 
     create.assert_called_once_with(
         description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
-        type=program_admin_mod.AsyncJob.JobType.TASK,
-        action=program_admin_mod.fqn(program_admin_mod.import_from_kobo),
+        type=import_data_mod.AsyncJob.JobType.TASK,
+        action=import_data_mod.fqn(import_data_mod.import_from_kobo),
         file=None,
         program=program,
         owner=mock_request.user,
