@@ -107,6 +107,7 @@ def test_rdi_create_success(mocker: MockerFixture, processor: PushProcessor) -> 
             "name": processor.batch_name,
             "program": processor.program_hope_id,
             "imported_by_email": processor.imported_by_email,
+            "country_workspace_id": processor.rdp_id,
         }
     )
 
@@ -384,8 +385,8 @@ def test_prepare_individuals_batch_injects_id(
 
     assert ids == [10, 11]
     assert rows == [
-        {"a": 1, "individual_id": 10, "originating_id": 10},
-        {"b": 2, "individual_id": 11, "originating_id": 11},
+        {"a": 1, "country_workspace_id": 10, "originating_id": 10},
+        {"b": 2, "country_workspace_id": 11, "originating_id": 11},
     ]
 
 
@@ -401,7 +402,10 @@ def test_prepare_people_batch_plain(
     ids, rows = processor._prepare_people_batch([i1, i2])
 
     assert ids == [10, 11]
-    assert rows == [{"a": 1, "originating_id": 10}, {"b": 2, "originating_id": 11}]
+    assert rows == [
+        {"a": 1, "country_workspace_id": 10, "originating_id": 10},
+        {"b": 2, "country_workspace_id": 11, "originating_id": 11},
+    ]
 
 
 # ------------------------- response handlers ---------------------------

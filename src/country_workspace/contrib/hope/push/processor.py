@@ -155,6 +155,7 @@ class PushProcessor(ProcessorBase):
             "name": self.batch_name,
             "program": self.program_hope_id,
             "imported_by_email": self.imported_by_email,
+            "country_workspace_id": self.rdp_id,
         }
         resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
         if resp is None:
@@ -208,14 +209,20 @@ class PushProcessor(ProcessorBase):
 
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'individual_id' per row."""
-        rows = [ind.apply_grouping() | {"individual_id": ind.id, "originating_id": ind.originating_id} for ind in batch]
-        ids = [row["individual_id"] for row in rows]
+        rows = [
+            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            for ind in batch
+        ]
+        ids = [row["country_workspace_id"] for row in rows]
         return ids, self.serializer(rows)
 
     def _prepare_people_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a people batch."""
         ids = [ind.id for ind in batch]
-        rows = [ind.apply_grouping() | {"originating_id": ind.originating_id} for ind in batch]
+        rows = [
+            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            for ind in batch
+        ]
         return ids, self.serializer(rows)
 
     def _process_households_response(self, response: dict, batch_ids: list[int]) -> None:
