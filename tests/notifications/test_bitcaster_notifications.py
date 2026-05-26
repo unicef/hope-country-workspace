@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from country_workspace.notifications.bitcaster_client import BitcasterClient, RetryableBitcasterError
+from country_workspace.notifications.notifier import send_notification_event
 from country_workspace.notifications.tasks import send_bitcaster_event_task
 
 
@@ -59,6 +60,17 @@ def test_trigger_event_raises_retryable_error_for_http_5xx(settings, mocker) -> 
         BitcasterClient().trigger_event("data_imported", {"program_id": 42})
 
 
+def test_trigger_event_reraises_http_error(settings, mocker) -> None:
+    _configure_bitcaster_settings(settings)
+    post_mock = mocker.patch("country_workspace.notifications.bitcaster_client.requests.post")
+    response = Mock(status_code=400)
+    response.raise_for_status.side_effect = requests.exceptions.HTTPError("bad request")
+    post_mock.return_value = response
+
+    with pytest.raises(requests.exceptions.HTTPError, match="bad request"):
+        BitcasterClient().trigger_event("data_imported", {"program_id": 42})
+
+
 def test_trigger_event_returns_false_when_client_not_configured(settings) -> None:
     settings.BITCASTER_API_URL = ""
     settings.BITCASTER_API_KEY = ""
@@ -67,6 +79,21 @@ def test_trigger_event_returns_false_when_client_not_configured(settings) -> Non
     settings.BITCASTER_APPLICATION_SLUG = ""
 
     assert BitcasterClient().trigger_event("data_imported", {"program_id": 12}) is False
+
+
+def test_send_notification_event_delegates_to_backend(mocker) -> None:
+    backend = Mock()
+    backend.trigger_event.return_value = True
+    get_backend = mocker.patch(
+        "country_workspace.notifications.notifier.get_notification_backend",
+        return_value=backend,
+    )
+
+    result = send_notification_event("rdi_pushed", {"program_id": 7})
+
+    assert result is True
+    get_backend.assert_called_once_with()
+    backend.trigger_event.assert_called_once_with("rdi_pushed", {"program_id": 7})
 
 
 def test_send_bitcaster_event_task_retries_on_retryable_client_error(mocker) -> None:
@@ -94,6 +121,17 @@ def test_send_bitcaster_event_task_does_not_retry_on_http_400(mocker) -> None:
 
     send_bitcaster_event_task.run("data_imported", {"program_id": 12})
     retry_mock.assert_not_called()
+
+
+def test_send_bitcaster_event_task_logs_warning_when_backend_returns_false(mocker) -> None:
+    backend = Mock(is_configured=True)
+    warning = mocker.patch("country_workspace.notifications.tasks.logger.warning")
+    mocker.patch("country_workspace.notifications.tasks.get_notification_backend", return_value=backend)
+    mocker.patch("country_workspace.notifications.tasks.send_notification_event", return_value=False)
+
+    send_bitcaster_event_task.run("data_imported", {"program_id": 12})
+
+    warning.assert_any_call("Bitcaster client returned false for event '%s'", "data_imported")
 
 
 def test_send_bitcaster_event_task_skips_when_backend_not_configured(mocker) -> None:

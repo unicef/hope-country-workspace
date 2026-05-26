@@ -201,3 +201,19 @@ def test_create_validation_jobs_sets_context_and_validation_metadata(program, fo
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_total_chunks"] == 1
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_run_id"]
     job_mock.queue.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_returns_none_for_empty_queryset(program, force_migrated_records, mocker):
+    create_mock = mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create")
+
+    result = create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.none(),
+        context="total",
+    )
+
+    assert result is None
+    create_mock.assert_not_called()
