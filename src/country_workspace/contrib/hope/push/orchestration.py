@@ -324,5 +324,32 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             status=Rdp.PushStatus.SUCCESS,
             hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
         )
+        program_id = locked.program.unicef_id
+        deduplication_set_id = locked.deduplication_set_id
+
+    _approve_deduplication_set_after_successful_push(
+        program_id=program_id,
+        deduplication_set_id=deduplication_set_id,
+        processor=hope_processor,
+    )
 
     return hope_processor.total
+
+
+def _approve_deduplication_set_after_successful_push(
+    program_id: str,
+    deduplication_set_id: UUID | None,
+    processor: PushProcessor,
+) -> None:
+    """Approve the active DedupEngine deduplication set after a successful push to HOPE Core."""
+    if not deduplication_set_id:
+        return
+
+    try:
+        with make_dedup_client(
+            program_id,
+            deduplication_set_id=str(deduplication_set_id),
+        ) as client:
+            client.approve()
+    except (RemoteError, RemoteUnavailableError) as e:
+        processor.fail("DedupEngine", f"approve failed. {e}")

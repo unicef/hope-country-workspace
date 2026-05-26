@@ -128,7 +128,7 @@ class PushProcessor(ProcessorBase):
         self.pks: list[int] = config["pks"]
         self.program_hope_id: str = config["program_hope_id"]
         self.queryset: QuerySet | None = None
-        self.rdp_id: int | None = config.get("rdp_id")
+        self.rdp_id: int = config.get("rdp_id")
 
     @cached_property
     def serializer(self) -> Serializer:

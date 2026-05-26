@@ -126,6 +126,13 @@ class Client:
         )
         self._request("reject", action.call)
 
+    def approve(self) -> None:
+        action = resource.ApproveDeduplicationSetAction(
+            self.session,
+            self.deduplication_set_endpoint.approve,
+        )
+        self._request("approve", action.call)
+
     def retrieve_deduplication_set(self) -> response.DeduplicationSet:
         item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
         result = self._request("retrieve_deduplication_set", item.retrieve)
