@@ -19,6 +19,7 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
+from country_workspace.notifications.signals import rdi_pushed_signal, rdp_pushed_signal
 
 from .config import CreateRdpConfig, OperationLogResult, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
@@ -499,6 +500,12 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                         hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
                         is_push_locked=False,
                     )
+                    rdp_pushed_signal.send(
+                        sender=Rdp,
+                        program_id=rdp.program_id,
+                        rdp_id=rdp.pk,
+                        status=Rdp.PushStatus.FAILURE,
+                    )
                 raise HopePushError(hope_processor.total)
 
         with transaction.atomic():
@@ -517,6 +524,25 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             group_reference_id=group_reference_id,
             deduplication_set_id=deduplication_set_id,
             processor=hope_processor,
+        )
+        pushed_count = (
+                hope_processor.total.get("households", 0)
+                + hope_processor.total.get("individuals", 0)
+                + hope_processor.total.get("people", 0)
+        )
+
+        rdi_pushed_signal.send(
+            sender=Rdp,
+            program_id=rdp.program_id,
+            target="HOPE",
+            pushed_count=pushed_count,
+        )
+
+        rdp_pushed_signal.send(
+            sender=Rdp,
+            program_id=rdp.program_id,
+            rdp_id=rdp.pk,
+            status=Rdp.PushStatus.SUCCESS,
         )
         return hope_processor.total
 
