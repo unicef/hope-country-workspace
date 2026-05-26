@@ -31,6 +31,11 @@ def config() -> Config:
     }
 
 
+@pytest.fixture(autouse=True)
+def _mock_bitcaster_dispatch(mocker: MockerFixture):
+    return mocker.patch("country_workspace.notifications.handlers.send_bitcaster_event_task.delay")
+
+
 @pytest.fixture
 def job(mocker: MockerFixture, config: Config):
     job = mocker.MagicMock()
