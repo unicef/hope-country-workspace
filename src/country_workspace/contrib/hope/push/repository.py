@@ -123,7 +123,7 @@ def preflight_errors(
     if not pks:
         return ["RDP: no beneficiaries selected"]
 
-    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
+    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.PUSHED, Rdp.PushStatus.MERGED])
     if excluded := tuple(exclude_rdp_ids):
         rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
@@ -134,7 +134,7 @@ def preflight_errors(
             if not _is_valid_row(last_checked=last_checked, errors=obj_errors):
                 errors.append(f"{base} invalid")
             if has_rdp:
-                errors.append(f"{base} already in another RDP(s) (pending/success)")
+                errors.append(f"{base} already in another RDP(s) (pending/pushed/merged)")
         return errors
 
     def individual_rows() -> QuerySet:
@@ -187,6 +187,16 @@ def set_rdp_deduplication_snapshot(*, rdp: Rdp, key: str, snapshot: dict[str, An
 def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:
     """Return True when the program has another pending RDP."""
     qs = Rdp.objects.filter(program_id=owner.program_id, status=Rdp.PushStatus.PENDING)
+    if excluded := tuple(exclude_ids):
+        qs = qs.exclude(pk__in=excluded)
+    return qs.exists()
+
+
+def has_other_active_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:
+    qs = Rdp.objects.filter(
+        program_id=owner.program_id,
+        status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.PUSHED],
+    )
     if excluded := tuple(exclude_ids):
         qs = qs.exclude(pk__in=excluded)
     return qs.exists()

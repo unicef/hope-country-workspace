@@ -300,7 +300,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:
         obj = btn.context["original"]
-        if obj.status == CountryRdp.PushStatus.SUCCESS:
+        if obj.status == CountryRdp.PushStatus.MERGED:
             btn.visible = False
             return
         item = "countryhousehold" if obj.program.beneficiary_group.master_detail else "countryindividual"

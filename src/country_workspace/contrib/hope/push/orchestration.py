@@ -191,8 +191,8 @@ def _clone_rdp_in_transaction(
     try:
         with transaction.atomic():
             source = lock_rdp_for_update(pk=source.pk)
-            if source.status == Rdp.PushStatus.SUCCESS:
-                raise HopePushError({"errors": ["RDP: can not clone a successful RDP."]})
+            if source.status == Rdp.PushStatus.MERGED:
+                raise HopePushError({"errors": ["RDP: can not clone a merged RDP."]})
             owner = selection_owner_for_rdp(rdp=source)
             if owner.pk != source.pk:
                 owner = lock_rdp_for_update(pk=owner.pk)
@@ -212,7 +212,7 @@ def _clone_rdp_in_transaction(
 
             update_fields: list[str] = []
             if source.status == Rdp.PushStatus.PENDING:
-                source.status = Rdp.PushStatus.CANCELLED
+                source.status = Rdp.PushStatus.REJECTED
                 update_fields.append("status")
             if source.is_dedup_settings_locked:
                 source.is_dedup_settings_locked = False
@@ -253,7 +253,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         locked = lock_rdp_for_update(pk=rdp.pk)
         set_rdp_push_status(
             rdp=locked,
-            status=Rdp.PushStatus.CANCELLED,
+            status=Rdp.PushStatus.REJECTED,
             hope_rdi_id=locked.hope_rdi_id or "N/A",
             is_dedup_settings_locked=False,
         )
@@ -321,7 +321,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         _mark_rdp_beneficiaries_removed(locked, config["master_detail"])
         set_rdp_push_status(
             rdp=locked,
-            status=Rdp.PushStatus.SUCCESS,
+            status=Rdp.PushStatus.PUSHED,
             hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
         )
         group_reference_id = locked.program.unicef_id

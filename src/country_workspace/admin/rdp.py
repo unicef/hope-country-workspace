@@ -74,21 +74,21 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
+        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.PUSHED,
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
         obj: Rdp = self.get_object(request, str(pk))
 
-        if obj.status != Rdp.PushStatus.SUCCESS:
-            self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
+        if obj.status != Rdp.PushStatus.PUSHED:
+            self.message_user(request, "Reset is only allowed for PUSHED status.", level="error")
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:
             with transaction.atomic():
                 obj.households.all().update(removed=False)
                 obj.individuals.all().update(removed=False)
-                obj.status = Rdp.PushStatus.CANCELLED
-                obj.save()
+                obj.status = Rdp.PushStatus.REJECTED
+                obj.save(update_fields=["status"])
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         return confirm_action(
@@ -97,8 +97,8 @@ class RdpAdmin(BaseModelAdmin):
             _action,
             "Are you sure you want to reset this RDP?",
             description=(
-                "This will set all related households and individuals to removed=False "
-                "and mark the RDP status as CANCELLED. This action cannot be undone."
+                "It will set all related households and individuals to removed=False "
+                "and mark the RDP status as REJECTED. This action cannot be undone."
             ),
             success_message="RDP reset successfully. Related beneficiaries marked as not removed.",
             pk=str(pk),

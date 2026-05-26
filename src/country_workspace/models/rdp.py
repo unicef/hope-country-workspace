@@ -11,9 +11,10 @@ class Rdp(BaseModel):
 
     class PushStatus(models.TextChoices):
         PENDING = "PENDING", _("Pending")
-        SUCCESS = "SUCCESS", _("Success")
         FAILURE = "FAILURE", _("Failure")
-        CANCELLED = "CANCELLED", _("Cancelled")
+        PUSHED = "PUSHED", _("Pushed")
+        MERGED = "MERGED", _("Merged")
+        REJECTED = "REJECTED", _("Rejected")
 
     class DedupTrackingState(models.TextChoices):
         NOT_RUN = "NOT_RUN", _("Not run yet")
