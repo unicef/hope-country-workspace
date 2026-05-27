@@ -193,7 +193,7 @@ def test_update_dedup_settings_post_success(
     assert kwargs == {"settings": dedup_settings_data["settings"]}
     assert args[0].dict() == dedup_settings_data["post_data"]
 
-    make_client.assert_called_once_with(program_id="prg-1")
+    make_client.assert_called_once_with(group_reference_id="prg-1")
     dedup_client.post_deduplication_set_group_config.assert_called_once_with(payload=dedup_settings_data["payload"])
 
 

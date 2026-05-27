@@ -3,6 +3,7 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.dedup_engine.resource import (
     TIMEOUT,
     ActionMixin,
+    ApproveDeduplicationSetAction,
     CreateMixin,
     RetrieveMixin,
     UpdateMixin,
@@ -81,4 +82,15 @@ def test_action_mixin_with_body_and_params(mocker: MockerFixture) -> None:
         timeout=TIMEOUT,
         json=body,
     )
+    session.post.return_value.raise_for_status.assert_called_once_with()
+
+
+def test_approve_deduplication_set_action(mocker: MockerFixture) -> None:
+    endpoint = mocker.Mock()
+    session = mocker.Mock()
+    action = ApproveDeduplicationSetAction(session, endpoint)
+
+    action.call()
+
+    session.post.assert_called_once_with(str(endpoint), params=None, timeout=TIMEOUT)
     session.post.return_value.raise_for_status.assert_called_once_with()

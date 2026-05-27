@@ -108,29 +108,33 @@ class RdpActionPolicy:
         return self.rdp.program.biometric_deduplication_enabled
 
     @property
-    def has_deduplication_set(self) -> bool:
+    def has_deduplication_set_id(self) -> bool:
         return bool(self.rdp.deduplication_set_id)
+
+    @property
+    def group_reference_id(self) -> str:
+        return self.rdp.program.unicef_id
 
     @staticmethod
     def deduplication_status(rdp: Rdp) -> DedupClientStatus | None:
         if not rdp.deduplication_set_id:
             return None
         return get_deduplication_status(
-            rdp.program.unicef_id,
-            str(rdp.deduplication_set_id),
+            group_reference_id=rdp.program.unicef_id,
+            deduplication_set_id=str(rdp.deduplication_set_id),
         )
 
     @cached_property
     def can_create_deduplication_set(self) -> bool:
-        with make_dedup_client(self.rdp.program.unicef_id) as client:
+        with make_dedup_client(self.group_reference_id) as client:
             return client.can_create_deduplication_set()
 
     @cached_property
     def deduplication_set_state(self) -> str | None:
-        if not self.has_deduplication_set:
+        if not self.has_deduplication_set_id:
             return None
         with make_dedup_client(
-            self.rdp.program.unicef_id,
+            self.group_reference_id,
             deduplication_set_id=str(self.rdp.deduplication_set_id),
         ) as client:
             return client.retrieve_deduplication_set().get("state")
@@ -139,7 +143,7 @@ class RdpActionPolicy:
         return self.is_pending and self.is_biometric_deduplication_enabled
 
     def is_reject_ds_visible(self) -> bool:
-        return self.is_deduplicate_visible() and self.has_deduplication_set
+        return self.is_deduplicate_visible() and self.has_deduplication_set_id
 
     def is_clone_visible(self) -> bool:
         return self.is_biometric_deduplication_enabled
@@ -164,7 +168,7 @@ class RdpActionPolicy:
         if self.can_create_deduplication_set:
             return ActionCheck(True)
 
-        if not self.has_deduplication_set:
+        if not self.has_deduplication_set_id:
             return ActionCheck(False, "DedupEngine: can not create deduplication set for this program.")
 
         if self.deduplication_set_state in PROCESSABLE_DEDUPLICATION_SET_STATES:
@@ -176,7 +180,7 @@ class RdpActionPolicy:
         )
 
     def claim_deduplication_check(self) -> ActionCheck:
-        if self.rdp.is_dedup_settings_locked and not self.can_create_deduplication_set:
+        if self.rdp.is_dedup_settings_locked:
             return ActionCheck(False, "RDP: deduplication has already been started for this RDP.")
         return self.deduplicate_check()
 
@@ -185,7 +189,7 @@ class RdpActionPolicy:
             return ActionCheck(False, f"RDP: can not reject deduplication set in status={self.rdp.status}")
         if not self.is_biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if not self.has_deduplication_set:
+        if not self.has_deduplication_set_id:
             return ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")
 
         if self.deduplication_set_state not in REJECTABLE_DEDUPLICATION_SET_STATES:
@@ -230,7 +234,7 @@ class RdpActionPolicy:
     def push_check(self) -> ActionCheck:
         if not self.is_pending:
             return ActionCheck(False, f"RDP: can not push in status={self.rdp.status}")
-        if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set:
+        if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set_id:
             return ActionCheck(True)
 
         if self.deduplication_set_state in PUSHABLE_DEDUPLICATION_SET_STATES:

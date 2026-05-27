@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from uuid import uuid4
 
 import pytest
 from django.db import IntegrityError
@@ -12,6 +13,7 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.config import Beneficiary
 from country_workspace.contrib.hope.push.orchestration import (
+    _approve_deduplication_set_after_successful_push,
     _deduplication_snapshot,
     _mark_rdp_beneficiaries_removed,
     _require_policy_check,
@@ -366,38 +368,45 @@ def test_create_rdp_core_success(mocker: MockerFixture, create_job: AsyncJob) ->
 
 
 @pytest.mark.parametrize(
-    ("set_id", "can_create", "expected_set_id", "expected_update_fields"),
+    ("set_id", "can_create", "expect_generated_id", "expected_update_fields"),
     [
-        ("ds-1", True, None, ["is_dedup_settings_locked", "deduplication_set_id"]),
-        ("ds-1", False, "ds-1", ["is_dedup_settings_locked"]),
-        (None, True, None, ["is_dedup_settings_locked"]),
+        ("ds-1", True, False, ["is_dedup_settings_locked"]),
+        ("ds-1", False, False, ["is_dedup_settings_locked"]),
+        (None, True, True, ["is_dedup_settings_locked", "deduplication_set_id"]),
+        (None, False, False, ["is_dedup_settings_locked"]),
     ],
-    ids=["clears_stale_set", "keeps_active_set", "no_set_id"],
+    ids=["keeps_existing_set", "keeps_existing_active_set", "generates_new_set_id", "no_set_id"],
 )
 def test_claim_rdp_deduplication_locks_rdp(
     mocker: MockerFixture,
     set_id: str | None,
     can_create: bool,
-    expected_set_id: str | None,
+    expect_generated_id: bool,
     expected_update_fields: list[str],
 ) -> None:
+    generated_id = uuid4()
     rdp = mocker.MagicMock(deduplication_set_id=set_id)
     policy = mocker.MagicMock(can_create_deduplication_set=can_create)
     policy.claim_deduplication_check.return_value = ActionCheck(True)
 
     lock = mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
     get_policy = mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
+    uuid4_spy = mocker.patch(f"{MOD}.uuid4", return_value=generated_id)
 
     check, locked = claim_rdp_deduplication(123)
 
     assert check == ActionCheck(True)
     assert locked is rdp
     assert rdp.is_dedup_settings_locked is True
-    assert rdp.deduplication_set_id == expected_set_id
+    assert rdp.deduplication_set_id == (generated_id if expect_generated_id else set_id)
     lock.assert_called_once_with(pk=123)
     get_policy.assert_called_once_with(rdp)
     policy.claim_deduplication_check.assert_called_once_with()
     rdp.save.assert_called_once_with(update_fields=expected_update_fields)
+    if expect_generated_id:
+        uuid4_spy.assert_called_once_with()
+    else:
+        uuid4_spy.assert_not_called()
 
 
 def test_claim_rdp_deduplication_returns_denial_without_saving(mocker: MockerFixture) -> None:
@@ -789,6 +798,61 @@ def test_reject_deduplication_set_existing_rdp_core_remote_error(
     set_status.assert_not_called()
 
 
+def test_approve_deduplication_set_after_successful_push_without_set_id(mocker: MockerFixture) -> None:
+    processor = mocker.MagicMock()
+    make_client = mocker.patch(f"{MOD}.make_dedup_client")
+
+    _approve_deduplication_set_after_successful_push(
+        group_reference_id="program-1",
+        deduplication_set_id=None,
+        processor=processor,
+    )
+
+    make_client.assert_not_called()
+    processor.fail.assert_not_called()
+
+
+def test_approve_deduplication_set_after_successful_push(mocker: MockerFixture, dedup_api_cm) -> None:
+    processor = mocker.MagicMock()
+    client = mocker.MagicMock()
+    ds_id = uuid4()
+    make_client = mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+
+    _approve_deduplication_set_after_successful_push(
+        group_reference_id="program-1",
+        deduplication_set_id=ds_id,
+        processor=processor,
+    )
+
+    make_client.assert_called_once_with("program-1", deduplication_set_id=str(ds_id))
+    client.approve.assert_called_once_with()
+    processor.fail.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "exc_cls",
+    [RemoteError, RemoteUnavailableError],
+    ids=["remote_error", "remote_unavailable"],
+)
+def test_approve_deduplication_set_after_successful_push_records_error(
+    mocker: MockerFixture,
+    dedup_api_cm,
+    exc_cls: type[Exception],
+) -> None:
+    processor = mocker.MagicMock()
+    client = mocker.MagicMock()
+    client.approve.side_effect = exc_cls("boom")
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+
+    _approve_deduplication_set_after_successful_push(
+        group_reference_id="program-1",
+        deduplication_set_id=uuid4(),
+        processor=processor,
+    )
+
+    processor.fail.assert_called_once_with("DedupEngine", "approve failed. boom")
+
+
 @pytest.mark.django_db
 def test_mark_rdp_beneficiaries_removed(job: AsyncJob, beneficiary_instance: Beneficiary) -> None:
     _mark_rdp_beneficiaries_removed(job.rdp, job.program.beneficiary_group.master_detail)
@@ -860,7 +924,8 @@ def test_push_existing_rdp_core_success(
 ) -> None:
     rdp = mocker.MagicMock(pk=1)
     rdp.pushed_by.email = pushed_by_email
-    locked = mocker.MagicMock()
+    locked = mocker.MagicMock(deduplication_set_id=(ds_id := uuid4()))
+    locked.program.unicef_id = "program-1"
     config = {"master_detail": True, "pks": [1], "rdp_id": 1}
     processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1")
     step1 = mocker.Mock()
@@ -877,6 +942,7 @@ def test_push_existing_rdp_core_success(
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+    approve = mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
 
     assert push_existing_rdp_core(job) == {"errors": []}
 
@@ -892,6 +958,11 @@ def test_push_existing_rdp_core_success(
         rdp=locked,
         status=Rdp.PushStatus.SUCCESS,
         hope_rdi_id="RID-1",
+    )
+    approve.assert_called_once_with(
+        group_reference_id="program-1",
+        deduplication_set_id=ds_id,
+        processor=processor,
     )
 
 

@@ -1,6 +1,5 @@
 import pytest
 from pytest_mock import MockerFixture
-from uuid import uuid4
 from django.utils import timezone
 
 import country_workspace.contrib.hope.push.repository as repo
@@ -325,15 +324,6 @@ def test_preflight_errors_excludes_rdp_ids() -> None:
         )
         == []
     )
-
-
-def test_set_rdp_deduplication_set_id(rdp) -> None:
-    deduplication_set_id = uuid4()
-
-    repo.set_rdp_deduplication_set_id(rdp_id=rdp.pk, deduplication_set_id=deduplication_set_id)
-    rdp.refresh_from_db()
-
-    assert rdp.deduplication_set_id == deduplication_set_id
 
 
 @pytest.mark.parametrize(

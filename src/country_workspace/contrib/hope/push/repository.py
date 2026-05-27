@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from uuid import UUID
 from typing import Any
 
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
@@ -158,11 +157,6 @@ def preflight_errors(
         .values_list("pk", "last_checked", "errors", "has_rdp")
     )
     return collect(household_rows, "HH") + errors
-
-
-def set_rdp_deduplication_set_id(*, rdp_id: int, deduplication_set_id: UUID) -> None:
-    """Persist deduplication set id for the given RDP."""
-    Rdp.objects.filter(pk=rdp_id).update(deduplication_set_id=deduplication_set_id)
 
 
 def set_rdp_push_status(

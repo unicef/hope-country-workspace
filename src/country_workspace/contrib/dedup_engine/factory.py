@@ -12,7 +12,7 @@ from .client import Client
 
 @contextmanager
 def make_client(
-    program_id: str,
+    group_reference_id: str,
     deduplication_set_id: str | None = None,
 ) -> Generator[Client, None, None]:
     with Session() as session:
@@ -21,7 +21,7 @@ def make_client(
         session.auth = Auth(config.DEDUP_API_TOKEN)
         api_root = APIRoot(config.DEDUP_API_URL)
         yield Client(
-            program_id=program_id,
+            group_reference_id=group_reference_id,
             session=session,
             api_root=api_root,
             deduplication_set_id=deduplication_set_id,

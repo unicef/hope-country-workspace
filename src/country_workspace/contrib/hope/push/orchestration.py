@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any, NamedTuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.db import IntegrityError, transaction
 
@@ -116,7 +116,6 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
-    """Validate and mark RDP deduplication as requested inside an active transaction."""
     rdp = lock_rdp_for_update(pk=rdp_id)
     policy = get_rdp_policy(rdp)
     check = policy.claim_deduplication_check()
@@ -125,8 +124,9 @@ def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
 
     update_fields = ["is_dedup_settings_locked"]
     rdp.is_dedup_settings_locked = True
-    if rdp.deduplication_set_id and policy.can_create_deduplication_set:
-        rdp.deduplication_set_id = None
+
+    if policy.can_create_deduplication_set and not rdp.deduplication_set_id:
+        rdp.deduplication_set_id = uuid4()
         update_fields.append("deduplication_set_id")
 
     rdp.save(update_fields=update_fields)
@@ -239,12 +239,12 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Reject the active DedupEngine deduplication set for an existing RDP."""
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
     _require_policy_check(get_rdp_policy(rdp).reject_ds_check)
-    program_id = rdp.program.unicef_id
+    group_reference_id = rdp.program.unicef_id
     deduplication_set_id = str(rdp.deduplication_set_id)
     _save_current_deduplication_snapshot(rdp=rdp, key="before_reject")
 
     try:
-        with make_dedup_client(program_id, deduplication_set_id=deduplication_set_id) as client:
+        with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
             client.reject()
     except (RemoteError, RemoteUnavailableError) as e:
         raise HopePushError({"errors": [str(e)]}) from e
@@ -260,7 +260,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     return {
         "rdp_id": rdp.pk,
-        "program": program_id,
+        "program": group_reference_id,
         "deduplication_set_id": deduplication_set_id,
         "rejected": True,
     }
@@ -324,11 +324,11 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             status=Rdp.PushStatus.SUCCESS,
             hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
         )
-        program_id = locked.program.unicef_id
+        group_reference_id = locked.program.unicef_id
         deduplication_set_id = locked.deduplication_set_id
 
     _approve_deduplication_set_after_successful_push(
-        program_id=program_id,
+        group_reference_id=group_reference_id,
         deduplication_set_id=deduplication_set_id,
         processor=hope_processor,
     )
@@ -337,7 +337,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 
 def _approve_deduplication_set_after_successful_push(
-    program_id: str,
+    group_reference_id: str,
     deduplication_set_id: UUID | None,
     processor: PushProcessor,
 ) -> None:
@@ -347,7 +347,7 @@ def _approve_deduplication_set_after_successful_push(
 
     try:
         with make_dedup_client(
-            program_id,
+            group_reference_id,
             deduplication_set_id=str(deduplication_set_id),
         ) as client:
             client.approve()

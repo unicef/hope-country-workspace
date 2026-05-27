@@ -100,7 +100,7 @@ def test_deduplication_status_calls_remote(mocker: MockerFixture, rdp) -> None:
     )
     spy = mocker.patch(f"{MOD}.get_deduplication_status", return_value=status)
     assert RdpActionPolicy.deduplication_status(rdp) == status
-    spy.assert_called_once_with("program-1", "ds-1")
+    spy.assert_called_once_with(group_reference_id="program-1", deduplication_set_id="ds-1")
 
 
 def test_can_create_deduplication_set_cached_property(
@@ -564,12 +564,6 @@ def test_claim_deduplication_check_blocks_locked_active_dedup(
     rdp,
 ) -> None:
     rdp.is_dedup_settings_locked = True
-    mocker.patch.object(
-        RdpActionPolicy,
-        "can_create_deduplication_set",
-        new_callable=mocker.PropertyMock,
-        return_value=False,
-    )
     deduplicate_check = mocker.patch.object(RdpActionPolicy, "deduplicate_check")
 
     check = RdpActionPolicy(rdp).claim_deduplication_check()
@@ -580,22 +574,17 @@ def test_claim_deduplication_check_blocks_locked_active_dedup(
 
 
 @pytest.mark.parametrize(
-    ("locked", "can_create"),
-    [
-        (False, False),
-        (False, True),
-        (True, True),
-    ],
-    ids=["unlocked_cannot_create", "unlocked_can_create", "locked_can_create"],
+    "can_create",
+    [False, True],
+    ids=["cannot_create", "can_create"],
 )
 def test_claim_deduplication_check_delegates_to_deduplicate_check(
     mocker: MockerFixture,
     rdp,
-    locked: bool,
     can_create: bool,
 ) -> None:
     expected = ActionCheck(True)
-    rdp.is_dedup_settings_locked = locked
+    rdp.is_dedup_settings_locked = False
 
     mocker.patch.object(
         RdpActionPolicy,

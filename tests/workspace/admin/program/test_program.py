@@ -234,7 +234,7 @@ def test_get_dedup_settings(
 
     result = program_admin._get_dedup_settings(program)
 
-    make_client.assert_called_once_with(program_id="prg-1")
+    make_client.assert_called_once_with(group_reference_id="prg-1")
     client.get_deduplication_set_group_config.assert_called_once_with()
     assert result == settings
 
@@ -354,7 +354,7 @@ def test_update_dedup_settings_post_success(
     response = program_admin.update_dedup_settings.func(program_admin, mock_request, pk=str(program.pk))
 
     form_cls.assert_called_once_with(mock_request.POST, settings=settings)
-    make_client.assert_called_once_with(program_id="prg-1")
+    make_client.assert_called_once_with(group_reference_id="prg-1")
     client.post_deduplication_set_group_config.assert_called_once_with(payload=payload)
     program_admin.message_user.assert_called_once_with(
         mock_request,

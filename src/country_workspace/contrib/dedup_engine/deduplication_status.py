@@ -46,7 +46,7 @@ class DedupClientStatus(NamedTuple):
 
 
 def get_deduplication_status(
-    program_unicef_id: str,
+    group_reference_id: str,
     deduplication_set_id: str | None,
 ) -> DedupClientStatus:
     if not deduplication_set_id:
@@ -57,7 +57,7 @@ def get_deduplication_status(
         )
 
     try:
-        with make_client(program_unicef_id, deduplication_set_id=deduplication_set_id) as client:
+        with make_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
             payload = client.retrieve_deduplication_set()
     except RemoteUnavailableError as exc:
         sentry_sdk.capture_exception(exc)
