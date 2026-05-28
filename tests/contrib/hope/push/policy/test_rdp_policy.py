@@ -497,7 +497,7 @@ def test_clone_deduplication_check(
             True,
             "",
             DeduplicationSetState.DEDUPLICATED,
-            ActionCheck(True),
+            ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP."),
         ),
         *[
             (

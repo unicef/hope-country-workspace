@@ -96,7 +96,21 @@ def test_preflight_empty_is_ok(mocker: MockerFixture, processor: PushProcessor) 
 
 
 @pytest.mark.django_db
-def test_rdi_create_success(mocker: MockerFixture, processor: PushProcessor) -> None:
+@pytest.mark.parametrize(
+    ("country_workspace_id", "expected_extra"),
+    [
+        ("ds-1", {"country_workspace_id": "ds-1"}),
+        (None, {}),
+    ],
+    ids=["with_country_workspace_id", "without_country_workspace_id"],
+)
+def test_rdi_create_success(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    country_workspace_id: str | None,
+    expected_extra: dict,
+) -> None:
+    processor.country_workspace_id = country_workspace_id
     spy = mocker.patch.object(processor.api, "create_rdi", return_value={"id": "RID-1"})
 
     processor.rdi_create()
@@ -107,7 +121,7 @@ def test_rdi_create_success(mocker: MockerFixture, processor: PushProcessor) -> 
             "name": processor.batch_name,
             "program": processor.program_hope_id,
             "imported_by_email": processor.imported_by_email,
-            "country_workspace_id": processor.rdp_id,
+            **expected_extra,
         }
     )
 

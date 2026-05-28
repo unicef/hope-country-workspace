@@ -128,6 +128,7 @@ class PushProcessor(ProcessorBase):
         self.program_hope_id: str = config["program_hope_id"]
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
+        self.country_workspace_id: str | None = config.get("country_workspace_id")
 
     @cached_property
     def serializer(self) -> Serializer:
@@ -154,8 +155,10 @@ class PushProcessor(ProcessorBase):
             "name": self.batch_name,
             "program": self.program_hope_id,
             "imported_by_email": self.imported_by_email,
-            "country_workspace_id": self.rdp_id,
         }
+        if self.country_workspace_id:
+            payload["country_workspace_id"] = self.country_workspace_id
+
         resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
         if resp is None:
             return

@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable
-from typing import Any, TypedDict, ReadOnly, Final, NamedTuple
+from typing import Any, TypedDict, ReadOnly, Final, NamedTuple, NotRequired
 from enum import StrEnum, auto
 
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -35,6 +35,7 @@ class PushWorkflowConfig(SelectionConfig):
     imported_by_email: ReadOnly[str]
     program_hope_id: ReadOnly[str]
     rdp_id: ReadOnly[int]
+    country_workspace_id: NotRequired[ReadOnly[str]]
 
 
 class Route(StrEnum):

@@ -234,12 +234,12 @@ class RdpActionPolicy:
     def push_check(self) -> ActionCheck:
         if not self.is_pending:
             return ActionCheck(False, f"RDP: can not push in status={self.rdp.status}")
-        if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set_id:
+        if not self.is_biometric_deduplication_enabled:
             return ActionCheck(True)
-
+        if not self.has_deduplication_set_id:
+            return ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")
         if self.deduplication_set_state in PUSHABLE_DEDUPLICATION_SET_STATES:
             return ActionCheck(True)
-
         return ActionCheck(
             False,
             f"DedupEngine: can not push with deduplication set in state={self.deduplication_set_state!r}.",

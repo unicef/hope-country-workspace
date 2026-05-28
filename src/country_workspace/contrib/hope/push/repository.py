@@ -63,7 +63,7 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
     """Build push workflow config for an existing RDP."""
     master_detail, pks = rdp_selection(rdp=rdp)
     program = rdp.program
-    return {
+    config: PushWorkflowConfig = {
         "batch_name": rdp.name,
         "co_slug": program.country_office.slug,
         "imported_by_email": imported_by_email,
@@ -72,6 +72,9 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
         "program_hope_id": program.hope_id,
         "rdp_id": rdp.id,
     }
+    if program.biometric_deduplication_enabled and rdp.deduplication_set_id:
+        config["country_workspace_id"] = str(rdp.deduplication_set_id)
+    return config
 
 
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
