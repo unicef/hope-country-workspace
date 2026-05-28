@@ -105,3 +105,47 @@ def test_apply_handles_null_return(transformer):
 
     result = t.apply(data)
     assert result is None
+
+
+def test_apply_steficon_transformer_returns_updated_record(transformer):
+    t = transformer(
+        engine="STEFICON",
+        value_transformations=(
+            "result.value = context['record']\nif result.value.get('sex') == 'M':\n    result.value['sex'] = 'MALE'\n"
+        ),
+    )
+    data = {"sex": "M", "name": "A"}
+
+    result = t.apply(data)
+    assert result == {"sex": "MALE", "name": "A"}
+
+
+def test_apply_steficon_transformer_context_record_fallback(transformer):
+    t = transformer(
+        engine="STEFICON",
+        value_transformations="context['record']['status'] = 'ACTIVE'",
+    )
+    data = {"status": "PENDING"}
+
+    result = t.apply(data)
+    assert result == {"status": "ACTIVE"}
+
+
+def test_apply_steficon_transformer_handles_invalid_output(transformer, caplog):
+    t = transformer(
+        engine="STEFICON",
+        value_transformations="result.value = 1",
+    )
+    data = {"foo": "bar"}
+
+    with caplog.at_level("ERROR"):
+        result = t.apply(data)
+
+    assert result == data
+    assert "Error applying value transformations" in caplog.text
+
+
+def test_transformer_full_clean_invalid_steficon_formula(transformer):
+    t = transformer.build(engine="STEFICON", value_transformations="import os")
+    with pytest.raises(ValidationError):
+        t.full_clean()

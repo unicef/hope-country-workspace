@@ -3,6 +3,7 @@ from django.utils.deconstruct import deconstructible
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.utils.js_executor import JavaScriptExecutor
+from country_workspace.utils.steficon_executor import SteficonExecutor, SteficonValidationError
 
 
 @deconstructible
@@ -48,3 +49,19 @@ class ValueTransformationRulesValidator:
                 _("Invalid JavaScript code. Must contain a function definition."),
                 code="invalid_js",
             )
+
+
+@deconstructible
+class SteficonTransformationRulesValidator:
+    """Validate Steficon-style Python formula code."""
+
+    def __call__(self, value: str) -> None:
+        if not value.strip():
+            return
+        try:
+            SteficonExecutor.validate(value)
+        except SteficonValidationError as exc:
+            raise ValidationError(
+                _("Invalid Steficon formula. %(error)s") % {"error": str(exc)},
+                code="invalid_steficon",
+            ) from exc

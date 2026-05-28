@@ -48,7 +48,7 @@ class TransformerTestForm(forms.Form):
 @admin.register(Transformer)
 class TransformerAdmin(BaseModelAdmin):
     readonly_fields = ("created_at", "last_modified", "created_by")
-    list_display = ("name", "office", "created_by", "created_at", "last_modified")
+    list_display = ("name", "engine", "office", "created_by", "created_at", "last_modified")
     list_filter = (
         ("office", AutoCompleteFilter),
         ("created_by", AutoCompleteFilter),
@@ -61,6 +61,7 @@ class TransformerAdmin(BaseModelAdmin):
             "name",
             "description",
             "office",
+            "engine",
         )
         tail_fields = (
             "created_by",
@@ -113,6 +114,7 @@ class TransformerAdmin(BaseModelAdmin):
                         name=obj.name,
                         description=obj.description,
                         office=obj.office,
+                        engine=obj.engine,
                         value_transformations=code,
                     )
                     try:
