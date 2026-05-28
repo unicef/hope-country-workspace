@@ -2,6 +2,7 @@ from admin_extra_buttons.decorators import button
 from django import forms
 from django.contrib import admin, messages
 from django.core.cache import cache
+from django.db import models
 from django.db.models import QuerySet
 from django.forms import ModelForm
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -18,7 +19,7 @@ from country_workspace.workspaces.sites import workspace
 
 
 class RunTransformerForm(forms.Form):
-    class ApplyToOptions(forms.TextChoices):
+    class ApplyToOptions(models.TextChoices):
         HOUSEHOLDS = "households", _("Households only")
         INDIVIDUALS = "individuals", _("Individuals only")
         BOTH = "both", _("Households and Individuals")
