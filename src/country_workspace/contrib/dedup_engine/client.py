@@ -16,14 +16,14 @@ from . import endpoint, request, resource, response
 
 @dataclass(slots=True)
 class Client:
-    program_id: str
+    group_reference_id: str
     session: Session
     api_root: endpoint.APIRoot
     deduplication_set_id: str | None = None
 
     @property
     def deduplication_set_group_endpoint(self) -> endpoint.DeduplicationSetGroup:
-        return self.api_root.deduplication_set_groups.deduplication_set_group(self.program_id)
+        return self.api_root.deduplication_set_groups.deduplication_set_group(self.group_reference_id)
 
     @property
     def deduplication_set_endpoint(self) -> endpoint.DeduplicationSet:
@@ -74,13 +74,17 @@ class Client:
             self.session,
             self.api_root.deduplication_sets,
         )
+        payload: request.CreateDeduplicationSet = {"reference_pk": self.group_reference_id}
+        if self.deduplication_set_id:
+            payload["id"] = self.deduplication_set_id
+
         result = self._request(
             "create_deduplication_set",
-            lambda: collection.create({"reference_pk": self.program_id}),
+            lambda: collection.create(payload),
         )
-        payload = cast("response.CreatedDeduplicationSet", result)
-        self.deduplication_set_id = payload.get("id")
-        return payload
+        created = cast("response.CreatedDeduplicationSet", result)
+        self.deduplication_set_id = created.get("id") or self.deduplication_set_id
+        return created
 
     def can_create_deduplication_set(self) -> bool:
         def fetch() -> bool:
@@ -125,6 +129,13 @@ class Client:
             self.deduplication_set_endpoint.reject,
         )
         self._request("reject", action.call)
+
+    def approve(self) -> None:
+        action = resource.ApproveDeduplicationSetAction(
+            self.session,
+            self.deduplication_set_endpoint.approve,
+        )
+        self._request("approve", action.call)
 
     def retrieve_deduplication_set(self) -> response.DeduplicationSet:
         item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)

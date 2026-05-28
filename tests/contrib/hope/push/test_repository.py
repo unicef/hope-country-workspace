@@ -1,8 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
-from uuid import uuid4
 from django.utils import timezone
-
+from uuid import uuid4
 import country_workspace.contrib.hope.push.repository as repo
 from country_workspace.models import Rdp as RdpModel
 from testutils.factories import (
@@ -207,16 +206,40 @@ def test_serializer_for_program_uses_serializer(
     ],
     ids=["master_detail", "people_only"],
 )
+@pytest.mark.parametrize(
+    ("biometric_enabled", "has_deduplication_set_id", "expect_country_workspace_id"),
+    [
+        (False, False, False),
+        (False, True, False),
+        (True, False, False),
+        (True, True, True),
+    ],
+    ids=[
+        "non_biometric_without_dedup_set",
+        "non_biometric_with_dedup_set",
+        "biometric_without_dedup_set",
+        "biometric_with_dedup_set",
+    ],
+)
 def test_workflow_config_for_rdp(
     request: pytest.FixtureRequest,
     fixture_name: str,
     master_detail: bool,
     expected_pks,
     pushed_by_user,
+    biometric_enabled: bool,
+    has_deduplication_set_id: bool,
+    expect_country_workspace_id: bool,
 ) -> None:
     rdp, selection = request.getfixturevalue(fixture_name)
 
-    assert repo.workflow_config_for_rdp(rdp=rdp, imported_by_email=pushed_by_user.email) == {
+    rdp.program.biometric_deduplication_enabled = biometric_enabled
+    rdp.program.save(update_fields=["biometric_deduplication_enabled"])
+
+    rdp.deduplication_set_id = deduplication_set_id = uuid4() if has_deduplication_set_id else None
+    rdp.save(update_fields=["deduplication_set_id"])
+
+    expected = {
         "batch_name": rdp.name,
         "co_slug": rdp.program.country_office.slug,
         "imported_by_email": pushed_by_user.email,
@@ -225,6 +248,10 @@ def test_workflow_config_for_rdp(
         "program_hope_id": rdp.program.hope_id,
         "rdp_id": rdp.id,
     }
+    if expect_country_workspace_id:
+        expected["country_workspace_id"] = str(deduplication_set_id)
+
+    assert repo.workflow_config_for_rdp(rdp=rdp, imported_by_email=pushed_by_user.email) == expected
 
 
 def test_qs_households_prefetches_members(hh_with_members) -> None:
@@ -325,15 +352,6 @@ def test_preflight_errors_excludes_rdp_ids() -> None:
         )
         == []
     )
-
-
-def test_set_rdp_deduplication_set_id(rdp) -> None:
-    deduplication_set_id = uuid4()
-
-    repo.set_rdp_deduplication_set_id(rdp_id=rdp.pk, deduplication_set_id=deduplication_set_id)
-    rdp.refresh_from_db()
-
-    assert rdp.deduplication_set_id == deduplication_set_id
 
 
 @pytest.mark.parametrize(

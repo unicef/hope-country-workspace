@@ -2,6 +2,7 @@ import pytest
 
 from country_workspace.contrib.dedup_engine.endpoint import (
     APIRoot,
+    Approve,
     DeduplicationSet,
     DeduplicationSetGroup,
     DeduplicationSetGroupConfig,
@@ -95,16 +96,19 @@ def test_deduplication_set_endpoints() -> None:
     ready = endpoint.ready
     process = endpoint.process
     reject = endpoint.reject
+    approve = endpoint.approve
 
     assert images.url == "https://example.com/deduplication_sets/set-id/images"
     assert ready.url == "https://example.com/deduplication_sets/set-id/ready"
     assert process.url == "https://example.com/deduplication_sets/set-id/process"
     assert reject.url == "https://example.com/deduplication_sets/set-id/reject"
+    assert approve.url == "https://example.com/deduplication_sets/set-id/approve"
 
     assert isinstance(images, Images)
     assert isinstance(ready, Ready)
     assert isinstance(process, Process)
     assert isinstance(reject, Reject)
+    assert isinstance(approve, Approve)
 
 
 def test_deduplication_sets_endpoint() -> None:

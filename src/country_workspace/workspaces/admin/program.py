@@ -199,7 +199,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         return fieldsets
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
-        with make_dedup_client(program_id=program.unicef_id) as client:
+        with make_dedup_client(group_reference_id=program.unicef_id) as client:
             return client.get_deduplication_set_group_config()
 
     @display(description=_("Settings"))
@@ -594,7 +594,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
                 return response
 
             try:
-                with make_dedup_client(program_id=program.unicef_id) as client:
+                with make_dedup_client(group_reference_id=program.unicef_id) as client:
                     client.post_deduplication_set_group_config(payload=form.get_payload())
             except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(

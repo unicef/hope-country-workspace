@@ -19,7 +19,7 @@ def test_make_client(mocker: MockerFixture) -> None:
         DEDUP_API_URL=(url := "https://test.org"),
         DEDUP_API_TOKEN=(token := "token"),
     ):
-        with make_client(program_id := "PROGRAM_ID", deduplication_set_id := "SET_ID") as client:
+        with make_client(group_reference_id := "PROGRAM_ID", deduplication_set_id := "SET_ID") as client:
             assert client is client_cls.return_value
 
     session_cls.assert_called_once_with()
@@ -38,7 +38,7 @@ def test_make_client(mocker: MockerFixture) -> None:
     auth_cls.assert_called_once_with(token)
     api_root_cls.assert_called_once_with(url)
     client_cls.assert_called_once_with(
-        program_id=program_id,
+        group_reference_id=group_reference_id,
         session=session,
         api_root=api_root_cls.return_value,
         deduplication_set_id=deduplication_set_id,

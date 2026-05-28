@@ -36,6 +36,24 @@ def test_client_create_deduplication_set(
     assert client.deduplication_set_id == "NEW_SET_ID"
 
     collection_cls.assert_called_once_with(session, api_root.deduplication_sets)
+    collection_cls.return_value.create.assert_called_once_with({"reference_pk": "PROGRAM_ID", "id": "SET_ID"})
+
+
+def test_client_create_deduplication_set_without_deduplication_set_id(mocker: MockerFixture) -> None:
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls.return_value.create.return_value = payload = {
+        "id": "GENERATED_SET_ID",
+        "reference_pk": "PROGRAM_ID",
+        "state": "Empty",
+    }
+    session = mocker.MagicMock()
+    api_root = mocker.MagicMock()
+    client = Client("PROGRAM_ID", session, api_root)
+
+    assert client.create_deduplication_set() == payload
+    assert client.deduplication_set_id == "GENERATED_SET_ID"
+
+    collection_cls.assert_called_once_with(session, api_root.deduplication_sets)
     collection_cls.return_value.create.assert_called_once_with({"reference_pk": "PROGRAM_ID"})
 
 
@@ -103,8 +121,13 @@ def test_client_create_images(
             "country_workspace.contrib.dedup_engine.client.resource.RejectDeduplicationSetAction",
             "reject",
         ),
+        (
+            "approve",
+            "country_workspace.contrib.dedup_engine.client.resource.ApproveDeduplicationSetAction",
+            "approve",
+        ),
     ],
-    ids=["ready", "reject"],
+    ids=["ready", "reject", "approve"],
 )
 def test_client_actions(
     mocker: MockerFixture,

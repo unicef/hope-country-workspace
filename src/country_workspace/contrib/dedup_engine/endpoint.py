@@ -68,6 +68,9 @@ class Process(Endpoint): ...
 class Reject(Endpoint): ...
 
 
+class Approve(Endpoint): ...
+
+
 class DeduplicationSet(Endpoint):
     @property
     def images(self) -> Images:
@@ -84,6 +87,10 @@ class DeduplicationSet(Endpoint):
     @property
     def reject(self) -> Reject:
         return Reject(url_join(self.url, "reject"))
+
+    @property
+    def approve(self) -> Approve:
+        return Approve(url_join(self.url, "approve"))
 
 
 class DeduplicationSets(Endpoint):

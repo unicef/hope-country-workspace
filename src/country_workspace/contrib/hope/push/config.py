@@ -34,7 +34,8 @@ class PushWorkflowConfig(SelectionConfig):
     co_slug: ReadOnly[str]
     imported_by_email: ReadOnly[str]
     program_hope_id: ReadOnly[str]
-    rdp_id: NotRequired[int]
+    rdp_id: ReadOnly[int]
+    country_workspace_id: NotRequired[ReadOnly[str]]
 
 
 class Route(StrEnum):

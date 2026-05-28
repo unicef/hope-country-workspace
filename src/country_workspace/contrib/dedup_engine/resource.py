@@ -80,6 +80,12 @@ class RejectDeduplicationSetAction(
 ): ...
 
 
+class ApproveDeduplicationSetAction(
+    GenericResource[endpoint.Approve],
+    ActionMixin[None],
+): ...
+
+
 class DeduplicationSetGroupConfigItem(
     GenericResource[endpoint.DeduplicationSetGroupConfig],
     RetrieveMixin[response.DeduplicationSetGroupConfig],

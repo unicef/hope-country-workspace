@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from uuid import UUID
 from typing import Any
 
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
@@ -64,7 +63,7 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
     """Build push workflow config for an existing RDP."""
     master_detail, pks = rdp_selection(rdp=rdp)
     program = rdp.program
-    return {
+    config: PushWorkflowConfig = {
         "batch_name": rdp.name,
         "co_slug": program.country_office.slug,
         "imported_by_email": imported_by_email,
@@ -73,6 +72,9 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
         "program_hope_id": program.hope_id,
         "rdp_id": rdp.id,
     }
+    if program.biometric_deduplication_enabled and rdp.deduplication_set_id:
+        config["country_workspace_id"] = str(rdp.deduplication_set_id)
+    return config
 
 
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
@@ -158,11 +160,6 @@ def preflight_errors(
         .values_list("pk", "last_checked", "errors", "has_rdp")
     )
     return collect(household_rows, "HH") + errors
-
-
-def set_rdp_deduplication_set_id(*, rdp_id: int, deduplication_set_id: UUID) -> None:
-    """Persist deduplication set id for the given RDP."""
-    Rdp.objects.filter(pk=rdp_id).update(deduplication_set_id=deduplication_set_id)
 
 
 def set_rdp_push_status(

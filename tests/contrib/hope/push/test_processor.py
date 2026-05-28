@@ -96,7 +96,21 @@ def test_preflight_empty_is_ok(mocker: MockerFixture, processor: PushProcessor) 
 
 
 @pytest.mark.django_db
-def test_rdi_create_success(mocker: MockerFixture, processor: PushProcessor) -> None:
+@pytest.mark.parametrize(
+    ("country_workspace_id", "expected_extra"),
+    [
+        ("ds-1", {"country_workspace_id": "ds-1"}),
+        (None, {}),
+    ],
+    ids=["with_country_workspace_id", "without_country_workspace_id"],
+)
+def test_rdi_create_success(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    country_workspace_id: str | None,
+    expected_extra: dict,
+) -> None:
+    processor.country_workspace_id = country_workspace_id
     spy = mocker.patch.object(processor.api, "create_rdi", return_value={"id": "RID-1"})
 
     processor.rdi_create()
@@ -107,6 +121,7 @@ def test_rdi_create_success(mocker: MockerFixture, processor: PushProcessor) -> 
             "name": processor.batch_name,
             "program": processor.program_hope_id,
             "imported_by_email": processor.imported_by_email,
+            **expected_extra,
         }
     )
 
@@ -384,8 +399,8 @@ def test_prepare_individuals_batch_injects_id(
 
     assert ids == [10, 11]
     assert rows == [
-        {"a": 1, "individual_id": 10, "originating_id": 10},
-        {"b": 2, "individual_id": 11, "originating_id": 11},
+        {"a": 1, "country_workspace_id": 10, "originating_id": 10},
+        {"b": 2, "country_workspace_id": 11, "originating_id": 11},
     ]
 
 
@@ -401,7 +416,10 @@ def test_prepare_people_batch_plain(
     ids, rows = processor._prepare_people_batch([i1, i2])
 
     assert ids == [10, 11]
-    assert rows == [{"a": 1, "originating_id": 10}, {"b": 2, "originating_id": 11}]
+    assert rows == [
+        {"a": 1, "country_workspace_id": 10, "originating_id": 10},
+        {"b": 2, "country_workspace_id": 11, "originating_id": 11},
+    ]
 
 
 # ------------------------- response handlers ---------------------------
@@ -586,45 +604,84 @@ def test_run_with_uses_temporary_queryset(
 # ------------------------------ dedup ----------------------------------
 
 
-def test_dedup_run_with_existing_set_id(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
-    dedup_processor.rdp.deduplication_set_id = ds_id = uuid4()
-    spy = mocker.patch.object(dedup_processor, "process_existing_deduplication_set")
+def test_dedup_run_without_deduplication_set_id(dedup_processor: DedupProcessor, err_contains) -> None:
+    dedup_processor.rdp.deduplication_set_id = None
+
+    dedup_processor.run()
+
+    assert dedup_processor.total["images_sent"] == 0
+    assert dedup_processor.total["deduplication_set_id"] is None
+    assert err_contains(dedup_processor.total["errors"], "deduplication_set_id: is not set")
+
+
+def test_dedup_run_creates_new_set_when_de_can_create(
+    mocker: MockerFixture,
+    dedup_processor: DedupProcessor,
+    dedup_api_cm,
+) -> None:
+    ds_id = uuid4()
+    dedup_processor.rdp.deduplication_set_id = ds_id
+
+    client = mocker.MagicMock()
+    client.can_create_deduplication_set.return_value = True
+    make_client = mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    deduplicate = mocker.patch.object(dedup_processor, "deduplicate", return_value=3)
+
+    dedup_processor.run()
+
+    make_client.assert_called_once_with(dedup_processor.group_reference_id, deduplication_set_id=str(ds_id))
+    client.can_create_deduplication_set.assert_called_once_with()
+    deduplicate.assert_called_once_with(client, ds_id)
+    client.process.assert_not_called()
+    assert dedup_processor.total["images_sent"] == 3
+    assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
+
+
+def test_dedup_run_processes_existing_set_when_de_cannot_create(
+    mocker: MockerFixture,
+    dedup_processor: DedupProcessor,
+    dedup_api_cm,
+) -> None:
+    ds_id = uuid4()
+    dedup_processor.rdp.deduplication_set_id = ds_id
+
+    client = mocker.MagicMock()
+    client.can_create_deduplication_set.return_value = False
+    make_client = mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    run_remote = mocker.patch.object(dedup_processor, "run_remote", return_value=True)
     deduplicate = mocker.patch.object(dedup_processor, "deduplicate")
 
     dedup_processor.run()
 
-    spy.assert_called_once_with(ds_id)
+    make_client.assert_called_once_with(dedup_processor.group_reference_id, deduplication_set_id=str(ds_id))
+    client.can_create_deduplication_set.assert_called_once_with()
+    run_remote.assert_called_once_with("process_existing_deduplication_set", client.process)
     deduplicate.assert_not_called()
     assert dedup_processor.total["images_sent"] == 0
     assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
 
 
-def test_dedup_run_without_existing_set_id(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
-    dedup_processor.rdp.deduplication_set_id = None
-    ds_id = uuid4()
-    spy = mocker.patch.object(dedup_processor, "deduplicate", return_value=(ds_id, 3))
-
-    dedup_processor.run()
-
-    spy.assert_called_once_with()
-    assert dedup_processor.total["images_sent"] == 3
-    assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
-
-
-def test_process_existing_deduplication_set(
+def test_dedup_run_returns_when_can_create_check_failed(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
     dedup_api_cm,
 ) -> None:
+    ds_id = uuid4()
+    dedup_processor.rdp.deduplication_set_id = ds_id
+
     client = mocker.MagicMock()
     make_client = mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    spy = mocker.patch.object(dedup_processor, "run_remote", return_value=True)
-    ds_id = uuid4()
+    mocker.patch.object(dedup_processor, "try_remote", return_value=None)
+    deduplicate = mocker.patch.object(dedup_processor, "deduplicate")
+    run_remote = mocker.patch.object(dedup_processor, "run_remote")
 
-    dedup_processor.process_existing_deduplication_set(ds_id)
+    dedup_processor.run()
 
-    make_client.assert_called_once_with(dedup_processor.program_unicef_id, deduplication_set_id=str(ds_id))
-    spy.assert_called_once_with("process", client.process)
+    make_client.assert_called_once_with(dedup_processor.group_reference_id, deduplication_set_id=str(ds_id))
+    deduplicate.assert_not_called()
+    run_remote.assert_not_called()
+    assert dedup_processor.total["images_sent"] == 0
+    assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
 
 
 def test_iter_images_filters_empty_and_non_strings(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
@@ -649,52 +706,42 @@ def test_iter_images_filters_empty_and_non_strings(mocker: MockerFixture, dedup_
     ]
 
 
-def test_create_deduplication_set_id_success(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
+def test_create_deduplication_set_success(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
     client = mocker.MagicMock()
     ds_id = uuid4()
     client.create_deduplication_set.return_value = {"id": str(ds_id)}
 
-    assert dedup_processor.create_deduplication_set_id(client) == ds_id
+    assert dedup_processor.create_deduplication_set(client, ds_id) is True
 
 
-def test_create_deduplication_set_id_returns_none_when_remote_failed(
+def test_create_deduplication_set_returns_false_when_remote_failed(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
 ) -> None:
     client = mocker.MagicMock()
+    ds_id = uuid4()
     mocker.patch.object(dedup_processor, "try_remote", return_value=None)
 
-    assert dedup_processor.create_deduplication_set_id(client) is None
+    assert dedup_processor.create_deduplication_set(client, ds_id) is False
 
 
 @pytest.mark.parametrize(
     "payload",
-    [{}, {"id": ""}, {"id": None}],
-    ids=["empty", "blank_id", "none_id"],
+    [{}, {"id": ""}, {"id": None}, {"id": "other-id"}],
+    ids=["empty", "blank_id", "none_id", "mismatch"],
 )
-def test_create_deduplication_set_id_logs_missing_id(
+def test_create_deduplication_set_logs_id_mismatch(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
     payload: dict,
     err_contains,
 ) -> None:
     client = mocker.MagicMock()
+    ds_id = uuid4()
     client.create_deduplication_set.return_value = payload
 
-    assert dedup_processor.create_deduplication_set_id(client) is None
-    assert err_contains(dedup_processor.total["errors"], "response has no valid id")
-
-
-def test_create_deduplication_set_id_logs_invalid_uuid(
-    mocker: MockerFixture,
-    dedup_processor: DedupProcessor,
-    err_contains,
-) -> None:
-    client = mocker.MagicMock()
-    client.create_deduplication_set.return_value = {"id": "bad-uuid"}
-
-    assert dedup_processor.create_deduplication_set_id(client) is None
-    assert err_contains(dedup_processor.total["errors"], "returned invalid UUID")
+    assert dedup_processor.create_deduplication_set(client, ds_id) is False
+    assert err_contains(dedup_processor.total["errors"], "response id mismatch")
 
 
 def test_upload_images_success(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
@@ -768,36 +815,33 @@ def test_upload_images_stops_on_remote_error(
         client.ready.assert_called_once_with()
 
 
-def test_deduplicate_returns_none_when_create_set_failed(
+def test_deduplicate_stops_when_create_set_failed(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
-    dedup_api_cm,
 ) -> None:
     client = mocker.MagicMock()
-    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    mocker.patch.object(dedup_processor, "create_deduplication_set_id", return_value=None)
-    setter = mocker.patch(f"{MOD}.set_rdp_deduplication_set_id")
+    ds_id = uuid4()
+    mocker.patch.object(dedup_processor, "create_deduplication_set", return_value=False)
+    upload_images = mocker.patch.object(dedup_processor, "upload_images")
 
-    assert dedup_processor.deduplicate() == (None, 0)
-    setter.assert_not_called()
+    assert dedup_processor.deduplicate(client, ds_id) == 0
+
+    upload_images.assert_not_called()
+    client.process.assert_not_called()
 
 
 def test_deduplicate_stops_when_upload_failed(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
-    dedup_api_cm,
 ) -> None:
     client = mocker.MagicMock()
     ds_id = uuid4()
 
-    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    mocker.patch.object(dedup_processor, "create_deduplication_set_id", return_value=ds_id)
+    mocker.patch.object(dedup_processor, "create_deduplication_set", return_value=True)
     mocker.patch.object(dedup_processor, "upload_images", return_value=(False, 1))
-    setter = mocker.patch(f"{MOD}.set_rdp_deduplication_set_id")
 
-    assert dedup_processor.deduplicate() == (ds_id, 1)
+    assert dedup_processor.deduplicate(client, ds_id) == 1
 
-    setter.assert_called_once_with(rdp_id=dedup_processor.rdp.pk, deduplication_set_id=ds_id)
     client.process.assert_not_called()
 
 
@@ -809,7 +853,6 @@ def test_deduplicate_stops_when_upload_failed(
 def test_deduplicate_process_result(
     mocker: MockerFixture,
     dedup_processor: DedupProcessor,
-    dedup_api_cm,
     process_error: bool,
     err_contains,
 ) -> None:
@@ -818,14 +861,11 @@ def test_deduplicate_process_result(
         client.process.side_effect = RemoteError("boom")
 
     ds_id = uuid4()
-    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    mocker.patch.object(dedup_processor, "create_deduplication_set_id", return_value=ds_id)
+    mocker.patch.object(dedup_processor, "create_deduplication_set", return_value=True)
     mocker.patch.object(dedup_processor, "upload_images", return_value=(True, 2))
-    setter = mocker.patch(f"{MOD}.set_rdp_deduplication_set_id")
 
-    assert dedup_processor.deduplicate() == (ds_id, 2)
+    assert dedup_processor.deduplicate(client, ds_id) == 2
 
-    setter.assert_called_once_with(rdp_id=dedup_processor.rdp.pk, deduplication_set_id=ds_id)
     client.process.assert_called_once_with()
 
     if process_error:
