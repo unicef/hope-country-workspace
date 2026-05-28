@@ -9,6 +9,7 @@ from hope_smart_import.readers import open_xls_multi, SheetNotError
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as RDIImage
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.context import batch_ctx
 from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
@@ -16,8 +17,7 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
-from country_workspace.utils.import_processing import build_import_processor
-from country_workspace.utils.collector_linkage import sync_collector_links
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 from .config import Config, SheetName, Sheet
@@ -111,12 +111,10 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
     household_mapping_id = config.get("household_mapping_id")
-    household_transformer_id = config.get("household_transformer_id")
     transform_row = build_import_processor(
         program=job.program,
         model=Household,
         mapping_id=household_mapping_id,
-        transformer_id=household_transformer_id,
         source=Batch.BatchSource.RDI,
     )
 
@@ -151,12 +149,10 @@ def process_beneficiaries(
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
     individual_mapping_id = config.get("individual_mapping_id")
-    individual_transformer_id = config.get("individual_transformer_id")
     transform_row = build_import_processor(
         program=job.program,
         model=Individual,
         mapping_id=individual_mapping_id,
-        transformer_id=individual_transformer_id,
         source=Batch.BatchSource.RDI,
     )
 
@@ -212,6 +208,12 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
             else:
                 result = _import_people_only(job, batch, config)
 
+    run_batch_postprocessing(
+        batch,
+        household_transformer_id=config.get("household_transformer_id"),
+        individual_transformer_id=config.get("individual_transformer_id"),
+    )
+
     detect_and_mark_collisions_for_batch(batch)
 
     job.ensure_not_cancelled(refresh=True)
@@ -239,35 +241,33 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 
 def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
-
     household_mapping = process_households(household_sheet, job, batch, config)
     individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
     _sync_ind_pks(household_mapping, individuals_mapping)
-    sync_collector_links(batch.individual_set.filter(removed=False))
     return {"household": len(household_mapping), "individual": len(individuals_mapping)}
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-
     people_mapping = process_beneficiaries(people_sheet, job, batch, config)
-    sync_collector_links(batch.individual_set.filter(removed=False))
     return {"people": len(people_mapping)}
 
 
 def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
-    pk_mapping = {v.flex_fields.get("individual_id"): v.pk for _, v in individuals_mapping.items()}
+    pk_mapping = {
+        individual_ref: individual.pk
+        for individual in individuals_mapping.values()
+        if (individual_ref := individual.flex_fields.get("individual_id"))
+    }
 
-    for v in households_mapping.values():
-        hh_flex_fields = v.flex_fields.copy()
-        hh_flex_fields["head_of_household_id"] = pk_mapping.get(
-            v.flex_fields.get("head_of_household_id", v.flex_fields.get("head_of_household"))
-        )
-        hh_flex_fields["primary_collector_id"] = pk_mapping.get(
-            v.flex_fields.get("primary_collector_id", v.flex_fields.get("primary_collector"))
-        )
-        if alt_id := v.flex_fields.get("alternate_collector_id", v.flex_fields.get("alternate_collector")):
-            hh_flex_fields["alternate_collector_id"] = pk_mapping.get(alt_id)
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    for household in households_mapping.values():
+        flex_fields = household.flex_fields.copy()
+        flex_fields[fields.head_of_household] = pk_mapping.get(flex_fields.get(fields.head_of_household))
+        flex_fields[fields.primary_collector] = pk_mapping.get(flex_fields.get(fields.primary_collector))
 
-        v.flex_fields = hh_flex_fields
-        v.save(update_fields=["flex_fields"])
+        if alt_id := flex_fields.get(fields.alternate_collector):
+            flex_fields[fields.alternate_collector] = pk_mapping.get(alt_id)
+
+        household.flex_fields = flex_fields
+        household.save(update_fields=["flex_fields"])

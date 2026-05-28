@@ -186,12 +186,11 @@ class Program(BaseModel):
     def apply_mapping_importer(
         self,
         m: type[Validable] | Validable,
-        data: dict[str, str | int | bool],
+        data: dict[str, Any],
         mapping_id: int | None = None,
-        transformer_id: int | None = None,
-    ) -> dict[str, str | int | bool]:
-        """Apply mapping importer(s) first, then transformer(s)."""
-        from country_workspace.models import MappingImporter, Transformer
+    ) -> dict[str, Any]:
+        """Apply mapping importer(s)."""
+        from country_workspace.models import MappingImporter
 
         if mapping_id is not None:
             if importer := MappingImporter.objects.filter(id=mapping_id).first():
@@ -199,9 +198,6 @@ class Program(BaseModel):
         elif checker := self.get_checker_for(m):
             for importer in checker.mapping_importers.filter(office=self.country_office):
                 data = importer.apply(data)
-
-        if transformer_id is not None and (transformer := Transformer.objects.filter(id=transformer_id).first()):
-            data = transformer.apply(data)
         return data
 
     def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:

@@ -13,7 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
-
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.utils.auth import Auth
 from country_workspace.contrib.kobo.api.client.main import Client
 from country_workspace.contrib.kobo.api.common import DataGetter
@@ -22,9 +22,8 @@ from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
-from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_processing import build_import_processor
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -98,10 +97,9 @@ def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
 type Raw = dict[str, Any]
 
 
-def build_household_processor(  # noqa: PLR0913
+def build_household_processor(
     program: Program,
     mapping_id: int | None,
-    transformer_id: int | None,
     *,
     apply_defaults: bool = True,
     apply_mapping: bool = True,
@@ -113,7 +111,6 @@ def build_household_processor(  # noqa: PLR0913
             program=program,
             model=Household,
             mapping_id=mapping_id,
-            transformer_id=transformer_id,
             fields_to_uppercase=HOUSEHOLD_FIELDS_TO_UPPERCASE,
             pre_processors=(normalize_json,),
             post_processors=post_processors,
@@ -124,10 +121,9 @@ def build_household_processor(  # noqa: PLR0913
     )
 
 
-def build_individual_processor(  # noqa: PLR0913
+def build_individual_processor(
     program: Program,
     mapping_id: int | None,
-    transformer_id: int | None,
     *,
     apply_defaults: bool = True,
     apply_mapping: bool = True,
@@ -139,7 +135,6 @@ def build_individual_processor(  # noqa: PLR0913
             program=program,
             model=Individual,
             mapping_id=mapping_id,
-            transformer_id=transformer_id,
             fields_to_uppercase=INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
             pre_processors=(normalize_json,),
             post_processors=post_processors,
@@ -164,14 +159,12 @@ def create_individuals(  # noqa: PLR0913
 ) -> list[Individual]:
     individuals = []
     individual_mapping_id = config.get("individual_mapping_id")
-    individual_transformer_id = config.get("individual_transformer_id")
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
         individual_fields = build_individual_processor(
             batch.program,
             individual_mapping_id,
-            individual_transformer_id,
         )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         individuals.append(
@@ -196,12 +189,10 @@ def create_household(
     originating_id: str,
 ) -> Household:
     household_mapping_id = config.get("household_mapping_id")
-    household_transformer_id = config.get("household_transformer_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
     household_fields = build_household_processor(
         batch.program,
         household_mapping_id,
-        household_transformer_id,
     )(raw_household_fields)
     household_fields["household_id"] = id_generator()
     return cast(
@@ -234,15 +225,13 @@ def _is_head_of_household(individual: Individual) -> bool:
 
 
 def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
     if primary_collector := next(filter(_is_primary_collector, individuals), None):
-        household.flex_fields["primary_collector_id"] = getattr(primary_collector, "id", None)
-
+        household.flex_fields[fields.primary_collector] = primary_collector.id
     if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
-        household.flex_fields["alternate_collector_id"] = getattr(alternate_collector, "id", None)
-
+        household.flex_fields[fields.alternate_collector] = alternate_collector.id
     if head_of_household := next(filter(_is_head_of_household, individuals), None):
-        household.flex_fields["head_of_household_id"] = getattr(head_of_household, "id", None)
-
+        household.flex_fields[fields.head_of_household] = head_of_household.id
     household.save(update_fields=["flex_fields"])
 
 
@@ -271,7 +260,6 @@ def check_for_alien_fields(
     household_fields = build_household_processor(
         batch.program,
         mapping_id=None,
-        transformer_id=None,
         apply_defaults=False,
         apply_mapping=False,
         post_processors=(mapping_importer,),
@@ -290,7 +278,6 @@ def check_for_alien_fields(
         individual_fields = build_individual_processor(
             batch.program,
             mapping_id=None,
-            transformer_id=None,
             apply_defaults=False,
             apply_mapping=False,
             post_processors=(mapping_importer,),
@@ -458,20 +445,23 @@ def import_data(job: AsyncJob) -> ImportResult:
         job=job,
         timebox_seconds=timebox_seconds,
     )
-    sync_collector_links(batch.individual_set.filter(removed=False))  # type: ignore[attr-defined]
     household_counter += asset_import_result["households"]
     individual_counter += asset_import_result["individuals"]
 
-    if asset_import_result["completed"] and config.get("validate_after_import"):
-        job.ensure_not_cancelled(refresh=True)
-        create_validation_jobs(
-            description=f"Validate records for batch {batch.pk}",
-            owner=job.owner,
-            program=job.program,
-            queryset=batch.household_set.filter(removed=False).prefetch_related("members"),  # type: ignore[attr-defined]
-        )
-
     if asset_import_result["completed"]:
+        run_batch_postprocessing(
+            batch,
+            household_transformer_id=config.get("household_transformer_id"),
+            individual_transformer_id=config.get("individual_transformer_id"),
+        )
+        if config.get("validate_after_import"):
+            job.ensure_not_cancelled(refresh=True)
+            create_validation_jobs(
+                description=f"Validate records for batch {batch.pk}",
+                owner=job.owner,
+                program=job.program,
+                queryset=batch.household_set.filter(removed=False).prefetch_related("members"),  # type: ignore[attr-defined]
+            )
         job.ensure_not_cancelled(refresh=True)
         # Mark batch complete in a dedicated transaction.
         with transaction.atomic():

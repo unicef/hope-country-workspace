@@ -1,6 +1,7 @@
 import pytest
 
-from country_workspace.utils.document_columns import (
+from country_workspace.contrib.hope.constants import MAX_DOCUMENT_COLUMNS
+from country_workspace.utils.import_flow.document_columns import (
     DocumentColumnError,
     expand_document_columns,
     _resolve_document_type,
@@ -116,29 +117,29 @@ def test_multiple_documents() -> None:
     }
 
 
-def test_three_documents_max() -> None:
+def test_max_document_index_is_allowed() -> None:
     row = {
-        "document_1_type": "national_id",
-        "document_1_number": "111",
-        "document_1_country": "AF",
-        "document_2_type": "national_passport",
-        "document_2_number": "222",
-        "document_2_country": "AF",
-        "document_3_type": "national_id",
-        "document_3_number": "333",
-        "document_3_country": "PK",
+        f"document_{MAX_DOCUMENT_COLUMNS}_type": "national_id",
+        f"document_{MAX_DOCUMENT_COLUMNS}_number": "333",
+        f"document_{MAX_DOCUMENT_COLUMNS}_country": "PK",
     }
+
     result = expand_document_columns(row)
-    assert "national_id_document_number" in result
-    assert "national_passport_document_number" in result
+
+    assert result == {
+        "national_id_document_number": "333",
+        "national_id_country": "PK",
+    }
 
 
 def test_index_exceeds_max_raises() -> None:
+    idx = MAX_DOCUMENT_COLUMNS + 1
     row = {
-        "document_4_type": "national_id",
-        "document_4_number": "123",
-        "document_4_country": "AF",
+        f"document_{idx}_type": "national_id",
+        f"document_{idx}_number": "123",
+        f"document_{idx}_country": "AF",
     }
+
     with pytest.raises(DocumentColumnError, match="exceeds maximum"):
         expand_document_columns(row)
 

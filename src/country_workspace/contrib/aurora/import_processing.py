@@ -5,15 +5,15 @@ from collections.abc import Mapping
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
+from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.contrib.aurora.exceptions import AuroraAlienFieldError
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.collector_linkage import sync_collector_links
 from country_workspace.utils.imports import get_aurora_originating_id
-from country_workspace.utils.import_processing import build_import_processor
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
 
 logger = logging.getLogger(__name__)
@@ -60,28 +60,25 @@ def import_data(job: AsyncJob) -> ImportResult:
         total_households += imported.households
 
     job.ensure_not_cancelled(refresh=True)
-    sync_collector_links(batch.individual_set.filter(removed=False))  # type: ignore[attr-defined]
+
+    run_batch_postprocessing(
+        batch,
+        household_transformer_id=config.get("household_transformer_id"),
+        individual_transformer_id=config.get("individual_transformer_id"),
+    )
+
+    job.ensure_not_cancelled(refresh=True)
+    if config.get("validate_after_import"):
+        create_validation_jobs(
+            description=f"Validate records for batch {batch.pk}",
+            owner=job.owner,
+            program=job.program,
+            queryset=_validation_queryset(batch, config),
+        )
+
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])
     return ImportResult(people=total_people, households=total_households)
-
-
-# TODO(Data): This function and related tests should be removed!
-def check_alien_fields(fields: dict, program: Program, transformer_id: int | None = None) -> None:
-    if not program.individual_checker:
-        return
-
-    transform_individual_row = build_individual_transform(
-        program,
-        mapping_id=None,
-        transformer_id=transformer_id,
-    )
-    flex_fields = set(transform_individual_row(fields).keys())
-    dc_fields = {f.name for _, f in program.individual_checker.get_fields()}
-
-    if not flex_fields.issubset(dc_fields):
-        aliens = flex_fields - dc_fields
-        raise AuroraAlienFieldError(aliens)
 
 
 def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
@@ -139,17 +136,16 @@ def create_individual(
     **extras: Any,
 ) -> Individual:
     row = record.get("fields", record)
-    transform_individual_row = build_individual_transform(
+    individual_row_processor = build_individual_processor(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
-        transformer_id=config.get("individual_transformer_id"),
     )
     extras.setdefault("household", None)
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=transform_individual_row(row),
+        flex_fields=individual_row_processor(row),
         raw_data=record,
         **extras,
     )
@@ -157,16 +153,15 @@ def create_individual(
 
 def create_household(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Household:
     row = record.get("fields", record)
-    transform_household_row = build_household_transform(
+    household_row_processor = build_household_processor(
         batch.program,
         mapping_id=config.get("household_mapping_id"),
-        transformer_id=config.get("household_transformer_id"),
     )
     return Household.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=transform_household_row(row),
+        flex_fields=household_row_processor(row),
         raw_data=record,
     )
 
@@ -214,8 +209,8 @@ def create_household_and_individuals(
                 household=household,
             )
             people_counter += 1
-        except Exception as exception:  # noqa: BLE001
-            logger.error("Error creating individual %s: %s", str(idx), str(exception))
+        except Exception as exc:
+            raise ImportError(f"Failed to create Aurora individual #{idx} for record {originating_id}") from exc
 
     return 1, people_counter
 
@@ -254,29 +249,33 @@ def make_full_name(row: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
     return row
 
 
-def build_individual_transform(
-    program: Program, mapping_id: int | None = None, transformer_id: int | None = None
+def build_individual_processor(
+    program: Program, mapping_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return build_import_processor(
         program=program,
         model=Individual,
         mapping_id=mapping_id,
-        transformer_id=transformer_id,
         pre_processors=(flatten_top2_prefixed,),
         post_processors=(make_full_name,),
         source=Batch.BatchSource.AURORA,
     )
 
 
-def build_household_transform(
-    program: Program, mapping_id: int | None = None, transformer_id: int | None = None
+def build_household_processor(
+    program: Program, mapping_id: int | None = None
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return build_import_processor(
         program=program,
         model=Household,
         mapping_id=mapping_id,
-        transformer_id=transformer_id,
         pre_processors=(flatten_top2_prefixed,),
         post_processors=(make_full_name,),
         source=Batch.BatchSource.AURORA,
     )
+
+
+def _validation_queryset(batch: Batch, config: Config) -> QuerySet[Household | Individual]:
+    if config.get("master_detail"):
+        return batch.household_set.filter(removed=False).prefetch_related("members")
+    return batch.individual_set.filter(household__isnull=True, removed=False)

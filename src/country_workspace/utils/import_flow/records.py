@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
@@ -7,8 +5,8 @@ from typing import Any
 from constance import config as constance_config
 
 from country_workspace.models import Batch, Household, Individual, Program
-from country_workspace.utils.document_columns import expand_document_columns
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS, clean_field_names
+from .document_columns import expand_document_columns
 
 Processor = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -61,7 +59,6 @@ def process_import_record(  # noqa: PLR0913
     program: Program,
     model: type[Household | Individual],
     mapping_id: int | None = None,
-    transformer_id: int | None = None,
     fields_to_uppercase: Iterable[str] | None = None,
     pre_processors: Iterable[Processor] | None = None,
     post_processors: Iterable[Processor] | None = None,
@@ -77,7 +74,7 @@ def process_import_record(  # noqa: PLR0913
 
     data = dict(clean_field_names(data, fields_to_uppercase=fields_to_uppercase or TO_UPPERCASE_FIELDS))
     if apply_mapping:
-        data = program.apply_mapping_importer(model, data, mapping_id=mapping_id, transformer_id=transformer_id)
+        data = program.apply_mapping_importer(model, data, mapping_id=mapping_id)
 
     data = expand_document_columns(data)
 
@@ -99,7 +96,6 @@ def build_import_processor(  # noqa: PLR0913
     program: Program,
     model: type[Household | Individual],
     mapping_id: int | None = None,
-    transformer_id: int | None = None,
     fields_to_uppercase: Iterable[str] | None = None,
     pre_processors: Iterable[Processor] | None = None,
     post_processors: Iterable[Processor] | None = None,
@@ -114,7 +110,6 @@ def build_import_processor(  # noqa: PLR0913
             program=program,
             model=model,
             mapping_id=mapping_id,
-            transformer_id=transformer_id,
             fields_to_uppercase=fields_to_uppercase,
             pre_processors=pre_processors,
             post_processors=post_processors,
