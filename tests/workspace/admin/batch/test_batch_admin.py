@@ -1,9 +1,14 @@
+import io
+import zipfile
+
 import pytest
 from strategy_field.utils import fqn
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory
 
 from country_workspace.models import AsyncJob
 from country_workspace.workspaces.admin.batch import BatchReprocessForm
+from country_workspace.workspaces.admin.batch.picture_import import BatchPictureImportService
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
 
@@ -154,6 +159,60 @@ def test_reprocess_button_returns_404_for_missing_batch(batch_admin, rf: Request
 
     assert response.status_code == 404
     assert response.content == b"Batch not found"
+
+
+def test_extract_zip_images_skips_duplicate_picture_keys() -> None:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("ABC.jpg", b"jpg-data")
+        archive.writestr("abc.png", b"png-data")
+        archive.writestr("notes.txt", b"ignored")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+    entries, duplicate_keys = BatchPictureImportService.extract_zip_images(upload)
+
+    assert [item["filename"] for item in entries] == ["ABC.jpg"]
+    assert duplicate_keys == {"abc"}
+
+
+def test_build_picture_import_preview_matches_by_raw_data_field(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    john = CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-001"})
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-002"})
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("A-001.jpg", b"john-face")
+        archive.writestr("MISSING.jpg", b"missing")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+    report = BatchPictureImportService(batch).build_preview("beneficiary_id", upload)
+
+    assert report["total_picture_files"] == 2
+    assert report["total_records"] >= 2
+    assert report["matched_records_count"] == 1
+    assert report["matched_files_count"] == 1
+    assert report["assignments"][0]["record_id"] == john.pk
+    assert report["assignments"][0]["filename"] == "A-001.jpg"
+    assert report["unmatched_filenames"] == ["MISSING.jpg"]
+
+
+def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": ""})
+
+    updated = BatchPictureImportService.apply_assignments(
+        "photo",
+        [{"record_id": individual.pk, "data_uri": "data:image/jpeg;base64,Zm9v"}],
+    )
+
+    individual.refresh_from_db()
+    assert updated == 1
+    assert individual.flex_fields["photo"] == "data:image/jpeg;base64,Zm9v"
 
 
 @pytest.mark.parametrize(

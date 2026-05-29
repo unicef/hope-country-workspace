@@ -1,0 +1,121 @@
+{% extends 'workspace/_base.html' %}
+{% load i18n %}
+{% block breadcrumbs %}
+{% endblock breadcrumbs %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block">
+                <h1 class="text-2xl">
+                    {% translate "Import Pictures" %}
+                </h1>
+                <div class="block p-5">
+                    <h2>
+                        {% blocktranslate with batch_name=batch.name %}
+                            Batch: {{ batch_name }}
+                        {% endblocktranslate %}
+                    </h2>
+                    {% if step == "1" %}
+                        <p class="mt-2">
+                            {% translate "Step 1: upload a zip of pictures, choose the raw-data key used for matching, and choose the target image/document field to update." %}
+                        </p>
+                        <form method="post" enctype="multipart/form-data" class="mt-5">
+                            {% csrf_token %}
+                            {% if form.errors %}
+                                <div class="error">
+                                    <p class="errornote">
+                                        {% translate "Please correct the errors below." %}
+                                    </p>
+                                </div>
+                            {% endif %}
+                            <fieldset class="module aligned">
+                                {% for field in form %}
+                                    <div class="form-row {% if field.errors %}errors{% endif %}">
+                                        <div>
+                                            <label for="{{ field.id_for_label }}" class="required">
+                                                {{ field.label }}:
+                                            </label>
+                                            {{ field }}
+                                            {% if field.help_text %}
+                                                <p class="help">
+                                                    {{ field.help_text }}
+                                                </p>
+                                            {% endif %}
+                                            {% if field.errors %}
+                                                <ul class="errorlist">
+                                                    {% for error in field.errors %}
+                                                        <li>
+                                                            {{ error }}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </fieldset>
+                            <div class="mt-10">
+                                <input type="hidden" name="preview" value="yes" />
+                                <input type="submit" class="button default" value="{% translate 'Run matching' %}" />
+                                <input type="button" class="button closelink" onclick="javascript:history.back()" value="{% translate 'Go Back' %}" />
+                            </div>
+                        </form>
+                    {% elif step == "2" and report %}
+                        <p class="mt-2">
+                            {% translate "Step 2: matching report." %}
+                        </p>
+                        <ul class="mt-4">
+                            <li>
+                                {% blocktranslate with n=report.total_picture_files %}
+                                    Number of picture files in zip: {{ n }}
+                                {% endblocktranslate %}
+                            </li>
+                            <li>
+                                {% blocktranslate with n=report.total_records %}
+                                    Number of records/individuals in batch: {{ n }}
+                                {% endblocktranslate %}
+                            </li>
+                            <li>
+                                {% blocktranslate with matched=report.matched_records_count total=report.total_picture_files %}
+                                    Number of matching records: {{ matched }}/{{ total }}
+                                {% endblocktranslate %}
+                            </li>
+                        </ul>
+                        {% if report.duplicate_zip_keys %}
+                            <p class="mt-4">
+                                {% translate "Duplicate filenames (same key) in zip were skipped:" %}
+                                {{ report.duplicate_zip_keys|join:", " }}
+                            </p>
+                        {% endif %}
+                        {% if report.ambiguous_record_keys %}
+                            <p class="mt-2">
+                                {% translate "Ambiguous matches (same key found on multiple records) were skipped:" %}
+                                {{ report.ambiguous_record_keys|join:", " }}
+                            </p>
+                        {% endif %}
+                        {% if report.unmatched_filenames %}
+                            <p class="mt-2">
+                                {% translate "Unmatched files:" %}
+                                {{ report.unmatched_filenames|join:", " }}
+                            </p>
+                        {% endif %}
+                        <form method="post" class="mt-6">
+                            {% csrf_token %}
+                            <input type="hidden" name="token" value="{{ token }}" />
+                            <input type="hidden" name="confirm" value="yes" />
+                            <input type="submit" class="button default" value="{% translate 'Confirm import' %}" />
+                            <a class="button" href="{{ request.path }}">{% translate "Start over" %}</a>
+                        </form>
+                    {% else %}
+                        <p class="mt-2">
+                            {% translate "Step 3: confirmation." %}
+                        </p>
+                        <p class="mt-2">
+                            {% translate "Import completed." %}
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

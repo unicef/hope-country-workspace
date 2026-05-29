@@ -1,3 +1,5 @@
+import uuid
+import zipfile
 from typing import Any
 
 from admin_extra_buttons.buttons import LinkButton
@@ -5,6 +7,7 @@ from admin_extra_buttons.decorators import button, link
 from django import forms
 from django.contrib import messages
 from django.contrib.admin import register
+from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -16,10 +19,11 @@ from country_workspace.models import AsyncJob, MappingImporter, Program, Transfo
 from ....state import state
 from ...models import CountryBatch
 from ...options import WorkspaceModelAdmin
-from ...permissions import can_reprocess_batch
+from ...permissions import can_import_program_data, can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from ..hh_ind import SelectedProgramMixin
+from .picture_import import BatchPictureImportService
 from .reprocessing import reprocess_batch as reprocess_batch_task
 
 
@@ -90,6 +94,46 @@ class BatchReprocessForm(forms.Form):
                 self.fields.pop("individual_mapping", None)
 
 
+BATCH_PICTURE_IMPORT_SESSION_KEY = "batch_picture_import"
+
+
+class BatchPictureImportForm(forms.Form):
+    zip_file = forms.FileField(
+        label=_("Pictures ZIP file"),
+        help_text=_(
+            "Upload a .zip archive containing picture files. The filename (without extension) is used for matching."
+        ),
+    )
+    match_field = forms.ChoiceField(
+        label=_("Record key field (from raw data)"),
+        choices=(),
+        help_text=_("Field used to match each picture filename to individuals in this batch."),
+    )
+    target_field = forms.ChoiceField(
+        label=_("Target image field"),
+        choices=(),
+        help_text=_("Image field to update on matched individuals (photo/document image field)."),
+    )
+
+    def __init__(
+        self,
+        *args: Any,
+        match_field_choices: list[tuple[str, str]] | None = None,
+        target_field_choices: list[tuple[str, str]] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["match_field"].choices = match_field_choices or []
+        self.fields["target_field"].choices = target_field_choices or []
+
+    def clean_zip_file(self) -> UploadedFile:
+        zip_file: UploadedFile = self.cleaned_data["zip_file"]
+        if not zipfile.is_zipfile(zip_file):
+            raise forms.ValidationError(_("Please upload a valid zip archive."))
+        zip_file.seek(0)
+        return zip_file
+
+
 @register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ["name", "import_date", "imported_by", "source", "status"]
@@ -118,6 +162,144 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
         return False
+
+    @staticmethod
+    def _session_payloads(request: HttpRequest) -> dict[str, dict[str, Any]]:
+        payloads = request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY, {})
+        if isinstance(payloads, dict):
+            return payloads
+        return {}
+
+    def _get_picture_import_payload(self, request: HttpRequest, token: str, batch_id: int) -> dict[str, Any] | None:
+        payloads = self._session_payloads(request)
+        payload = payloads.get(token)
+        if not payload:
+            return None
+        if payload.get("batch_id") != batch_id:
+            return None
+        return payload
+
+    def _save_picture_import_payload(self, request: HttpRequest, token: str, payload: dict[str, Any]) -> None:
+        payloads = self._session_payloads(request)
+        payloads[token] = payload
+        request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
+        request.session.modified = True
+
+    def _clear_picture_import_payload(self, request: HttpRequest, token: str) -> None:
+        payloads = self._session_payloads(request)
+        payloads.pop(token, None)
+        request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
+        request.session.modified = True
+
+    @button(
+        change_list=False,
+        permission=can_import_program_data,
+        html_attrs={"title": "Import pictures from zip and assign by matching key."},
+    )
+    def import_pictures(self, request: HttpRequest, pk: str) -> HttpResponse:  # noqa: C901, PLR0912
+        obj: CountryBatch | None = self.get_object(request, pk)
+        if not obj:
+            return HttpResponse("Batch not found", status=404)
+
+        def redirect_to_change() -> HttpResponseRedirect:
+            return HttpResponseRedirect(obj.get_change_url(namespace=self.admin_site.name))
+
+        service = BatchPictureImportService(obj)
+        match_field_choices = service.get_match_field_choices()
+        target_field_choices = service.get_target_field_choices()
+        response: HttpResponse | None = None
+        report: dict[str, Any] | None = None
+        step = "1"
+        token = request.POST.get("token") or request.GET.get("token")
+        form = BatchPictureImportForm(
+            match_field_choices=match_field_choices,
+            target_field_choices=target_field_choices,
+        )
+
+        if not match_field_choices:
+            self.message_user(
+                request,
+                _("Cannot import pictures: no raw data keys were found in this batch."),
+                messages.ERROR,
+            )
+            response = redirect_to_change()
+        elif not target_field_choices:
+            self.message_user(
+                request,
+                _("Cannot import pictures: no image/document fields are available in the individual checker."),
+                messages.ERROR,
+            )
+            response = redirect_to_change()
+        elif request.method == "POST" and "preview" in request.POST:
+            form = BatchPictureImportForm(
+                request.POST,
+                request.FILES,
+                match_field_choices=match_field_choices,
+                target_field_choices=target_field_choices,
+            )
+            if form.is_valid():
+                preview = service.build_preview(form.cleaned_data["match_field"], form.cleaned_data["zip_file"])
+                token = str(uuid.uuid4())
+                self._save_picture_import_payload(
+                    request,
+                    token,
+                    {
+                        "batch_id": obj.pk,
+                        "match_field": form.cleaned_data["match_field"],
+                        "target_field": form.cleaned_data["target_field"],
+                        **preview,
+                    },
+                )
+                response = HttpResponseRedirect(f"{request.path}?step=2&token={token}")
+        elif request.method == "POST" and "confirm" in request.POST:
+            step = "3"
+            if not token:
+                self.message_user(request, _("Picture import confirmation is missing."), messages.ERROR)
+                response = HttpResponseRedirect(request.path)
+            else:
+                payload = self._get_picture_import_payload(request, token, obj.pk)
+                if not payload:
+                    self.message_user(
+                        request,
+                        _("Picture import session has expired. Please run the matching step again."),
+                        messages.ERROR,
+                    )
+                    response = HttpResponseRedirect(request.path)
+                else:
+                    updated = service.apply_assignments(payload["target_field"], payload["assignments"])
+                    self._clear_picture_import_payload(request, token)
+                    self.message_user(
+                        request,
+                        _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
+                        messages.SUCCESS,
+                    )
+                    response = redirect_to_change()
+        elif request.method == "GET" and request.GET.get("step") == "2" and token:
+            payload = self._get_picture_import_payload(request, token, obj.pk)
+            if not payload:
+                self.message_user(
+                    request,
+                    _("Picture import session has expired. Please upload the zip again."),
+                    messages.ERROR,
+                )
+                response = HttpResponseRedirect(request.path)
+            else:
+                report = payload
+                step = "2"
+
+        if not response:
+            context = self.get_common_context(
+                request,
+                pk=pk,
+                title="Import Pictures",
+                form=form,
+                batch=obj,
+                step=step,
+                report=report,
+                token=token,
+            )
+            response = render(request, "workspace/admin_extra_buttons/import_pictures_form.html", context)
+        return response
 
     @link(change_list=False, html_attrs={"title": "Shows related Household records."})
     def imported_records(self, btn: LinkButton) -> None:
