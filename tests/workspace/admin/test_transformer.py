@@ -173,7 +173,10 @@ class TestRunOnExistingRecords:
 
     def test_returns_404_when_transformer_not_found(self, transformer_admin):
         request = self._build_request()
-        with patch.object(transformer_admin, "get_object", return_value=None):
+        with patch(
+            "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
+            return_value=None,
+        ):
             response = transformer_admin.run_on_existing_records(request, "123")
         assert response.status_code == 404
 
@@ -184,7 +187,10 @@ class TestRunOnExistingRecords:
         state.program = MagicMock()
 
         with (
-            patch.object(transformer_admin, "get_object", return_value=transformer),
+            patch(
+                "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
+                return_value=transformer,
+            ),
             patch(
                 "country_workspace.workspaces.admin.transformer.render", return_value=HttpResponse("ok")
             ) as mock_render,
@@ -204,7 +210,10 @@ class TestRunOnExistingRecords:
         mock_form.is_valid.return_value = False
 
         with (
-            patch.object(transformer_admin, "get_object", return_value=transformer),
+            patch(
+                "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
+                return_value=transformer,
+            ),
             patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
             patch.object(transformer_admin, "message_user") as mock_message_user,
             patch("country_workspace.workspaces.admin.transformer.render", return_value=HttpResponse("ok")),
@@ -230,9 +239,15 @@ class TestRunOnExistingRecords:
         }
 
         with (
-            patch.object(transformer_admin, "get_object", return_value=transformer),
+            patch(
+                "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
+                return_value=transformer,
+            ),
             patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
-            patch.object(transformer_admin, "get_change_url", return_value="/change/") as mock_get_change_url,
+            patch(
+                "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_change_url",
+                return_value="/change/",
+            ) as mock_get_change_url,
             patch.object(transformer_admin, "message_user") as mock_message_user,
         ):
             response = transformer_admin.run_on_existing_records(request, "1")
@@ -259,7 +274,10 @@ class TestRunOnExistingRecords:
         job = MagicMock()
 
         with (
-            patch.object(transformer_admin, "get_object", return_value=transformer),
+            patch(
+                "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
+                return_value=transformer,
+            ),
             patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
             patch(
                 "country_workspace.workspaces.admin.transformer.AsyncJob.objects.create", return_value=job
