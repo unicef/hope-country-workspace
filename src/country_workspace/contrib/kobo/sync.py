@@ -90,6 +90,13 @@ def extract_household_data(submission: Submission, individual_records_field: str
     return {key: value for key, value in submission.items() if key != individual_records_field}
 
 
+KOBO_SYS_FIELD_PREFIX = "kobo_sys__"
+
+
+def filter_kobo_sys_fields(data: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in data.items() if not key.split("/")[-1].startswith(KOBO_SYS_FIELD_PREFIX)}
+
+
 def normalize_json(data: dict[str, Any]) -> dict[str, Any]:
     return {key.split("/")[-1]: value for key, value in data.items()}
 
@@ -112,7 +119,7 @@ def build_household_processor(
             model=Household,
             mapping_id=mapping_id,
             fields_to_uppercase=HOUSEHOLD_FIELDS_TO_UPPERCASE,
-            pre_processors=(normalize_json,),
+            pre_processors=(filter_kobo_sys_fields, normalize_json),
             post_processors=post_processors,
             apply_defaults=apply_defaults,
             apply_mapping=apply_mapping,
@@ -136,7 +143,7 @@ def build_individual_processor(
             model=Individual,
             mapping_id=mapping_id,
             fields_to_uppercase=INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
-            pre_processors=(normalize_json,),
+            pre_processors=(filter_kobo_sys_fields, normalize_json),
             post_processors=post_processors,
             apply_defaults=apply_defaults,
             apply_mapping=apply_mapping,
