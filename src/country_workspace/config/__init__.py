@@ -200,8 +200,8 @@ CONFIG: "dict[str, ConfigItem]" = {
     "DEBUG_API_REQUESTS": (bool, False, False),
     "BITCASTER_API_URL": (str, "", "http://localhost:8002", False, "Bitcaster API URL"),
     "BITCASTER_API_KEY": (str, "", "", False, "Bitcaster API key"),
-    "BITCASTER_ORGANIZATION_SLUG": (str, "", "organization", False, "Bitcaster organization slug"),
-    "BITCASTER_PROJECT_SLUG": (str, "", "hcw", False, "Bitcaster project slug"),
+    "BITCASTER_ORGANIZATION_SLUG": (str, "unicef", "unicef", False, "Bitcaster organization slug"),
+    "BITCASTER_PROJECT_SLUG": (str, "hope", "hope", False, "Bitcaster project slug"),
     "BITCASTER_APPLICATION_SLUG": (str, "", "country-workspace", False, "Bitcaster application slug"),
 }
 
