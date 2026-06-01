@@ -2,7 +2,7 @@ from typing import Any
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
-from admin_extra_buttons.buttons import ButtonWidget, LinkButton
+from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import register
 from django.db import transaction
@@ -39,11 +39,11 @@ from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
 
-def _is_visible(btn: ButtonWidget, action: str) -> bool:
+def _is_visible(btn: StandardButton, action: str) -> bool:
     return bool((obj := btn.original) and getattr(get_rdp_policy(obj), action)())
 
 
-def _is_allowed(btn: ButtonWidget, action: str) -> bool:
+def _is_allowed(btn: StandardButton, action: str) -> bool:
     if (obj := btn.original) is None:
         return False
     try:
