@@ -16,6 +16,7 @@ from country_workspace.contrib.kobo.sync import (
     create_household,
     create_individuals,
     extract_household_data,
+    filter_kobo_sys_fields,
     import_asset,
     import_data,
     is_submission_data_url,
@@ -759,6 +760,18 @@ def test_get_fullname_key_key_does_not_exist() -> None:
     assert get_fullname_key(()) is None
 
 
+def test_filter_kobo_sys_fields() -> None:
+    data = {
+        "kobo_sys__foo": "ui_value",
+        "group/kobo_sys__bar": "nested_ui_value",
+        "group/Field": "value",
+        "relationship": "head",
+    }
+    filtered = filter_kobo_sys_fields(data)
+
+    assert filtered == {"group/Field": "value", "relationship": "head"}
+
+
 def test_build_individual_processor(mocker: MockerFixture) -> None:
     from country_workspace.models import Individual
 
@@ -770,10 +783,19 @@ def test_build_individual_processor(mocker: MockerFixture) -> None:
     program_mock.apply_default_fields.side_effect = lambda model, data: {**data, "defaulted": True}
 
     processor = build_individual_processor(program_mock, mapping_id=1)
-    result = processor({"group/Field": "value", "relationship": "head"})
+    result = processor(
+        {
+            "group/Field": "value",
+            "relationship": "head",
+            "kobo_sys__ui_field": "ignored",
+            "group/kobo_sys__nested_ui": "also_ignored",
+        }
+    )
 
     assert result["field"] == "value"
     assert result["relationship"] == "HEAD"
+    assert "kobo_sys__ui_field" not in result
+    assert "nested_ui" not in result
     assert result["mapped"] is True
     assert result["defaulted"] is True
 
