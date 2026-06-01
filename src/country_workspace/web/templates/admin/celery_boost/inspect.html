@@ -1,4 +1,5 @@
 {% extends "admin_extra_buttons/action_page.html" %}
+{% load celery_boost %}
 {% block action-content %}
     <h1>
         {{ original }}
@@ -12,14 +13,16 @@
     </h3>
     <table>
         {% for k,v in original.task_info.items %}
-            <tr>
-                <th>
-                    {{ k }}
-                </th>
-                <td>
-                    {{ v }}
-                </td>
-            </tr>
+            {% if k|is_celery_info_visible:user.is_superuser %}
+                <tr>
+                    <th>
+                        {{ k }}
+                    </th>
+                    <td>
+                        {{ v }}
+                    </td>
+                </tr>
+            {% endif %}
         {% endfor %}
         <tr>
             <th>

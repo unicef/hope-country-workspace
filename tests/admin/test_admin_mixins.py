@@ -6,8 +6,9 @@ from country_workspace.admin.mixins import JobErrorDisplayMixin
 
 
 class MockJob:
-    def __init__(self, result_id=None):
+    def __init__(self, result_id=None, task_info=None):
         self.curr_async_result_id = result_id
+        self.task_info = task_info or {}
 
 
 class TestJobErrorDisplayMixin:
@@ -17,6 +18,16 @@ class TestJobErrorDisplayMixin:
 
     def test_formatted_error_no_obj(self, mixin: JobErrorDisplayMixin):
         assert mixin.result(None) == ""
+
+    def test_error_no_obj(self, mixin: JobErrorDisplayMixin):
+        assert mixin.error(None) == ""
+
+    def test_error_empty_task_info(self, mixin: JobErrorDisplayMixin):
+        assert mixin.error(MockJob(task_info={})) == ""
+
+    def test_error_with_message(self, mixin: JobErrorDisplayMixin):
+        obj = MockJob(task_info={"error": "something went wrong"})
+        assert mixin.error(obj) == "something went wrong"
 
     def test_formatted_error_no_result_id(self, mixin):
         obj = MockJob(None)

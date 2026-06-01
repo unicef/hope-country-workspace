@@ -6,6 +6,13 @@ from django_celery_results.models import TaskResult
 
 
 class JobErrorDisplayMixin:
+    def error(self, obj: Any) -> str:
+        if not obj:
+            return ""
+        return obj.task_info.get("error", "")
+
+    error.short_description = "Error"
+
     def result(self, obj: Any) -> str:
         if not obj or not getattr(obj, "curr_async_result_id", None):
             return ""

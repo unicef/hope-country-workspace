@@ -38,8 +38,18 @@ class CountryJobAdmin(
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
     search_fields = ("description",)
-    fields = ("description", "result")
-    readonly_fields = ("result",)
+
+    def get_fields(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None) -> tuple[str, ...]:
+        fields: list[str] = ["description", "error"]
+        if request.user.is_superuser:
+            fields.append("result")
+        return tuple(fields)
+
+    def get_readonly_fields(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None) -> tuple[str, ...]:
+        readonly_fields: list[str] = ["error"]
+        if request.user.is_superuser:
+            readonly_fields.append("result")
+        return tuple(readonly_fields)
 
     def get_form(self, request: "HttpRequest", obj: "CountryAsyncJob | None" = None, **kwargs: Any) -> Any:
         form = super().get_form(request, obj, **kwargs)
