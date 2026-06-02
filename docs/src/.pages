@@ -9,5 +9,5 @@ nav:
   - Interfaces: interfaces.md
   - Data cleaning and updates: data_cleaning_updates.md
   - Data Import: import_data
-  - Data Validation : validation.md
+  - Data Validation : validation
   - Push Data to HOPE Core: push_data.md
