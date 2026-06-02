@@ -59,13 +59,12 @@ def _process_datachecker_change(dc: DataChecker) -> None:
 
 @receiver(post_save, sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
 @receiver(post_save, sender=FlexField, dispatch_uid="cw_on_flexfield_change")
-@receiver(post_save, sender=DataChecker, dispatch_uid="cw_on_datachecker_change")
 @receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
 @receiver(pre_save, sender=Program, dispatch_uid="cw_on_program_change")
 @receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_country_program_change")
-def invalidate_entities_on_datachecker_change(  # noqa: C901
-    sender: type[Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram],
-    instance: Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram,
+def invalidate_entities_on_datachecker_change(
+    sender: type[Fieldset | FlexField | DataCheckerFieldset | Program | CountryProgram],
+    instance: Fieldset | FlexField | DataCheckerFieldset | Program | CountryProgram,
     created: bool | None = None,
     **kwargs: Any,
 ) -> None:
@@ -77,8 +76,6 @@ def invalidate_entities_on_datachecker_change(  # noqa: C901
         dcs = instance.fieldset.datachecker_set.all().distinct()
         for dc in dcs:
             _process_datachecker_change(dc=dc)
-    elif isinstance(instance, DataChecker):
-        _process_datachecker_change(dc=instance)
     elif isinstance(instance, DataCheckerFieldset):
         dc = instance.checker
         _process_datachecker_change(dc=dc)

@@ -226,11 +226,11 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker, ind_dcfieldset):
         mocked.assert_called_once_with(dc=ind_datachecker)
 
 
-def test_datachecker_update_triggers_processing(hh_datachecker):
+def test_datachecker_update_does_not_trigger_processing(hh_datachecker):
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         hh_datachecker.description = "Updated"
         hh_datachecker.save(update_fields=["description"])
-        mocked.assert_called_once_with(dc=hh_datachecker)
+        mocked.assert_not_called()
 
 
 def test_flexfield_update_triggers_processing(hh_datachecker, hh_flexfield):
@@ -418,3 +418,26 @@ def test_signal_handler_ignores_unrecognised_instance_type():
     with patch("country_workspace.signals._process_program") as mock_process:
         invalidate_entities_on_datachecker_change(sender=_Unrelated, instance=_Unrelated())
         mock_process.assert_not_called()
+
+
+def test_datachecker_save_does_not_invalidate_entities(hh_datachecker, checked_household):
+    hh_datachecker.description = "Changed description"
+    hh_datachecker.save()
+
+    checked_household.refresh_from_db()
+    assert checked_household.last_checked == CHECKED
+    assert checked_household.errors == {}
+
+
+def test_collect_invalidations_deduplicates_multiple_signal_sources(program, hh_flexfield, checked_household):
+    fs = hh_flexfield.fieldset
+
+    with patch("country_workspace.signals._process_program") as mock_process:
+        with collect_invalidations():
+            hh_flexfield.attrs = {"label": "New"}
+            hh_flexfield.save(update_fields=["attrs"])
+
+            fs.description = "Updated"
+            fs.save(update_fields=["description"])
+
+        mock_process.assert_called_once_with(program=program)

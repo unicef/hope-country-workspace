@@ -45,7 +45,7 @@ GLOBAL_EXCLUDED_MODELS = RegexList(
 GLOBAL_EXCLUDED_BUTTONS = RegexList(
     [
         r"social.SocialProviderAdmin:test",
-        r"hope_flex_fields.FieldsetAdmin:detect_changes",
+        r"hope_flex_fields.CWFieldsetAdmin:detect_changes",
         r"country_workspace.CountryHouseholdAdmin:import_file",
         r".*:sync",
         r".*:create_xls_importer",
