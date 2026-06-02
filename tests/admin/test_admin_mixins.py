@@ -29,6 +29,43 @@ class TestJobErrorDisplayMixin:
         obj = MockJob(task_info={"error": "something went wrong"})
         assert mixin.error(obj) == "something went wrong"
 
+    def test_error_task_failure_takes_precedence_over_application_errors(self, mixin: JobErrorDisplayMixin):
+        data = {"errors": ["application error"]}
+        with patch("django_celery_results.models.TaskResult.objects.filter") as mock_filter:
+            mock_result = MagicMock()
+            mock_result.result = data
+            mock_filter.return_value.first.return_value = mock_result
+
+            obj = MockJob("task-id", task_info={"error": "task failed"})
+            assert mixin.error(obj) == "task failed"
+
+    def test_error_application_errors_from_result(self, mixin: JobErrorDisplayMixin):
+        data = {"errors": ["first error", "second error"], "rdp_id": 6}
+        with patch("django_celery_results.models.TaskResult.objects.filter") as mock_filter:
+            mock_result = MagicMock()
+            mock_result.result = data
+            mock_filter.return_value.first.return_value = mock_result
+
+            obj = MockJob("task-id", task_info={"error": ""})
+            result = mixin.error(obj)
+
+            assert "<pre>" in result
+            assert "first error" in result
+            assert "second error" in result
+
+    def test_error_empty_application_errors_list(self, mixin: JobErrorDisplayMixin):
+        data = {"errors": []}
+        with patch("django_celery_results.models.TaskResult.objects.filter") as mock_filter:
+            mock_result = MagicMock()
+            mock_result.result = data
+            mock_filter.return_value.first.return_value = mock_result
+
+            obj = MockJob("task-id", task_info={})
+            assert mixin.error(obj) == ""
+
+    def test_format_application_errors_non_dict(self, mixin: JobErrorDisplayMixin):
+        assert mixin._format_application_errors("not a dict") == ""
+
     def test_formatted_error_no_result_id(self, mixin):
         obj = MockJob(None)
         assert mixin.result(obj) == ""
