@@ -1,5 +1,6 @@
 from typing import Any
 
+from admin_extra_buttons.decorators import button
 from django.contrib import admin
 from django.http import HttpRequest, HttpResponse
 
@@ -35,11 +36,13 @@ class CWDataCheckerAdmin(CollectInvalidationsMixin, DataCheckerAdmin):
 
 @admin.register(Fieldset)
 class CWFieldsetAdmin(CollectInvalidationsMixin, FieldsetAdmin):
+    @button(label="Fields")
     def all_fields(self, request: HttpRequest, pk: str) -> HttpResponse:
+        impl = FieldsetAdmin.all_fields.func
         if request.method == "POST":
             with collect_invalidations():
-                return super().all_fields(request, pk)
-        return super().all_fields(request, pk)
+                return impl(self, request, pk)
+        return impl(self, request, pk)
 
 
 @admin.register(FlexField)
