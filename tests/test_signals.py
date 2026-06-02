@@ -4,7 +4,10 @@ import pytest
 from django.utils import timezone
 from hope_flex_fields.models import DataChecker
 from hope_flex_fields.models import DataCheckerFieldset
+from hope_flex_fields.models import Fieldset
 from strategy_field.utils import fqn
+from django.contrib.admin.sites import AdminSite
+from country_workspace.admin.flex_fields import CWFieldsetAdmin
 
 from country_workspace.contrib.hope.constants import (
     HOUSEHOLD_CHECKER_NAME,
@@ -441,3 +444,17 @@ def test_collect_invalidations_deduplicates_multiple_signal_sources(program, hh_
             fs.save(update_fields=["description"])
 
         mock_process.assert_called_once_with(program=program)
+
+
+def test_admin_fieldset_all_fields_post_uses_collect_invalidations(rf, hh_datachecker, hh_flexfield, program):
+    fs = hh_flexfield.fieldset
+    admin_instance = CWFieldsetAdmin(Fieldset, AdminSite())
+
+    request = rf.post(f"/admin/hope_flex_fields/fieldset/{fs.pk}/all_fields/")
+    request.user = type("U", (), {"is_authenticated": True, "has_perm": lambda *a: True})()
+
+    with patch("country_workspace.admin.flex_fields.FieldsetAdmin.all_fields") as mock_parent:
+        mock_parent.func = lambda self, request, pk: None
+        with patch("country_workspace.admin.flex_fields.collect_invalidations") as mock_ctx:
+            admin_instance.all_fields.func(admin_instance, request, str(fs.pk))
+            mock_ctx.assert_called_once()
