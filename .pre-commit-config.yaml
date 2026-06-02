@@ -12,7 +12,7 @@ repos:
         args: ["--configuration", "djlint.toml"]
 
   - repo: https://github.com/semgrep/semgrep
-    rev: v1.157.0
+    rev: v1.164.0
     hooks:
       - id: semgrep
 
@@ -40,18 +40,19 @@ repos:
 
 
   - repo: https://github.com/tox-dev/tox-ini-fmt
-    rev: "1.7.0"
+    rev: "1.7.1"
     hooks:
       - id: tox-ini-fmt
         args: [ "-p", "lint" ]
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "v2.21.0"
+    rev: "v2.21.2"
     hooks:
       - id: pyproject-fmt
+        additional_dependencies: ["toml-fmt-common==1.2.0"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
+    rev: v0.15.15
     hooks:
       - id: ruff
         args:
@@ -62,7 +63,7 @@ repos:
           - ruff.toml
 
   - repo: https://github.com/saxix/pch
-    rev: '0.2'
+    rev: '0.5'
     hooks:
 
       - id: check-missed-migrations

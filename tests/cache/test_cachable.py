@@ -5,7 +5,7 @@ import pytest
 from country_workspace.models.base import Cachable
 
 
-class TestCachableModel(Cachable):
+class CachableModelExample(Cachable):
     def __init__(self, pk, country_office, program):
         self.pk = pk
         self._country_office = country_office
@@ -36,7 +36,7 @@ def mock_program():
 
 @pytest.fixture
 def cachable_instance(mock_country_office, mock_program):
-    return TestCachableModel(pk=456, country_office=mock_country_office, program=mock_program)
+    return CachableModelExample(pk=456, country_office=mock_country_office, program=mock_program)
 
 
 def test_get_object_key_no_suffix(cachable_instance):
@@ -44,7 +44,7 @@ def test_get_object_key_no_suffix(cachable_instance):
         mock_version.return_value = "789"
         key = cachable_instance.get_object_key()
 
-        expected_parts = ["TestCachableModel", "789", "test-office", "123", "456", ""]
+        expected_parts = ["CachableModelExample", "789", "test-office", "123", "456", ""]
         assert key == ":".join(expected_parts)
 
         mock_version.assert_called_once_with(program=cachable_instance.program)
@@ -55,7 +55,7 @@ def test_get_object_key_with_suffix(cachable_instance):
         mock_version.return_value = "789"
         key = cachable_instance.get_object_key("test-suffix")
 
-        expected_parts = ["TestCachableModel", "789", "test-office", "123", "456", "test-suffix"]
+        expected_parts = ["CachableModelExample", "789", "test-office", "123", "456", "test-suffix"]
         assert key == ":".join(expected_parts)
 
         mock_version.assert_called_once_with(program=cachable_instance.program)
