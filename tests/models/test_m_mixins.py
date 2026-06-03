@@ -35,28 +35,42 @@ def test_get_grouping_info_empty_members(mixin_instance, mock_checker):
 
 
 def test_get_grouping_info_with_group(mixin_instance, mock_checker):
-    member1 = Mock(prefix="prefix1", group="group1", fieldset=Mock(group="fieldset_group1"))
-    member2 = Mock(prefix="prefix2", group="group1", fieldset=Mock(group="fieldset_group2"))
-    member3 = Mock(prefix="prefix3", group="group2", fieldset=Mock(group="fieldset_group3"))
+    member1 = Mock(prefix="prefix1_", group="group1", fieldset=Mock(group="fieldset_group1"))
+    member2 = Mock(prefix="prefix2_", group="group1", fieldset=Mock(group="fieldset_group2"))
+    member3 = Mock(prefix="prefix3_", group="group2", fieldset=Mock(group="fieldset_group3"))
+
+    member1.fieldset.get_prefixed_field_map.return_value = {"field1": "prefix1_field1"}
+    member2.fieldset.get_prefixed_field_map.return_value = {"field1": "prefix2_field1"}
+    member3.fieldset.get_prefixed_field_map.return_value = {"field1": "prefix3_field1"}
 
     mock_checker.members.select_related.return_value.all.return_value = [member1, member2, member3]
 
-    result = mixin_instance.get_grouping_info()
-
-    expected = {"group1": ["prefix1", "prefix2"], "group2": ["prefix3"]}
-    assert result == expected
+    assert mixin_instance.get_grouping_info() == {
+        "group1": [
+            ("prefix1_", {"field1": "prefix1_field1"}),
+            ("prefix2_", {"field1": "prefix2_field1"}),
+        ],
+        "group2": [
+            ("prefix3_", {"field1": "prefix3_field1"}),
+        ],
+    }
 
 
 def test_get_grouping_info_with_fieldset_group(mixin_instance, mock_checker):
-    member1 = Mock(prefix="prefix1", group=None, fieldset=Mock(group="fieldset_group1"))
-    member2 = Mock(prefix="prefix2", group=None, fieldset=Mock(group="fieldset_group1"))
+    member1 = Mock(prefix="prefix1_", group=None, fieldset=Mock(group="fieldset_group1"))
+    member2 = Mock(prefix="prefix2_", group=None, fieldset=Mock(group="fieldset_group1"))
+
+    member1.fieldset.get_prefixed_field_map.return_value = {"field1": "prefix1_field1"}
+    member2.fieldset.get_prefixed_field_map.return_value = {"field1": "prefix2_field1"}
 
     mock_checker.members.select_related.return_value.all.return_value = [member1, member2]
 
-    result = mixin_instance.get_grouping_info()
-
-    expected = {"fieldset_group1": ["prefix1", "prefix2"]}
-    assert result == expected
+    assert mixin_instance.get_grouping_info() == {
+        "fieldset_group1": [
+            ("prefix1_", {"field1": "prefix1_field1"}),
+            ("prefix2_", {"field1": "prefix2_field1"}),
+        ],
+    }
 
 
 def test_test_import_data_aurora_errorsapply_grouping_no_grouping_info(mixin_instance):
@@ -73,22 +87,28 @@ def test_apply_grouping_single_group(mixin_instance):
         "prefix1_field1": "value1",
         "prefix1_field2": "value2",
         "prefix2_field1": "value3",
+        "prefix2_money": True,
         "unprefixed_field": "value4",
     }
 
-    grouping_info = {"group1": ["prefix1_", "prefix2_"]}
+    grouping_info = {
+        "group1": [
+            ("prefix1_", {"field1": "prefix1_field1", "field2": "prefix1_field2"}),
+            ("prefix2_", {"field1": "prefix2_field1"}),
+        ]
+    }
 
     with patch.object(mixin_instance, "get_grouping_info", return_value=grouping_info):
         result = mixin_instance.apply_grouping()
 
-    expected = {
+    assert result == {
         "group1": [
             {"field1": "value1", "field2": "value2", "type": "prefix1"},
             {"field1": "value3", "type": "prefix2"},
         ],
+        "prefix2_money": True,
         "unprefixed_field": "value4",
     }
-    assert result == expected
 
 
 @pytest.fixture(autouse=True)
@@ -147,6 +167,7 @@ def individual(batch):
             "national_passport_country": fake.country_code(),
             "mobile_number": "P123",
             "mobile_financial_institution": "FI123",
+            "mobile_money": True,
         },
     )
 
@@ -154,11 +175,15 @@ def individual(batch):
 @pytest.mark.django_db
 def test_apply_grouping_with_documents_and_accounts(individual: "CountryIndividual"):
     result = individual.apply_grouping()
+
     assert "documents" in result
     assert "accounts" in result
     assert len(result["documents"]) == 2
     assert len(result["accounts"]) == 1
+
     assert "national_passport_document_number" not in result
     assert "mobile_number" not in result
+    assert result["mobile_money"] is True
+
     assert result["accounts"][0]["number"] == individual.flex_fields["mobile_number"]
     assert result["accounts"][0]["financial_institution"] == individual.flex_fields["mobile_financial_institution"]
