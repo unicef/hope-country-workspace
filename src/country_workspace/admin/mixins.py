@@ -56,4 +56,4 @@ class JobErrorDisplayMixin:
         if isinstance(data, (dict | list)):
             return format_html("<pre>{}</pre>", json.dumps(data, indent=2))
 
-        return str(data)
+        return format_html("<pre>{}</pre>", data)

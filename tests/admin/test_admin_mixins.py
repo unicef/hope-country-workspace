@@ -101,9 +101,8 @@ class TestJobErrorDisplayMixin:
             assert "test error" in result
 
     def test_formatted_error_invalid_json(self, mixin, db):
-        # Should NOT wrap in pre if not valid JSON
         TaskResult.objects.create(task_id="invalid-id", result="invalid json")
         obj = MockJob("invalid-id")
         result = mixin.result(obj)
-        assert "<pre>" not in result
+        assert "<pre>" in result
         assert "invalid json" in result
