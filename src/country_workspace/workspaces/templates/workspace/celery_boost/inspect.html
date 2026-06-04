@@ -17,7 +17,7 @@
     {% if original.task_info %}
         <table>
             {% for k,v in original.task_info.items %}
-                {% if k|is_safe_celery_info %}
+                {% if k|is_celery_info_visible:user.is_superuser %}
                     <tr>
                         <th>
                             {{ k }}

@@ -49,17 +49,5 @@
                 {{ original.file }}
             </td>
         </tr>
-        {% if perms.app_name.change_model_name_lower_cased %}
-            {% if original and original.task_info.error %}
-                <tr>
-                    <th>
-                        Error
-                    </th>
-                    <td>
-                        {{ original.task_info.error }}
-                    </td>
-                </tr>
-            {% endif %}
-        {% endif %}
     </table>
 {% endblock after_field_sets %}

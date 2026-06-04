@@ -45,5 +45,8 @@ class AsyncJobAdmin(
 
     def get_readonly_fields(self, request: "HttpRequest", obj: "AsyncJob | None" = None) -> Sequence[str]:
         if obj:
-            return "program", "batch", "owner", "local_status", "type", "action", "sentry_id", "result"
+            fields = ["program", "batch", "owner", "local_status", "type", "action", "sentry_id", "error"]
+            if request.user.is_superuser:
+                fields.append("result")
+            return tuple(fields)
         return super().get_readonly_fields(request, obj)

@@ -135,3 +135,47 @@ def test_get_form_sets_description_width_without_obj(rf, admin_site):
 
     assert "description" in form.base_fields
     assert form.base_fields["description"].widget.attrs.get("style") == "width: 800px;"
+
+
+@pytest.mark.django_db
+def test_get_fields_superuser_includes_result(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock(is_superuser=True)
+
+    assert admin.get_fields(request, async_job) == ("description", "error", "result")
+
+
+@pytest.mark.django_db
+def test_get_fields_non_superuser_excludes_result(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock(is_superuser=False)
+
+    assert admin.get_fields(request, async_job) == ("description", "error")
+
+
+@pytest.mark.django_db
+def test_get_readonly_fields_superuser_includes_result(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock(is_superuser=True)
+
+    assert admin.get_readonly_fields(request, async_job) == ("error", "result")
+
+
+@pytest.mark.django_db
+def test_get_readonly_fields_non_superuser_excludes_result(rf, async_job, admin_site):
+    from country_workspace.workspaces.admin.job import CountryJobAdmin
+
+    admin = CountryJobAdmin(model=async_job.__class__, admin_site=admin_site)
+    request = rf.get("/")
+    request.user = MagicMock(is_superuser=False)
+
+    assert admin.get_readonly_fields(request, async_job) == ("error",)
