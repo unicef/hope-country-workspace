@@ -215,6 +215,35 @@ def test_validate_queryset_households_marks_invalid_when_member_unique_duplicate
     assert "dct" in household.errors
 
 
+@pytest.mark.django_db
+def test_validate_queryset_households_marks_both_invalid_for_member_unique_duplicates_across_households(
+    program, force_migrated_records
+):
+    from testutils.factories import HouseholdFactory, IndividualFactory
+
+    program.beneficiary_group.master_detail = True
+    program.beneficiary_group.save()
+    program.save_unique_field_for(Individual, "full_name")
+
+    hh1: "CountryHousehold" = HouseholdFactory(
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"size": 1},
+    )
+    IndividualFactory(household=hh1, batch=hh1.batch, flex_fields={"full_name": "Member X"})
+
+    hh2: "CountryHousehold" = HouseholdFactory(
+        batch__program=program,
+        batch__country_office=program.country_office,
+        flex_fields={"size": 1},
+    )
+    IndividualFactory(household=hh2, batch=hh2.batch, flex_fields={"full_name": "Member X"})
+
+    result = validate_queryset(Household.objects.filter(pk__in=[hh1.pk, hh2.pk]), chunk_size=1)
+
+    assert result == {"valid": 0, "invalid": 2}
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

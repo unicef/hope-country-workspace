@@ -115,7 +115,9 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
                     # Populate members for all objects in this batch (no N+1 on members access).
                     prefetch_related_objects(chunk, prefetch_members)
                     dv, di = _validate_and_count(
-                        chunk, unique_state=unique_state, member_unique_state=individual_unique_state
+                        chunk,
+                        unique_state=unique_state,
+                        member_unique_state=individual_unique_state,
                     )
                     valid, invalid = valid + dv, invalid + di
             else:  # Individual
@@ -132,13 +134,14 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
     return {"valid": valid, "invalid": invalid}
 
 
-def _validate_and_count(
+def _validate_and_count(  # noqa: C901
     objs: Iterable[Model],
     unique_state: UniqueValidationState | None = None,
     member_unique_state: UniqueValidationState | None = None,
 ) -> tuple[int, int]:
     total = 0
     invalid_pks: set[int] = set()
+    member_household_by_member_pk: dict[int, int] = {}
     aliens_checked = False
 
     for obj in objs:
@@ -155,8 +158,16 @@ def _validate_and_count(
             if member_unique_state and isinstance(obj, Household):
                 member_invalid = False
                 for member in obj.members.all():
-                    if member_unique_state.validate(member):
-                        member_invalid = True
+                    member_household_by_member_pk[member.pk] = obj.pk
+                    invalid_member_pks = member_unique_state.validate(member)
+                    if not invalid_member_pks:
+                        continue
+
+                    member_invalid = True
+                    for member_pk in invalid_member_pks:
+                        if household_pk := member_household_by_member_pk.get(member_pk):
+                            invalid_pks.add(household_pk)
+
                 if member_invalid:
                     invalid_pks.add(obj.pk)
                     _append_household_member_invalid_error(obj)
