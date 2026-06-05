@@ -59,6 +59,12 @@ class Rdp(BaseModel):
                 name="uniq_pending_rdp_per_program",
                 violation_error_message=_("There is already an active (PENDING) RDP for this program."),
             ),
+            models.UniqueConstraint(
+                fields=["hope_rdi_id"],
+                condition=Q(hope_rdi_id__isnull=False),
+                name="uniq_rdp_hope_rdi_id",
+                violation_error_message=_("There is already an RDP for this HOPE RDI."),
+            ),
         ]
         permissions = [
             ("reset_rdp", _("Can reset RDP")),

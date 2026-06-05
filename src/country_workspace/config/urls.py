@@ -9,6 +9,7 @@ from country_workspace.workspaces.sites import workspace
 
 urlpatterns = [
     path(r"admin/", admin.site.urls),
+    path("api/", include("country_workspace.api.urls", namespace="api")),
     path(r"security/", include("unicef_security.urls", namespace="security")),
     path(r"social/", include("social_django.urls", namespace="social")),
     path(r"accounts/", include("django.contrib.auth.urls")),

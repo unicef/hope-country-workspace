@@ -11,9 +11,14 @@ from country_workspace.contrib.dedup_engine import (
     DeduplicationSetState,
     make_dedup_client,
 )
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.exceptions import (
+    HopePushError,
+    HopeRdiCallbackConflictError,
+    HopeRdiCallbackError,
+    HopeRdiCallbackNotFoundError,
+)
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import APIToken, AsyncJob, Rdp
 
 from .config import CreateRdpConfig, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
@@ -21,6 +26,7 @@ from .processor import DedupProcessor, PushProcessor
 from .repository import (
     has_other_pending_rdp,
     lock_rdp_for_update,
+    lock_rdp_for_hope_callback,
     preflight_errors,
     preflight_exclude_rdp_ids,
     qs_households,
@@ -229,7 +235,6 @@ def _clone_rdp_in_transaction(
                 status=Rdp.PushStatus.PENDING,
                 deduplication_set_id=context.clone_deduplication_set_id,
                 is_dedup_settings_locked=False,
-                hope_rdi_id="",
             )
     except IntegrityError as e:
         raise HopePushError({"errors": [f"RDP: can not clone record: {e}"]}) from e
@@ -254,7 +259,7 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         set_rdp_push_status(
             rdp=locked,
             status=Rdp.PushStatus.REJECTED,
-            hope_rdi_id=locked.hope_rdi_id or "N/A",
+            hope_rdi_id=locked.hope_rdi_id,
             is_dedup_settings_locked=False,
         )
 
@@ -312,9 +317,12 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                 set_rdp_push_status(
                     rdp=locked,
                     status=Rdp.PushStatus.FAILURE,
-                    hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+                    hope_rdi_id=hope_processor.hope_rdi_id,
                 )
             raise HopePushError(hope_processor.total)
+
+    if not (hope_rdi_id := hope_processor.hope_rdi_id):
+        raise HopePushError({"errors": ["RDI id is not set after successful push."]})
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
@@ -322,7 +330,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         set_rdp_push_status(
             rdp=locked,
             status=Rdp.PushStatus.PUSHED,
-            hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+            hope_rdi_id=hope_rdi_id,
         )
         group_reference_id = locked.program.unicef_id
         deduplication_set_id = locked.deduplication_set_id
@@ -353,3 +361,50 @@ def _approve_deduplication_set_after_successful_push(
             client.approve()
     except (RemoteError, RemoteUnavailableError) as e:
         processor.fail("DedupEngine", f"approve failed. {e}")
+
+
+def _mark_rdp_beneficiaries_not_removed(rdp: Rdp) -> None:
+    """Mark selection-owner beneficiaries as not removed."""
+    owner = selection_owner_for_rdp(rdp=rdp)
+    hh_ids = list(owner.households.values_list("pk", flat=True))
+    if hh_ids:
+        owner.households.update(removed=False)
+        qs_individuals_by_household_pks(hh_ids).update(removed=False)
+        return
+    owner.individuals.update(removed=False)
+
+
+def apply_hope_rdi_final_status(*, hope_rdi_id: str, status: Rdp.PushStatus, token: APIToken) -> Rdp:
+    """Apply final HOPE Core RDI status to a pushed CW RDP."""
+    if not hope_rdi_id:
+        raise HopeRdiCallbackError({"errors": ["RDI id is required."]})
+
+    if status not in {Rdp.PushStatus.MERGED, Rdp.PushStatus.REJECTED}:
+        raise HopeRdiCallbackError({"errors": ["Unsupported RDI final status."]})
+
+    with transaction.atomic():
+        try:
+            rdp = lock_rdp_for_hope_callback(
+                hope_rdi_id=hope_rdi_id,
+                token=token,
+            )
+        except Rdp.DoesNotExist as exc:
+            raise HopeRdiCallbackNotFoundError({"errors": ["RDP not found for RDI id."]}) from exc
+
+        if rdp.status == status:
+            return rdp
+
+        if rdp.status != Rdp.PushStatus.PUSHED:
+            raise HopeRdiCallbackConflictError({"errors": [f"RDP: can not be finalized from status={rdp.status}."]})
+
+        if status == Rdp.PushStatus.REJECTED:
+            _mark_rdp_beneficiaries_not_removed(rdp)
+
+        set_rdp_push_status(
+            rdp=rdp,
+            status=status,
+            hope_rdi_id=hope_rdi_id,
+            is_dedup_settings_locked=False if status == Rdp.PushStatus.REJECTED else None,
+        )
+
+        return rdp

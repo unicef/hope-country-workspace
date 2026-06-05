@@ -51,6 +51,7 @@ dependencies = [
   "django-sysinfo>=2.6.2",
   "django-tailwind>=3.8",
   "djangorestframework>=3.15.1",
+  "drf-spectacular[sidecar]",
   "dukpy>=0.5",
   "flower>=2.0.1",
   "hope-flex-fields>=0.8.1",

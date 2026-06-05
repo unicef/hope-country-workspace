@@ -1,3 +1,4 @@
+from .api_token import APIToken
 from .batch import Batch
 from .beneficiary_group import BeneficiaryGroup
 from .data_serializer import DataSerializer
@@ -16,6 +17,7 @@ from .transformer import Transformer
 from .user import User
 
 __all__ = [
+    "APIToken",
     "Area",
     "AreaType",
     "AsyncJob",

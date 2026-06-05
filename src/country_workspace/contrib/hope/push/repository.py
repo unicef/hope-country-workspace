@@ -4,7 +4,7 @@ from typing import Any
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
 
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
-from country_workspace.models import Program, Rdp
+from country_workspace.models import APIToken, Program, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .config import PushWorkflowConfig, Serializer
@@ -163,7 +163,11 @@ def preflight_errors(
 
 
 def set_rdp_push_status(
-    *, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str, is_dedup_settings_locked: bool | None = None
+    *,
+    rdp: Rdp,
+    status: Rdp.PushStatus,
+    hope_rdi_id: str | None,
+    is_dedup_settings_locked: bool | None = None,
 ) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
@@ -200,3 +204,11 @@ def has_other_active_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool
     if excluded := tuple(exclude_ids):
         qs = qs.exclude(pk__in=excluded)
     return qs.exists()
+
+
+def lock_rdp_for_hope_callback(*, hope_rdi_id: str, token: APIToken) -> Rdp:
+    """Return an office-scoped RDP locked for a HOPE callback."""
+    return Rdp.objects.select_for_update().get(
+        hope_rdi_id=hope_rdi_id,
+        country_office__api_tokens=token,
+    )
