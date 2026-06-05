@@ -177,7 +177,7 @@ class TestRunOnExistingRecords:
             "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
             return_value=None,
         ):
-            response = transformer_admin.run_on_existing_records(request, "123")
+            response = transformer_admin.run_on_existing_records(transformer_admin, request, "123")
         assert response.status_code == 404
 
     def test_get_renders_form(self, transformer_admin):
@@ -195,7 +195,7 @@ class TestRunOnExistingRecords:
                 "country_workspace.workspaces.admin.transformer.render", return_value=HttpResponse("ok")
             ) as mock_render,
         ):
-            response = transformer_admin.run_on_existing_records(request, "1")
+            response = transformer_admin.run_on_existing_records(transformer_admin, request, "1")
 
         assert response.status_code == 200
         mock_render.assert_called_once()
@@ -218,7 +218,7 @@ class TestRunOnExistingRecords:
             patch.object(transformer_admin, "message_user") as mock_message_user,
             patch("country_workspace.workspaces.admin.transformer.render", return_value=HttpResponse("ok")),
         ):
-            transformer_admin.run_on_existing_records(request, "1")
+            transformer_admin.run_on_existing_records(transformer_admin, request, "1")
 
         mock_message_user.assert_called()
         assert "Please correct the errors below." in mock_message_user.call_args.args[1]
@@ -250,7 +250,7 @@ class TestRunOnExistingRecords:
             ) as mock_get_change_url,
             patch.object(transformer_admin, "message_user") as mock_message_user,
         ):
-            response = transformer_admin.run_on_existing_records(request, "1")
+            response = transformer_admin.run_on_existing_records(transformer_admin, request, "1")
 
         assert response.status_code == 302
         assert response.url == "/change/"
@@ -285,7 +285,7 @@ class TestRunOnExistingRecords:
             patch("country_workspace.workspaces.admin.transformer.reverse", return_value="/batch/"),
             patch.object(transformer_admin, "message_user") as mock_message_user,
         ):
-            response = transformer_admin.run_on_existing_records(request, "99")
+            response = transformer_admin.run_on_existing_records(transformer_admin, request, "99")
 
         assert response.status_code == 302
         assert response.url == "/batch/"
