@@ -3,17 +3,42 @@ import zipfile
 
 import pytest
 from strategy_field.utils import fqn
+from django import forms
+from django.contrib.messages.storage.fallback import FallbackStorage
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import HttpResponse
 from django.test import RequestFactory
 
 from country_workspace.models import AsyncJob
-from country_workspace.workspaces.admin.batch import BatchReprocessForm
+from country_workspace.workspaces.admin.batch import BatchPictureImportForm, BatchReprocessForm
+from country_workspace.workspaces.admin.batch.admin import (
+    BATCH_PICTURE_IMPORT_SESSION_KEY,
+    ProgramBatchFilter,
+)
 from country_workspace.workspaces.admin.batch.picture_import import BatchPictureImportService
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
+from country_workspace.workspaces.utils.flex_fields import Base64ImageField
 
 
 pytestmark = pytest.mark.django_db
+
+
+def _add_middleware_to_request(request, user) -> None:
+    middleware = SessionMiddleware(lambda _: HttpResponse())
+    middleware.process_request(request)
+    request.session.save()
+    request._messages = FallbackStorage(request)  # type: ignore[attr-defined]
+    request.user = user
+
+
+def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        for filename, content in files.items():
+            archive.writestr(filename, content)
+    return SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
 
 def test_reprocess_form_hides_household_fields_for_people_program(people_program) -> None:
@@ -161,6 +186,412 @@ def test_reprocess_button_returns_404_for_missing_batch(batch_admin, rf: Request
     assert response.content == b"Batch not found"
 
 
+def test_reprocess_button_renders_form_on_get(
+    batch_admin, batch: CountryBatch, user, rf: RequestFactory, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    get_common_context = mocker.patch.object(
+        batch_admin, "get_common_context", return_value={"title": "Reprocess Batch"}
+    )
+    render_mock = mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+
+    request = rf.get("/")
+    request.user = user
+
+    response = batch_admin.reprocess_batch.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    get_common_context.assert_called_once()
+    render_mock.assert_called_once()
+
+
+def test_reprocess_button_shows_errors_on_invalid_post(
+    batch_admin, batch: CountryBatch, user, rf: RequestFactory, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    message_user = mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch_admin, "get_common_context", return_value={})
+    mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+
+    request = rf.post("/", data={"apply": "1", "individual_mapping": "999999"})
+    request.user = user
+
+    response = batch_admin.reprocess_batch.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    message_user.assert_called()
+
+
+def test_program_batch_filter_returns_same_queryset_without_lookup(mocker) -> None:
+    queryset = mocker.MagicMock(name="queryset")
+    filt = ProgramBatchFilter.__new__(ProgramBatchFilter)
+    filt.lookup_val = None
+
+    result = ProgramBatchFilter.queryset(filt, mocker.MagicMock(), queryset)
+
+    assert result is queryset
+
+
+def test_program_batch_filter_filters_by_selected_program(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    program = mocker.MagicMock(name="program")
+    base_queryset = mocker.MagicMock(name="base_queryset")
+    filtered = mocker.MagicMock(name="filtered")
+    base_queryset.filter.return_value = filtered
+
+    filt = ProgramBatchFilter.__new__(ProgramBatchFilter)
+    filt.lookup_val = "11"
+
+    tenant = mocker.MagicMock()
+    tenant.programs.get.return_value = program
+    mocker.patch.object(batch_admin_module.state, "tenant", tenant)
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.admin.CWLinkedAutoCompleteFilter.queryset",
+        return_value=base_queryset,
+    )
+
+    result = ProgramBatchFilter.queryset(filt, mocker.MagicMock(), mocker.MagicMock())
+
+    assert result is filtered
+    tenant.programs.get.assert_called_once_with(pk="11")
+    base_queryset.filter.assert_called_once_with(program=program)
+
+
+def test_batch_picture_import_form_clean_zip_file_rejects_non_zip() -> None:
+    upload = SimpleUploadedFile("pictures.txt", b"not-a-zip", content_type="text/plain")
+    form = BatchPictureImportForm(
+        data={"match_field": "id", "target_field": "photo"},
+        files={"zip_file": upload},
+        match_field_choices=[("id", "id")],
+        target_field_choices=[("photo", "photo")],
+    )
+
+    assert not form.is_valid()
+    assert "zip_file" in form.errors
+
+
+def test_batch_picture_import_form_clean_zip_file_accepts_zip_and_rewinds() -> None:
+    upload = _make_zip_upload({"A-1.jpg": b"jpg"})
+    form = BatchPictureImportForm(
+        data={"match_field": "id", "target_field": "photo"},
+        files={"zip_file": upload},
+        match_field_choices=[("id", "id")],
+        target_field_choices=[("photo", "photo")],
+    )
+
+    assert form.is_valid()
+    assert form.cleaned_data["zip_file"].tell() == 0
+
+
+def test_batch_admin_get_common_context_sets_admin_metadata(batch_admin, rf: RequestFactory, user, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    request = rf.get("/")
+    request.user = user
+
+    super_context = {"foo": "bar"}
+    parent = mocker.patch.object(
+        batch_admin_module.WorkspaceModelAdmin,
+        "get_common_context",
+        return_value=super_context,
+    )
+
+    result = batch_admin.get_common_context(request, pk="15", another="value")
+
+    assert result is super_context
+    parent.assert_called_once()
+    call_kwargs = parent.call_args.kwargs
+    assert call_kwargs["modeladmin"] is batch_admin
+    assert call_kwargs["modeladmin_name"] == "CountryBatchAdmin"
+    assert call_kwargs["another"] == "value"
+
+
+def test_batch_admin_get_queryset_filters_program_and_office(batch_admin, rf: RequestFactory, user, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    request = rf.get("/")
+    request.user = user
+
+    qs = mocker.MagicMock(name="queryset")
+    related_qs = mocker.MagicMock(name="related_queryset")
+    filtered_qs = mocker.MagicMock(name="filtered_queryset")
+    qs.select_related.return_value = related_qs
+    related_qs.filter.return_value = filtered_qs
+
+    tenant = mocker.MagicMock(name="tenant")
+    program = mocker.MagicMock(name="program")
+    mocker.patch.object(batch_admin_module.state, "tenant", tenant)
+    mocker.patch.object(batch_admin_module.state, "program", program)
+    mocker.patch.object(batch_admin_module.WorkspaceModelAdmin, "get_queryset", return_value=qs)
+
+    result = batch_admin.get_queryset(request)
+
+    assert result is filtered_qs
+    qs.select_related.assert_called_once_with("program", "country_office")
+    related_qs.filter.assert_called_once_with(country_office=tenant, program=program)
+
+
+def test_batch_admin_permissions_are_disabled(batch_admin, rf: RequestFactory, user) -> None:
+    request = rf.get("/")
+    request.user = user
+
+    assert batch_admin.has_add_permission(request) is False
+    assert batch_admin.has_delete_permission(request) is False
+
+
+def test_batch_admin_picture_payload_helpers(batch_admin, rf: RequestFactory, user) -> None:
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+
+    assert batch_admin._session_payloads(request) == {}
+
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = "not-a-dict"
+    assert batch_admin._session_payloads(request) == {}
+
+    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 123})
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["batch_id"] == 123
+    assert request.session.modified is True
+
+    assert batch_admin._get_picture_import_payload(request, "missing", 123) is None
+    assert batch_admin._get_picture_import_payload(request, "tok", 999) is None
+    assert batch_admin._get_picture_import_payload(request, "tok", 123) == {"batch_id": 123}
+
+    batch_admin._clear_picture_import_payload(request, "tok")
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
+    assert request.session.modified is True
+
+
+def test_import_pictures_returns_404_for_missing_batch(batch_admin, rf: RequestFactory, user, mocker) -> None:
+    mocker.patch.object(batch_admin, "get_object", return_value=None)
+    request = rf.get("/")
+    request.user = user
+
+    response = batch_admin.import_pictures.func(batch_admin, request, "999999")
+
+    assert response.status_code == 404
+    assert response.content == b"Batch not found"
+
+
+def test_import_pictures_redirects_when_no_match_fields(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = []
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
+
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/workspace/batch/1/change/"
+
+
+def test_import_pictures_redirects_when_no_target_fields(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = []
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
+
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/workspace/batch/1/change/"
+
+
+def test_import_pictures_post_preview_saves_payload_and_redirects(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    service.build_preview.return_value = {"assignments": [], "matched_files_count": 0}
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin_module.uuid, "uuid4", return_value="token-123")
+
+    request = rf.post(
+        "/admin/import-pictures/",
+        data={"preview": "1", "match_field": "beneficiary_id", "target_field": "photo"},
+        files={"zip_file": _make_zip_upload({"A-1.jpg": b"content"})},
+    )
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert "step=2&token=token-123" in response.url
+    payload = request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["token-123"]
+    assert payload["batch_id"] == batch.pk
+    assert payload["match_field"] == "beneficiary_id"
+    assert payload["target_field"] == "photo"
+
+
+def test_import_pictures_post_confirm_without_token_redirects_with_error(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1"})
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+
+
+def test_import_pictures_post_confirm_with_expired_token_redirects(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "expired"})
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+
+
+def test_import_pictures_post_confirm_applies_and_clears_payload(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    service.apply_assignments.return_value = 2
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
+
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "tok": {"batch_id": batch.pk, "target_field": "photo", "assignments": [{"record_id": 1}]}
+    }
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/workspace/batch/1/change/"
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
+    service.apply_assignments.assert_called_once_with("photo", [{"record_id": 1}])
+
+
+def test_import_pictures_get_step_two_with_expired_token_redirects(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+
+    request = rf.get("/admin/import-pictures/?step=2&token=missing", data={"step": "2", "token": "missing"})
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+
+
+def test_import_pictures_get_step_two_renders_preview_report(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+    get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "2"})
+
+    request = rf.get("/admin/import-pictures/?step=2&token=tok", data={"step": "2", "token": "tok"})
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "tok": {"batch_id": batch.pk, "matched_files_count": 1, "assignments": []}
+    }
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    get_common_context.assert_called_once()
+    assert get_common_context.call_args.kwargs["step"] == "2"
+    assert get_common_context.call_args.kwargs["report"]["matched_files_count"] == 1
+
+
+def test_import_pictures_get_default_renders_form(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+    get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "1"})
+
+    request = rf.get("/admin/import-pictures/")
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    get_common_context.assert_called_once()
+    assert get_common_context.call_args.kwargs["step"] == "1"
+
+
 def test_extract_zip_images_skips_duplicate_picture_keys() -> None:
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
@@ -215,6 +646,106 @@ def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -
     assert individual.flex_fields["photo"] == "data:image/jpeg;base64,Zm9v"
 
 
+def test_picture_import_service_helpers() -> None:
+    assert BatchPictureImportService._normalize_match_key(None) == ""
+    assert BatchPictureImportService._normalize_match_key("  AbC ") == "abc"
+    assert BatchPictureImportService._guess_image_mimetype("unknown.ext") == "application/octet-stream"
+
+
+def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("images/", b"")
+        archive.writestr("notes.txt", b"ignored")
+        archive.writestr(" .png", b"blank-stem")
+        archive.writestr("valid.jpeg", b"ok")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+    entries, duplicate_keys = BatchPictureImportService.extract_zip_images(upload)
+
+    assert [item["filename"] for item in entries] == ["valid.jpeg"]
+    assert duplicate_keys == set()
+    assert upload.tell() == 0
+
+
+def test_get_match_field_choices_returns_empty_without_records(batch: CountryBatch) -> None:
+    assert BatchPictureImportService(batch).get_match_field_choices() == []
+
+
+def test_get_match_field_choices_returns_sorted_keys(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"z_key": "1", "a_key": "2"})
+
+    assert BatchPictureImportService(batch).get_match_field_choices() == [("a_key", "a_key"), ("z_key", "z_key")]
+
+
+def test_get_target_field_choices_without_checker(batch: CountryBatch) -> None:
+    batch.program.individual_checker = None
+    batch.program.save(update_fields=["individual_checker"])
+
+    assert BatchPictureImportService(batch).get_target_field_choices() == []
+
+
+def test_get_target_field_choices_returns_only_base64_image_fields(batch: CountryBatch, mocker) -> None:
+    class CheckerForm(forms.Form):
+        photo = Base64ImageField(required=False, label="Photo")
+        notes = forms.CharField(required=False, label="Notes")
+
+    checker = mocker.MagicMock()
+    checker.get_form.return_value = CheckerForm
+    batch.program.individual_checker = checker
+
+    assert BatchPictureImportService(batch).get_target_field_choices() == [("photo", "Photo")]
+
+
+def test_build_preview_marks_ambiguous_and_duplicate_keys(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "DUP"})
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "DUP"})
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "UNIQUE"})
+
+    upload = _make_zip_upload(
+        {
+            "DUP.jpg": b"ambiguous",
+            "UNIQUE.jpg": b"unique",
+            "unique.png": b"duplicate-zip-key",
+            "MISSING.jpg": b"missing",
+        }
+    )
+    report = BatchPictureImportService(batch).build_preview("beneficiary_id", upload)
+
+    assert report["matched_records_count"] == 0
+    assert report["matched_files_count"] == 0
+    assert report["duplicate_zip_keys"] == ["unique"]
+    assert report["ambiguous_record_keys"] == ["dup"]
+    assert report["unmatched_filenames"] == ["MISSING.jpg"]
+
+
+def test_apply_picture_assignments_returns_zero_without_assignments() -> None:
+    assert BatchPictureImportService.apply_assignments("photo", []) == 0
+
+
+def test_apply_picture_assignments_skips_missing_and_unchanged_records(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": "same"})
+
+    updated = BatchPictureImportService.apply_assignments(
+        "photo",
+        [
+            {"record_id": individual.pk, "data_uri": "same"},
+            {"record_id": 999999999, "data_uri": "new"},
+        ],
+    )
+
+    assert updated == 0
+
+
 @pytest.mark.parametrize(
     ("master_detail", "expected_visible"),
     [
@@ -250,3 +781,19 @@ def test_imported_individuals_button_uses_member_label(batch_admin, batch: Count
     assert button.label == "Member"
     assert button.visible is True
     assert f"batch__exact={batch.pk}" in button.href
+
+
+def test_imported_buttons_keep_defaults_without_beneficiary_group(batch_admin, batch: CountryBatch) -> None:
+    batch.program.beneficiary_group = None
+    batch.program.save(update_fields=["beneficiary_group"])
+
+    records_button = batch_admin.imported_records.get_button({"original": batch})
+    individuals_button = batch_admin.imported_individuals.get_button({"original": batch})
+
+    batch_admin.imported_records.func(batch_admin, records_button)
+    batch_admin.imported_individuals.func(batch_admin, individuals_button)
+
+    assert records_button.visible is True
+    assert individuals_button.visible is True
+    assert f"batch__exact={batch.pk}" in records_button.href
+    assert f"batch__exact={batch.pk}" in individuals_button.href
