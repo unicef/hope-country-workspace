@@ -19,7 +19,7 @@ from country_workspace.workspaces.admin.batch.admin import (
 from country_workspace.workspaces.admin.batch.picture_import import BatchPictureImportService
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
-from country_workspace.workspaces.utils.flex_fields import Base64ImageField
+from country_workspace.utils.flex_fields import Base64ImageField
 
 
 pytestmark = pytest.mark.django_db
