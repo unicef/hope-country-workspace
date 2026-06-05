@@ -1,10 +1,10 @@
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Final
 
-from django.db.models import F, Value
+from django.db.models import F, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
-from django.db.models.fields.json import JSONField, KeyTextTransform
+from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransform
 
 from country_workspace.contrib.aurora.import_processing import (
     build_household_transform as build_aurora_household_processor,
@@ -23,15 +23,41 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 logger = logging.getLogger(__name__)
 
 
+PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[str, ...]]]] = {
+    Batch.BatchSource.KOBO: {
+        Household: ("household_id",),
+    },
+}
+
+
+def _preserve_flex_fields(
+    records: QuerySet[Household | Individual],
+    batch: Batch,
+    model: type[Household | Individual],
+) -> tuple[QuerySet[Household | Individual], dict[str, str] | None]:
+    if not (fields := PRESERVED_FLEX_FIELDS.get(batch.source, {}).get(model, ())):
+        return records, None
+    preserved = {field: f"_preserved_flex_field_{i}" for i, field in enumerate(fields)}
+    return (
+        records.annotate(**{attr: KeyTransform(field, "flex_fields") for field, attr in preserved.items()}),
+        preserved,
+    )
+
+
 def _apply_transformations(
     record: Household | Individual,
     processor: Callable[[Any], dict[str, Any]],
+    preserved: dict[str, str] | None = None,
 ) -> bool:
     if not record.raw_data:
         logger.warning("Record %s has no raw data, skipping transformations", record)
         return False
 
     data = processor(record.raw_data)
+    if preserved:
+        data |= {
+            field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
+        }
 
     record.flex_fields = data
     record.last_checked = None
@@ -226,6 +252,12 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
     mapped_individuals = 0
     is_master_detail = batch.program.is_master_detail
 
+    households_to_process, household_preserved = _preserve_flex_fields(
+        households_to_process,
+        batch,
+        Household,
+    )
+
     household_processor = _build_processor(
         batch=batch,
         program=batch.program,
@@ -249,7 +281,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:  # noqa: C901, PLR0912, PL
             household_mapping.name if household_mapping else None,
         )
         for household in households_to_process.iterator():
-            is_applied = _apply_transformations(household, household_processor)
+            is_applied = _apply_transformations(household, household_processor, household_preserved)
             mapped_households += int(is_applied)
 
         logger.info("Applied transformations to %d households", mapped_households)

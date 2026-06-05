@@ -5,11 +5,14 @@ import pytest
 from django.contrib.admin import AdminSite
 from django.urls import reverse
 
-from country_workspace.models import User
-from country_workspace.models import AsyncJob, Batch
+from country_workspace.models import AsyncJob, Batch, Household, Individual, User
 from country_workspace.workspaces.admin import CountryBatchAdmin
 from country_workspace.workspaces.admin.batch import BatchReprocessForm
-from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch
+from country_workspace.workspaces.admin.batch.reprocessing import (
+    _apply_transformations,
+    _preserve_flex_fields,
+    reprocess_batch,
+)
 from country_workspace.workspaces.models import CountryBatch
 from testutils.factories.program import BeneficiaryGroupFactory
 from testutils.perms import user_grant_permissions
@@ -18,6 +21,7 @@ if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from pytest_django.fixtures import SettingsWrapper
+    from pytest_mock import MockerFixture
 
 
 pytestmark = [pytest.mark.django_db]
@@ -700,3 +704,141 @@ def test_imported_individuals_with_beneficiary_group_uses_member_label(
 
     assert btn.label == "Custom Member"
     assert btn.visible is True
+
+
+@pytest.mark.parametrize(
+    ("source", "model", "expected_preserved"),
+    [
+        (
+            Batch.BatchSource.KOBO,
+            Household,
+            {"household_id": "_preserved_flex_field_0"},
+        ),
+        (Batch.BatchSource.KOBO, Individual, None),
+        (Batch.BatchSource.RDI, Household, None),
+    ],
+)
+def test_preserve_flex_fields(
+    batch_with_households: "CountryBatch",
+    mocker: "MockerFixture",
+    source: str,
+    model: type[Household | Individual],
+    expected_preserved: dict[str, str] | None,
+) -> None:
+    batch_with_households.source = source
+    records = mocker.MagicMock()
+
+    key_transform = mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.KeyTransform",
+        side_effect=lambda field, source: f"{source}.{field}",
+    )
+
+    annotated, preserved = _preserve_flex_fields(
+        records,
+        batch_with_households,
+        model,
+    )
+
+    assert preserved == expected_preserved
+
+    if expected_preserved is None:
+        assert annotated is records
+        records.annotate.assert_not_called()
+        key_transform.assert_not_called()
+        return
+
+    assert annotated is records.annotate.return_value
+    assert key_transform.call_args_list == [mocker.call(field, "flex_fields") for field in expected_preserved]
+    records.annotate.assert_called_once_with(
+        **{attribute: f"flex_fields.{field}" for field, attribute in expected_preserved.items()}
+    )
+
+
+def test_apply_transformations_preserves_generated_flex_fields(
+    mocker: "MockerFixture",
+) -> None:
+    record = mocker.MagicMock(raw_data={"external": "value"})
+    record._preserved_flex_field_0 = 123
+
+    processor = mocker.MagicMock(
+        return_value={
+            "mapped": "value",
+            "household_id": "processor-value",
+        }
+    )
+
+    assert (
+        _apply_transformations(
+            record,
+            processor,
+            {"household_id": "_preserved_flex_field_0"},
+        )
+        is True
+    )
+
+    assert record.flex_fields == {
+        "mapped": "value",
+        "household_id": 123,
+    }
+    assert record.last_checked is None
+    assert record.errors == {}
+    record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors"])
+
+
+def test_reprocess_batch_preserves_kobo_household_id(
+    program,
+    user: "User",
+    mocker: "MockerFixture",
+) -> None:
+    from testutils.factories import (
+        AsyncJobFactory,
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+    )
+
+    program.beneficiary_group = BeneficiaryGroupFactory(master_detail=True)
+    program.save(update_fields=["beneficiary_group"])
+
+    batch = CountryBatchFactory(
+        program=program,
+        country_office=program.country_office,
+        source=Batch.BatchSource.KOBO,
+    )
+    household = CountryHouseholdFactory(
+        batch=batch,
+        raw_data={"external": "value"},
+        flex_fields={
+            "household_id": 123,
+            "obsolete": "value",
+        },
+    )
+    job = AsyncJobFactory(
+        program=program,
+        batch=batch,
+        owner=user,
+        config={"batch_id": batch.pk},
+    )
+
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing._build_processor",
+        return_value=lambda data: {"mapped": data["external"]},
+    )
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing._sync_kobo_household_refs",
+    )
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.sync_collector_links",
+    )
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.create_validation_jobs",
+    )
+
+    result = reprocess_batch(job)
+
+    household.refresh_from_db()
+
+    assert result["mapped_households"] == 1
+    assert household.flex_fields == {
+        "mapped": "value",
+        "household_id": 123,
+    }
