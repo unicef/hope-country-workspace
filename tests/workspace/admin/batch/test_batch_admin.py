@@ -436,8 +436,12 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
 
     request = rf.post(
         "/admin/import-pictures/",
-        data={"preview": "1", "match_field": "beneficiary_id", "target_field": "photo"},
-        files={"zip_file": _make_zip_upload({"A-1.jpg": b"content"})},
+        data={
+            "preview": "1",
+            "match_field": "beneficiary_id",
+            "target_field": "photo",
+            "zip_file": _make_zip_upload({"A-1.jpg": b"content"}),
+        },
     )
     _add_middleware_to_request(request, user)
 
@@ -693,9 +697,8 @@ def test_get_target_field_choices_returns_only_base64_image_fields(batch: Countr
         photo = Base64ImageField(required=False, label="Photo")
         notes = forms.CharField(required=False, label="Notes")
 
-    checker = mocker.MagicMock()
-    checker.get_form.return_value = CheckerForm
-    batch.program.individual_checker = checker
+    checker = batch.program.individual_checker
+    mocker.patch.object(checker, "get_form", return_value=CheckerForm)
 
     assert BatchPictureImportService(batch).get_target_field_choices() == [("photo", "Photo")]
 

@@ -24,7 +24,9 @@ class BatchPictureImportService:
     @staticmethod
     def _guess_image_mimetype(filename: str) -> str:
         guessed, _ = mimetypes.guess_type(filename)
-        return guessed or "application/octet-stream"
+        if guessed and guessed.startswith("image/"):
+            return guessed
+        return "application/octet-stream"
 
     @classmethod
     def extract_zip_images(cls, zip_file: UploadedFile) -> tuple[list[dict[str, str]], set[str]]:
@@ -57,6 +59,9 @@ class BatchPictureImportService:
                 content = archive.read(info)
                 data_uri = f"data:{mimetype};base64,{base64.b64encode(content).decode()}"
                 entries.append({"filename": filename, "key": key, "data_uri": data_uri})
+
+        if duplicates:
+            entries = [entry for entry in entries if entry["key"] not in duplicates]
 
         zip_file.seek(0)
         return entries, duplicates
