@@ -60,9 +60,6 @@ class BatchPictureImportService:
                 data_uri = f"data:{mimetype};base64,{base64.b64encode(content).decode()}"
                 entries.append({"filename": filename, "key": key, "data_uri": data_uri})
 
-        if duplicates:
-            entries = [entry for entry in entries if entry["key"] not in duplicates]
-
         zip_file.seek(0)
         return entries, duplicates
 
@@ -98,6 +95,8 @@ class BatchPictureImportService:
         ambiguous_record_keys: set[str] = set()
 
         for entry in zip_entries:
+            if entry["key"] in duplicate_zip_keys:
+                continue
             record_ids = by_key.get(entry["key"], [])
             if len(record_ids) == 1:
                 assignments.append(
