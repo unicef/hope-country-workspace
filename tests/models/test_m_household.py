@@ -4,6 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from country_workspace.models.base import Validable
+
 if TYPE_CHECKING:
     from country_workspace.models import Household
     from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -53,3 +55,53 @@ def test_validate_with_checker_preserves_multiselect_invalid_values_as_list(hous
 
     household.refresh_from_db()
     assert household.flex_fields["reasons_oos"] == ["invalid-choice"]
+
+
+def test_normalize_invalid_value_for_field_passthrough_for_non_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=False))
+
+    value = "raw-value"
+    result = Validable._normalize_invalid_value_for_field(field, value)
+
+    assert result == value
+
+
+def test_normalize_invalid_value_for_field_none_for_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=True))
+
+    result = Validable._normalize_invalid_value_for_field(field, None)
+
+    assert result == []
+
+
+def test_normalize_invalid_value_for_field_list_for_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=True))
+
+    value = ["a", "b"]
+    result = Validable._normalize_invalid_value_for_field(field, value)
+
+    assert result == value
+
+
+def test_normalize_invalid_value_for_field_tuple_for_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=True))
+
+    result = Validable._normalize_invalid_value_for_field(field, ("a", "b"))
+
+    assert result == ["a", "b"]
+
+
+def test_normalize_invalid_value_for_field_set_for_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=True))
+
+    result = Validable._normalize_invalid_value_for_field(field, {"a", "b"})
+
+    assert set(result) == {"a", "b"}
+
+
+def test_normalize_invalid_value_for_field_scalar_for_multiselect():
+    field = Mock(widget=Mock(allow_multiple_selected=True))
+
+    result = Validable._normalize_invalid_value_for_field(field, "single")
+
+    assert result == ["single"]
