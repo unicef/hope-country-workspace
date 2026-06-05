@@ -183,14 +183,16 @@ class TestRunOnExistingRecords:
     def test_get_renders_form(self, transformer_admin):
         request = self._build_request("GET")
         transformer = MagicMock(pk=1, name="T1")
-        state.tenant = MagicMock()
-        state.program = MagicMock()
+        state.tenant = None
+        state.program = None
+        mock_form = MagicMock()
 
         with (
             patch(
                 "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
                 return_value=transformer,
             ),
+            patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
             patch(
                 "country_workspace.workspaces.admin.transformer.render", return_value=HttpResponse("ok")
             ) as mock_render,
@@ -243,13 +245,16 @@ class TestRunOnExistingRecords:
                 "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
                 return_value=transformer,
             ),
-            patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
+            patch(
+                "country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form
+            ) as mock_form_class,
             patch(
                 "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_change_url",
                 return_value="/change/",
             ) as mock_get_change_url,
             patch.object(transformer_admin, "message_user") as mock_message_user,
         ):
+            mock_form_class.ApplyToOptions = RunTransformerForm.ApplyToOptions
             response = transformer_admin.run_on_existing_records(transformer_admin, request, "1")
 
         assert response.status_code == 302
@@ -278,13 +283,16 @@ class TestRunOnExistingRecords:
                 "country_workspace.workspaces.admin.transformer.CountryTransformerAdmin.get_object",
                 return_value=transformer,
             ),
-            patch("country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form),
+            patch(
+                "country_workspace.workspaces.admin.transformer.RunTransformerForm", return_value=mock_form
+            ) as mock_form_class,
             patch(
                 "country_workspace.workspaces.admin.transformer.AsyncJob.objects.create", return_value=job
             ) as mock_create,
             patch("country_workspace.workspaces.admin.transformer.reverse", return_value="/batch/"),
             patch.object(transformer_admin, "message_user") as mock_message_user,
         ):
+            mock_form_class.ApplyToOptions = RunTransformerForm.ApplyToOptions
             response = transformer_admin.run_on_existing_records(transformer_admin, request, "99")
 
         assert response.status_code == 302
