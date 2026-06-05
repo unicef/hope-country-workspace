@@ -136,6 +136,16 @@ class TestRunTransformerForm:
         ]
 
     @patch("country_workspace.workspaces.admin.transformer.Batch.objects")
+    def test_batch_queryset_filters_by_office(self, mock_batch_objects):
+        qs = self._build_mock_queryset()
+        mock_batch_objects.order_by.return_value = qs
+        office = MagicMock()
+
+        RunTransformerForm(office=office)
+
+        qs.filter.assert_any_call(country_office=office)
+
+    @patch("country_workspace.workspaces.admin.transformer.Batch.objects")
     def test_choices_master_detail_program(self, mock_batch_objects):
         qs = self._build_mock_queryset()
         mock_batch_objects.order_by.return_value = qs
