@@ -122,6 +122,18 @@ class Validable(Cachable, models.Model):
     def checker(self) -> "DataChecker":
         raise NotImplementedError
 
+    @staticmethod
+    def _normalize_invalid_value_for_field(field: Any, value: Any) -> Any:
+        if not getattr(getattr(field, "widget", None), "allow_multiple_selected", False):
+            return value
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, tuple | set):
+            return list(value)
+        return [value]
+
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         update_fields = []
         errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
@@ -138,7 +150,10 @@ class Validable(Cachable, models.Model):
             # keep invalid values
             for field_name in new_errors:
                 if field_name in flex_fields:
-                    self.flex_fields[field_name] = flex_fields[field_name]
+                    field = self.checker.form.fields.get(field_name)
+                    self.flex_fields[field_name] = self._normalize_invalid_value_for_field(
+                        field, flex_fields[field_name]
+                    )
             update_fields.append("flex_fields")
 
         self.last_checked = timezone.now()

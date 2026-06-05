@@ -35,3 +35,21 @@ def test_validate_with_checker(individual: "CountryHousehold"):
     with mock.patch.object(household.program.beneficiary_validator, "validate", Mock(return_value=["Error"])):
         assert not household.validate_with_checker()
         assert household.errors == {"dct": ["Error"]}
+
+
+def test_validate_with_checker_preserves_multiselect_invalid_values_as_list(household):
+    checker = Mock()
+    checker.validate.return_value = {household.pk: {"reasons_oos": ["Invalid value"]}}
+    checker.form = Mock(
+        cleaned_data={},
+        fields={
+            "reasons_oos": Mock(widget=Mock(allow_multiple_selected=True)),
+        },
+    )
+    household.flex_fields = {"reasons_oos": "invalid-choice"}
+
+    with mock.patch.object(type(household), "checker", mock.PropertyMock(return_value=checker)):
+        household.validate_with_checker()
+
+    household.refresh_from_db()
+    assert household.flex_fields["reasons_oos"] == ["invalid-choice"]
