@@ -9,6 +9,10 @@ from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransfo
 from strategy_field.utils import fqn
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+from country_workspace.contrib.ona.import_processing import (
+    build_household_processor as build_ona_household_processor,
+    build_individual_processor as build_ona_individual_processor,
+)
 from country_workspace.contrib.aurora.import_processing import (
     build_household_processor as build_aurora_household_processor,
     build_individual_processor as build_aurora_individual_processor,
@@ -114,7 +118,6 @@ def _apply_import_processor(
     record.save(update_fields=update_fields)
     return True
 
-
 def _clean_prefix(value: object) -> str | None:
     if isinstance(value, str) and (prefix := value.strip()):
         return prefix
@@ -171,6 +174,11 @@ def _build_processor(
             source=batch.source,
             pre_processors=[_strip_people_prefix(prefix)],
         )
+
+    if batch.source == Batch.BatchSource.ONA:
+        if model is Household:
+            return build_ona_household_processor(program, mapping_id)
+        return build_ona_individual_processor(program, mapping_id)
 
     return build_import_processor(
         program=program,
