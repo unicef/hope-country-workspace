@@ -57,7 +57,7 @@ def build_individual_processor(
         mapping_id=mapping_id,
         pre_processors=(),
         post_processors=(),
-        source="ONA",
+        source=Batch.BatchSource.ONA,
     )
 
 
@@ -71,7 +71,7 @@ def build_household_processor(
         mapping_id=mapping_id,
         pre_processors=(),
         post_processors=(),
-        source="ONA",
+        source=Batch.BatchSource.ONA,
     )
 
 
