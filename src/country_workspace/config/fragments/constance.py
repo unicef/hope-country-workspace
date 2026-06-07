@@ -1,4 +1,12 @@
-from .app import AURORA_API_TOKEN, AURORA_API_URL, HOPE_API_TOKEN, HOPE_API_URL, NEW_USER_DEFAULT_GROUP
+from .app import (
+    AURORA_API_TOKEN,
+    AURORA_API_URL,
+    HOPE_API_TOKEN,
+    HOPE_API_URL,
+    NEW_USER_DEFAULT_GROUP,
+    ONA_API_TOKEN,
+    ONA_API_URL,
+)
 from .dedup import DEDUP_API_URL, DEDUP_API_TOKEN
 from .kobo import KOBO_API_TOKEN, KOBO_KF_URL, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID
 from .mail import MAILJET_API_KEY, MAILJET_SECRET_KEY
@@ -47,6 +55,8 @@ CONSTANCE_CONFIG = {
     ),
     "AURORA_API_TOKEN": (AURORA_API_TOKEN, "Aurora API Access Token", "write_only_text_input"),
     "AURORA_API_URL": (AURORA_API_URL, "Aurora API Server address", str),
+    "ONA_API_TOKEN": (ONA_API_TOKEN, "ONA API Access Token", "write_only_text_input"),
+    "ONA_API_URL": (ONA_API_URL, "ONA API Server address", str),
     "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_text_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
     "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_text_input"),
@@ -116,6 +126,16 @@ CONSTANCE_CONFIG = {
         "Comma separated default Aurora individual fields to ignore during data import",
         str,
     ),
+    "ONA_HH_FIELDS_TO_IGNORE": (
+    "",
+    "Comma separated default ONA household fields to ignore during data import",
+    str,
+),
+    "ONA_IND_FIELDS_TO_IGNORE": (
+    "",
+    "Comma separated default ONA individual fields to ignore during data import",
+    str,
+),
     "XLS_HH_FIELDS_TO_IGNORE": (
         "",
         "Comma separated default XLS household fields to ignore during data import",
@@ -146,6 +166,12 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "AURORA_HH_FIELDS_TO_IGNORE",
         "AURORA_IND_FIELDS_TO_IGNORE",
     ),
+"Remote System Settings - ONA": (
+    "ONA_API_TOKEN",
+    "ONA_API_URL",
+    "ONA_HH_FIELDS_TO_IGNORE",
+    "ONA_IND_FIELDS_TO_IGNORE",
+),
     "Remote System Settings - HOPE": (
         "HOPE_API_TOKEN",
         "HOPE_API_URL",
@@ -179,6 +205,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
 CONSTANCE_DEFAULTS_MASK = "***"
 CONSTANCE_MASKED_DEFAULTS = (
     "AURORA_API_TOKEN",
+    "ONA_API_TOKEN",
     "HOPE_API_TOKEN",
     "KOBO_API_TOKEN",
     "KOBO_MASTER_API_TOKEN",

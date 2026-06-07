@@ -276,8 +276,6 @@ class ImportDataMixin:
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
                 "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "form_id": form.cleaned_data["form_id"],
-                "token": form.cleaned_data["token"],
-                "base_url": form.cleaned_data.get("base_url") or "https://api.ona.io",
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
                 "individuals_key": form.cleaned_data.get("individuals_key") or "individuals",
                 "household_field_mapping": form.cleaned_data.get("household_field_mapping") or {},

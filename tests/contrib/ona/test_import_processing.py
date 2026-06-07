@@ -1,7 +1,6 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.ona import import_processing
 from country_workspace.contrib.ona.import_processing import (
     Config,
     ImportResult,
@@ -18,8 +17,6 @@ def config() -> Config:
         "batch_name": "ONA batch",
         "validate_after_import": False,
         "form_id": "9153",
-        "token": "dummy-token",
-        "base_url": "https://api.ona.io",
         "master_detail": False,
         "individual_field_mapping": {
             "name": "full_name",
@@ -35,6 +32,14 @@ def job(mocker: MockerFixture, config: Config):
     job.program.country_office = mocker.MagicMock()
     job.owner = mocker.MagicMock()
     return job
+
+
+@pytest.fixture(autouse=True)
+def ona_constance_config(mocker: MockerFixture):
+    constance_config = mocker.patch("country_workspace.contrib.ona.import_processing.constance_config")
+    constance_config.ONA_API_URL = "https://api.ona.io"
+    constance_config.ONA_API_TOKEN = "dummy-token"
+    return constance_config
 
 
 def _mock_atomic(mocker: MockerFixture) -> None:
@@ -60,13 +65,6 @@ def test_import_data_requires_form_id(job, config: Config) -> None:
     job.config = {**config, "form_id": ""}
 
     with pytest.raises(ImportError, match="form_id is required"):
-        import_data(job)
-
-
-def test_import_data_requires_token(job, config: Config) -> None:
-    job.config = {**config, "token": ""}
-
-    with pytest.raises(ImportError, match="token is required"):
         import_data(job)
 
 
@@ -112,8 +110,8 @@ def test_import_data_calls_client_and_aggregates(
     assert result == expected
 
     client_cls.assert_called_once_with(
-        base_url=config["base_url"],
-        token=config["token"],
+        base_url="https://api.ona.io",
+        token="dummy-token",
     )
     client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"])
 

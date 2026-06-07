@@ -6,7 +6,7 @@ from typing import Any, NamedTuple, NotRequired
 
 from django.db import transaction
 from django.db.models import QuerySet
-
+from constance import config as constance_config
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import transform_submission_to_records
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program
@@ -16,13 +16,11 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ONA_BASE_URL = "https://api.ona.io"
+
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
     form_id: str
-    token: str
-    base_url: NotRequired[str]
     master_detail: bool
     household_mapping_id: NotRequired[int | None]
     individual_mapping_id: NotRequired[int | None]
@@ -55,9 +53,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     if not config.get("form_id"):
         raise ImportError("form_id is required for ONA import")
 
-    if not config.get("token"):
-        raise ImportError("token is required for ONA import")
-
+    
     batch = Batch.objects.create(
         name=config["batch_name"],
         program=job.program,
@@ -70,8 +66,8 @@ def import_data(job: AsyncJob) -> ImportResult:
     job.save(update_fields=["batch"])
 
     client = OnaClient(
-        base_url=config.get("base_url", DEFAULT_ONA_BASE_URL),
-        token=config["token"],
+        base_url=constance_config.ONA_API_URL,
+        token=constance_config.ONA_API_TOKEN,
     )
 
     total_people = 0
