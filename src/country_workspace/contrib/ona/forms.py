@@ -11,16 +11,6 @@ class ImportOnaForm(BaseImportForm):
         required=True,
         help_text="ONA / INFORM form ID, for example 9153.",
     )
-    token = forms.CharField(
-        required=True,
-        widget=forms.PasswordInput(render_value=True),
-        help_text="ONA API token. It is stored in the async job config only.",
-    )
-    base_url = forms.URLField(
-        required=False,
-        initial="https://api.ona.io",
-        help_text="ONA API base URL. Default is https://api.ona.io.",
-    )
     individuals_key = forms.CharField(
         required=False,
         initial="individuals",
