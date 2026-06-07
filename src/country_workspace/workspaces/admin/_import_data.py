@@ -13,6 +13,12 @@ from country_workspace.contrib.aurora.import_processing import (
     Config as AuroraConfig,
     import_data as import_from_aurora,
 )
+
+from country_workspace.contrib.ona.forms import ImportOnaForm
+from country_workspace.contrib.ona.import_processing import (
+    Config as OnaConfig,
+    import_data as import_from_ona,
+)
 from country_workspace.contrib.kobo.forms import ImportKoboForm
 from country_workspace.contrib.kobo.sync import (
     Config as KoboConfig,
@@ -84,6 +90,7 @@ class ImportDataMixin:
             kobo_country_code=program.country_office.kobo_country_code,
             program=program,
         )
+        form_ona = ImportOnaForm(prefix="ona", program=program)
 
         if request.method == "POST":
             success_url = self._get_import_success_url(request, program)
@@ -97,10 +104,14 @@ class ImportDataMixin:
                 case "kobo":
                     if not (form_kobo := self.import_kobo(request, program)):
                         return HttpResponseRedirect(success_url)
+                case "ona":
+                    if not (form_ona := self.import_ona(request, program)):
+                        return HttpResponseRedirect(success_url)
 
         context["form_rdi"] = form_rdi
         context["form_aurora"] = form_aurora
         context["form_kobo"] = form_kobo
+        context["form_ona"] = form_ona
         if extra_context:
             context.update(extra_context)
 
@@ -251,6 +262,59 @@ class ImportDataMixin:
             self.message_user(
                 request,
                 _("The Kobo data import task has been successfully queued. Job #{0}.").format(job.id),
+                level=messages.SUCCESS,
+            )
+            return None
+
+        return form
+
+    def import_ona(self, request: HttpRequest, program: "CountryProgram") -> "ImportOnaForm | None":
+        form = ImportOnaForm(request.POST, prefix="ona", program=program)
+        if form.is_valid():
+            config: OnaConfig = {
+                "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
+                "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
+                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
+                "form_id": form.cleaned_data["form_id"],
+                "token": form.cleaned_data["token"],
+                "base_url": form.cleaned_data.get("base_url") or "https://api.ona.io",
+                "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
+                "individuals_key": form.cleaned_data.get("individuals_key") or "individuals",
+                "household_field_mapping": form.cleaned_data.get("household_field_mapping") or {},
+                "individual_field_mapping": form.cleaned_data.get("individual_field_mapping") or {},
+                "household_mapping_id": (
+                    household_mapping.id if (household_mapping := form.cleaned_data.get("household_mapping")) else None
+                ),
+                "individual_mapping_id": (
+                    individual_mapping.id
+                    if (individual_mapping := form.cleaned_data.get("individual_mapping"))
+                    else None
+                ),
+                "household_transformer_id": (
+                    form.cleaned_data.get("household_transformer").id
+                    if form.cleaned_data.get("household_transformer")
+                    else None
+                ),
+                "individual_transformer_id": (
+                    form.cleaned_data.get("individual_transformer").id
+                    if form.cleaned_data.get("individual_transformer")
+                    else None
+                ),
+            }
+
+            job: AsyncJob = AsyncJob.objects.create(
+                description=f"ONA / INFORM import: {program.name}",
+                type=AsyncJob.JobType.TASK,
+                action=fqn(import_from_ona),
+                file=None,
+                program=program,
+                owner=request.user,
+                config=config,
+            )
+            job.queue()
+            self.message_user(
+                request,
+                _("The ONA / INFORM data import task has been successfully queued. Job #{0}.").format(job.id),
                 level=messages.SUCCESS,
             )
             return None
