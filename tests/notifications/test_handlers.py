@@ -54,15 +54,13 @@ def test_handle_rdi_pushed_enqueues_expected_event_and_payload(mocker) -> None:
     handle_rdi_pushed(
         sender=object(),
         program_id=44,
-        target="HOPE",
         pushed_count=77,
     )
 
     delay.assert_called_once_with(
-        "rdi_pushed",
+        "rdi_push_completed",
         {
             "program_id": 44,
-            "target": "HOPE",
             "pushed_count": 77,
         },
     )
@@ -79,7 +77,7 @@ def test_handle_rdp_pushed_enqueues_expected_event_and_payload(mocker) -> None:
     )
 
     delay.assert_called_once_with(
-        "rdp_pushed",
+        "rdp_push_status_changed",
         {
             "program_id": 55,
             "rdp_id": 66,

@@ -657,8 +657,8 @@ def test_push_existing_rdp_core_success(
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     approve = mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
     release = mocker.patch(f"{MOD}.release_rdp_push_lock")
-    rdi_pushed = mocker.patch(f"{MOD}.rdi_pushed_signal.send")
-    rdp_pushed = mocker.patch(f"{MOD}.rdp_pushed_signal.send")
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
     assert push_existing_rdp_core(job) == {"errors": []}
 
@@ -684,7 +684,6 @@ def test_push_existing_rdp_core_success(
     rdi_pushed.assert_called_once_with(
         sender=Rdp,
         program_id=rdp.program_id,
-        target="HOPE",
         pushed_count=0,
     )
     rdp_pushed.assert_called_once_with(
@@ -719,8 +718,8 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
     release = mocker.patch(f"{MOD}.release_rdp_push_lock")
-    rdi_pushed = mocker.patch(f"{MOD}.rdi_pushed_signal.send")
-    rdp_pushed = mocker.patch(f"{MOD}.rdp_pushed_signal.send")
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
     with pytest.raises(HopePushError) as exc:
         push_existing_rdp_core(job)

@@ -1,14 +1,14 @@
 from unittest.mock import Mock
 
 import pytest
-import requests
 
-from country_workspace.notifications.bitcaster_client import BitcasterClient, RetryableBitcasterError
+from country_workspace.notifications.bitcaster_client import BitcasterClient
 from country_workspace.notifications.notifier import send_notification_event
-from country_workspace.notifications.tasks import send_bitcaster_event_task
+from country_workspace.notifications.tasks import NotifyError, send_bitcaster_event_task
 
 
 def _configure_bitcaster_settings(settings) -> None:
+    settings.BITCASTER_ENABLED = True
     settings.BITCASTER_API_URL = "https://bitcaster.example"
     settings.BITCASTER_API_KEY = "secret-key"
     settings.BITCASTER_ORGANIZATION_SLUG = "org"
@@ -18,57 +18,28 @@ def _configure_bitcaster_settings(settings) -> None:
 
 def test_trigger_event_uses_bitcaster_trigger_contract(settings, mocker) -> None:
     _configure_bitcaster_settings(settings)
-    post_mock = mocker.patch("country_workspace.notifications.bitcaster_client.requests.post")
-    response = Mock(status_code=201)
-    response.raise_for_status = Mock()
-    post_mock.return_value = response
+    sdk_client = mocker.patch("country_workspace.notifications.bitcaster_client.SDKClient")
 
     client = BitcasterClient()
     result = client.trigger_event("data_imported", {"program_id": 123})
 
     assert result is True
-    post_mock.assert_called_once_with(
-        "https://bitcaster.example/api/o/org/p/project/a/workspace/e/data_imported/trigger/",
-        json={"context": {"program_id": 123}},
-        headers={
-            "Authorization": "secret-key",
-            "Content-Type": "application/json",
-        },
-        timeout=10,
+    sdk_client.assert_called_once_with(bae="https://secret-key@bitcaster.example/api/o/org/")
+    sdk_client.return_value.trigger.assert_called_once_with(
+        project="project",
+        application="workspace",
+        event="data_imported",
+        context={"program_id": 123},
     )
 
 
-def test_trigger_event_raises_retryable_error_for_network_failures(settings, mocker) -> None:
+def test_trigger_event_propagates_sdk_errors(settings, mocker) -> None:
     _configure_bitcaster_settings(settings)
-    mocker.patch(
-        "country_workspace.notifications.bitcaster_client.requests.post",
-        side_effect=requests.exceptions.Timeout("timeout"),
-    )
+    sdk_client = mocker.patch("country_workspace.notifications.bitcaster_client.SDKClient")
+    sdk_client.return_value.trigger.side_effect = RuntimeError("boom")
 
-    with pytest.raises(RetryableBitcasterError):
-        BitcasterClient().trigger_event("rdi_pushed", {"program_id": 12})
-
-
-def test_trigger_event_raises_retryable_error_for_http_5xx(settings, mocker) -> None:
-    _configure_bitcaster_settings(settings)
-    post_mock = mocker.patch("country_workspace.notifications.bitcaster_client.requests.post")
-    response = Mock(status_code=503)
-    response.raise_for_status = Mock()
-    post_mock.return_value = response
-
-    with pytest.raises(RetryableBitcasterError, match="server error"):
-        BitcasterClient().trigger_event("data_imported", {"program_id": 42})
-
-
-def test_trigger_event_reraises_http_error(settings, mocker) -> None:
-    _configure_bitcaster_settings(settings)
-    post_mock = mocker.patch("country_workspace.notifications.bitcaster_client.requests.post")
-    response = Mock(status_code=400)
-    response.raise_for_status.side_effect = requests.exceptions.HTTPError("bad request")
-    post_mock.return_value = response
-
-    with pytest.raises(requests.exceptions.HTTPError, match="bad request"):
-        BitcasterClient().trigger_event("data_imported", {"program_id": 42})
+    with pytest.raises(RuntimeError, match="boom"):
+        BitcasterClient().trigger_event("rdi_push_completed", {"program_id": 12})
 
 
 def test_trigger_event_returns_false_when_client_not_configured(settings) -> None:
@@ -89,41 +60,28 @@ def test_send_notification_event_delegates_to_backend(mocker) -> None:
         return_value=backend,
     )
 
-    result = send_notification_event("rdi_pushed", {"program_id": 7})
+    result = send_notification_event("rdi_push_completed", {"program_id": 7})
 
     assert result is True
     get_backend.assert_called_once_with()
-    backend.trigger_event.assert_called_once_with("rdi_pushed", {"program_id": 7})
+    backend.trigger_event.assert_called_once_with("rdi_push_completed", {"program_id": 7})
 
 
-def test_send_bitcaster_event_task_retries_on_retryable_client_error(mocker) -> None:
+def test_send_bitcaster_event_task_logs_error_on_exception(settings, mocker) -> None:
+    _configure_bitcaster_settings(settings)
     backend = Mock(is_configured=True)
-    retry_mock = mocker.patch.object(send_bitcaster_event_task, "retry", side_effect=RuntimeError("retry"))
+    logger_error = mocker.patch("country_workspace.notifications.tasks.logger.error")
     mocker.patch("country_workspace.notifications.tasks.get_notification_backend", return_value=backend)
     mocker.patch(
-        "country_workspace.notifications.tasks.send_notification_event",
-        side_effect=RetryableBitcasterError("temporary"),
+        "country_workspace.notifications.tasks.send_notification_event", side_effect=NotifyError("bad request")
     )
 
-    with pytest.raises(RuntimeError, match="retry"):
-        send_bitcaster_event_task.run("data_imported", {"program_id": 12})
-
-    retry_mock.assert_called_once()
-
-
-def test_send_bitcaster_event_task_does_not_retry_on_http_400(mocker) -> None:
-    backend = Mock(is_configured=True)
-    retry_mock = mocker.patch.object(send_bitcaster_event_task, "retry")
-    mocker.patch("country_workspace.notifications.tasks.get_notification_backend", return_value=backend)
-    http_error = requests.exceptions.HTTPError("bad request")
-    http_error.response = Mock(status_code=400)
-    mocker.patch("country_workspace.notifications.tasks.send_notification_event", side_effect=http_error)
-
     send_bitcaster_event_task.run("data_imported", {"program_id": 12})
-    retry_mock.assert_not_called()
+    logger_error.assert_called_once_with("Bitcaster send failed for event '%s': %s", "data_imported", "bad request")
 
 
-def test_send_bitcaster_event_task_logs_warning_when_backend_returns_false(mocker) -> None:
+def test_send_bitcaster_event_task_logs_warning_when_backend_returns_false(settings, mocker) -> None:
+    _configure_bitcaster_settings(settings)
     backend = Mock(is_configured=True)
     warning = mocker.patch("country_workspace.notifications.tasks.logger.warning")
     mocker.patch("country_workspace.notifications.tasks.get_notification_backend", return_value=backend)
@@ -134,7 +92,8 @@ def test_send_bitcaster_event_task_logs_warning_when_backend_returns_false(mocke
     warning.assert_any_call("Bitcaster client returned false for event '%s'", "data_imported")
 
 
-def test_send_bitcaster_event_task_skips_when_backend_not_configured(mocker) -> None:
+def test_send_bitcaster_event_task_skips_when_backend_not_configured(settings, mocker) -> None:
+    _configure_bitcaster_settings(settings)
     backend = Mock(is_configured=False)
     send_event = mocker.patch("country_workspace.notifications.tasks.send_notification_event")
     mocker.patch("country_workspace.notifications.tasks.get_notification_backend", return_value=backend)
@@ -142,3 +101,15 @@ def test_send_bitcaster_event_task_skips_when_backend_not_configured(mocker) -> 
     send_bitcaster_event_task.run("data_imported", {"program_id": 12})
 
     send_event.assert_not_called()
+
+
+def test_send_bitcaster_event_task_skips_when_bitcaster_disabled(settings, mocker) -> None:
+    _configure_bitcaster_settings(settings)
+    settings.BITCASTER_ENABLED = False
+    logger_info = mocker.patch("country_workspace.notifications.tasks.logger.info")
+    get_backend = mocker.patch("country_workspace.notifications.tasks.get_notification_backend")
+
+    send_bitcaster_event_task.run("data_imported", {"program_id": 12})
+
+    logger_info.assert_called_once_with("Skipping Bitcaster task: integration disabled (event='%s').", "data_imported")
+    get_backend.assert_not_called()

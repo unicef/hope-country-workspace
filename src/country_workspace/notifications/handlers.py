@@ -4,9 +4,9 @@ from django.dispatch import receiver
 
 from country_workspace.notifications.signals import (
     data_imported_signal,
+    rdi_push_completed_signal,
+    rdp_push_status_changed_signal,
     validation_completed_signal,
-    rdi_pushed_signal,
-    rdp_pushed_signal,
 )
 from country_workspace.notifications.tasks import send_bitcaster_event_task
 
@@ -36,21 +36,20 @@ def handle_validation_completed(sender: Any, **kwargs: Any) -> None:
     send_bitcaster_event_task.delay("validation_completed", payload)
 
 
-@receiver(rdi_pushed_signal)
+@receiver(rdi_push_completed_signal)
 def handle_rdi_pushed(sender: Any, **kwargs: Any) -> None:
     payload = {
         "program_id": kwargs.get("program_id"),
-        "target": kwargs.get("target"),
         "pushed_count": kwargs.get("pushed_count"),
     }
-    send_bitcaster_event_task.delay("rdi_pushed", payload)
+    send_bitcaster_event_task.delay("rdi_push_completed", payload)
 
 
-@receiver(rdp_pushed_signal)
+@receiver(rdp_push_status_changed_signal)
 def handle_rdp_pushed(sender: Any, **kwargs: Any) -> None:
     payload = {
         "program_id": kwargs.get("program_id"),
         "rdp_id": kwargs.get("rdp_id"),
         "status": kwargs.get("status"),
     }
-    send_bitcaster_event_task.delay("rdp_pushed", payload)
+    send_bitcaster_event_task.delay("rdp_push_status_changed", payload)

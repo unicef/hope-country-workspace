@@ -9,10 +9,10 @@ data_imported_signal = django.dispatch.Signal()
 # Expected kwargs: program_id (int), context (str - e.g. "total", "rdi"), results (dict)
 validation_completed_signal = django.dispatch.Signal()
 
-# Triggered when an RDI push cycle successfully sends records to a target.
-# Expected kwargs: program_id (int), target (str), pushed_count (int)
-rdi_pushed_signal = django.dispatch.Signal()
+# Triggered when an RDI push cycle successfully completes.
+# Expected kwargs: program_id (int), pushed_count (int)
+rdi_push_completed_signal = django.dispatch.Signal()
 
-# Triggered when an RDP record status transitions to SUCCESS.
+# Triggered when an RDP record status changes.
 # Expected kwargs: program_id (int), rdp_id (int), status (str)
-rdp_pushed_signal = django.dispatch.Signal()
+rdp_push_status_changed_signal = django.dispatch.Signal()

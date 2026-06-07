@@ -19,7 +19,10 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
-from country_workspace.notifications.signals import rdi_pushed_signal, rdp_pushed_signal
+from country_workspace.notifications.signals import (
+    rdi_push_completed_signal,
+    rdp_push_status_changed_signal,
+)
 
 from .config import CreateRdpConfig, OperationLogResult, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
@@ -500,7 +503,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                         hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
                         is_push_locked=False,
                     )
-                    rdp_pushed_signal.send(
+                    rdp_push_status_changed_signal.send(
                         sender=Rdp,
                         program_id=rdp.program_id,
                         rdp_id=rdp.pk,
@@ -531,14 +534,13 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                 + hope_processor.total.get("people", 0)
         )
 
-        rdi_pushed_signal.send(
+        rdi_push_completed_signal.send(
             sender=Rdp,
             program_id=rdp.program_id,
-            target="HOPE",
             pushed_count=pushed_count,
         )
 
-        rdp_pushed_signal.send(
+        rdp_push_status_changed_signal.send(
             sender=Rdp,
             program_id=rdp.program_id,
             rdp_id=rdp.pk,

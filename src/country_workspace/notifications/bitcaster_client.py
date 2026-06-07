@@ -1,18 +1,15 @@
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
-import requests
+from bitcaster_sdk.client import Client as SDKClient
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 
-class RetryableBitcasterError(Exception):
-    """Raised when an event delivery can be retried safely."""
-
-
 class BitcasterClient:
-    """A generic client for interacting with the Bitcaster REST API."""
+    """Client wrapper around bitcaster-sdk."""
 
     def __init__(
         self,
@@ -35,45 +32,20 @@ class BitcasterClient:
             self.api_url and self.api_key and self.organization_slug and self.project_slug and self.application_slug
         )
 
+    def _build_bae(self) -> str:
+        parsed = urlparse(self.api_url)
+        return f"{parsed.scheme}://{self.api_key}@{parsed.netloc}/api/o/{self.organization_slug}/"
+
     def trigger_event(self, event_name: str, payload: dict[str, Any]) -> bool:
-        """
-        Trigger an event in Bitcaster.
-
-        Args:
-            event_name: The name of the event/signal in Bitcaster.
-            payload: A dictionary of context data to send to Bitcaster.
-
-        Returns:
-            bool: True if the request was successful, False otherwise.
-
-        """
         if not self.is_configured:
             logger.warning("Bitcaster client is not fully configured. Skipping event '%s'.", event_name)
             return False
 
-        endpoint = (
-            f"{self.api_url}/api/o/{self.organization_slug}/p/{self.project_slug}/"
-            f"a/{self.application_slug}/e/{event_name}/trigger/"
+        SDKClient(bae=self._build_bae()).trigger(
+            project=self.project_slug,
+            application=self.application_slug,
+            event=event_name,
+            context=payload,
         )
-
-        headers = {
-            "Authorization": self.api_key,
-            "Content-Type": "application/json",
-        }
-
-        try:
-            data = {"context": payload}
-
-            response = requests.post(endpoint, json=data, headers=headers, timeout=10)
-            if response.status_code >= 500:
-                raise RetryableBitcasterError(
-                    f"Bitcaster server error while triggering event '{event_name}': {response.status_code}"
-                )
-            response.raise_for_status()
-            logger.info("Successfully triggered Bitcaster event: %s", event_name)
-        except requests.exceptions.HTTPError:
-            raise
-        except requests.exceptions.RequestException as e:
-            raise RetryableBitcasterError(f"Network error while triggering '{event_name}'") from e
-
+        logger.info("Successfully triggered Bitcaster event: %s", event_name)
         return True
