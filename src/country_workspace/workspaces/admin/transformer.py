@@ -122,6 +122,7 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
     @button(
         label="Run Formula on Existing Records",
         change_form=True,
+        permission="country_workspace.reprocess_batch",
         html_attrs={"title": "Run this formula in Country Workspace without rule commits"},
     )
     def run_on_existing_records(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -158,7 +159,7 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
                     description=f"Run formula '{obj.name}' on batch {batch.name}",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
-                    action=fqn("country_workspace.workspaces.admin.batch.reprocessing.reprocess_batch"),
+                    action=fqn("country_workspace.workspaces.admin.batch.reprocessing.apply_batch_transformers"),
                     program=batch.program,
                     batch=batch,
                     config=config,

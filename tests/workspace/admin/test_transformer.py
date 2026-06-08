@@ -249,6 +249,7 @@ class TestRunOnExistingRecords:
             "batch": batch,
             "apply_to": RunTransformerForm.ApplyToOptions.BOTH,
         }
+        request.user.has_perm.side_effect = lambda _perm, *args: not (args and args[0] is batch.program)
 
         with (
             patch(
@@ -308,6 +309,7 @@ class TestRunOnExistingRecords:
         assert response.status_code == 302
         assert response.url == "/batch/"
         mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["action"].endswith(".apply_batch_transformers")
         assert mock_create.call_args.kwargs["config"] == {
             "batch_id": 10,
             "household_transformer_id": 99,
