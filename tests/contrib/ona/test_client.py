@@ -13,7 +13,7 @@ def test_get_submissions_page_uses_token_auth():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json=[
                 {
                     "_id": 1,
@@ -24,7 +24,7 @@ def test_get_submissions_page_uses_token_auth():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
             page_size=500,
         )
@@ -36,7 +36,7 @@ def test_get_submissions_page_uses_token_auth():
 
         request = mocked.calls[0].request
         assert request.headers["Authorization"] == "Token test-token"
-        assert request.url == "https://api.ona.io/api/v1/data/9153?start=0&limit=500"
+        assert request.url == "https://data.inform.unicef.org/api/v1/data/9153?start=0&limit=500"
 
     assert result == [
         {
@@ -50,7 +50,7 @@ def test_iter_submissions_handles_pagination():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json=[
                 {
                     "_id": 1,
@@ -63,7 +63,7 @@ def test_iter_submissions_handles_pagination():
         )
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json=[
                 {
                     "_id": 3,
@@ -73,15 +73,15 @@ def test_iter_submissions_handles_pagination():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
             page_size=2,
         )
 
         result = list(client.iter_submissions(form_id=9153))
 
-        assert mocked.calls[0].request.url == "https://api.ona.io/api/v1/data/9153?start=0&limit=2"
-        assert mocked.calls[1].request.url == "https://api.ona.io/api/v1/data/9153?start=2&limit=2"
+        assert mocked.calls[0].request.url == "https://data.inform.unicef.org/api/v1/data/9153?start=0&limit=2"
+        assert mocked.calls[1].request.url == "https://data.inform.unicef.org/api/v1/data/9153?start=2&limit=2"
 
     assert result == [
         {
@@ -100,7 +100,7 @@ def test_get_form_metadata():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/forms/9153",
+            "https://data.inform.unicef.org/api/v1/forms/9153",
             json={
                 "formid": 9153,
                 "title": "INFORM Registration",
@@ -109,7 +109,7 @@ def test_get_form_metadata():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
         )
 
@@ -125,7 +125,7 @@ def test_get_raises_authentication_error_on_401():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json={
                 "detail": "Invalid token",
             },
@@ -133,7 +133,7 @@ def test_get_raises_authentication_error_on_401():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="bad-token",
         )
 
@@ -145,7 +145,7 @@ def test_get_raises_rate_limit_error_on_429():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json={
                 "detail": "Too many requests",
             },
@@ -153,7 +153,7 @@ def test_get_raises_rate_limit_error_on_429():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
         )
 
@@ -165,7 +165,7 @@ def test_get_raises_api_error_on_500():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json={
                 "detail": "Server error",
             },
@@ -173,7 +173,7 @@ def test_get_raises_api_error_on_500():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
         )
 
@@ -185,7 +185,7 @@ def test_get_submissions_page_rejects_non_list_response():
     with responses.RequestsMock() as mocked:
         mocked.add(
             responses.GET,
-            "https://api.ona.io/api/v1/data/9153",
+            "https://data.inform.unicef.org/api/v1/data/9153",
             json={
                 "unexpected": "object",
             },
@@ -193,7 +193,7 @@ def test_get_submissions_page_rejects_non_list_response():
         )
 
         client = OnaClient(
-            base_url="https://api.ona.io",
+            base_url="https://data.inform.unicef.org",
             token="test-token",
         )
 
