@@ -5,7 +5,27 @@
 \## Purpose
 
 
+## Configuration
 
+The connector uses Constance/env settings for credentials and endpoint configuration:
+
+- `ONA_API_TOKEN`
+- `ONA_API_URL`
+
+Default `ONA_API_URL`:
+
+```text
+https://data.inform.unicef.org
+
+For an INFORM form ID such as 9153, the connector calls:
+
+https://data.inform.unicef.org/api/v1/data/9153
+
+
+## Step 2 — Confirm docs updated
+
+```bash
+grep -Rni "data.inform.unicef.org\|ONA_API_URL\|ONA_API_TOKEN" docs/src/import_data/ona.md
 This connector adds INFORM / ONA as a Registration Data Import source for Country Workspace.
 
 
