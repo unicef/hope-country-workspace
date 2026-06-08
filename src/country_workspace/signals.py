@@ -43,8 +43,7 @@ def _process_program(program: Program) -> None:
 
 
 def _process_datachecker_change(dc: DataChecker) -> None:
-    if not (programs := _get_dc_associated_programs(dc=dc)):
-        return
+    programs = _get_dc_associated_programs(dc=dc)
 
     deferred = getattr(_invalidation_state, "deferred_program_pks", None)
     if deferred is not None:
