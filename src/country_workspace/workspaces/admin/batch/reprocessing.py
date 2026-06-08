@@ -16,8 +16,7 @@ from country_workspace.contrib.kobo.sync import (
     build_household_processor as build_kobo_household_processor,
     build_individual_processor as build_kobo_individual_processor,
 )
-from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program, Transformer
-from country_workspace.utils.collector_linkage import sync_collector_links
+from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
 from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
@@ -92,17 +91,6 @@ def _apply_import_processor(
     record.last_checked = None
     record.errors = {}
     record.save(update_fields=["flex_fields", "last_checked", "errors"])
-    return True
-
-
-def _apply_transformer_only(record: Household | Individual, transformer: Transformer) -> bool:
-    data = record.flex_fields if isinstance(record.flex_fields, dict) else {}
-    transformed = transformer.apply(data.copy())
-    if transformed == record.flex_fields:
-        return False
-
-    record.flex_fields = transformed
-    record.save(update_fields=["flex_fields"])
     return True
 
 
@@ -403,12 +391,12 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
 def apply_batch_transformers(job: AsyncJob) -> dict[str, Any]:
     batch_id, batch = _get_batch_from_job(job)
 
-    household_transformer_id, household_transformer = _resolve_config_object(
+    household_transformer_id, _ = _resolve_config_object(
         batch.country_office.transformers.all(),
         job.config.get("household_transformer_id"),
         "Household transformer",
     )
-    individual_transformer_id, individual_transformer = _resolve_config_object(
+    individual_transformer_id, _ = _resolve_config_object(
         batch.country_office.transformers.all(),
         job.config.get("individual_transformer_id"),
         "Individual transformer",
@@ -416,29 +404,20 @@ def apply_batch_transformers(job: AsyncJob) -> dict[str, Any]:
     if not household_transformer_id and not individual_transformer_id:
         raise ValueError("At least one transformer id is required in job config")
 
-    households_to_process = batch.household_set.filter(removed=False).only("pk", "flex_fields")
-    individuals_to_process = batch.individual_set.filter(removed=False).only("pk", "flex_fields")
-    transformed_households = 0
-    transformed_individuals = 0
-
-    if batch.program.is_master_detail and household_transformer:
-        for household in households_to_process.iterator():
-            transformed_households += int(_apply_transformer_only(household, household_transformer))
-
-        _sync_household_refs(batch)
-
-    if individual_transformer:
-        for individual in individuals_to_process.iterator():
-            transformed_individuals += int(_apply_transformer_only(individual, individual_transformer))
-        sync_collector_links(individuals_to_process)
+    postprocessing_result = run_batch_postprocessing(
+        batch,
+        household_transformer_id=household_transformer_id,
+        individual_transformer_id=individual_transformer_id,
+        sync_household_refs=_sync_household_refs,
+    )
 
     response = {
         "batch_id": batch_id,
         "batch_name": batch.name,
-        "transformed_individuals": transformed_individuals,
+        "transformed_individuals": postprocessing_result.get("transformed_individuals", 0),
     }
     if batch.program.is_master_detail:
-        response["transformed_households"] = transformed_households
+        response["transformed_households"] = postprocessing_result.get("transformed_households", 0)
 
     logger.info("Batch transformer apply finished: %s", response)
     return response
