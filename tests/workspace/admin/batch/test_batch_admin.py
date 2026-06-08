@@ -43,6 +43,11 @@ def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
     return SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
 
+def _mock_picture_import_service(mocker, batch_admin_module, service) -> None:
+    patched_service = mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    patched_service.MAX_ZIP_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
 def test_reprocess_form_hides_household_fields_for_people_program(people_program) -> None:
     form = BatchReprocessForm(program=people_program)
 
@@ -387,7 +392,7 @@ def test_import_pictures_redirects_when_no_match_fields(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = []
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
     mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
@@ -409,7 +414,7 @@ def test_import_pictures_redirects_when_no_target_fields(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = []
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
     mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
@@ -432,7 +437,7 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
     service.build_preview.return_value = {"assignments": [], "matched_files_count": 0}
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin_module.uuid, "uuid4", return_value="token-123")
 
@@ -468,7 +473,7 @@ def test_import_pictures_post_confirm_without_token_redirects_with_error(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
 
@@ -489,7 +494,7 @@ def test_import_pictures_post_confirm_with_expired_token_redirects(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
 
@@ -515,7 +520,7 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
         "matched_files_count": 1,
     }
     service.apply_assignments.return_value = 2
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
     mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
@@ -556,7 +561,7 @@ def test_import_pictures_get_step_two_with_expired_token_redirects(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
 
@@ -577,7 +582,7 @@ def test_import_pictures_get_step_two_renders_preview_report(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
     get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "2"})
@@ -604,7 +609,7 @@ def test_import_pictures_get_default_renders_form(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
+    _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
     get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "1"})
