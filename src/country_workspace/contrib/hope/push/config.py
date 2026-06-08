@@ -55,6 +55,16 @@ ROUTES: Final[dict[Route, str]] = {
 }
 
 
+class HopeRdiCallbackCode(StrEnum):
+    FINALIZED = auto()
+    ALREADY_FINALIZED = auto()
+    MISSING_RDI_ID = auto()
+    UNSUPPORTED_STATUS = auto()
+    NOT_FOUND = auto()
+    INVALID_TRANSITION = auto()
+    CALLBACK_ERROR = auto()
+
+
 class ErrorConfig(NamedTuple):
     MAX_ERRORS: int = 300
     MAX_ERROR_LEN: int = 2000

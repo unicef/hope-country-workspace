@@ -25,6 +25,7 @@ INSTALLED_APPS = (
     "django.contrib.staticfiles",
     "django.contrib.postgres",
     "unicef_security",
+    "hope_api_auth",
     "country_workspace.apps.HCWAdminConfig",
     # ddt
     "debug_toolbar",
@@ -216,6 +217,7 @@ AUTH_USER_MODEL = "country_workspace.User"
 SUPERUSERS = env("SUPERUSERS")
 
 from .fragments.app import *  # noqa: E402, F403
+from .fragments.api_auth import *  # noqa: E402, F403
 from .fragments.celery import *  # noqa: E402, F403
 from .fragments.constance import *  # noqa: E402, F403
 from .fragments.csp import *  # noqa: E402, F403

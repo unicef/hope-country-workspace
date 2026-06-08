@@ -20,7 +20,7 @@ from country_workspace.contrib.hope.exceptions import (
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import APIToken, AsyncJob, Rdp
 
-from .config import CreateRdpConfig, PushWorkflowConfig
+from .config import CreateRdpConfig, HopeRdiCallbackCode, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
 from .processor import DedupProcessor, PushProcessor
 from .repository import (
@@ -47,6 +47,47 @@ class CloneDeduplicationContext(NamedTuple):
     dedup_source_set_id: UUID
     clone_deduplication_set_id: UUID | None
     snapshot: dict[str, Any]
+
+
+class HopeRdiCallbackPayload(NamedTuple):
+    rdp_id: int | None
+    rdi_id: str | None
+    status: str | None
+    changed: bool
+    code: HopeRdiCallbackCode
+    detail: str
+
+    @classmethod
+    def finalized(cls, *, rdp: Rdp, changed: bool) -> "HopeRdiCallbackPayload":
+        return cls(
+            rdp_id=rdp.pk,
+            rdi_id=rdp.hope_rdi_id,
+            status=rdp.status,
+            changed=changed,
+            code=HopeRdiCallbackCode.FINALIZED if changed else HopeRdiCallbackCode.ALREADY_FINALIZED,
+            detail=f"RDP status updated to {rdp.status}." if changed else f"RDP is already {rdp.status}.",
+        )
+
+    @classmethod
+    def error(
+        cls,
+        *,
+        code: HopeRdiCallbackCode,
+        detail: str,
+        rdp: Rdp | None = None,
+        rdi_id: str | None = None,
+    ) -> "HopeRdiCallbackPayload":
+        return cls(
+            rdp_id=rdp.pk if rdp else None,
+            rdi_id=rdp.hope_rdi_id if rdp else rdi_id,
+            status=rdp.status if rdp else None,
+            changed=False,
+            code=code,
+            detail=detail,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return self._asdict()
 
 
 def _require_policy_check(check: Callable[[], ActionCheck]) -> None:
@@ -374,13 +415,29 @@ def _mark_rdp_beneficiaries_not_removed(rdp: Rdp) -> None:
     owner.individuals.update(removed=False)
 
 
-def apply_hope_rdi_final_status(*, hope_rdi_id: str, status: Rdp.PushStatus, token: APIToken) -> Rdp:
+def apply_hope_rdi_final_status(
+    *,
+    hope_rdi_id: str,
+    status: Rdp.PushStatus,
+    token: APIToken,
+) -> HopeRdiCallbackPayload:
     """Apply final HOPE Core RDI status to a pushed CW RDP."""
     if not hope_rdi_id:
-        raise HopeRdiCallbackError({"errors": ["RDI id is required."]})
+        raise HopeRdiCallbackError(
+            HopeRdiCallbackPayload.error(
+                code=HopeRdiCallbackCode.MISSING_RDI_ID,
+                detail="RDI id is required.",
+            )
+        )
 
     if status not in {Rdp.PushStatus.MERGED, Rdp.PushStatus.REJECTED}:
-        raise HopeRdiCallbackError({"errors": ["Unsupported RDI final status."]})
+        raise HopeRdiCallbackError(
+            HopeRdiCallbackPayload.error(
+                code=HopeRdiCallbackCode.UNSUPPORTED_STATUS,
+                detail="Unsupported RDI final status.",
+                rdi_id=hope_rdi_id,
+            )
+        )
 
     with transaction.atomic():
         try:
@@ -389,13 +446,25 @@ def apply_hope_rdi_final_status(*, hope_rdi_id: str, status: Rdp.PushStatus, tok
                 token=token,
             )
         except Rdp.DoesNotExist as exc:
-            raise HopeRdiCallbackNotFoundError({"errors": ["RDP not found for RDI id."]}) from exc
+            raise HopeRdiCallbackNotFoundError(
+                HopeRdiCallbackPayload.error(
+                    code=HopeRdiCallbackCode.NOT_FOUND,
+                    detail="RDP not found for RDI id.",
+                    rdi_id=hope_rdi_id,
+                )
+            ) from exc
 
         if rdp.status == status:
-            return rdp
+            return HopeRdiCallbackPayload.finalized(rdp=rdp, changed=False)
 
         if rdp.status != Rdp.PushStatus.PUSHED:
-            raise HopeRdiCallbackConflictError({"errors": [f"RDP: can not be finalized from status={rdp.status}."]})
+            raise HopeRdiCallbackConflictError(
+                HopeRdiCallbackPayload.error(
+                    code=HopeRdiCallbackCode.INVALID_TRANSITION,
+                    detail=f"RDP can not be finalized from status={rdp.status}.",
+                    rdp=rdp,
+                )
+            )
 
         if status == Rdp.PushStatus.REJECTED:
             _mark_rdp_beneficiaries_not_removed(rdp)
@@ -407,4 +476,4 @@ def apply_hope_rdi_final_status(*, hope_rdi_id: str, status: Rdp.PushStatus, tok
             is_dedup_settings_locked=False if status == Rdp.PushStatus.REJECTED else None,
         )
 
-        return rdp
+        return HopeRdiCallbackPayload.finalized(rdp=rdp, changed=True)
