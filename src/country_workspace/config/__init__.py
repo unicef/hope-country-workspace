@@ -54,6 +54,13 @@ CONFIG: "dict[str, ConfigItem]" = {
     ),
     "AURORA_API_TOKEN": (str, "", "", False, "Aurora API token"),
     "AURORA_API_URL": (str, "", "", False, "Aurora API url"),
+    "AURORA_PAYLOAD_ENCRYPTION_KEY": (
+        str,
+        "",
+        "",
+        False,
+        "Pre-shared Fernet key for decrypting encrypted Aurora API response payloads",
+    ),
     "CACHE_URL": (str, "redis://localhost:6379/0", "", True, setting("cache-url")),
     "SELECT2_CACHE": (
         str,
