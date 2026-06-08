@@ -11,7 +11,15 @@ from ...models import CountryBatch, CountryIndividual
 from ....utils.flex_fields import Base64ImageField
 
 
+class PictureImportLimitError(ValueError):
+    pass
+
+
 class BatchPictureImportService:
+    MAX_ZIP_UPLOAD_BYTES = 20 * 1024 * 1024
+    MAX_ZIP_FILE_COUNT = 2000
+    MAX_ZIP_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+
     def __init__(self, batch: CountryBatch) -> None:
         self.batch = batch
 
@@ -29,6 +37,23 @@ class BatchPictureImportService:
         return "application/octet-stream"
 
     @classmethod
+    def _validate_archive_limits(cls, archive: zipfile.ZipFile) -> None:
+        file_count = 0
+        uncompressed_size = 0
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            file_count += 1
+            uncompressed_size += info.file_size
+            if file_count > cls.MAX_ZIP_FILE_COUNT:
+                raise PictureImportLimitError(f"ZIP archive contains too many files (max {cls.MAX_ZIP_FILE_COUNT}).")
+            if uncompressed_size > cls.MAX_ZIP_UNCOMPRESSED_BYTES:
+                raise PictureImportLimitError(
+                    "ZIP archive is too large when extracted "
+                    f"(max {cls.MAX_ZIP_UNCOMPRESSED_BYTES // (1024 * 1024)} MB)."
+                )
+
+    @classmethod
     def extract_zip_images(cls, zip_file: UploadedFile) -> tuple[list[dict[str, str]], set[str]]:
         entries: list[dict[str, str]] = []
         duplicates: set[str] = set()
@@ -36,6 +61,7 @@ class BatchPictureImportService:
 
         zip_file.seek(0)
         with zipfile.ZipFile(zip_file) as archive:
+            cls._validate_archive_limits(archive)
             for info in archive.infolist():
                 if info.is_dir():
                     continue
@@ -64,11 +90,12 @@ class BatchPictureImportService:
         return entries, duplicates
 
     def get_match_field_choices(self) -> list[tuple[str, str]]:
-        first_individual = CountryIndividual.objects.filter(batch=self.batch, removed=False).only("raw_data").first()
-        if not first_individual:
-            return []
-        raw_data = first_individual.raw_data or {}
-        return [(key, key) for key in sorted(raw_data.keys())]
+        keys: set[str] = set()
+        queryset = CountryIndividual.objects.filter(batch=self.batch, removed=False).values_list("raw_data", flat=True)
+        for raw_data in queryset.iterator():
+            if isinstance(raw_data, dict):
+                keys.update(raw_data.keys())
+        return [(key, key) for key in sorted(keys)]
 
     def get_target_field_choices(self) -> list[tuple[str, str]]:
         checker = self.batch.program.individual_checker
@@ -81,7 +108,7 @@ class BatchPictureImportService:
             if isinstance(field, Base64ImageField)
         ]
 
-    def build_preview(self, match_field: str, zip_file: UploadedFile) -> dict[str, Any]:
+    def build_preview(self, match_field: str, zip_file: UploadedFile, include_data_uri: bool = False) -> dict[str, Any]:
         individuals = list(CountryIndividual.objects.filter(batch=self.batch, removed=False).only("id", "raw_data"))
         by_key: defaultdict[str, list[int]] = defaultdict(list)
         for individual in individuals:
@@ -99,14 +126,14 @@ class BatchPictureImportService:
                 continue
             record_ids = by_key.get(entry["key"], [])
             if len(record_ids) == 1:
-                assignments.append(
-                    {
-                        "record_id": record_ids[0],
-                        "record_key": entry["key"],
-                        "filename": entry["filename"],
-                        "data_uri": entry["data_uri"],
-                    }
-                )
+                assignment = {
+                    "record_id": record_ids[0],
+                    "record_key": entry["key"],
+                    "filename": entry["filename"],
+                }
+                if include_data_uri:
+                    assignment["data_uri"] = entry["data_uri"]
+                assignments.append(assignment)
             elif len(record_ids) > 1:
                 ambiguous_record_keys.add(entry["key"])
             else:
@@ -139,6 +166,8 @@ class BatchPictureImportService:
             current[target_field] = item["data_uri"]
             if current != individual.flex_fields:
                 individual.flex_fields = current
-                individual.save(update_fields=["flex_fields"])
+                individual.last_checked = None
+                individual.errors = {}
+                individual.save(update_fields=["flex_fields", "last_checked", "errors"])
                 updated += 1
         return updated

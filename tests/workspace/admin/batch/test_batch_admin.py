@@ -1,5 +1,7 @@
 import io
+import tempfile
 import zipfile
+from pathlib import Path
 
 import pytest
 from strategy_field.utils import fqn
@@ -453,6 +455,9 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     assert payload["batch_id"] == batch.pk
     assert payload["match_field"] == "beneficiary_id"
     assert payload["target_field"] == "photo"
+    temp_zip_path = Path(payload["zip_temp_path"])
+    assert temp_zip_path.exists()
+    temp_zip_path.unlink()
 
 
 def test_import_pictures_post_confirm_without_token_redirects_with_error(
@@ -505,6 +510,10 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
+    service.build_preview.return_value = {
+        "assignments": [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}],
+        "matched_files_count": 1,
+    }
     service.apply_assignments.return_value = 2
     mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
@@ -513,8 +522,19 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
 
     request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
     _add_middleware_to_request(request, user)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("A-1.jpg", b"content")
+    with tempfile.NamedTemporaryFile(prefix="batch-import-confirm-", suffix=".zip", delete=False) as stream:
+        zip_path = stream.name
+        stream.write(payload.getvalue())
     request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
-        "tok": {"batch_id": batch.pk, "target_field": "photo", "assignments": [{"record_id": 1}]}
+        "tok": {
+            "batch_id": batch.pk,
+            "match_field": "beneficiary_id",
+            "target_field": "photo",
+            "zip_temp_path": zip_path,
+        }
     }
 
     response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
@@ -522,7 +542,10 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     assert response.status_code == 302
     assert response.url == "/workspace/batch/1/change/"
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
-    service.apply_assignments.assert_called_once_with("photo", [{"record_id": 1}])
+    service.build_preview.assert_called_once()
+    service.apply_assignments.assert_called_once_with(
+        "photo", [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}]
+    )
 
 
 def test_import_pictures_get_step_two_with_expired_token_redirects(
@@ -683,6 +706,16 @@ def test_get_match_field_choices_returns_sorted_keys(batch: CountryBatch) -> Non
     CountryIndividualFactory(batch=batch, household=hh, raw_data={"z_key": "1", "a_key": "2"})
 
     assert BatchPictureImportService(batch).get_match_field_choices() == [("a_key", "a_key"), ("z_key", "z_key")]
+
+
+def test_get_match_field_choices_includes_union_of_keys_across_records(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"a_key": "1"})
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"b_key": "2"})
+
+    assert BatchPictureImportService(batch).get_match_field_choices() == [("a_key", "a_key"), ("b_key", "b_key")]
 
 
 def test_get_target_field_choices_without_checker(batch: CountryBatch) -> None:

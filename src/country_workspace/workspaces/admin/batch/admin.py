@@ -1,5 +1,7 @@
 import uuid
 import zipfile
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from admin_extra_buttons.buttons import LinkButton
@@ -23,7 +25,7 @@ from ...permissions import can_import_program_data, can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from ..hh_ind import SelectedProgramMixin
-from .picture_import import BatchPictureImportService
+from .picture_import import BatchPictureImportService, PictureImportLimitError
 from .reprocessing import reprocess_batch as reprocess_batch_task
 
 
@@ -130,6 +132,11 @@ class BatchPictureImportForm(forms.Form):
         zip_file: UploadedFile = self.cleaned_data["zip_file"]
         if not zipfile.is_zipfile(zip_file):
             raise forms.ValidationError(_("Please upload a valid zip archive."))
+        if zip_file.size and zip_file.size > BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES:
+            raise forms.ValidationError(
+                _("ZIP archive is too large (max %(max_mb)d MB).")
+                % {"max_mb": BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES // (1024 * 1024)}
+            )
         zip_file.seek(0)
         return zip_file
 
@@ -170,6 +177,29 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return payloads
         return {}
 
+    @staticmethod
+    def _delete_temp_zip(path: str | None) -> None:
+        if path:
+            zip_path = Path(path)
+            if zip_path.exists():
+                zip_path.unlink()
+
+    @staticmethod
+    def _store_uploaded_zip(uploaded: UploadedFile) -> str:
+        path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as temp_file:
+                path = temp_file.name
+                for chunk in uploaded.chunks():
+                    temp_file.write(chunk)
+        except Exception:
+            CountryBatchAdmin._delete_temp_zip(path)
+            raise
+        uploaded.seek(0)
+        if not path:
+            raise RuntimeError("Temporary ZIP path was not created")
+        return path
+
     def _get_picture_import_payload(self, request: HttpRequest, token: str, batch_id: int) -> dict[str, Any] | None:
         payloads = self._session_payloads(request)
         payload = payloads.get(token)
@@ -181,13 +211,18 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def _save_picture_import_payload(self, request: HttpRequest, token: str, payload: dict[str, Any]) -> None:
         payloads = self._session_payloads(request)
+        old_payload = payloads.get(token)
+        if old_payload:
+            self._delete_temp_zip(old_payload.get("zip_temp_path"))
         payloads[token] = payload
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
         request.session.modified = True
 
     def _clear_picture_import_payload(self, request: HttpRequest, token: str) -> None:
         payloads = self._session_payloads(request)
-        payloads.pop(token, None)
+        payload = payloads.pop(token, None)
+        if payload:
+            self._delete_temp_zip(payload.get("zip_temp_path"))
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
         request.session.modified = True
 
@@ -196,7 +231,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         permission=can_import_program_data,
         html_attrs={"title": "Import pictures from zip and assign by matching key."},
     )
-    def import_pictures(self, request: HttpRequest, pk: str) -> HttpResponse:  # noqa: C901, PLR0912
+    def import_pictures(self, request: HttpRequest, pk: str) -> HttpResponse:  # noqa: C901, PLR0912, PLR0915
         obj: CountryBatch | None = self.get_object(request, pk)
         if not obj:
             return HttpResponse("Batch not found", status=404)
@@ -238,19 +273,27 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 target_field_choices=target_field_choices,
             )
             if form.is_valid():
-                preview = service.build_preview(form.cleaned_data["match_field"], form.cleaned_data["zip_file"])
-                token = str(uuid.uuid4())
-                self._save_picture_import_payload(
-                    request,
-                    token,
-                    {
-                        "batch_id": obj.pk,
-                        "match_field": form.cleaned_data["match_field"],
-                        "target_field": form.cleaned_data["target_field"],
-                        **preview,
-                    },
-                )
-                response = HttpResponseRedirect(f"{request.path}?step=2&token={token}")
+                zip_temp_path = self._store_uploaded_zip(form.cleaned_data["zip_file"])
+                try:
+                    with Path(zip_temp_path).open("rb") as zip_stream:
+                        preview = service.build_preview(form.cleaned_data["match_field"], zip_stream)
+                except PictureImportLimitError as exc:
+                    self._delete_temp_zip(zip_temp_path)
+                    form.add_error("zip_file", str(exc))
+                else:
+                    token = str(uuid.uuid4())
+                    self._save_picture_import_payload(
+                        request,
+                        token,
+                        {
+                            "batch_id": obj.pk,
+                            "match_field": form.cleaned_data["match_field"],
+                            "target_field": form.cleaned_data["target_field"],
+                            "zip_temp_path": zip_temp_path,
+                            **preview,
+                        },
+                    )
+                    response = HttpResponseRedirect(f"{request.path}?step=2&token={token}")
         elif request.method == "POST" and "confirm" in request.POST:
             step = "3"
             if not token:
@@ -266,14 +309,34 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     )
                     response = HttpResponseRedirect(request.path)
                 else:
-                    updated = service.apply_assignments(payload["target_field"], payload["assignments"])
-                    self._clear_picture_import_payload(request, token)
-                    self.message_user(
-                        request,
-                        _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
-                        messages.SUCCESS,
-                    )
-                    response = redirect_to_change()
+                    zip_temp_path = payload.get("zip_temp_path")
+                    if not zip_temp_path or not Path(zip_temp_path).exists():
+                        self._clear_picture_import_payload(request, token)
+                        self.message_user(
+                            request,
+                            _("Picture import session has expired. Please run the matching step again."),
+                            messages.ERROR,
+                        )
+                        response = HttpResponseRedirect(request.path)
+                    else:
+                        try:
+                            with Path(zip_temp_path).open("rb") as zip_stream:
+                                preview = service.build_preview(
+                                    payload["match_field"], zip_stream, include_data_uri=True
+                                )
+                        except PictureImportLimitError as exc:
+                            self._clear_picture_import_payload(request, token)
+                            self.message_user(request, str(exc), messages.ERROR)
+                            response = HttpResponseRedirect(request.path)
+                        else:
+                            updated = service.apply_assignments(payload["target_field"], preview["assignments"])
+                            self._clear_picture_import_payload(request, token)
+                            self.message_user(
+                                request,
+                                _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
+                                messages.SUCCESS,
+                            )
+                            response = redirect_to_change()
         elif request.method == "GET" and request.GET.get("step") == "2" and token:
             payload = self._get_picture_import_payload(request, token, obj.pk)
             if not payload:
