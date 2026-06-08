@@ -18,7 +18,7 @@ from country_workspace.workspaces.admin.batch.admin import (
     BATCH_PICTURE_IMPORT_SESSION_KEY,
     ProgramBatchFilter,
 )
-from country_workspace.workspaces.admin.batch.picture_import import BatchPictureImportService
+from country_workspace.workspaces.admin.batch.picture_import import BatchPictureImportService, PictureImportLimitError
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
 from country_workspace.utils.flex_fields import Base64ImageField
@@ -295,6 +295,20 @@ def test_batch_picture_import_form_clean_zip_file_accepts_zip_and_rewinds() -> N
     assert form.cleaned_data["zip_file"].tell() == 0
 
 
+def test_batch_picture_import_form_clean_zip_file_rejects_oversized_archive(mocker) -> None:
+    upload = _make_zip_upload({"A-1.jpg": b"jpg"})
+    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_UPLOAD_BYTES", 1)
+    form = BatchPictureImportForm(
+        data={"match_field": "id", "target_field": "photo"},
+        files={"zip_file": upload},
+        match_field_choices=[("id", "id")],
+        target_field_choices=[("photo", "photo")],
+    )
+
+    assert not form.is_valid()
+    assert "zip_file" in form.errors
+
+
 def test_batch_admin_get_common_context_sets_admin_metadata(batch_admin, rf: RequestFactory, user, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
@@ -369,6 +383,92 @@ def test_batch_admin_picture_payload_helpers(batch_admin, rf: RequestFactory, us
     assert batch_admin._get_picture_import_payload(request, "tok", 123) == {"batch_id": 123}
 
     batch_admin._clear_picture_import_payload(request, "tok")
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
+    assert request.session.modified is True
+
+
+def test_batch_admin_delete_temp_zip_removes_existing_file(batch_admin) -> None:
+    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as stream:
+        zip_path = Path(stream.name)
+    assert zip_path.exists()
+
+    batch_admin._delete_temp_zip(str(zip_path))
+
+    assert not zip_path.exists()
+
+
+def test_batch_admin_store_uploaded_zip_cleans_up_on_write_error(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    upload = _make_zip_upload({"A-1.jpg": b"jpg"})
+    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as temp_zip:
+        temp_zip_path = Path(temp_zip.name)
+
+    class BrokenTempFile:
+        name = str(temp_zip_path)
+
+        def write(self, _chunk):
+            raise OSError("disk full")
+
+    class BrokenManager:
+        def __enter__(self):
+            return BrokenTempFile()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    mocker.patch.object(batch_admin_module.tempfile, "NamedTemporaryFile", return_value=BrokenManager())
+
+    with pytest.raises(OSError, match="disk full"):
+        batch_admin._store_uploaded_zip(upload)
+
+    assert not temp_zip_path.exists()
+
+
+def test_batch_admin_store_uploaded_zip_raises_when_tempfile_has_no_name(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    upload = _make_zip_upload({"A-1.jpg": b"jpg"})
+
+    class NamelessTempFile:
+        name = ""
+
+        def write(self, _chunk):
+            return None
+
+    class NamelessManager:
+        def __enter__(self):
+            return NamelessTempFile()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    mocker.patch.object(batch_admin_module.tempfile, "NamedTemporaryFile", return_value=NamelessManager())
+
+    with pytest.raises(RuntimeError, match="Temporary ZIP path was not created"):
+        batch_admin._store_uploaded_zip(upload)
+
+
+def test_batch_admin_save_payload_replaces_old_and_deletes_old_temp_file(batch_admin, rf: RequestFactory, user) -> None:
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as stream:
+        old_path = Path(stream.name)
+
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {"tok": {"batch_id": 1, "zip_temp_path": str(old_path)}}
+    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 1, "zip_temp_path": "new.zip"})
+
+    assert not old_path.exists()
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_temp_path"] == "new.zip"
+
+
+def test_batch_admin_clear_payload_handles_missing_token(batch_admin, rf: RequestFactory, user) -> None:
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {}
+
+    batch_admin._clear_picture_import_payload(request, "missing-token")
+
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
     assert request.session.modified is True
 
@@ -465,6 +565,65 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     temp_zip_path.unlink()
 
 
+def test_import_pictures_post_preview_with_invalid_form_renders_form(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    _mock_picture_import_service(mocker, batch_admin_module, service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+    get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "1"})
+
+    request = rf.post(
+        "/admin/import-pictures/",
+        data={"preview": "1", "match_field": "beneficiary_id", "target_field": "photo"},
+    )
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    form = get_common_context.call_args.kwargs["form"]
+    assert "zip_file" in form.errors
+
+
+def test_import_pictures_post_preview_handles_limit_error_and_cleans_temp_file(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    service.build_preview.side_effect = PictureImportLimitError("too many files")
+    _mock_picture_import_service(mocker, batch_admin_module, service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
+    get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "1"})
+
+    request = rf.post(
+        "/admin/import-pictures/",
+        data={
+            "preview": "1",
+            "match_field": "beneficiary_id",
+            "target_field": "photo",
+            "zip_file": _make_zip_upload({"A-1.jpg": b"content"}),
+        },
+    )
+    _add_middleware_to_request(request, user)
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 200
+    form = get_common_context.call_args.kwargs["form"]
+    assert "zip_file" in form.errors
+    assert not request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY)
+
+
 def test_import_pictures_post_confirm_without_token_redirects_with_error(
     batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
 ) -> None:
@@ -551,6 +710,69 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     service.apply_assignments.assert_called_once_with(
         "photo", [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}]
     )
+
+
+def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    _mock_picture_import_service(mocker, batch_admin_module, service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    message_user = mocker.patch.object(batch_admin, "message_user")
+
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "tok": {"batch_id": batch.pk, "match_field": "beneficiary_id", "target_field": "photo"}
+    }
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
+    message_user.assert_called()
+
+
+def test_import_pictures_post_confirm_handles_limit_error(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    service.build_preview.side_effect = PictureImportLimitError("zip too large")
+    _mock_picture_import_service(mocker, batch_admin_module, service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    message_user = mocker.patch.object(batch_admin, "message_user")
+
+    with tempfile.NamedTemporaryFile(prefix="batch-import-confirm-", suffix=".zip", delete=False) as stream:
+        zip_path = Path(stream.name)
+        stream.write(_make_zip_upload({"A-1.jpg": b"content"}).read())
+
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "tok": {
+            "batch_id": batch.pk,
+            "match_field": "beneficiary_id",
+            "target_field": "photo",
+            "zip_temp_path": str(zip_path),
+        }
+    }
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
+    assert not zip_path.exists()
+    message_user.assert_called()
 
 
 def test_import_pictures_get_step_two_with_expired_token_redirects(
@@ -698,6 +920,44 @@ def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
     assert [item["filename"] for item in entries] == ["valid.jpeg"]
     assert duplicate_keys == set()
     assert upload.tell() == 0
+
+
+def test_extract_zip_images_skips_empty_filename_entries(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
+
+    upload = _make_zip_upload({"A-1.jpg": b"ok"})
+    fake_path_obj = mocker.MagicMock()
+    fake_path_obj.name = ""
+    fake_path_obj.stem = ""
+    mocker.patch.object(picture_import_module, "Path", return_value=fake_path_obj)
+
+    entries, duplicate_keys = BatchPictureImportService.extract_zip_images(upload)
+
+    assert entries == []
+    assert duplicate_keys == set()
+
+
+def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("first.jpg", b"1")
+        archive.writestr("second.jpg", b"2")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_FILE_COUNT", 1)
+
+    with pytest.raises(PictureImportLimitError, match="too many files"):
+        BatchPictureImportService.extract_zip_images(upload)
+
+
+def test_extract_zip_images_raises_when_uncompressed_size_exceeds_limit(mocker) -> None:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("big.jpg", b"12345")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_UNCOMPRESSED_BYTES", 4)
+
+    with pytest.raises(PictureImportLimitError, match="too large when extracted"):
+        BatchPictureImportService.extract_zip_images(upload)
 
 
 def test_get_match_field_choices_returns_empty_without_records(batch: CountryBatch) -> None:
