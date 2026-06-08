@@ -37,7 +37,7 @@ def job(mocker: MockerFixture, config: Config):
 @pytest.fixture(autouse=True)
 def ona_constance_config(mocker: MockerFixture):
     constance_config = mocker.patch("country_workspace.contrib.ona.import_processing.constance_config")
-    constance_config.ONA_API_URL = "https://api.ona.io"
+    constance_config.ONA_API_URL = "https://data.inform.unicef.org"
     constance_config.ONA_API_TOKEN = "dummy-token"
     return constance_config
 
@@ -110,7 +110,7 @@ def test_import_data_calls_client_and_aggregates(
     assert result == expected
 
     client_cls.assert_called_once_with(
-        base_url="https://api.ona.io",
+        base_url="https://data.inform.unicef.org",
         token="dummy-token",
     )
     client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"])
