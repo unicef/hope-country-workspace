@@ -5,16 +5,3 @@
     &rsaquo; <a href="{% add_preserved_filters wcl %}">Batches</a>{% admin_url modeladmin %}
     &rsaquo; {{ original }}{% admin_url original %}
 {% endblock page-title %}
-{% block form_top %}
-    {{ block.super }}
-    {% if change and not is_popup %}
-        <div class="module aligned">
-            <h2>
-                {% translate "Batch actions" %}
-            </h2>
-            <ul class="object-tools">
-                {% include "workspace/admin_extra_buttons/includes/change_form_buttons.html" %}
-            </ul>
-        </div>
-    {% endif %}
-{% endblock form_top %}
