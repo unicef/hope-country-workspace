@@ -155,6 +155,33 @@ class TestBatchAdminHouseholdsButton:
         assert f"batch__exact={batch_with_households.pk}" in btn.href
 
 
+class TestBatchAdminImportPicturesButton:
+    """Test BatchAdmin.import_pictures link button."""
+
+    def test_import_pictures_button_visible_with_permission(
+        self, batch_admin_instance: BatchAdmin, empty_batch: "Batch", mocker
+    ) -> None:
+        request = mocker.MagicMock()
+        request.user.has_perm.return_value = True
+
+        btn = batch_admin_instance.import_pictures.get_button({"original": empty_batch, "request": request})
+        batch_admin_instance.import_pictures.func(batch_admin_instance, btn)
+
+        assert btn.visible is True
+        assert btn.href.endswith(f"/workspace/workspaces/countrybatch/{empty_batch.pk}/import_pictures/")
+
+    def test_import_pictures_button_hidden_without_permission(
+        self, batch_admin_instance: BatchAdmin, empty_batch: "Batch", mocker
+    ) -> None:
+        request = mocker.MagicMock()
+        request.user.has_perm.return_value = False
+
+        btn = batch_admin_instance.import_pictures.get_button({"original": empty_batch, "request": request})
+        batch_admin_instance.import_pictures.func(batch_admin_instance, btn)
+
+        assert btn.visible is False
+
+
 class TestBatchAdminGetBeneficiaryLabels:
     """Test BatchAdmin._get_beneficiary_labels method."""
 

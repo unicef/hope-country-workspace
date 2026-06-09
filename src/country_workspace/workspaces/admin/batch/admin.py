@@ -146,7 +146,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ["name", "import_date", "imported_by", "source", "status"]
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
-    change_form_template = ["workspace/change_form.html"]
+    change_form_template = ["workspace/batch/change_form.html", "workspace/change_form.html"]
     ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
     readonly_fields = fields = ("name", "source", "status")

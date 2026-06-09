@@ -98,6 +98,18 @@ class BatchAdmin(BaseModelAdmin):
             base = reverse("workspace:workspaces_countrybatch_changelist")
             btn.href = f"{base}?%s" % req.META["QUERY_STRING"]
 
+    @link(change_list=False, label="Import Pictures")
+    def import_pictures(self, button: LinkButton) -> None:
+        obj: Batch = button.context["original"]
+        request: HttpRequest | None = button.context.get("request")
+
+        if request and not request.user.has_perm("country_workspace.import_program_data", obj):
+            button.visible = False
+            return
+
+        workspace_change_url = obj.get_change_url(namespace="workspace")
+        button.href = workspace_change_url.replace("/change/", "/import_pictures/")
+
     @button()
     def batch_cleanup(self, request: HttpRequest, pk: str) -> HttpResponse:
         obj: Batch = self.get_object(request, pk)
