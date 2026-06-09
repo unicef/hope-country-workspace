@@ -36,13 +36,14 @@ def make_program_rdp():
 @pytest.mark.parametrize(
     ("status", "locked", "expected"),
     [
-        (Rdp.PushStatus.SUCCESS, False, True),
+        (Rdp.PushStatus.PUSHED, False, True),
+        (Rdp.PushStatus.MERGED, False, True),
         (Rdp.PushStatus.PENDING, True, True),
         (Rdp.PushStatus.PENDING, False, False),
         (Rdp.PushStatus.FAILURE, True, False),
-        (Rdp.PushStatus.CANCELLED, True, False),
+        (Rdp.PushStatus.REJECTED, True, False),
     ],
-    ids=["success", "pending_locked", "pending_unlocked", "failure_locked", "cancelled_locked"],
+    ids=["pushed", "merged", "pending_locked", "pending_unlocked", "failure_locked", "rejected_locked"],
 )
 def test_program_dedup_settings_policy_has_locked_dedup_settings(
     dedup_program,
@@ -62,9 +63,10 @@ def test_program_dedup_settings_policy_has_locked_dedup_settings(
     [
         (Rdp.PushStatus.PENDING, False, True, None),
         (Rdp.PushStatus.PENDING, True, False, "cannot be updated"),
-        (Rdp.PushStatus.SUCCESS, False, False, "cannot be updated"),
+        (Rdp.PushStatus.PUSHED, False, False, "cannot be updated"),
+        (Rdp.PushStatus.MERGED, False, False, "cannot be updated"),
     ],
-    ids=["allowed", "pending_locked", "success"],
+    ids=["allowed", "pending_locked", "pushed", "merged"],
 )
 def test_program_dedup_settings_policy_update_dedup_settings_check(
     dedup_program,

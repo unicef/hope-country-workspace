@@ -1,11 +1,14 @@
-from rest_framework.routers import SimpleRouter
+from django.urls import path
 
-from .views import HopeRdiViewSet
+from .views import HopeRdiCallbackView
 
 
 app_name = "api"
 
-router = SimpleRouter()
-router.register("hope-rdis", HopeRdiViewSet, basename="hope-rdi")
-
-urlpatterns = router.urls
+urlpatterns = [
+    path(
+        "callbacks/hope/rdis/<str:hope_rdi_id>/",
+        HopeRdiCallbackView.as_view(),
+        name="hope-rdi-callback",
+    ),
+]

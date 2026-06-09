@@ -5,6 +5,7 @@ from pathlib import Path
 from factory.django import DjangoModelFactory
 from pytest_factoryboy import register
 
+from .api_token import APITokenFactory  # noqa
 from .aurora import ProjectFactory, RegistrationFactory  # noqa
 from .base import AutoRegisterModelFactory, TAutoRegisterModelFactory, factories_registry
 from .batch import BatchFactory, CountryBatchFactory  # noqa

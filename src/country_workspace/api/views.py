@@ -1,11 +1,11 @@
-from http import HTTPMethod
 from typing import Any, TYPE_CHECKING, cast
 
 from hope_api_auth.auth import GrantedPermission, LoggingTokenAuthentication
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
+
 
 from country_workspace.contrib.hope.exceptions import (
     HopeRdiCallbackConflictError,
@@ -32,26 +32,24 @@ def _callback_payload(exc: HopeRdiCallbackError) -> dict[str, Any]:
     ).as_dict()
 
 
-class HopeRdiViewSet(viewsets.GenericViewSet):
+class HopeRdiCallbackView(APIView):
+    """Handle HOPE RDI final status callbacks."""
+
     authentication_classes = (LoggingTokenAuthentication,)
     permission_classes = (GrantedPermission,)
     permission = APIGrant.HOPE_RDI_CALLBACK
     serializer_class = HopeRdiCallbackSerializer
-    lookup_url_kwarg = "hope_rdi_id"
 
-    @action(detail=True, methods=(HTTPMethod.POST,), url_path="callback")
-    def callback(self, request: Request, hope_rdi_id: str) -> Response:
-        serializer = self.get_serializer(data=request.data)
+    def post(self, request: Request, hope_rdi_id: str) -> Response:
+        """Apply a final HOPE RDI status to the matching pushed RDP."""
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        token = cast("APIToken", request.auth)
-        callback_status = serializer.validated_data["status"]
 
         try:
             payload = apply_hope_rdi_final_status(
                 hope_rdi_id=hope_rdi_id,
-                status=callback_status,
-                token=token,
+                status=serializer.validated_data["status"],
+                token=cast("APIToken", request.auth),
             )
         except HopeRdiCallbackNotFoundError as exc:
             return Response(_callback_payload(exc), status=status.HTTP_404_NOT_FOUND)

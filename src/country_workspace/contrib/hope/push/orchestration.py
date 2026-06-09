@@ -20,7 +20,12 @@ from country_workspace.contrib.hope.exceptions import (
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import APIToken, AsyncJob, Rdp
 
-from .config import CreateRdpConfig, HopeRdiCallbackCode, PushWorkflowConfig
+from .config import (
+    CreateRdpConfig,
+    DEDUP_ENGINE_FINAL_ACTION_BY_RDI_STATUS,
+    HopeRdiCallbackCode,
+    PushWorkflowConfig,
+)
 from .policy import ActionCheck, get_rdp_policy
 from .processor import DedupProcessor, PushProcessor
 from .repository import (
@@ -190,6 +195,37 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     return processor.total
 
 
+def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Reject the active DedupEngine deduplication set for an existing RDP."""
+    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
+    _require_policy_check(get_rdp_policy(rdp).reject_ds_check)
+    group_reference_id = rdp.program.unicef_id
+    deduplication_set_id = str(rdp.deduplication_set_id)
+    _save_current_deduplication_snapshot(rdp=rdp, key="before_reject")
+
+    try:
+        with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
+            client.reject()
+    except (RemoteError, RemoteUnavailableError) as e:
+        raise HopePushError({"errors": [str(e)]}) from e
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp.pk)
+        set_rdp_push_status(
+            rdp=locked,
+            status=Rdp.PushStatus.REJECTED,
+            hope_rdi_id=locked.hope_rdi_id,
+            is_dedup_settings_locked=False,
+        )
+
+    return {
+        "rdp_id": rdp.pk,
+        "program": group_reference_id,
+        "deduplication_set_id": deduplication_set_id,
+        "rejected": True,
+    }
+
+
 def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
     """Create a child RDP from the current RDP deduplication state."""
     _require_policy_check(get_rdp_policy(source).clone_check)
@@ -281,66 +317,6 @@ def _clone_rdp_in_transaction(
         raise HopePushError({"errors": [f"RDP: can not clone record: {e}"]}) from e
 
 
-def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject the active DedupEngine deduplication set for an existing RDP."""
-    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    _require_policy_check(get_rdp_policy(rdp).reject_ds_check)
-    group_reference_id = rdp.program.unicef_id
-    deduplication_set_id = str(rdp.deduplication_set_id)
-    _save_current_deduplication_snapshot(rdp=rdp, key="before_reject")
-
-    try:
-        with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
-            client.reject()
-    except (RemoteError, RemoteUnavailableError) as e:
-        raise HopePushError({"errors": [str(e)]}) from e
-
-    with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp.pk)
-        set_rdp_push_status(
-            rdp=locked,
-            status=Rdp.PushStatus.REJECTED,
-            hope_rdi_id=locked.hope_rdi_id,
-            is_dedup_settings_locked=False,
-        )
-
-    return {
-        "rdp_id": rdp.pk,
-        "program": group_reference_id,
-        "deduplication_set_id": deduplication_set_id,
-        "rejected": True,
-    }
-
-
-def _mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
-    """Mark selection-owner beneficiaries as removed."""
-    owner = selection_owner_for_rdp(rdp=rdp)
-    if is_master_detail:
-        hh_ids = list(owner.households.values_list("pk", flat=True))
-        if not hh_ids:
-            return
-        owner.households.update(removed=True)
-        qs_individuals_by_household_pks(hh_ids).update(removed=True)
-        return
-    owner.individuals.update(removed=True)
-
-
-def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
-    """Yield the ordered workflow callables; each step appends errors to processor.total."""
-    pks = config["pks"]
-
-    yield processor.preflight
-    yield processor.rdi_create
-    if config["master_detail"]:
-        yield from (
-            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
-            partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
-        )
-    else:
-        yield partial(processor.run_with, qs_individuals_by_pks(pks), processor.rdi_push_people)
-    yield processor.rdi_complete
-
-
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
     rdp = rdp_for_push(pk=job.config["rdp_id"])
@@ -373,46 +349,37 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             status=Rdp.PushStatus.PUSHED,
             hope_rdi_id=hope_rdi_id,
         )
-        group_reference_id = locked.program.unicef_id
-        deduplication_set_id = locked.deduplication_set_id
-
-    _approve_deduplication_set_after_successful_push(
-        group_reference_id=group_reference_id,
-        deduplication_set_id=deduplication_set_id,
-        processor=hope_processor,
-    )
 
     return hope_processor.total
 
 
-def _approve_deduplication_set_after_successful_push(
-    group_reference_id: str,
-    deduplication_set_id: UUID | None,
-    processor: PushProcessor,
-) -> None:
-    """Approve the active DedupEngine deduplication set after a successful push to HOPE Core."""
-    if not deduplication_set_id:
-        return
+def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
+    """Yield the ordered workflow callables; each step appends errors to processor.total."""
+    pks = config["pks"]
 
-    try:
-        with make_dedup_client(
-            group_reference_id,
-            deduplication_set_id=str(deduplication_set_id),
-        ) as client:
-            client.approve()
-    except (RemoteError, RemoteUnavailableError) as e:
-        processor.fail("DedupEngine", f"approve failed. {e}")
+    yield processor.preflight
+    yield processor.rdi_create
+    if config["master_detail"]:
+        yield from (
+            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
+            partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
+        )
+    else:
+        yield partial(processor.run_with, qs_individuals_by_pks(pks), processor.rdi_push_people)
+    yield processor.rdi_complete
 
 
-def _mark_rdp_beneficiaries_not_removed(rdp: Rdp) -> None:
-    """Mark selection-owner beneficiaries as not removed."""
+def _mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
+    """Mark selection-owner beneficiaries as removed."""
     owner = selection_owner_for_rdp(rdp=rdp)
-    hh_ids = list(owner.households.values_list("pk", flat=True))
-    if hh_ids:
-        owner.households.update(removed=False)
-        qs_individuals_by_household_pks(hh_ids).update(removed=False)
+    if is_master_detail:
+        hh_ids = list(owner.households.values_list("pk", flat=True))
+        if not hh_ids:
+            return
+        owner.households.update(removed=True)
+        qs_individuals_by_household_pks(hh_ids).update(removed=True)
         return
-    owner.individuals.update(removed=False)
+    owner.individuals.update(removed=True)
 
 
 def apply_hope_rdi_final_status(
@@ -427,15 +394,6 @@ def apply_hope_rdi_final_status(
             HopeRdiCallbackPayload.error(
                 code=HopeRdiCallbackCode.MISSING_RDI_ID,
                 detail="RDI id is required.",
-            )
-        )
-
-    if status not in {Rdp.PushStatus.MERGED, Rdp.PushStatus.REJECTED}:
-        raise HopeRdiCallbackError(
-            HopeRdiCallbackPayload.error(
-                code=HopeRdiCallbackCode.UNSUPPORTED_STATUS,
-                detail="Unsupported RDI final status.",
-                rdi_id=hope_rdi_id,
             )
         )
 
@@ -466,6 +424,8 @@ def apply_hope_rdi_final_status(
                 )
             )
 
+        _finalize_deduplication_set_for_hope_callback(rdp=rdp, status=status)
+
         if status == Rdp.PushStatus.REJECTED:
             _mark_rdp_beneficiaries_not_removed(rdp)
 
@@ -477,3 +437,36 @@ def apply_hope_rdi_final_status(
         )
 
         return HopeRdiCallbackPayload.finalized(rdp=rdp, changed=True)
+
+
+def _finalize_deduplication_set_for_hope_callback(*, rdp: Rdp, status: Rdp.PushStatus) -> None:
+    """Apply the final HOPE callback decision to the active DedupEngine set."""
+    if not rdp.deduplication_set_id:
+        return
+
+    action = DEDUP_ENGINE_FINAL_ACTION_BY_RDI_STATUS[status]
+    try:
+        with make_dedup_client(
+            rdp.program.unicef_id,
+            deduplication_set_id=str(rdp.deduplication_set_id),
+        ) as client:
+            getattr(client, action)()
+    except (RemoteError, RemoteUnavailableError) as exc:
+        raise HopeRdiCallbackError(
+            HopeRdiCallbackPayload.error(
+                code=HopeRdiCallbackCode.CALLBACK_ERROR,
+                detail=f"DedupEngine: final status sync failed. {exc}",
+                rdp=rdp,
+            )
+        ) from exc
+
+
+def _mark_rdp_beneficiaries_not_removed(rdp: Rdp) -> None:
+    """Mark selection-owner beneficiaries as not removed."""
+    owner = selection_owner_for_rdp(rdp=rdp)
+    hh_ids = list(owner.households.values_list("pk", flat=True))
+    if hh_ids:
+        owner.households.update(removed=False)
+        qs_individuals_by_household_pks(hh_ids).update(removed=False)
+        return
+    owner.individuals.update(removed=False)

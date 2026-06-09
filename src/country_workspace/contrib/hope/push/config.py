@@ -1,6 +1,6 @@
 import re
 from collections.abc import Callable
-from typing import Any, TypedDict, ReadOnly, Final, NamedTuple, NotRequired
+from typing import Any, TypedDict, ReadOnly, Final, Literal, NamedTuple, NotRequired
 from enum import StrEnum, auto
 
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -8,6 +8,7 @@ from country_workspace.workspaces.models import CountryHousehold, CountryIndivid
 
 type Beneficiary = CountryHousehold | CountryIndividual
 type Serializer = Callable[[list[dict]], Any]
+type DedupEngineFinalAction = Literal["approve", "reject"]
 
 # Matches tags like: IND-25-0000.0051
 IND_TAG_RE = re.compile(r"^IND(?:-\d+)+\.\d+$")
@@ -59,10 +60,15 @@ class HopeRdiCallbackCode(StrEnum):
     FINALIZED = auto()
     ALREADY_FINALIZED = auto()
     MISSING_RDI_ID = auto()
-    UNSUPPORTED_STATUS = auto()
     NOT_FOUND = auto()
     INVALID_TRANSITION = auto()
     CALLBACK_ERROR = auto()
+
+
+DEDUP_ENGINE_FINAL_ACTION_BY_RDI_STATUS: Final[dict[str, DedupEngineFinalAction]] = {
+    "MERGED": "approve",
+    "REJECTED": "reject",
+}
 
 
 class ErrorConfig(NamedTuple):

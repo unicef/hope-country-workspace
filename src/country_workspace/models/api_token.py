@@ -6,7 +6,7 @@ from .office import Office
 
 
 class APIToken(AbstractAPIToken):
-    offices = models.ManyToManyField(Office, related_name="api_tokens")
+    valid_for = models.ManyToManyField(Office, related_name="api_tokens")
 
     def __str__(self) -> str:
         grants = ", ".join(self.grants) if self.grants else "no grants"
