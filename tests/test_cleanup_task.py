@@ -21,24 +21,24 @@ def test_cleanup_merged_rdp_data_task():
     # Set threshold to 1 day
     constance_config.RDP_CLEANUP_DAYS = 1
 
-    # 1. Successful RDP pushed 2 days ago (Should be cleaned up)
+    # 1. Merged RDP pushed 2 days ago (Should be cleaned up)
     old_date = timezone.now() - timedelta(days=2)
-    rdp_old_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    rdp_old_merged = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
     # We need to manually update push_date because auto_now=True
-    Rdp.objects.filter(pk=rdp_old_success.pk).update(push_date=old_date)
-    rdp_old_success.refresh_from_db()
+    Rdp.objects.filter(pk=rdp_old_merged.pk).update(push_date=old_date)
+    rdp_old_merged.refresh_from_db()
 
     hh_old = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
     ind_old = IndividualFactory.create(household=hh_old, removed=True)
-    hh_old.rdp.add(rdp_old_success)
-    ind_old.rdp.add(rdp_old_success)
+    hh_old.rdp.add(rdp_old_merged)
+    ind_old.rdp.add(rdp_old_merged)
 
-    # 2. Successful RDP pushed today (Should NOT be cleaned up)
-    rdp_recent_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    # 2. Merged RDP pushed today (Should NOT be cleaned up)
+    rdp_recent_merged = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
     hh_recent = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
     ind_recent = IndividualFactory.create(household=hh_recent, removed=True)
-    hh_recent.rdp.add(rdp_recent_success)
-    ind_recent.rdp.add(rdp_recent_success)
+    hh_recent.rdp.add(rdp_recent_merged)
+    ind_recent.rdp.add(rdp_recent_merged)
 
     # 3. Pending RDP pushed 2 days ago (Should NOT be cleaned up)
     program_pending = ProgramFactory.create()
@@ -51,22 +51,22 @@ def test_cleanup_merged_rdp_data_task():
     hh_pending.rdp.add(rdp_old_pending)
     ind_pending.rdp.add(rdp_old_pending)
 
-    # 4. Household in BOTH old success and pending RDP (Should NOT be cleaned up)
+    # 4. Household in BOTH old merged and pending RDP (Should NOT be cleaned up)
     # We use a third program for the second pending RDP
     program_multi = ProgramFactory.create()
     batch_multi = BatchFactory.create(program=program_multi)
-    rdp_old_success_2 = RdpFactory.create(program=program_multi, status=Rdp.PushStatus.SUCCESS)
-    Rdp.objects.filter(pk=rdp_old_success_2.pk).update(push_date=old_date)
+    rdp_old_merged_2 = RdpFactory.create(program=program_multi, status=Rdp.PushStatus.MERGED)
+    Rdp.objects.filter(pk=rdp_old_merged_2.pk).update(push_date=old_date)
     rdp_pending_2 = RdpFactory.create(program=program_multi, status=Rdp.PushStatus.PENDING)
 
     hh_multi = HouseholdFactory.create(batch=batch_multi, individuals=[], removed=True)
-    hh_multi.rdp.add(rdp_old_success_2, rdp_pending_2)
+    hh_multi.rdp.add(rdp_old_merged_2, rdp_pending_2)
 
-    # 5. Household in old success RDP but removed=False (Should NOT be cleaned up)
-    rdp_old_success_3 = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
-    Rdp.objects.filter(pk=rdp_old_success_3.pk).update(push_date=old_date)
+    # 5. Household in old merged RDP but removed=False (Should NOT be cleaned up)
+    rdp_old_merged_3 = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
+    Rdp.objects.filter(pk=rdp_old_merged_3.pk).update(push_date=old_date)
     hh_not_removed = HouseholdFactory.create(batch=batch, individuals=[], removed=False)
-    hh_not_removed.rdp.add(rdp_old_success_3)
+    hh_not_removed.rdp.add(rdp_old_merged_3)
 
     # Initial counts
     assert Household.objects.count() == 5
@@ -94,7 +94,7 @@ def test_cleanup_merged_rdp_data_batching():
     constance_config.RDP_CLEANUP_BATCH_SIZE = 2
 
     old_date = timezone.now() - timedelta(days=2)
-    rdp = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
+    rdp = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
     Rdp.objects.filter(pk=rdp.pk).update(push_date=old_date)
 
     # Create 5 households with 1 individual each (Total 5 HH, 5 Ind)
@@ -124,12 +124,12 @@ def test_cleanup_merged_rdp_data_disabled():
 
     program = ProgramFactory.create()
     old_date = timezone.now() - timedelta(days=10)
-    rdp_old_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
-    Rdp.objects.filter(pk=rdp_old_success.pk).update(push_date=old_date)
+    rdp_old_merged = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
+    Rdp.objects.filter(pk=rdp_old_merged.pk).update(push_date=old_date)
 
     batch = BatchFactory.create(program=program)
     hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
-    hh.rdp.add(rdp_old_success)
+    hh.rdp.add(rdp_old_merged)
 
     cleanup_merged_rdp_data()
 
@@ -143,12 +143,12 @@ def test_cleanup_merged_rdp_data_no_old_rdps():
 
     program = ProgramFactory.create()
     old_date = timezone.now() - timedelta(days=5)
-    rdp_success = RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS)
-    Rdp.objects.filter(pk=rdp_success.pk).update(push_date=old_date)
+    rdp_merged = RdpFactory.create(program=program, status=Rdp.PushStatus.MERGED)
+    Rdp.objects.filter(pk=rdp_merged.pk).update(push_date=old_date)
 
     batch = BatchFactory.create(program=program)
     hh = HouseholdFactory.create(batch=batch, individuals=[], removed=True)
-    hh.rdp.add(rdp_success)
+    hh.rdp.add(rdp_merged)
 
     cleanup_merged_rdp_data()
 

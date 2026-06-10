@@ -58,17 +58,16 @@ class HopeRdiCallbackPayload(NamedTuple):
     rdp_id: int | None
     rdi_id: str | None
     status: str | None
-    changed: bool
     code: HopeRdiCallbackCode
     detail: str
 
     @classmethod
     def finalized(cls, *, rdp: Rdp, changed: bool) -> "HopeRdiCallbackPayload":
+        """Return callback success payload."""
         return cls(
             rdp_id=rdp.pk,
             rdi_id=rdp.hope_rdi_id,
             status=rdp.status,
-            changed=changed,
             code=HopeRdiCallbackCode.FINALIZED if changed else HopeRdiCallbackCode.ALREADY_FINALIZED,
             detail=f"RDP status updated to {rdp.status}." if changed else f"RDP is already {rdp.status}.",
         )
@@ -82,11 +81,11 @@ class HopeRdiCallbackPayload(NamedTuple):
         rdp: Rdp | None = None,
         rdi_id: str | None = None,
     ) -> "HopeRdiCallbackPayload":
+        """Return callback error payload."""
         return cls(
             rdp_id=rdp.pk if rdp else None,
             rdi_id=rdp.hope_rdi_id if rdp else rdi_id,
             status=rdp.status if rdp else None,
-            changed=False,
             code=code,
             detail=detail,
         )

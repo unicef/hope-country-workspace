@@ -315,11 +315,11 @@ def test_deny_if_not_allowed_handles_remote_errors(
 @pytest.mark.parametrize(
     ("status", "expected_visible"),
     [
-        (CountryRdp.PushStatus.SUCCESS, False),
+        (CountryRdp.PushStatus.MERGED, False),
         (CountryRdp.PushStatus.PENDING, True),
         (CountryRdp.PushStatus.FAILURE, True),
     ],
-    ids=["success", "pending", "failure"],
+    ids=["merged", "pending", "failure"],
 )
 def test_records_button(
     admin_instance,

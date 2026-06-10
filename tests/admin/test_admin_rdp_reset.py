@@ -1,11 +1,14 @@
+from typing import TYPE_CHECKING
+
 import pytest
 from django.urls import reverse
-from typing import TYPE_CHECKING
+
 from country_workspace.models import Rdp
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from testutils.types import CWTestApp
+
     from country_workspace.models import User
 
 
@@ -27,7 +30,7 @@ def program(office):
 def rdp(program):
     from testutils.factories import CountryRdpFactory
 
-    return CountryRdpFactory(program=program, status=Rdp.PushStatus.SUCCESS)
+    return CountryRdpFactory(program=program, status=Rdp.PushStatus.PUSHED)
 
 
 @pytest.fixture
@@ -37,7 +40,7 @@ def household(rdp):
     hh = HouseholdFactory(batch__program=rdp.program)
     hh.rdp.add(rdp)
     hh.removed = True
-    hh.save()
+    hh.save(update_fields=["removed"])
     return hh
 
 
@@ -48,7 +51,7 @@ def individual(rdp, household):
     ind = IndividualFactory(batch__program=rdp.program, household=household)
     ind.rdp.add(rdp)
     ind.removed = True
-    ind.save()
+    ind.save(update_fields=["removed"])
     return ind
 
 
@@ -59,102 +62,84 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
     return django_app
 
 
-@pytest.mark.django_db
-def test_rdp_reset_success(app, rdp, household, individual, admin_user):
-    # Grant permission
+@pytest.fixture
+def reset_permission(admin_user):
     from django.contrib.auth.models import Permission
     from django.contrib.contenttypes.models import ContentType
 
     content_type = ContentType.objects.get_for_model(Rdp)
-    perm, _ = Permission.objects.get_or_create(
-        codename="reset_rdp", content_type=content_type, defaults={"name": "Can reset RDP"}
+    permission, _ = Permission.objects.get_or_create(
+        codename="reset_rdp",
+        content_type=content_type,
+        defaults={"name": "Can reset RDP"},
     )
-    admin_user.user_permissions.add(perm)
+    admin_user.user_permissions.add(permission)
+    return permission
 
+
+@pytest.mark.django_db
+def test_rdp_reset_success(app, rdp, household, individual, reset_permission) -> None:
     url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
 
-    # Verify initial state
     household.refresh_from_db()
     individual.refresh_from_db()
     assert household.removed is True
     assert individual.removed is True
 
-    # First POST shows confirmation page
     res = app.post(url)
     assert res.status_code == 302
 
-    # Second POST confirms and performs the action
     res = app.post(url)
-    assert res.status_code == 302  # Redirects back
+    assert res.status_code == 302
 
-    # Follow redirect to see messages
     res = res.follow()
-
     messages = list(res.context["messages"])
-    assert len(messages) >= 1
-    assert any("RDP reset successfully" in str(m) for m in messages)
+    assert any("RDP reset successfully" in str(message) for message in messages)
 
-    # Verify final state
     household.refresh_from_db()
     individual.refresh_from_db()
     rdp.refresh_from_db()
     assert household.removed is False
     assert individual.removed is False
-    assert rdp.status == Rdp.PushStatus.CANCELLED
+    assert rdp.status == Rdp.PushStatus.REJECTED
 
 
 @pytest.mark.django_db
-def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, admin_user):
-    # Grant permission
-    from django.contrib.auth.models import Permission
-    from django.contrib.contenttypes.models import ContentType
-
-    content_type = ContentType.objects.get_for_model(Rdp)
-    perm, _ = Permission.objects.get_or_create(
-        codename="reset_rdp", content_type=content_type, defaults={"name": "Can reset RDP"}
-    )
-    admin_user.user_permissions.add(perm)
-
-    # Set status to something other than SUCCESS
+def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, reset_permission) -> None:
     rdp.status = Rdp.PushStatus.PENDING
-    rdp.save()
+    rdp.save(update_fields=["status"])
 
-    url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
-
-    # Perform reset
-    res = app.post(url)
+    res = app.post(reverse("admin:country_workspace_rdp_reset", args=[rdp.pk]))
     assert res.status_code == 302
 
     res = res.follow()
-
     messages = list(res.context["messages"])
-    assert len(messages) >= 1
-    assert any("Reset is only allowed for SUCCESS status" in str(m) for m in messages)
+    assert any("Reset is only allowed for PUSHED status" in str(message) for message in messages)
 
-    # Verify state was NOT changed
     household.refresh_from_db()
     individual.refresh_from_db()
+    rdp.refresh_from_db()
     assert household.removed is True
     assert individual.removed is True
+    assert rdp.status == Rdp.PushStatus.PENDING
 
 
 @pytest.mark.django_db
 def test_rdp_reset_no_permission(app, rdp, admin_user):
     admin_user.is_superuser = False
-    admin_user.save()
-    # Ensure they have access to admin panel at least
+    admin_user.save(update_fields=["is_superuser"])
+
     from django.contrib.auth.models import Permission
     from django.contrib.contenttypes.models import ContentType
 
-    # Add view permission for Rdp
     content_type = ContentType.objects.get_for_model(Rdp)
     view_perm, _ = Permission.objects.get_or_create(
-        codename="view_rdp", content_type=content_type, defaults={"name": "Can view RDP"}
+        codename="view_rdp",
+        content_type=content_type,
+        defaults={"name": "Can view RDP"},
     )
     admin_user.user_permissions.add(view_perm)
 
-    url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
+    res = app.post(reverse("admin:country_workspace_rdp_reset", args=[rdp.pk]), expect_errors=True)
 
-    # Perform reset - should be 403 Forbidden
-    res = app.post(url, expect_errors=True)
     assert res.status_code == 403

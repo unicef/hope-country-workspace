@@ -1,7 +1,12 @@
 from typing import TYPE_CHECKING
 
 import pytest
+from django.contrib import admin
 from django.urls import reverse
+from pytest_mock import MockerFixture
+
+from country_workspace.admin.rdp import RdpAdmin
+from country_workspace.workspaces.models import CountryRdp
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -30,6 +35,24 @@ def rdp(program):
     from testutils.factories import CountryRdpFactory
 
     return CountryRdpFactory(program=program)
+
+
+@pytest.fixture
+def parent_rdp(program):
+    from testutils.factories import CountryRdpFactory
+
+    return CountryRdpFactory(program=program)
+
+
+@pytest.fixture
+def child_rdp(parent_rdp):
+    from testutils.factories import CountryRdpFactory
+
+    return CountryRdpFactory(
+        program=parent_rdp.program,
+        pushed_by=parent_rdp.pushed_by,
+        parent=parent_rdp,
+    )
 
 
 @pytest.fixture(params=[True, False])
@@ -74,11 +97,11 @@ def test_rdp_views(app, rdp: "Rdp", view_type, args, params):
 
 
 @pytest.mark.parametrize(
-    ("button_type"),
+    "button_type",
     [
-        ("records"),
-        ("view_in_workspace"),
-        ("related_job"),
+        "records",
+        "view_in_workspace",
+        "related_job",
     ],
     ids=["records_button", "workspace_button", "related_job_link"],
 )
@@ -96,3 +119,19 @@ def test_rdp_buttons_and_links(app, rdp: "Rdp", button_type, job):
         job = rdp.jobs.first()
         job_url = reverse("admin:country_workspace_asyncjob_change", args=[job.pk])
         assert job_url in res.text
+
+
+@pytest.mark.django_db
+def test_records_link_uses_parent_selection_owner(
+    mocker: MockerFixture,
+    parent_rdp: "Rdp",
+    child_rdp: "Rdp",
+) -> None:
+    parent_rdp.program.beneficiary_group.master_detail = True
+    parent_rdp.program.beneficiary_group.save(update_fields=["master_detail"])
+
+    button = mocker.MagicMock(context={"original": child_rdp})
+
+    RdpAdmin(CountryRdp, admin.site).records(button)
+
+    assert button.href.endswith(f"?rdp__exact={parent_rdp.pk}")
