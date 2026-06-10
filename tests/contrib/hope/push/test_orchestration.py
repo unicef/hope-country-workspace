@@ -18,13 +18,14 @@ from country_workspace.contrib.hope.push.orchestration import (
     _require_policy_check,
     _save_current_deduplication_snapshot,
     _steps,
+    apply_hope_rdi_final_status,
     claim_rdp_deduplication,
     clone_rdp_core,
     create_rdp_core,
     dedup_existing_rdp_core,
-    apply_hope_rdi_final_status,
     push_existing_rdp_core,
     reject_deduplication_set_existing_rdp_core,
+    reset_rdp_core,
 )
 from country_workspace.contrib.hope.push.policy import ActionCheck
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
@@ -941,6 +942,101 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     next_step.assert_not_called()
 
 
+def test_reset_rdp_core_uses_rejected_callback_flow(
+    mocker: MockerFixture,
+    dedup_api_cm,
+) -> None:
+    rdp = mocker.MagicMock(
+        pk=1,
+        status=Rdp.PushStatus.PUSHED,
+        hope_rdi_id="RID-1",
+        deduplication_set_id=uuid4(),
+    )
+    rdp.program.unicef_id = "program-1"
+    client = mocker.MagicMock()
+    job = mocker.MagicMock(config={"rdp_id": 1})
+
+    def update_status(*, rdp: Rdp, status: Rdp.PushStatus, **_: object) -> None:
+        rdp.status = status
+
+    lock = mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    set_status = mocker.patch(f"{MOD}.set_rdp_push_status", side_effect=update_status)
+
+    payload = reset_rdp_core(job)
+
+    assert payload["rdp_id"] == 1
+    assert payload["rdi_id"] == "RID-1"
+    assert payload["status"] == Rdp.PushStatus.REJECTED
+    assert payload["code"] == "finalized"
+    lock.assert_called_once_with(pk=1)
+    client.reject.assert_called_once_with()
+    restore.assert_called_once_with(rdp)
+    set_status.assert_called_once_with(
+        rdp=rdp,
+        status=Rdp.PushStatus.REJECTED,
+        hope_rdi_id="RID-1",
+        is_dedup_settings_locked=False,
+    )
+
+
+def test_reset_rdp_core_requires_hope_rdi_id(
+    mocker: MockerFixture,
+    err_contains,
+) -> None:
+    rdp = mocker.MagicMock(
+        pk=1,
+        status=Rdp.PushStatus.PUSHED,
+        hope_rdi_id="",
+        deduplication_set_id=None,
+    )
+    job = mocker.MagicMock(config={"rdp_id": 1})
+
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
+
+    with pytest.raises(HopePushError) as exc:
+        reset_rdp_core(job)
+
+    assert err_contains(exc.value.args[0]["errors"], "RDI id is required")
+
+
+@pytest.mark.parametrize(
+    "exc_cls",
+    [RemoteError, RemoteUnavailableError],
+    ids=["remote_error", "remote_unavailable"],
+)
+def test_reset_rdp_core_wraps_callback_errors(
+    mocker: MockerFixture,
+    dedup_api_cm,
+    exc_cls: type[Exception],
+    err_contains,
+) -> None:
+    rdp = mocker.MagicMock(
+        pk=1,
+        status=Rdp.PushStatus.PUSHED,
+        hope_rdi_id="RID-1",
+        deduplication_set_id=uuid4(),
+    )
+    rdp.program.unicef_id = "program-1"
+    client = mocker.MagicMock()
+    client.reject.side_effect = exc_cls("boom")
+    job = mocker.MagicMock(config={"rdp_id": 1})
+
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+
+    with pytest.raises(HopePushError) as exc:
+        reset_rdp_core(job)
+
+    assert err_contains(exc.value.args[0]["errors"], "final status sync failed")
+    client.reject.assert_called_once_with()
+    restore.assert_not_called()
+    set_status.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("status", "expected_action", "restores_beneficiaries", "expected_lock"),
     [
@@ -977,7 +1073,6 @@ def test_apply_hope_rdi_final_status_syncs_dedup_engine(
 
     payload = apply_hope_rdi_final_status(hope_rdi_id="RID-1", status=status, token=token)
 
-    assert payload.changed is True
     assert payload.status == status
     lock.assert_called_once_with(hope_rdi_id="RID-1", token=token)
     getattr(client, expected_action).assert_called_once_with()

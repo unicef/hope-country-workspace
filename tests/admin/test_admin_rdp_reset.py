@@ -2,8 +2,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 from django.urls import reverse
+from pytest_mock import MockerFixture
+from strategy_field.utils import fqn
 
-from country_workspace.models import Rdp
+from country_workspace.contrib.hope.push.orchestration import reset_rdp_core
+from country_workspace.models import AsyncJob, Rdp
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -30,7 +33,7 @@ def program(office):
 def rdp(program):
     from testutils.factories import CountryRdpFactory
 
-    return CountryRdpFactory(program=program, status=Rdp.PushStatus.PUSHED)
+    return CountryRdpFactory(program=program, status=Rdp.PushStatus.PUSHED, hope_rdi_id="RID-1")
 
 
 @pytest.fixture
@@ -78,8 +81,16 @@ def reset_permission(admin_user):
 
 
 @pytest.mark.django_db
-def test_rdp_reset_success(app, rdp, household, individual, reset_permission) -> None:
+def test_rdp_reset_success(
+    app,
+    rdp,
+    household,
+    individual,
+    reset_permission,
+    mocker: MockerFixture,
+) -> None:
     url = reverse("admin:country_workspace_rdp_reset", args=[rdp.pk])
+    on_commit = mocker.patch("country_workspace.admin.rdp.transaction.on_commit")
 
     household.refresh_from_db()
     individual.refresh_from_db()
@@ -89,19 +100,31 @@ def test_rdp_reset_success(app, rdp, household, individual, reset_permission) ->
     res = app.post(url)
     assert res.status_code == 302
 
-    res = app.post(url)
-    assert res.status_code == 302
-
     res = res.follow()
     messages = list(res.context["messages"])
-    assert any("RDP reset successfully" in str(message) for message in messages)
+    assert any("RDP reset task scheduled" in str(message) for message in messages)
+
+    jobs = AsyncJob.objects.filter(rdp=rdp)
+    assert jobs.count() == 1
+    job = jobs.get()
+
+    assert job.description.startswith("Reset pushed RDP after manual HOPE rejection confirmation")
+    assert job.type == AsyncJob.JobType.TASK
+    assert job.action == fqn(reset_rdp_core)
+    assert job.program == rdp.program
+    assert job.config == {"rdp_id": rdp.pk}
+
+    on_commit.assert_called_once()
+    callback = on_commit.call_args.args[0]
+    assert callback.__name__ == "queue"
+    assert callback.__self__.pk == job.pk
 
     household.refresh_from_db()
     individual.refresh_from_db()
     rdp.refresh_from_db()
-    assert household.removed is False
-    assert individual.removed is False
-    assert rdp.status == Rdp.PushStatus.REJECTED
+    assert household.removed is True
+    assert individual.removed is True
+    assert rdp.status == Rdp.PushStatus.PUSHED
 
 
 @pytest.mark.django_db
@@ -122,6 +145,7 @@ def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, reset_perm
     assert household.removed is True
     assert individual.removed is True
     assert rdp.status == Rdp.PushStatus.PENDING
+    assert not AsyncJob.objects.filter(rdp=rdp).exists()
 
 
 @pytest.mark.django_db

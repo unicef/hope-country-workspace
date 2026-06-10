@@ -1,12 +1,8 @@
 from typing import TYPE_CHECKING
 
 import pytest
-from django.contrib import admin
 from django.urls import reverse
-from pytest_mock import MockerFixture
 
-from country_workspace.admin.rdp import RdpAdmin
-from country_workspace.workspaces.models import CountryRdp
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -123,15 +119,14 @@ def test_rdp_buttons_and_links(app, rdp: "Rdp", button_type, job):
 
 @pytest.mark.django_db
 def test_records_link_uses_parent_selection_owner(
-    mocker: MockerFixture,
+    app,
     parent_rdp: "Rdp",
     child_rdp: "Rdp",
 ) -> None:
     parent_rdp.program.beneficiary_group.master_detail = True
     parent_rdp.program.beneficiary_group.save(update_fields=["master_detail"])
 
-    button = mocker.MagicMock(context={"original": child_rdp})
+    res = app.get(reverse("admin:country_workspace_rdp_change", args=[child_rdp.pk]))
 
-    RdpAdmin(CountryRdp, admin.site).records(button)
-
-    assert button.href.endswith(f"?rdp__exact={parent_rdp.pk}")
+    assert res.status_code == 200
+    assert f"?rdp__exact={parent_rdp.pk}" in res.text
