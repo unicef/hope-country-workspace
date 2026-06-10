@@ -4,7 +4,7 @@ from typing import Any
 import sentry_sdk
 
 from admin_extra_buttons.api import button, link
-from admin_extra_buttons.buttons import LinkButton, StandardButton
+from admin_extra_buttons.buttons import LinkButton
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.db import transaction
@@ -38,12 +38,17 @@ from ..sites import workspace
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
+try:  # admin_extra_buttons >= 2.6
+    from admin_extra_buttons.buttons import StandardButton as AdminActionButton
+except ImportError:  # admin_extra_buttons <= 2.5
+    from admin_extra_buttons.buttons import ButtonWidget as AdminActionButton
 
-def _is_visible(btn: StandardButton, action: str) -> bool:
+
+def _is_visible(btn: AdminActionButton, action: str) -> bool:
     return bool((obj := btn.original) and getattr(get_rdp_policy(obj), action)())
 
 
-def _is_allowed(btn: StandardButton, action: str) -> bool:
+def _is_allowed(btn: AdminActionButton, action: str) -> bool:
     if (obj := btn.original) is None:
         return False
     try:
