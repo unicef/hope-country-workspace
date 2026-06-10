@@ -1,14 +1,17 @@
+import logging
 import uuid
 import zipfile
-import tempfile
-from pathlib import Path
+from time import time
+from datetime import UTC
 from typing import Any
 
-from admin_extra_buttons.buttons import LinkButton
-from admin_extra_buttons.decorators import button, link
+from admin_extra_buttons.buttons import ChoiceButton, LinkButton
+from admin_extra_buttons.decorators import button, choice, link
+from constance import config as constance_config
 from django import forms
 from django.contrib import messages
 from django.contrib.admin import register
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -27,6 +30,8 @@ from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoComplete
 from ..hh_ind import SelectedProgramMixin
 from .picture_import import BatchPictureImportService, PictureImportLimitError
 from .reprocessing import reprocess_batch as reprocess_batch_task
+
+logger = logging.getLogger(__name__)
 
 
 class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
@@ -132,10 +137,10 @@ class BatchPictureImportForm(forms.Form):
         zip_file: UploadedFile = self.cleaned_data["zip_file"]
         if not zipfile.is_zipfile(zip_file):
             raise forms.ValidationError(_("Please upload a valid zip archive."))
-        if zip_file.size and zip_file.size > BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES:
+        max_zip_upload_bytes = BatchPictureImportService.max_zip_upload_bytes()
+        if zip_file.size and zip_file.size > max_zip_upload_bytes:
             raise forms.ValidationError(
-                _("ZIP archive is too large (max %(max_mb)d MB).")
-                % {"max_mb": BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES // (1024 * 1024)}
+                _("ZIP archive is too large (max %(max_mb)d MB).") % {"max_mb": max_zip_upload_bytes // (1024 * 1024)}
             )
         zip_file.seek(0)
         return zip_file
@@ -173,32 +178,67 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     @staticmethod
     def _session_payloads(request: HttpRequest) -> dict[str, dict[str, Any]]:
         payloads = request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY, {})
-        if isinstance(payloads, dict):
-            return payloads
-        return {}
+        if not isinstance(payloads, dict):
+            return {}
+        max_age_seconds = CountryBatchAdmin._picture_import_session_ttl_seconds()
+        now = int(time())
+        cleaned_payloads: dict[str, dict[str, Any]] = {}
+        changed = False
+        for token, payload in payloads.items():
+            if not isinstance(payload, dict):
+                changed = True
+                continue
+            created_at = payload.get("created_at")
+            if isinstance(created_at, int) and now - created_at > max_age_seconds:
+                CountryBatchAdmin._delete_stored_zip(payload.get("zip_storage_name") or payload.get("zip_temp_path"))
+                changed = True
+                continue
+            cleaned_payloads[token] = payload
+        if changed:
+            request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = cleaned_payloads
+            request.session.modified = True
+        return cleaned_payloads
 
     @staticmethod
-    def _delete_temp_zip(path: str | None) -> None:
-        if path:
-            zip_path = Path(path)
-            if zip_path.exists():
-                zip_path.unlink()
+    def _picture_import_session_ttl_seconds() -> int:
+        value = getattr(constance_config, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 3600)
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 3600
+        return parsed if parsed > 0 else 3600
+
+    @staticmethod
+    def _delete_stored_zip(storage_name: str | None) -> None:
+        if storage_name:
+            default_storage.delete(storage_name)
+
+    @staticmethod
+    def _cleanup_stale_stored_zips() -> None:
+        max_age_seconds = CountryBatchAdmin._picture_import_session_ttl_seconds()
+        now = int(time())
+        try:
+            _, files = default_storage.listdir("batch-picture-import")
+        except (OSError, NotImplementedError):
+            logger.debug("Could not list picture import storage directory", exc_info=True)
+            return
+        for filename in files:
+            storage_name = f"batch-picture-import/{filename}"
+            try:
+                modified_at = int(default_storage.get_modified_time(storage_name).astimezone(UTC).timestamp())
+            except (OSError, NotImplementedError):
+                logger.debug("Could not get modified time for %s", storage_name, exc_info=True)
+                continue
+            if now - modified_at > max_age_seconds:
+                default_storage.delete(storage_name)
 
     @staticmethod
     def _store_uploaded_zip(uploaded: UploadedFile) -> str:
-        path: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as temp_file:
-                path = temp_file.name
-                for chunk in uploaded.chunks():
-                    temp_file.write(chunk)
-        except Exception:
-            CountryBatchAdmin._delete_temp_zip(path)
-            raise
+        CountryBatchAdmin._cleanup_stale_stored_zips()
+        storage_name = f"batch-picture-import/{uuid.uuid4()}.zip"
+        stored_name = default_storage.save(storage_name, uploaded)
         uploaded.seek(0)
-        if not path:
-            raise RuntimeError("Temporary ZIP path was not created")
-        return path
+        return stored_name
 
     def _get_picture_import_payload(self, request: HttpRequest, token: str, batch_id: int) -> dict[str, Any] | None:
         payloads = self._session_payloads(request)
@@ -213,7 +253,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = self._session_payloads(request)
         old_payload = payloads.get(token)
         if old_payload:
-            self._delete_temp_zip(old_payload.get("zip_temp_path"))
+            self._delete_stored_zip(old_payload.get("zip_storage_name") or old_payload.get("zip_temp_path"))
+        payload["created_at"] = int(time())
         payloads[token] = payload
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
         request.session.modified = True
@@ -222,11 +263,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = self._session_payloads(request)
         payload = payloads.pop(token, None)
         if payload:
-            self._delete_temp_zip(payload.get("zip_temp_path"))
+            self._delete_stored_zip(payload.get("zip_storage_name") or payload.get("zip_temp_path"))
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
         request.session.modified = True
 
     @button(
+        visible=False,
         change_list=False,
         permission=can_import_program_data,
         html_attrs={"title": "Import pictures from zip and assign by matching key."},
@@ -273,12 +315,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 target_field_choices=target_field_choices,
             )
             if form.is_valid():
-                zip_temp_path = self._store_uploaded_zip(form.cleaned_data["zip_file"])
+                zip_storage_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
                 try:
-                    with Path(zip_temp_path).open("rb") as zip_stream:
+                    with default_storage.open(zip_storage_name, "rb") as zip_stream:
                         preview = service.build_preview(form.cleaned_data["match_field"], zip_stream)
                 except PictureImportLimitError as exc:
-                    self._delete_temp_zip(zip_temp_path)
+                    self._delete_stored_zip(zip_storage_name)
                     form.add_error("zip_file", str(exc))
                 else:
                     token = str(uuid.uuid4())
@@ -289,7 +331,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                             "batch_id": obj.pk,
                             "match_field": form.cleaned_data["match_field"],
                             "target_field": form.cleaned_data["target_field"],
-                            "zip_temp_path": zip_temp_path,
+                            "zip_storage_name": zip_storage_name,
                             **preview,
                         },
                     )
@@ -309,8 +351,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     )
                     response = HttpResponseRedirect(request.path)
                 else:
-                    zip_temp_path = payload.get("zip_temp_path")
-                    if not zip_temp_path or not Path(zip_temp_path).exists():
+                    zip_storage_name = payload.get("zip_storage_name")
+                    if not zip_storage_name or not default_storage.exists(zip_storage_name):
                         self._clear_picture_import_payload(request, token)
                         self.message_user(
                             request,
@@ -320,16 +362,17 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         response = HttpResponseRedirect(request.path)
                     else:
                         try:
-                            with Path(zip_temp_path).open("rb") as zip_stream:
-                                preview = service.build_preview(
-                                    payload["match_field"], zip_stream, include_data_uri=True
+                            with default_storage.open(zip_storage_name, "rb") as zip_stream:
+                                assignments = service.enrich_assignments_with_zip_data(
+                                    payload.get("assignments", []),
+                                    zip_stream,
                                 )
                         except PictureImportLimitError as exc:
                             self._clear_picture_import_payload(request, token)
                             self.message_user(request, str(exc), messages.ERROR)
                             response = HttpResponseRedirect(request.path)
                         else:
-                            updated = service.apply_assignments(payload["target_field"], preview["assignments"])
+                            updated = service.apply_assignments(payload["target_field"], assignments)
                             self._clear_picture_import_payload(request, token)
                             self.message_user(
                                 request,
@@ -364,6 +407,18 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             response = render(request, "workspace/admin_extra_buttons/import_pictures_form.html", context)
         return response
 
+    @choice(
+        label=_("Batch actions"),
+        change_form=True,
+        change_list=False,
+        visible=lambda btn: bool(
+            btn.request.user.has_perm("country_workspace.import_program_data", btn.original)
+            or btn.request.user.has_perm("country_workspace.reprocess_batch", btn.original)
+        ),
+    )
+    def batch_actions(self, button: ChoiceButton) -> None:
+        button.choices = [self.import_pictures, self.reprocess_batch]
+
     @link(change_list=False, html_attrs={"title": "Shows related Household records."})
     def imported_records(self, btn: LinkButton) -> None:
         base = reverse("workspace:workspaces_countryhousehold_changelist")
@@ -383,6 +438,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             btn.label = obj.program.beneficiary_group.member_label
 
     @button(
+        visible=False,
         change_list=False,
         permission=can_reprocess_batch,
         html_attrs={"title": "Re-validate all records in this batch (excludes records already pushed to HOPE)"},

@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from constance import config as constance_config
 from django.core.files.uploadedfile import UploadedFile
 
 from ...models import CountryBatch, CountryIndividual
@@ -36,8 +37,31 @@ class BatchPictureImportService:
             return guessed
         return "application/octet-stream"
 
+    @staticmethod
+    def _get_int_config(name: str, default: int) -> int:
+        value = getattr(constance_config, name, default)
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed > 0 else default
+
+    @classmethod
+    def max_zip_upload_bytes(cls) -> int:
+        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES", cls.MAX_ZIP_UPLOAD_BYTES)
+
+    @classmethod
+    def max_zip_file_count(cls) -> int:
+        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_FILE_COUNT", cls.MAX_ZIP_FILE_COUNT)
+
+    @classmethod
+    def max_zip_uncompressed_bytes(cls) -> int:
+        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES", cls.MAX_ZIP_UNCOMPRESSED_BYTES)
+
     @classmethod
     def _validate_archive_limits(cls, archive: zipfile.ZipFile) -> None:
+        max_zip_file_count = cls.max_zip_file_count()
+        max_zip_uncompressed_bytes = cls.max_zip_uncompressed_bytes()
         file_count = 0
         uncompressed_size = 0
         for info in archive.infolist():
@@ -45,12 +69,11 @@ class BatchPictureImportService:
                 continue
             file_count += 1
             uncompressed_size += info.file_size
-            if file_count > cls.MAX_ZIP_FILE_COUNT:
-                raise PictureImportLimitError(f"ZIP archive contains too many files (max {cls.MAX_ZIP_FILE_COUNT}).")
-            if uncompressed_size > cls.MAX_ZIP_UNCOMPRESSED_BYTES:
+            if file_count > max_zip_file_count:
+                raise PictureImportLimitError(f"ZIP archive contains too many files (max {max_zip_file_count}).")
+            if uncompressed_size > max_zip_uncompressed_bytes:
                 raise PictureImportLimitError(
-                    "ZIP archive is too large when extracted "
-                    f"(max {cls.MAX_ZIP_UNCOMPRESSED_BYTES // (1024 * 1024)} MB)."
+                    f"ZIP archive is too large when extracted (max {max_zip_uncompressed_bytes // (1024 * 1024)} MB)."
                 )
 
     @classmethod
@@ -149,6 +172,25 @@ class BatchPictureImportService:
             "unmatched_filenames": sorted(unmatched_filenames),
             "assignments": assignments,
         }
+
+    @classmethod
+    def enrich_assignments_with_zip_data(
+        cls, assignments: list[dict[str, Any]], zip_file: UploadedFile
+    ) -> list[dict[str, Any]]:
+        if not assignments:
+            return []
+        zip_entries, _ = cls.extract_zip_images(zip_file)
+        by_filename = {item["filename"]: item["data_uri"] for item in zip_entries}
+        enriched: list[dict[str, Any]] = []
+        for assignment in assignments:
+            filename = assignment.get("filename")
+            if not filename:
+                continue
+            data_uri = by_filename.get(filename)
+            if not data_uri:
+                continue
+            enriched.append({**assignment, "data_uri": data_uri})
+        return enriched
 
     @staticmethod
     def apply_assignments(target_field: str, assignments: list[dict[str, Any]]) -> int:

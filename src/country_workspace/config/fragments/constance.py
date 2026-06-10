@@ -69,6 +69,26 @@ CONSTANCE_CONFIG = {
     "DEDUP_API_URL": (DEDUP_API_URL, "Dedup Engine server address", str),
     "DEDUP_API_TOKEN": (DEDUP_API_TOKEN, "Dedup Engine API access token", "write_only_text_input"),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
+    "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES": (
+        20 * 1024 * 1024,
+        "Maximum uploaded ZIP size in bytes for batch picture import",
+        int,
+    ),
+    "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT": (
+        2000,
+        "Maximum number of files allowed in a picture import ZIP",
+        int,
+    ),
+    "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES": (
+        200 * 1024 * 1024,
+        "Maximum uncompressed ZIP size in bytes for picture import",
+        int,
+    ),
+    "PICTURE_IMPORT_SESSION_TTL_SECONDS": (
+        3600,
+        "How long a picture import preview remains valid before expiring",
+        int,
+    ),
     "RDP_CLEANUP_DAYS": (
         30,
         "Number of days to keep Household and Individual data after a successful RDP push. 0 means disabled.",
@@ -156,6 +176,10 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "CACHE_TIMEOUT",
         "CACHE_BY_VERSION",
         "CHUNK_SIZE_FOR_VALIDATION_TASK",
+        "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES",
+        "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT",
+        "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES",
+        "PICTURE_IMPORT_SESSION_TTL_SECONDS",
         "RDP_CLEANUP_DAYS",
         "RDP_CLEANUP_BATCH_SIZE",
         "NEW_USER_IS_STAFF",

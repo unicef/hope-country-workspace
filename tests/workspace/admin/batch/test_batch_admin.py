@@ -1,13 +1,14 @@
 import io
-import tempfile
 import zipfile
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 from strategy_field.utils import fqn
 from django import forms
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
 from django.test import RequestFactory
@@ -45,7 +46,7 @@ def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
 
 def _mock_picture_import_service(mocker, batch_admin_module, service) -> None:
     patched_service = mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
-    patched_service.MAX_ZIP_UPLOAD_BYTES = 20 * 1024 * 1024
+    patched_service.max_zip_upload_bytes.return_value = 20 * 1024 * 1024
 
 
 def test_reprocess_form_hides_household_fields_for_people_program(people_program) -> None:
@@ -297,7 +298,7 @@ def test_batch_picture_import_form_clean_zip_file_accepts_zip_and_rewinds() -> N
 
 def test_batch_picture_import_form_clean_zip_file_rejects_oversized_archive(mocker) -> None:
     upload = _make_zip_upload({"A-1.jpg": b"jpg"})
-    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_UPLOAD_BYTES", 1)
+    mocker.patch.object(BatchPictureImportService, "max_zip_upload_bytes", return_value=1)
     form = BatchPictureImportForm(
         data={"match_field": "id", "target_field": "photo"},
         files={"zip_file": upload},
@@ -380,86 +381,114 @@ def test_batch_admin_picture_payload_helpers(batch_admin, rf: RequestFactory, us
 
     assert batch_admin._get_picture_import_payload(request, "missing", 123) is None
     assert batch_admin._get_picture_import_payload(request, "tok", 999) is None
-    assert batch_admin._get_picture_import_payload(request, "tok", 123) == {"batch_id": 123}
+    assert batch_admin._get_picture_import_payload(request, "tok", 123)["batch_id"] == 123
 
     batch_admin._clear_picture_import_payload(request, "tok")
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
     assert request.session.modified is True
 
 
-def test_batch_admin_delete_temp_zip_removes_existing_file(batch_admin) -> None:
-    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as stream:
-        zip_path = Path(stream.name)
-    assert zip_path.exists()
-
-    batch_admin._delete_temp_zip(str(zip_path))
-
-    assert not zip_path.exists()
+def test_batch_admin_delete_stored_zip_removes_existing_file(batch_admin) -> None:
+    storage_name = default_storage.save("batch-picture-import/test-delete.zip", ContentFile(b"zip"))
+    assert default_storage.exists(storage_name)
+    batch_admin._delete_stored_zip(storage_name)
+    assert not default_storage.exists(storage_name)
 
 
-def test_batch_admin_store_uploaded_zip_cleans_up_on_write_error(batch_admin, mocker) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
+def test_batch_admin_store_uploaded_zip_saves_file_and_resets_pointer(batch_admin) -> None:
     upload = _make_zip_upload({"A-1.jpg": b"jpg"})
-    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as temp_zip:
-        temp_zip_path = Path(temp_zip.name)
-
-    class BrokenTempFile:
-        name = str(temp_zip_path)
-
-        def write(self, _chunk):
-            raise OSError("disk full")
-
-    class BrokenManager:
-        def __enter__(self):
-            return BrokenTempFile()
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    mocker.patch.object(batch_admin_module.tempfile, "NamedTemporaryFile", return_value=BrokenManager())
-
-    with pytest.raises(OSError, match="disk full"):
-        batch_admin._store_uploaded_zip(upload)
-
-    assert not temp_zip_path.exists()
+    storage_name = batch_admin._store_uploaded_zip(upload)
+    assert default_storage.exists(storage_name)
+    assert upload.tell() == 0
+    default_storage.delete(storage_name)
 
 
-def test_batch_admin_store_uploaded_zip_raises_when_tempfile_has_no_name(batch_admin, mocker) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
-    upload = _make_zip_upload({"A-1.jpg": b"jpg"})
-
-    class NamelessTempFile:
-        name = ""
-
-        def write(self, _chunk):
-            return None
-
-    class NamelessManager:
-        def __enter__(self):
-            return NamelessTempFile()
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    mocker.patch.object(batch_admin_module.tempfile, "NamedTemporaryFile", return_value=NamelessManager())
-
-    with pytest.raises(RuntimeError, match="Temporary ZIP path was not created"):
-        batch_admin._store_uploaded_zip(upload)
-
-
-def test_batch_admin_save_payload_replaces_old_and_deletes_old_temp_file(batch_admin, rf: RequestFactory, user) -> None:
+def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(batch_admin, rf: RequestFactory, user) -> None:
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    with tempfile.NamedTemporaryFile(prefix="batch-picture-import-", suffix=".zip", delete=False) as stream:
-        old_path = Path(stream.name)
+    old_storage_name = default_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {"tok": {"batch_id": 1, "zip_storage_name": old_storage_name}}
+    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 1, "zip_storage_name": "new.zip"})
+    assert not default_storage.exists(old_storage_name)
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_storage_name"] == "new.zip"
 
-    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {"tok": {"batch_id": 1, "zip_temp_path": str(old_path)}}
-    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 1, "zip_temp_path": "new.zip"})
 
-    assert not old_path.exists()
-    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_temp_path"] == "new.zip"
+def test_batch_admin_picture_import_session_ttl_falls_back_to_default(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    mocker.patch.object(
+        batch_admin_module.constance_config,
+        "PICTURE_IMPORT_SESSION_TTL_SECONDS",
+        "invalid",
+        create=True,
+    )
+    assert batch_admin._picture_import_session_ttl_seconds() == 3600
+
+    mocker.patch.object(
+        batch_admin_module.constance_config,
+        "PICTURE_IMPORT_SESSION_TTL_SECONDS",
+        0,
+        create=True,
+    )
+    assert batch_admin._picture_import_session_ttl_seconds() == 3600
+
+
+def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: RequestFactory, user, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+    now = 1000
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "ok": {"batch_id": 1, "created_at": now},
+        "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_storage_name": "old-storage.zip"},
+        "expired-temp": {"batch_id": 1, "created_at": now - 999, "zip_temp_path": "/tmp/old-temp.zip"},
+        "broken": "not-a-dict",
+    }
+    mocker.patch.object(batch_admin_module, "time", return_value=now)
+    mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_picture_import_session_ttl_seconds", return_value=10)
+    delete_stored_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_stored_zip")
+
+    payloads = batch_admin._session_payloads(request)
+
+    assert payloads == {"ok": {"batch_id": 1, "created_at": now}}
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == payloads
+    delete_stored_zip.assert_any_call("old-storage.zip")
+    delete_stored_zip.assert_any_call("/tmp/old-temp.zip")
+
+
+def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    mocker.patch.object(batch_admin_module.default_storage, "listdir", side_effect=OSError("storage unavailable"))
+
+    batch_admin._cleanup_stale_stored_zips()
+
+
+def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_picture_import_session_ttl_seconds", return_value=10)
+    mocker.patch.object(batch_admin_module, "time", return_value=1000)
+    mocker.patch.object(
+        batch_admin_module.default_storage,
+        "listdir",
+        return_value=([], ["old.zip", "new.zip", "broken.zip"]),
+    )
+
+    def _modified_time(path: str) -> datetime:
+        if path.endswith("old.zip"):
+            return datetime.fromtimestamp(980, UTC)
+        if path.endswith("new.zip"):
+            return datetime.fromtimestamp(995, UTC)
+        raise OSError("stat failed")
+
+    mocker.patch.object(batch_admin_module.default_storage, "get_modified_time", side_effect=_modified_time)
+    delete = mocker.patch.object(batch_admin_module.default_storage, "delete")
+
+    batch_admin._cleanup_stale_stored_zips()
+
+    delete.assert_called_once_with("batch-picture-import/old.zip")
 
 
 def test_batch_admin_clear_payload_handles_missing_token(batch_admin, rf: RequestFactory, user) -> None:
@@ -560,9 +589,9 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     assert payload["batch_id"] == batch.pk
     assert payload["match_field"] == "beneficiary_id"
     assert payload["target_field"] == "photo"
-    temp_zip_path = Path(payload["zip_temp_path"])
-    assert temp_zip_path.exists()
-    temp_zip_path.unlink()
+    storage_name = payload["zip_storage_name"]
+    assert default_storage.exists(storage_name)
+    default_storage.delete(storage_name)
 
 
 def test_import_pictures_post_preview_with_invalid_form_renders_form(
@@ -674,10 +703,9 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    service.build_preview.return_value = {
-        "assignments": [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}],
-        "matched_files_count": 1,
-    }
+    service.enrich_assignments_with_zip_data.return_value = [
+        {"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}
+    ]
     service.apply_assignments.return_value = 2
     _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
@@ -689,15 +717,14 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("A-1.jpg", b"content")
-    with tempfile.NamedTemporaryFile(prefix="batch-import-confirm-", suffix=".zip", delete=False) as stream:
-        zip_path = stream.name
-        stream.write(payload.getvalue())
+    storage_name = default_storage.save("batch-picture-import/confirm.zip", ContentFile(payload.getvalue()))
     request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
         "tok": {
             "batch_id": batch.pk,
             "match_field": "beneficiary_id",
             "target_field": "photo",
-            "zip_temp_path": zip_path,
+            "zip_storage_name": storage_name,
+            "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
         }
     }
 
@@ -706,7 +733,7 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     assert response.status_code == 302
     assert response.url == "/workspace/batch/1/change/"
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
-    service.build_preview.assert_called_once()
+    service.enrich_assignments_with_zip_data.assert_called_once()
     service.apply_assignments.assert_called_once_with(
         "photo", [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}]
     )
@@ -746,15 +773,12 @@ def test_import_pictures_post_confirm_handles_limit_error(
     service = mocker.MagicMock()
     service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
     service.get_target_field_choices.return_value = [("photo", "Photo")]
-    service.build_preview.side_effect = PictureImportLimitError("zip too large")
+    service.enrich_assignments_with_zip_data.side_effect = PictureImportLimitError("zip too large")
     _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     message_user = mocker.patch.object(batch_admin, "message_user")
 
-    with tempfile.NamedTemporaryFile(prefix="batch-import-confirm-", suffix=".zip", delete=False) as stream:
-        zip_path = Path(stream.name)
-        stream.write(_make_zip_upload({"A-1.jpg": b"content"}).read())
-
+    storage_name = default_storage.save("batch-picture-import/confirm-limit.zip", ContentFile(b"content"))
     request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
     _add_middleware_to_request(request, user)
     request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
@@ -762,7 +786,8 @@ def test_import_pictures_post_confirm_handles_limit_error(
             "batch_id": batch.pk,
             "match_field": "beneficiary_id",
             "target_field": "photo",
-            "zip_temp_path": str(zip_path),
+            "zip_storage_name": storage_name,
+            "assignments": [],
         }
     }
 
@@ -771,7 +796,7 @@ def test_import_pictures_post_confirm_handles_limit_error(
     assert response.status_code == 302
     assert response.url == "/admin/import-pictures/"
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
-    assert not zip_path.exists()
+    assert not default_storage.exists(storage_name)
     message_user.assert_called()
 
 
@@ -943,7 +968,7 @@ def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
         archive.writestr("first.jpg", b"1")
         archive.writestr("second.jpg", b"2")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_FILE_COUNT", 1)
+    mocker.patch.object(BatchPictureImportService, "max_zip_file_count", return_value=1)
 
     with pytest.raises(PictureImportLimitError, match="too many files"):
         BatchPictureImportService.extract_zip_images(upload)
@@ -954,7 +979,7 @@ def test_extract_zip_images_raises_when_uncompressed_size_exceeds_limit(mocker) 
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("big.jpg", b"12345")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(BatchPictureImportService, "MAX_ZIP_UNCOMPRESSED_BYTES", 4)
+    mocker.patch.object(BatchPictureImportService, "max_zip_uncompressed_bytes", return_value=4)
 
     with pytest.raises(PictureImportLimitError, match="too large when extracted"):
         BatchPictureImportService.extract_zip_images(upload)
@@ -1098,3 +1123,56 @@ def test_imported_buttons_keep_defaults_without_beneficiary_group(batch_admin, b
     assert individuals_button.visible is True
     assert f"batch__exact={batch.pk}" in records_button.href
     assert f"batch__exact={batch.pk}" in individuals_button.href
+
+
+def test_batch_actions_choice_contains_import_and_reprocess(batch_admin, batch: CountryBatch, mocker) -> None:
+    request = mocker.MagicMock()
+    request.user.has_perm.return_value = True
+    button = batch_admin.batch_actions.get_button({"original": batch, "request": request})
+
+    batch_admin.batch_actions.func(batch_admin, button)
+
+    assert button.choices == [batch_admin.import_pictures, batch_admin.reprocess_batch]
+
+
+def test_batch_actions_visible_with_any_permission(batch_admin, batch: CountryBatch, mocker) -> None:
+    request = mocker.MagicMock()
+    request.user.has_perm.side_effect = [False, True]
+    button = batch_admin.batch_actions.get_button({"original": batch, "request": request})
+    assert button.visible is True
+
+
+def test_picture_import_service_config_defaults_when_invalid(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
+
+    mocker.patch.object(
+        picture_import_module.constance_config,
+        "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT",
+        "bad",
+        create=True,
+    )
+    mocker.patch.object(
+        picture_import_module.constance_config,
+        "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES",
+        -1,
+        create=True,
+    )
+
+    assert BatchPictureImportService.max_zip_file_count() == BatchPictureImportService.MAX_ZIP_FILE_COUNT
+    assert BatchPictureImportService.max_zip_upload_bytes() == BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES
+
+
+def test_enrich_assignments_with_zip_data_skips_missing_items() -> None:
+    upload = _make_zip_upload({"A-1.jpg": b"content"})
+    assignments = [
+        {"record_id": 1, "filename": "A-1.jpg"},
+        {"record_id": 2},
+        {"record_id": 3, "filename": "MISSING.jpg"},
+    ]
+
+    enriched = BatchPictureImportService.enrich_assignments_with_zip_data(assignments, upload)
+
+    assert len(enriched) == 1
+    assert enriched[0]["record_id"] == 1
+    assert enriched[0]["filename"] == "A-1.jpg"
+    assert "data_uri" in enriched[0]
