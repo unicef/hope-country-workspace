@@ -57,51 +57,80 @@ def test_validate_with_checker_preserves_multiselect_invalid_values_as_list(hous
     assert household.flex_fields["reasons_oos"] == ["invalid-choice"]
 
 
-def test_normalize_invalid_value_for_field_passthrough_for_non_multiselect():
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("not-eligible, missing-documents", ["not-eligible, missing-documents"]),
+        ("other security economical family", ["other security economical family"]),
+        (("reason-a", "reason-b"), ["reason-a", "reason-b"]),
+        (None, []),
+    ],
+)
+def test_validate_with_checker_normalizes_multiselect_values_before_validation(household, raw_value, expected):
+    checker = Mock()
+    checker.validate.return_value = {}
+    checker.form = Mock(
+        cleaned_data={"reasons_oos": expected},
+        fields={
+            "reasons_oos": Mock(widget=Mock(allow_multiple_selected=True)),
+        },
+    )
+    household.flex_fields = {"reasons_oos": raw_value}
+
+    with mock.patch.object(type(household), "checker", mock.PropertyMock(return_value=checker)):
+        household.validate_with_checker()
+
+    checker.validate.assert_called_once_with(
+        [{"reasons_oos": expected}],
+        fail_if_alien=False,
+    )
+
+
+def test_coerce_multiselect_value_passthrough_for_non_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=False))
 
     value = "raw-value"
-    result = Validable._normalize_invalid_value_for_field(field, value)
+    result = Validable._coerce_multiselect_value(field, value)
 
     assert result == value
 
 
-def test_normalize_invalid_value_for_field_none_for_multiselect():
+def test_coerce_multiselect_value_none_for_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=True))
 
-    result = Validable._normalize_invalid_value_for_field(field, None)
+    result = Validable._coerce_multiselect_value(field, None)
 
     assert result == []
 
 
-def test_normalize_invalid_value_for_field_list_for_multiselect():
+def test_coerce_multiselect_value_list_for_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=True))
 
     value = ["a", "b"]
-    result = Validable._normalize_invalid_value_for_field(field, value)
+    result = Validable._coerce_multiselect_value(field, value)
 
     assert result == value
 
 
-def test_normalize_invalid_value_for_field_tuple_for_multiselect():
+def test_coerce_multiselect_value_tuple_for_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=True))
 
-    result = Validable._normalize_invalid_value_for_field(field, ("a", "b"))
+    result = Validable._coerce_multiselect_value(field, ("a", "b"))
 
     assert result == ["a", "b"]
 
 
-def test_normalize_invalid_value_for_field_set_for_multiselect():
+def test_coerce_multiselect_value_set_for_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=True))
 
-    result = Validable._normalize_invalid_value_for_field(field, {"a", "b"})
+    result = Validable._coerce_multiselect_value(field, {"a", "b"})
 
     assert set(result) == {"a", "b"}
 
 
-def test_normalize_invalid_value_for_field_scalar_for_multiselect():
+def test_coerce_multiselect_value_scalar_for_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=True))
 
-    result = Validable._normalize_invalid_value_for_field(field, "single")
+    result = Validable._coerce_multiselect_value(field, "single")
 
     assert result == ["single"]

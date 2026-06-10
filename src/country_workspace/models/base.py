@@ -123,9 +123,10 @@ class Validable(Cachable, models.Model):
         raise NotImplementedError
 
     @staticmethod
-    def _normalize_invalid_value_for_field(field: Any, value: Any) -> Any:
+    def _coerce_multiselect_value(field: Any, value: Any) -> Any:
         if not getattr(getattr(field, "widget", None), "allow_multiple_selected", False):
             return value
+
         if value is None:
             return []
         if isinstance(value, list):
@@ -134,9 +135,33 @@ class Validable(Cachable, models.Model):
             return list(value)
         return [value]
 
+    @classmethod
+    def _normalize_multiselect_values(cls, checker: Any, flex_fields: dict[str, Any]) -> dict[str, Any]:
+        if not flex_fields:
+            return {}
+
+        checker_fields = getattr(getattr(checker, "form", None), "fields", {})
+        if not checker_fields:
+            return dict(flex_fields)
+
+        normalized_flex_fields = dict(flex_fields)
+        for field_name, field in checker_fields.items():
+            if field_name not in normalized_flex_fields:
+                continue
+
+            normalized_flex_fields[field_name] = cls._coerce_multiselect_value(
+                field,
+                normalized_flex_fields[field_name],
+            )
+
+        return normalized_flex_fields
+
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         update_fields = []
-        errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
+        flex_fields = self.flex_fields or {}
+        normalized_flex_fields = self._normalize_multiselect_values(self.checker, flex_fields)
+
+        errors = self.checker.validate([normalized_flex_fields], fail_if_alien=fail_if_alien)
         cleaned = self.checker.form.cleaned_data
         new_errors = next(iter((errors or {}).values()), {})
 
@@ -144,16 +169,13 @@ class Validable(Cachable, models.Model):
             self.errors = new_errors
             update_fields.append("errors")
 
-        flex_fields = self.flex_fields or {}
-        if cleaned != flex_fields:
+        if cleaned != normalized_flex_fields:
             self.flex_fields = cleaned
             # keep invalid values
             for field_name in new_errors:
                 if field_name in flex_fields:
                     field = self.checker.form.fields.get(field_name)
-                    self.flex_fields[field_name] = self._normalize_invalid_value_for_field(
-                        field, flex_fields[field_name]
-                    )
+                    self.flex_fields[field_name] = self._coerce_multiselect_value(field, flex_fields[field_name])
             update_fields.append("flex_fields")
 
         self.last_checked = timezone.now()
