@@ -18,7 +18,7 @@ from country_workspace.contrib.hope.exceptions import (
     HopeRdiCallbackNotFoundError,
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import APIToken, AsyncJob, Rdp
+from country_workspace.models import AsyncJob, Rdp
 
 from .config import (
     CreateRdpConfig,
@@ -458,7 +458,6 @@ def apply_hope_rdi_final_status(
     *,
     hope_rdi_id: str,
     status: Rdp.PushStatus,
-    token: APIToken,
 ) -> HopeRdiCallbackPayload:
     """Apply final HOPE Core RDI status to a pushed CW RDP."""
     if not hope_rdi_id:
@@ -466,10 +465,7 @@ def apply_hope_rdi_final_status(
 
     with transaction.atomic():
         try:
-            rdp = lock_rdp_for_hope_callback(
-                hope_rdi_id=hope_rdi_id,
-                token=token,
-            )
+            rdp = lock_rdp_for_hope_callback(hope_rdi_id=hope_rdi_id)
         except Rdp.DoesNotExist as exc:
             raise HopeRdiCallbackNotFoundError(
                 HopeRdiCallbackPayload.error(

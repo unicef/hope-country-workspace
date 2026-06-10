@@ -129,15 +129,14 @@ def test_rdp_for_push(mocker: MockerFixture) -> None:
 def test_lock_rdp_for_hope_callback(mocker: MockerFixture) -> None:
     qs = mocker.MagicMock()
     rdp = mocker.MagicMock()
-    token = mocker.MagicMock()
 
     select_for_update = mocker.patch.object(repo.Rdp.objects, "select_for_update", return_value=qs)
     qs.get.return_value = rdp
 
-    assert repo.lock_rdp_for_hope_callback(hope_rdi_id="RDI-1", token=token) is rdp
+    assert repo.lock_rdp_for_hope_callback(hope_rdi_id="RDI-1") is rdp
 
     select_for_update.assert_called_once_with()
-    qs.get.assert_called_once_with(hope_rdi_id="RDI-1", country_office__api_tokens=token)
+    qs.get.assert_called_once_with(hope_rdi_id="RDI-1")
 
 
 def test_selection_owner_for_rdp_returns_self(rdp) -> None:

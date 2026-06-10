@@ -1,4 +1,4 @@
-from typing import Any, TYPE_CHECKING, cast
+from typing import Any
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -22,9 +22,6 @@ from .serializers import (
     HopeRdiCallbackValidationErrorSerializer,
 )
 
-if TYPE_CHECKING:
-    from country_workspace.models import APIToken
-
 
 def _payload_response(description: str) -> OpenApiResponse:
     """Return documented callback payload response."""
@@ -37,7 +34,7 @@ CALLBACK_RESPONSES: dict[int, OpenApiResponse] = {
         response=HopeRdiCallbackValidationErrorSerializer,
         description="Invalid request payload.",
     ),
-    404: _payload_response("No office-scoped RDP was found for the provided HOPE RDI id."),
+    404: _payload_response("No RDP was found for the provided HOPE RDI id."),
     409: _payload_response("RDP exists but can not be finalized from its current status."),
     502: _payload_response("Callback processing failed while syncing a downstream service."),
 }
@@ -79,7 +76,6 @@ class HopeRdiCallbackView(APIView):
             payload = apply_hope_rdi_final_status(
                 hope_rdi_id=hope_rdi_id,
                 status=serializer.validated_data["status"],
-                token=cast("APIToken", request.auth),
             )
         except HopeRdiCallbackNotFoundError as exc:
             return Response(_callback_payload(exc), status=status.HTTP_404_NOT_FOUND)

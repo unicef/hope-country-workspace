@@ -96,8 +96,7 @@ def test_callback_payload_wraps_unknown_error() -> None:
 
 
 def test_hope_rdi_callback_view_success(mocker: MockerFixture) -> None:
-    token = mocker.MagicMock()
-    request = mocker.MagicMock(data={"status": Rdp.PushStatus.MERGED}, auth=token)
+    request = mocker.MagicMock(data={"status": Rdp.PushStatus.MERGED}, auth=mocker.MagicMock())
     payload = HopeRdiCallbackPayload(
         rdp_id=1,
         rdi_id="RDI-1",
@@ -114,7 +113,6 @@ def test_hope_rdi_callback_view_success(mocker: MockerFixture) -> None:
     apply_status.assert_called_once_with(
         hope_rdi_id="RDI-1",
         status=Rdp.PushStatus.MERGED,
-        token=token,
     )
 
 

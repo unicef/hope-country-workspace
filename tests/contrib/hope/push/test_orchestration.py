@@ -11,7 +11,7 @@ from country_workspace.contrib.dedup_engine import (
     DeduplicationSetState,
 )
 from country_workspace.contrib.hope.exceptions import HopePushError, HopeRdiCallbackError
-from country_workspace.contrib.hope.push.config import Beneficiary
+from country_workspace.contrib.hope.push.config import Beneficiary, HopeRdiCallbackCode
 from country_workspace.contrib.hope.push.orchestration import (
     _deduplication_snapshot,
     _mark_rdp_beneficiaries_removed,
@@ -1061,7 +1061,6 @@ def test_apply_hope_rdi_final_status_syncs_dedup_engine(
     )
     rdp.program.unicef_id = "program-1"
     client = mocker.MagicMock()
-    token = mocker.MagicMock()
 
     def update_status(*, rdp: Rdp, status: Rdp.PushStatus, **_: object) -> None:
         rdp.status = status
@@ -1071,10 +1070,11 @@ def test_apply_hope_rdi_final_status_syncs_dedup_engine(
     restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status", side_effect=update_status)
 
-    payload = apply_hope_rdi_final_status(hope_rdi_id="RID-1", status=status, token=token)
+    payload = apply_hope_rdi_final_status(hope_rdi_id="RID-1", status=status)
 
+    assert payload.code == HopeRdiCallbackCode.FINALIZED
     assert payload.status == status
-    lock.assert_called_once_with(hope_rdi_id="RID-1", token=token)
+    lock.assert_called_once_with(hope_rdi_id="RID-1")
     getattr(client, expected_action).assert_called_once_with()
     if restores_beneficiaries:
         restore.assert_called_once_with(rdp)
@@ -1108,7 +1108,7 @@ def test_apply_hope_rdi_final_status_wraps_dedup_remote_errors(
     client = mocker.MagicMock()
     client.approve.side_effect = exc_cls("boom")
 
-    mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
+    lock = mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
@@ -1117,9 +1117,10 @@ def test_apply_hope_rdi_final_status_wraps_dedup_remote_errors(
         apply_hope_rdi_final_status(
             hope_rdi_id="RID-1",
             status=Rdp.PushStatus.MERGED,
-            token=mocker.MagicMock(),
         )
 
     assert "final status sync failed" in exc.value.args[0].detail
+    lock.assert_called_once_with(hope_rdi_id="RID-1")
+    client.approve.assert_called_once_with()
     restore.assert_not_called()
     set_status.assert_not_called()

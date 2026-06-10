@@ -8,21 +8,20 @@ stateDiagram-v2
     PENDING --> FAILURE: Push failed
     PENDING --> PUSHED: Push succeeded
     PENDING --> REJECTED: Reject DS
-    PENDING --> REJECTED: Clone replaces source
+    PENDING --> REJECTED: Clone replaces PENDING source
 
     PUSHED --> MERGED: HOPE callback MERGED
     PUSHED --> REJECTED: HOPE callback REJECTED
-    PUSHED --> REJECTED: Admin Reset job applies HOPE REJECTED flow
-    PUSHED --> PUSHED: Admin Reset job failed
+    PUSHED --> REJECTED: Admin Reset job applies REJECTED finalization
+    PUSHED --> PUSHED: Callback or Reset job failed
 
     FAILURE --> [*]: Final failed
     REJECTED --> [*]: Final rejected
     MERGED --> [*]: Final merged
 
     note right of PENDING
-        Local active RDP status.<br>
-        For a new DE set, CW ensures deduplication_set_id before creation.
-        deduplication_set_id belongs to selection owner / dedup source.
+        Local processing status.<br>
+        Deduplication may create or process a DE set.
         RDP remains PENDING after dedup success or DE error.
     end note
 
@@ -32,23 +31,21 @@ stateDiagram-v2
     end note
 
     note right of PUSHED
-        CW pushed data to HOPE Core successfully.<br>
+        CW completed the HOPE RDI push successfully.<br>
         RDP is waiting for the final HOPE callback.
-        Admin Reset is available only from PUSHED and schedules an async job.
+        Admin Reset is available only from PUSHED.
     end note
 
     note right of MERGED
-        Final merged RDP status.<br>
+        Final merged status.<br>
         HOPE-side merge was confirmed.
-        If a DE set exists, CW approves it during callback processing.
+        If a DE set exists, CW approves it during finalization.
     end note
 
     note right of REJECTED
-        Final rejected RDP status.<br>
-        Can be set by DE set reject,
-        HOPE callback REJECTED,
-        Clone replacing PENDING source,
-        or Admin Reset job using the HOPE REJECTED flow.
+        Final rejected status.<br>
+        Can be set by DS reject, HOPE callback,
+        clone replacement, or Admin Reset.
     end note
 ```
 
@@ -56,93 +53,78 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TB
-    CREATE["Create RDP"] --> PENDING["PENDING<br>local active"]
+    CREATE["Create RDP"] --> PENDING["PENDING<br>local processing"]
 
-    PENDING --> DEDUP_CLAIM["Deduplicate action<br>CW ensures deduplication_set_id"]
-    DEDUP_CLAIM --> DEDUP["Run DE deduplication<br>create/upload/process or process existing"]
-    DEDUP --> D1{"DE result"}
-    D1 -- "new set" --> PENDING
-    D1 -- "existing set" --> PENDING
-    D1 -- "error" --> PENDING
+    PENDING --> DEDUP_CLAIM["Deduplicate action<br>claim RDP for dedup"]
+    DEDUP_CLAIM --> DEDUP["Run DedupEngine flow<br>create/process existing set"]
+    DEDUP -->|success or DE error| PENDING
 
-    PENDING --> RDS["Reject Deduplication Set<br>DE REST API"]
-    RDS -->|rejected| REJECTED["REJECTED<br>final rejected state"]
-    RDS -->|error| PENDING
+    PENDING --> REJECT_DS["Reject Deduplication Set<br>DE REST API"]
+    REJECT_DS -->|success| REJECTED["REJECTED<br>final rejected"]
+    REJECT_DS -->|error| PENDING
 
-    PENDING --> HOPE_PUSH["Push to HOPE<br>create RDI / push / complete"]
-    HOPE_PUSH -->|failed| FAILURE["FAILURE<br>push workflow failed"]
-    HOPE_PUSH -->|succeeded| PUSHED["PUSHED<br>waiting for HOPE final callback"]
+    PENDING --> HOPE_PUSH["Push to HOPE Core<br>create RDI / push records / complete RDI"]
+    HOPE_PUSH -->|failed| FAILURE["FAILURE<br>push failed"]
+    HOPE_PUSH -->|succeeded| PUSHED["PUSHED<br>waiting for callback"]
 
-    PUSHED --> CALLBACK["HOPE final callback"]
+    HOPE_CALLBACK["CW callback endpoint<br>POST /callbacks/hope/rdis/{hope_rdi_id}/"] --> CALLBACK["Apply final HOPE status"]
+    PUSHED --> CALLBACK
 
-    CALLBACK -->|MERGED| FINALIZE_MERGED["Approve Deduplication Set<br>if present"]
-    FINALIZE_MERGED -->|ok| MERGED["MERGED<br>merged in HOPE Core"]
+    CALLBACK -->|MERGED| FINALIZE_MERGED["Approve DE set<br>if present"]
+    FINALIZE_MERGED -->|ok| MERGED["MERGED<br>final merged"]
     FINALIZE_MERGED -->|DE error| PUSHED
 
-    CALLBACK -->|REJECTED| FINALIZE_REJECTED["Reject Deduplication Set if present<br>restore removed beneficiaries"]
-    FINALIZE_REJECTED -->|ok| REJECTED["REJECTED<br>final rejected state"]
+    CALLBACK -->|REJECTED| FINALIZE_REJECTED["Reject DE set if present<br>restore beneficiaries"]
+    FINALIZE_REJECTED -->|ok| REJECTED
     FINALIZE_REJECTED -->|DE error| PUSHED
 
-    PUSHED --> RESET["Staff admin Reset<br>schedule AsyncJob"]
-    RESET --> RESET_JOB["Reset RDP job<br>reuse HOPE REJECTED callback flow"]
+    PUSHED --> RESET["Admin Reset<br>schedule AsyncJob"]
+    RESET --> RESET_JOB["Reset job<br>reuse REJECTED finalization"]
     RESET_JOB --> FINALIZE_REJECTED
 
-    CLONE["Clone RDP"] --> CL1{"source status"}
-    CL1 -- "PENDING" --> CL2["source becomes REJECTED<br>child becomes PENDING"]
-    CL1 -- "FAILURE / REJECTED" --> CL3["source unchanged<br>child becomes PENDING"]
-    CL1 -- "PUSHED / MERGED" --> CL4["clone blocked"]
-
-    CL2 --> PENDING
-    CL3 --> PENDING
+    CLONE["Clone RDP"] --> CLONE_CHECK{"Clone allowed?"}
+    CLONE_CHECK -->|PENDING source| CLONE_PENDING["source REJECTED<br>child PENDING"]
+    CLONE_CHECK -->|FAILURE / REJECTED source| CLONE_FINAL["source unchanged<br>child PENDING"]
+    CLONE_CHECK -->|PUSHED / MERGED source| CLONE_BLOCKED["blocked"]
+    CLONE_PENDING --> PENDING
+    CLONE_FINAL --> PENDING
 
     subgraph STATUS_RULES["Status-based policy rules"]
-        subgraph CREATE_RULES["Regular Create RDP"]
-            A["BLOCK: Program has PENDING RDP"]
-            B["BLOCK: selected records are already linked to PENDING/PUSHED/MERGED RDP"]
+        subgraph CREATE_RULES["Create / selection"]
+            CR["BLOCK: empty or invalid selection, another PENDING RDP, or selected records already linked to PENDING/PUSHED/MERGED"]
+            CB["BIOMETRIC: DE must allow creating a deduplication set before CW creates the RDP"]
         end
 
-        subgraph DEDUP_RULES["Run Deduplication"]
-            H["ENSURE: CW-owned deduplication_set_id before new DE set creation"]
-            J["LOCK: Program dedup settings after deduplication is requested"]
+        subgraph DEDUP_RULES["Dedup / settings"]
+            DR["DEDUP: PENDING + biometric only; create new DE set or process existing processable set"]
+            DL["CLAIM: lock dedup settings; generate CW-owned deduplication_set_id when creating a new set"]
+            RR["REJECT DS: PENDING + biometric + existing rejectable DE set"]
+            SR["SETTINGS: blocked by PUSHED/MERGED or locked PENDING RDP"]
         end
 
-        subgraph CLONE_RULES["Clone RDP"]
-            C["ALLOW: clone PENDING; source becomes REJECTED, child becomes PENDING"]
-            D["ALLOW: clone FAILURE/REJECTED; source unchanged, child becomes PENDING"]
-            E["BLOCK: clone PUSHED/MERGED"]
-            F["REQUIRE: DE state allows clone: failed encoding, failed dedup, deduplicated, or rejected"]
-            K["REUSE: child may keep source deduplication_set_id when source DE set is deduplicated"]
+        subgraph PUSH_RULES["Push"]
+            PR["PUSH: PENDING only; non-biometric allowed, biometric requires pushable DE set"]
+            PS["SUCCESS: send country_workspace_id when present, mark beneficiaries removed, set PUSHED"]
+            PF["FAILURE: set FAILURE and keep the HOPE RDI id if one exists"]
         end
 
-        subgraph SETTINGS_RULES["Update Dedup Settings"]
-            G["BLOCK: PENDING locked by dedup request, PUSHED, or MERGED RDP"]
+        subgraph CALLBACK_RULES["Callback / Reset"]
+            CA["CALLBACK: authenticated by hope-api-auth grant; payload is MERGED or REJECTED; lookup by hope_rdi_id"]
+            CF["FINALIZE: MERGED approves DE; REJECTED rejects DE and restores beneficiaries; DE error keeps PUSHED"]
+            RA["RESET: PUSHED only; schedules AsyncJob; reuses REJECTED finalization"]
         end
 
-        subgraph PUSH_RULES["Push to HOPE"]
-            L["SEND: RDI country_workspace_id = deduplication_set_id when present"]
-            M["SEND: beneficiary identifiers as required by HOPE Core"]
-            N["MARK: pushed beneficiaries as removed"]
-            O["SET: RDP status to PUSHED after successful HOPE push"]
-        end
-
-        subgraph CALLBACK_RULES["HOPE final callback"]
-            P["MERGED: approve DE set if present"]
-            Q["REJECTED: reject DE set if present"]
-            R["REJECTED: restore removed beneficiaries"]
-            S["KEEP PUSHED: DE callback sync error does not finalize RDP"]
-        end
-
-        subgraph RESET_RULES["Admin Reset"]
-            T["ALLOW: only PUSHED RDP"]
-            U["SCHEDULE: AsyncJob from admin button"]
-            V["REUSE: HOPE REJECTED callback finalization flow"]
-            W["KEEP PUSHED: reset job error does not finalize RDP"]
+        subgraph CLONE_RULES["Clone"]
+            CL["CLONE: biometric only; block PUSHED/MERGED and any other pending RDP"]
+            CD["REQUIRE: cloneable DE source; reuse deduplication_set_id only when source DE set is deduplicated"]
+            CS["RESULT: PENDING source becomes REJECTED; FAILURE/REJECTED source stays unchanged; child is PENDING"]
         end
     end
 
     subgraph EXTERNAL["External service communication"]
-        X1["DE REST API:<br>settings, create/process/reject DS, approve/reject DS, read status"]
-        X2["HOPE Core API:<br>create RDI, push people or individuals+households, complete RDI, final callback"]
+        X1["DedupEngine REST API:<br>settings, create/process/reject DS, approve/reject DS, read status"]
+        X2["HOPE Core outbound API:<br>sync reference data; create RDI; push people or individuals+households; complete RDI"]
+        X3["CW inbound callback API:<br>authenticated final HOPE RDI outcome"]
     end
 
     classDef local fill:#E8F1FB,stroke:#4C78A8,stroke-width:1.5px,color:#1F2D3D;
@@ -152,25 +134,21 @@ flowchart TB
     classDef neutral fill:#F3F4F6,stroke:#6B7280,stroke-width:1.5px,color:#1F2937;
     classDef rejected fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#3B0764;
 
-    class PENDING,CREATE,CLONE,CL1,CL2,CL3,RESET,RESET_JOB,DEDUP_CLAIM,CALLBACK local;
-    class DEDUP,D1,RDS,HOPE_PUSH,FINALIZE_MERGED,FINALIZE_REJECTED,X1,X2 external;
+    class PENDING,CREATE,DEDUP_CLAIM,CALLBACK,HOPE_CALLBACK,RESET,RESET_JOB,CLONE,CLONE_CHECK,CLONE_PENDING,CLONE_FINAL local;
+    class DEDUP,REJECT_DS,HOPE_PUSH,FINALIZE_MERGED,FINALIZE_REJECTED,X1,X2,X3 external;
     class PUSHED,MERGED success;
     class FAILURE failed;
     class REJECTED rejected;
-    class CL4,A,B,C,D,E,F,G,H,J,K,L,M,N,O,P,Q,R,S,T,U,V,W neutral;
+    class CLONE_BLOCKED,CR,CB,DR,DL,RR,SR,PR,PS,PF,CA,CF,RA,CL,CD,CS neutral;
 ```
 
 ## Key rules
 
-* `PENDING` is the only local active RDP status.
-* For a new DedupEngine set, `deduplication_set_id` is generated by CW before the create call.
-* RDI `country_workspace_id` is sent only when the RDP has `deduplication_set_id`; its value is `str(deduplication_set_id)`.
-* `deduplication_set_id` belongs to the selection owner / deduplication source, so clones may reuse it.
-* `PUSHED` means CW successfully completed the HOPE push and is waiting for the final HOPE callback.
-* `MERGED` means HOPE-side merge was confirmed.
-* `REJECTED` means the RDP was rejected locally, by HOPE callback, by clone replacement, or by Admin Reset.
-* If a DedupEngine set exists, final DE sync is performed during finalization: `MERGED` approves the set, `REJECTED` rejects it.
-* If DE final sync fails during callback processing, the callback fails and RDP remains `PUSHED`.
-* Admin Reset is available only for `PUSHED` RDPs and schedules an async job.
-* Admin Reset reuses the same finalization path as a HOPE `REJECTED` callback: reject DE set if present, restore removed beneficiaries, and mark RDP as `REJECTED`.
-* If Admin Reset finalization fails, the job fails and RDP remains `PUSHED`.
+* `PENDING` is local processing; `PUSHED` is a hand-off state waiting for the final HOPE callback; `FAILURE`, `REJECTED`, and `MERGED` are final statuses.
+* CW handles Deduplication through DedupEngine, not HOPE Deduplication-flow endpoints.
+* Dedup claim locks program dedup settings and may generate a CW-owned `deduplication_set_id`; settings stay blocked by locked `PENDING`, `PUSHED`, or `MERGED` RDPs.
+* Successful HOPE push marks beneficiaries as removed, stores `hope_rdi_id`, and sets the RDP to `PUSHED`; failed push sets `FAILURE`.
+* Final callback is authenticated by `hope-api-auth`, identifies the RDP by `hope_rdi_id`, and accepts only `MERGED` or `REJECTED`.
+* Finalization syncs DE when needed: `MERGED` approves the set; `REJECTED` rejects the set and restores removed beneficiaries. DE sync failure leaves the RDP `PUSHED`.
+* Admin Reset is only for `PUSHED` RDPs and reuses the same `REJECTED` finalization path.
+* Clone requires a biometric program and a cloneable DE source; `PENDING` source becomes `REJECTED`, `FAILURE/REJECTED` source stays unchanged, and the child starts as `PENDING`.

@@ -5,7 +5,6 @@ from smart_admin.console import panel_migrations, panel_redis, panel_sentry, pan
 from smart_admin.smart_auth.admin import ContentTypeAdmin, PermissionAdmin
 
 from ..cache.smart_panel import panel_cache
-from .api_token import APITokenAdmin
 from .batch import BatchAdmin
 from .flex_fields import CWDataCheckerAdmin, CWFieldsetAdmin, CWFlexFieldAdmin
 from .beneficiary_group import BeneficiaryGroupAdmin
@@ -34,7 +33,6 @@ site.register_panel(panel_migrations)
 site.register_panel(panel_redis)
 
 __all__ = [
-    "APITokenAdmin",
     "AreaAdmin",
     "AreaTypeAdmin",
     "AsyncJobAdmin",
