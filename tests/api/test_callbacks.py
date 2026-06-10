@@ -91,7 +91,6 @@ def test_callback_payload_returns_stable_payload(exc: HopeRdiCallbackError) -> N
 def test_callback_payload_wraps_unknown_error() -> None:
     payload = _callback_payload(HopeRdiCallbackError("boom"))
 
-    assert payload["changed"] is False
     assert payload["code"] == HopeRdiCallbackCode.CALLBACK_ERROR
     assert payload["detail"] == "boom"
 
@@ -103,7 +102,6 @@ def test_hope_rdi_callback_view_success(mocker: MockerFixture) -> None:
         rdp_id=1,
         rdi_id="RDI-1",
         status=Rdp.PushStatus.MERGED,
-        changed=True,
         code=HopeRdiCallbackCode.FINALIZED,
         detail="RDP status updated to MERGED.",
     )
@@ -125,7 +123,7 @@ def test_hope_rdi_callback_view_success(mocker: MockerFixture) -> None:
     [
         (HopeRdiCallbackNotFoundError, status.HTTP_404_NOT_FOUND),
         (HopeRdiCallbackConflictError, status.HTTP_409_CONFLICT),
-        (HopeRdiCallbackError, status.HTTP_400_BAD_REQUEST),
+        (HopeRdiCallbackError, status.HTTP_502_BAD_GATEWAY),
     ],
     ids=["not_found", "conflict", "callback_error"],
 )
