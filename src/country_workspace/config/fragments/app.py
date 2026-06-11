@@ -12,5 +12,8 @@ AURORA_API_URL = env("AURORA_API_URL")
 HOPE_API_TOKEN = env("HOPE_API_TOKEN")
 HOPE_API_URL = env("HOPE_API_URL")
 
+HOPE_DOCUMENTS_API_TOKEN = env("HOPE_DOCUMENTS_API_TOKEN")
+HOPE_DOCUMENTS_API_URL = env("HOPE_DOCUMENTS_API_URL")
+
 HH_LOOKUPS = ["ResidenceStatus"]
 IND_LOOKUPS = ["MaritalStatus", "ObservedDisability", "Relationship", "Role"]
