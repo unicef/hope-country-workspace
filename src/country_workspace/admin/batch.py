@@ -108,9 +108,8 @@ class BatchAdmin(BaseModelAdmin):
             return
 
         workspace_change_url = reverse("workspace:workspaces_countrybatch_change", args=[obj.pk])
-        workspace_root = reverse("workspace:index").rstrip("/")
-        if workspace_root and not workspace_change_url.startswith(f"{workspace_root}/"):
-            workspace_change_url = f"{workspace_root}{workspace_change_url}"
+        if workspace_change_url.startswith("/workspaces/"):
+            workspace_change_url = f"/workspace{workspace_change_url}"
         button.href = workspace_change_url.replace("/change/", "/import_pictures/")
 
     @button()

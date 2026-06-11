@@ -1,6 +1,7 @@
 import io
 import zipfile
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from strategy_field.utils import fqn
@@ -416,20 +417,11 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(batch_admin,
 def test_batch_admin_picture_import_session_ttl_falls_back_to_default(batch_admin, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
-    mocker.patch.object(
-        batch_admin_module.constance_config,
-        "PICTURE_IMPORT_SESSION_TTL_SECONDS",
-        "invalid",
-        create=True,
-    )
+    constance_stub = SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS="invalid")
+    mocker.patch.object(batch_admin_module, "constance_config", constance_stub)
     assert batch_admin._picture_import_session_ttl_seconds() == 3600
 
-    mocker.patch.object(
-        batch_admin_module.constance_config,
-        "PICTURE_IMPORT_SESSION_TTL_SECONDS",
-        0,
-        create=True,
-    )
+    constance_stub.PICTURE_IMPORT_SESSION_TTL_SECONDS = 0
     assert batch_admin._picture_import_session_ttl_seconds() == 3600
 
 
@@ -1146,16 +1138,12 @@ def test_picture_import_service_config_defaults_when_invalid(mocker) -> None:
     from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
 
     mocker.patch.object(
-        picture_import_module.constance_config,
-        "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT",
-        "bad",
-        create=True,
-    )
-    mocker.patch.object(
-        picture_import_module.constance_config,
-        "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES",
-        -1,
-        create=True,
+        picture_import_module,
+        "constance_config",
+        SimpleNamespace(
+            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT="bad",
+            PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=-1,
+        ),
     )
 
     assert BatchPictureImportService.max_zip_file_count() == BatchPictureImportService.MAX_ZIP_FILE_COUNT
