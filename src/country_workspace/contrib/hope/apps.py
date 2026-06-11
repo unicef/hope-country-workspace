@@ -1,7 +1,5 @@
 from django.apps import AppConfig
 
-from country_workspace.utils.flex_fields import CustomMultipleChoiceField
-
 from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, CountryChoice
 from .lookups import FinancialInstitutionChoice
 from .phone_numbers import PhoneNumberField
@@ -18,7 +16,11 @@ class Config(AppConfig):
         from hope_flex_fields.registry import field_registry
 
         from .remotes.country import CountryAttributeHandler
-        from country_workspace.utils.flex_fields import ObservedDisabilityChoice
+
+        from country_workspace.utils.flex_fields import (
+            CustomMultipleChoiceField,
+            ObservedDisabilityChoice,
+        )
 
         attributes_registry.register(CountryAttributeHandler)
         field_registry.register(CountryChoice)
