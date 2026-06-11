@@ -86,6 +86,25 @@ def test_validate_with_checker_normalizes_multiselect_values_before_validation(h
     )
 
 
+def test_normalize_multiselect_values_skips_fields_not_present_in_payload():
+    checker = Mock()
+    checker.form = Mock(
+        fields={
+            "reasons_oos": Mock(widget=Mock(allow_multiple_selected=True)),
+            "missing_in_payload": Mock(widget=Mock(allow_multiple_selected=True)),
+        }
+    )
+    flex_fields = {"reasons_oos": "single-value"}
+
+    with mock.patch.object(
+        Validable, "_coerce_multiselect_value", wraps=Validable._coerce_multiselect_value
+    ) as coerced:
+        normalized = Validable._normalize_multiselect_values(checker, flex_fields)
+
+    assert normalized == {"reasons_oos": ["single-value"]}
+    coerced.assert_called_once_with(checker.form.fields["reasons_oos"], "single-value")
+
+
 def test_coerce_multiselect_value_passthrough_for_non_multiselect():
     field = Mock(widget=Mock(allow_multiple_selected=False))
 
