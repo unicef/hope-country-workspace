@@ -128,6 +128,21 @@ def test_rdp_reset_success(
 
 
 @pytest.mark.django_db
+def test_rdp_reset_missing_object_redirects_to_changelist(app, reset_permission) -> None:
+    missing_pk = (Rdp.objects.order_by("-pk").values_list("pk", flat=True).first() or 0) + 1
+    jobs_count = AsyncJob.objects.count()
+
+    res = app.post(reverse("admin:country_workspace_rdp_reset", args=[missing_pk]))
+
+    assert res.status_code == 302
+    assert res.location.endswith(reverse("admin:country_workspace_rdp_changelist"))
+    assert AsyncJob.objects.count() == jobs_count
+
+    res = res.follow()
+    assert any("RDP not found." in str(message) for message in res.context["messages"])
+
+
+@pytest.mark.django_db
 def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, reset_permission) -> None:
     rdp.status = Rdp.PushStatus.PENDING
     rdp.save(update_fields=["status"])
@@ -136,8 +151,7 @@ def test_rdp_reset_fail_wrong_status(app, rdp, household, individual, reset_perm
     assert res.status_code == 302
 
     res = res.follow()
-    messages = list(res.context["messages"])
-    assert any("Reset is only allowed for PUSHED status" in str(message) for message in messages)
+    assert any("Reset is only allowed for PUSHED status" in str(message) for message in res.context["messages"])
 
     household.refresh_from_db()
     individual.refresh_from_db()

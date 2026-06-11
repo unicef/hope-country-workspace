@@ -196,16 +196,6 @@ def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> boo
     return qs.exists()
 
 
-def has_other_active_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:
-    qs = Rdp.objects.filter(
-        program_id=owner.program_id,
-        status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.PUSHED],
-    )
-    if excluded := tuple(exclude_ids):
-        qs = qs.exclude(pk__in=excluded)
-    return qs.exists()
-
-
 def lock_rdp_for_hope_callback(*, hope_rdi_id: str) -> Rdp:
     """Return an RDP locked for a HOPE callback."""
     return Rdp.objects.select_for_update().get(hope_rdi_id=hope_rdi_id)

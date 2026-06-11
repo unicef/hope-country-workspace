@@ -54,7 +54,7 @@ dependencies = [
   "drf-spectacular[sidecar]",
   "dukpy>=0.5",
   "flower>=2.0.1",
-  "hope-api-auth>=0.1",
+  "hope-api-auth>=0.1.1",
   "hope-flex-fields>=0.8.1",
   "hope-smart-export>=0.3",
   "hope-smart-import>=0.5",
