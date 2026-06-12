@@ -65,6 +65,19 @@ class RunTransformerForm(forms.Form):
                 (self.ApplyToOptions.INDIVIDUALS, self.ApplyToOptions.INDIVIDUALS.label),
             ]
 
+    def clean(self) -> dict[str, object]:
+        cleaned_data = super().clean()
+        batch = cleaned_data.get("batch")
+        apply_to = cleaned_data.get("apply_to")
+
+        if batch and apply_to == self.ApplyToOptions.HOUSEHOLDS and not batch.program.is_master_detail:
+            self.add_error(
+                "apply_to",
+                _("Cannot apply formula to households on a program that is not master-detail."),
+            )
+
+        return cleaned_data
+
 
 @admin.register(CountryTransformer, site=workspace)
 class CountryTransformerAdmin(WorkspaceModelAdmin):

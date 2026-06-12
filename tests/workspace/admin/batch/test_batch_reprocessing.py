@@ -485,7 +485,7 @@ def test_apply_batch_transformers_raises_for_missing_transformer(batch: CountryB
         apply_batch_transformers(job)
 
 
-def test_apply_batch_transformers_delegates_to_postprocessing(
+def test_apply_batch_transformers_delegates_to_transformations_utility(
     batch: CountryBatch,
     user: User,
     mocker,
@@ -505,18 +505,17 @@ def test_apply_batch_transformers_delegates_to_postprocessing(
         },
     )
 
-    postprocessing = mocker.patch(
-        "country_workspace.workspaces.admin.batch.reprocessing.run_batch_postprocessing",
-        return_value={"transformed_households": 3, "transformed_individuals": 7, "collector_links": 5},
+    apply_transformers = mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.apply_transformers_to_batch",
+        return_value={"transformed_households": 3, "transformed_individuals": 7},
     )
 
     response = apply_batch_transformers(job)
 
-    postprocessing.assert_called_once_with(
+    apply_transformers.assert_called_once_with(
         batch,
         household_transformer_id=household_transformer.pk,
         individual_transformer_id=individual_transformer.pk,
-        sync_household_refs=_sync_household_refs,
     )
     assert response["batch_id"] == batch.pk
     assert response["batch_name"] == batch.name

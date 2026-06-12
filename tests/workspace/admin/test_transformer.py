@@ -171,6 +171,27 @@ class TestRunTransformerForm:
         choices = [choice[0] for choice in form.fields["apply_to"].choices]
         assert choices == [RunTransformerForm.ApplyToOptions.INDIVIDUALS]
 
+    @patch("country_workspace.workspaces.admin.transformer.forms.Form.clean")
+    @patch("country_workspace.workspaces.admin.transformer.Batch.objects")
+    def test_clean_rejects_households_for_non_master_detail_batch(self, mock_batch_objects, mock_form_clean):
+        qs = self._build_mock_queryset()
+        mock_batch_objects.order_by.return_value = qs
+        batch = MagicMock()
+        batch.program.is_master_detail = False
+        mock_form_clean.return_value = {
+            "batch": batch,
+            "apply_to": RunTransformerForm.ApplyToOptions.HOUSEHOLDS,
+        }
+
+        form = RunTransformerForm()
+        with patch.object(form, "add_error") as add_error:
+            form.clean()
+
+        add_error.assert_called_once()
+        field, message = add_error.call_args.args
+        assert field == "apply_to"
+        assert "not master-detail" in str(message)
+
 
 class TestRunOnExistingRecords:
     def _build_request(self, method: str = "GET", post_data: dict | None = None, has_perm: bool = True) -> MagicMock:

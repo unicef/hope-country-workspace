@@ -19,6 +19,9 @@ from country_workspace.contrib.kobo.sync import (
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
 from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
+from country_workspace.utils.import_flow.transformations import (
+    apply_batch_transformers as apply_transformers_to_batch,
+)
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 
@@ -404,20 +407,19 @@ def apply_batch_transformers(job: AsyncJob) -> dict[str, Any]:
     if not household_transformer_id and not individual_transformer_id:
         raise ValueError("At least one transformer id is required in job config")
 
-    postprocessing_result = run_batch_postprocessing(
+    transformer_result = apply_transformers_to_batch(
         batch,
         household_transformer_id=household_transformer_id,
         individual_transformer_id=individual_transformer_id,
-        sync_household_refs=_sync_household_refs,
     )
 
     response = {
         "batch_id": batch_id,
         "batch_name": batch.name,
-        "transformed_individuals": postprocessing_result.get("transformed_individuals", 0),
+        "transformed_individuals": transformer_result.get("transformed_individuals", 0),
     }
     if batch.program.is_master_detail:
-        response["transformed_households"] = postprocessing_result.get("transformed_households", 0)
+        response["transformed_households"] = transformer_result.get("transformed_households", 0)
 
     logger.info("Batch transformer apply finished: %s", response)
     return response
