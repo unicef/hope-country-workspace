@@ -300,7 +300,11 @@ def test_batch_picture_import_form_clean_zip_file_rejects_oversized_archive(mock
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
     upload = _make_zip_upload({"A-1.jpg": b"jpg"})
-    mocker.patch.object(batch_admin_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES", 1)
+    mocker.patch.object(
+        batch_admin_module,
+        "constance_config",
+        SimpleNamespace(PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=1),
+    )
     form = BatchPictureImportForm(
         data={"match_field": "id", "target_field": "photo"},
         files={"zip_file": upload},
@@ -963,7 +967,14 @@ def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
         archive.writestr("first.jpg", b"1")
         archive.writestr("second.jpg", b"2")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(picture_import_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT", 1)
+    mocker.patch.object(
+        picture_import_module,
+        "constance_config",
+        SimpleNamespace(
+            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
+            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=200 * 1024 * 1024,
+        ),
+    )
 
     with pytest.raises(PictureImportLimitError, match="too many files"):
         BatchPictureImportService.extract_zip_images(upload)
@@ -976,7 +987,14 @@ def test_extract_zip_images_raises_when_uncompressed_size_exceeds_limit(mocker) 
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("big.jpg", b"12345")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(picture_import_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES", 4)
+    mocker.patch.object(
+        picture_import_module,
+        "constance_config",
+        SimpleNamespace(
+            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=2000,
+            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=4,
+        ),
+    )
 
     with pytest.raises(PictureImportLimitError, match="too large when extracted"):
         BatchPictureImportService.extract_zip_images(upload)
