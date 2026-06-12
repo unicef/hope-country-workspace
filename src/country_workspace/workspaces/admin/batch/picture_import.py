@@ -17,10 +17,6 @@ class PictureImportLimitError(ValueError):
 
 
 class BatchPictureImportService:
-    MAX_ZIP_UPLOAD_BYTES = 20 * 1024 * 1024
-    MAX_ZIP_FILE_COUNT = 2000
-    MAX_ZIP_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
-
     def __init__(self, batch: CountryBatch) -> None:
         self.batch = batch
 
@@ -37,31 +33,10 @@ class BatchPictureImportService:
             return guessed
         return "application/octet-stream"
 
-    @staticmethod
-    def _get_int_config(name: str, default: int) -> int:
-        value = getattr(constance_config, name, default)
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            return default
-        return parsed if parsed > 0 else default
-
-    @classmethod
-    def max_zip_upload_bytes(cls) -> int:
-        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES", cls.MAX_ZIP_UPLOAD_BYTES)
-
-    @classmethod
-    def max_zip_file_count(cls) -> int:
-        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_FILE_COUNT", cls.MAX_ZIP_FILE_COUNT)
-
-    @classmethod
-    def max_zip_uncompressed_bytes(cls) -> int:
-        return cls._get_int_config("PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES", cls.MAX_ZIP_UNCOMPRESSED_BYTES)
-
     @classmethod
     def _validate_archive_limits(cls, archive: zipfile.ZipFile) -> None:
-        max_zip_file_count = cls.max_zip_file_count()
-        max_zip_uncompressed_bytes = cls.max_zip_uncompressed_bytes()
+        max_zip_file_count = int(constance_config.PICTURE_IMPORT_MAX_ZIP_FILE_COUNT)
+        max_zip_uncompressed_bytes = int(constance_config.PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES)
         file_count = 0
         uncompressed_size = 0
         for info in archive.infolist():

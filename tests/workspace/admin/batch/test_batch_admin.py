@@ -46,8 +46,7 @@ def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
 
 
 def _mock_picture_import_service(mocker, batch_admin_module, service) -> None:
-    patched_service = mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
-    patched_service.max_zip_upload_bytes.return_value = 20 * 1024 * 1024
+    mocker.patch.object(batch_admin_module, "BatchPictureImportService", return_value=service)
 
 
 def test_reprocess_form_hides_household_fields_for_people_program(people_program) -> None:
@@ -298,8 +297,10 @@ def test_batch_picture_import_form_clean_zip_file_accepts_zip_and_rewinds() -> N
 
 
 def test_batch_picture_import_form_clean_zip_file_rejects_oversized_archive(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
     upload = _make_zip_upload({"A-1.jpg": b"jpg"})
-    mocker.patch.object(BatchPictureImportService, "max_zip_upload_bytes", return_value=1)
+    mocker.patch.object(batch_admin_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES", 1)
     form = BatchPictureImportForm(
         data={"match_field": "id", "target_field": "photo"},
         files={"zip_file": upload},
@@ -955,23 +956,27 @@ def test_extract_zip_images_skips_empty_filename_entries(mocker) -> None:
 
 
 def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
+
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("first.jpg", b"1")
         archive.writestr("second.jpg", b"2")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(BatchPictureImportService, "max_zip_file_count", return_value=1)
+    mocker.patch.object(picture_import_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT", 1)
 
     with pytest.raises(PictureImportLimitError, match="too many files"):
         BatchPictureImportService.extract_zip_images(upload)
 
 
 def test_extract_zip_images_raises_when_uncompressed_size_exceeds_limit(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
+
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("big.jpg", b"12345")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(BatchPictureImportService, "max_zip_uncompressed_bytes", return_value=4)
+    mocker.patch.object(picture_import_module.constance_config, "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES", 4)
 
     with pytest.raises(PictureImportLimitError, match="too large when extracted"):
         BatchPictureImportService.extract_zip_images(upload)
@@ -1134,20 +1139,27 @@ def test_batch_actions_visible_with_any_permission(batch_admin, batch: CountryBa
     assert button.visible is True
 
 
-def test_picture_import_service_config_defaults_when_invalid(mocker) -> None:
+def test_picture_import_service_reads_limits_from_constance(mocker) -> None:
     from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
 
     mocker.patch.object(
         picture_import_module,
         "constance_config",
         SimpleNamespace(
-            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT="bad",
-            PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=-1,
+            PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=123,
+            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
+            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=456,
         ),
     )
 
-    assert BatchPictureImportService.max_zip_file_count() == BatchPictureImportService.MAX_ZIP_FILE_COUNT
-    assert BatchPictureImportService.max_zip_upload_bytes() == BatchPictureImportService.MAX_ZIP_UPLOAD_BYTES
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("1.jpg", b"x")
+        archive.writestr("2.jpg", b"y")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+    with pytest.raises(PictureImportLimitError, match="max 1"):
+        BatchPictureImportService.extract_zip_images(upload)
 
 
 def test_enrich_assignments_with_zip_data_skips_missing_items() -> None:

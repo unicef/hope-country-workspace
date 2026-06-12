@@ -137,7 +137,7 @@ class BatchPictureImportForm(forms.Form):
         zip_file: UploadedFile = self.cleaned_data["zip_file"]
         if not zipfile.is_zipfile(zip_file):
             raise forms.ValidationError(_("Please upload a valid zip archive."))
-        max_zip_upload_bytes = BatchPictureImportService.max_zip_upload_bytes()
+        max_zip_upload_bytes = int(constance_config.PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES)
         if zip_file.size and zip_file.size > max_zip_upload_bytes:
             raise forms.ValidationError(
                 _("ZIP archive is too large (max %(max_mb)d MB).") % {"max_mb": max_zip_upload_bytes // (1024 * 1024)}
