@@ -79,11 +79,6 @@ CONSTANCE_CONFIG = {
         "Maximum number of files allowed in a picture import ZIP",
         int,
     ),
-    "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES": (
-        200 * 1024 * 1024,
-        "Maximum uncompressed ZIP size in bytes for picture import",
-        int,
-    ),
     "PICTURE_IMPORT_SESSION_TTL_SECONDS": (
         3600,
         "How long a picture import preview remains valid before expiring",
@@ -178,7 +173,6 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "CHUNK_SIZE_FOR_VALIDATION_TASK",
         "PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES",
         "PICTURE_IMPORT_MAX_ZIP_FILE_COUNT",
-        "PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES",
         "PICTURE_IMPORT_SESSION_TTL_SECONDS",
         "RDP_CLEANUP_DAYS",
         "RDP_CLEANUP_BATCH_SIZE",

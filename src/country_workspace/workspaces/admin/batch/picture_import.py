@@ -36,20 +36,13 @@ class BatchPictureImportService:
     @classmethod
     def _validate_archive_limits(cls, archive: zipfile.ZipFile) -> None:
         max_zip_file_count = int(constance_config.PICTURE_IMPORT_MAX_ZIP_FILE_COUNT)
-        max_zip_uncompressed_bytes = int(constance_config.PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES)
         file_count = 0
-        uncompressed_size = 0
         for info in archive.infolist():
             if info.is_dir():
                 continue
             file_count += 1
-            uncompressed_size += info.file_size
             if file_count > max_zip_file_count:
                 raise PictureImportLimitError(f"ZIP archive contains too many files (max {max_zip_file_count}).")
-            if uncompressed_size > max_zip_uncompressed_bytes:
-                raise PictureImportLimitError(
-                    f"ZIP archive is too large when extracted (max {max_zip_uncompressed_bytes // (1024 * 1024)} MB)."
-                )
 
     @classmethod
     def extract_zip_images(cls, zip_file: UploadedFile) -> tuple[list[dict[str, str]], set[str]]:

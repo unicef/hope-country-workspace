@@ -180,7 +180,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY, {})
         if not isinstance(payloads, dict):
             return {}
-        max_age_seconds = CountryBatchAdmin._picture_import_session_ttl_seconds()
+        max_age_seconds = int(constance_config.PICTURE_IMPORT_SESSION_TTL_SECONDS)
         now = int(time())
         cleaned_payloads: dict[str, dict[str, Any]] = {}
         changed = False
@@ -200,22 +200,13 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return cleaned_payloads
 
     @staticmethod
-    def _picture_import_session_ttl_seconds() -> int:
-        value = getattr(constance_config, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 3600)
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            return 3600
-        return parsed if parsed > 0 else 3600
-
-    @staticmethod
     def _delete_stored_zip(storage_name: str | None) -> None:
         if storage_name:
             default_storage.delete(storage_name)
 
     @staticmethod
     def _cleanup_stale_stored_zips() -> None:
-        max_age_seconds = CountryBatchAdmin._picture_import_session_ttl_seconds()
+        max_age_seconds = int(constance_config.PICTURE_IMPORT_SESSION_TTL_SECONDS)
         now = int(time())
         try:
             _, files = default_storage.listdir("batch-picture-import")
@@ -417,7 +408,11 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         ),
     )
     def batch_actions(self, button: ChoiceButton) -> None:
-        button.choices = [self.import_pictures, self.reprocess_batch]
+        model_admin = self or button.handler.model_admin
+        if not model_admin:
+            button.choices = []
+            return
+        button.choices = [model_admin.import_pictures, model_admin.reprocess_batch]
 
     @link(change_list=False, html_attrs={"title": "Shows related Household records."})
     def imported_records(self, btn: LinkButton) -> None:

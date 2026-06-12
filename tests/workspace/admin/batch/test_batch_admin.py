@@ -419,17 +419,6 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(batch_admin,
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_storage_name"] == "new.zip"
 
 
-def test_batch_admin_picture_import_session_ttl_falls_back_to_default(batch_admin, mocker) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
-    constance_stub = SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS="invalid")
-    mocker.patch.object(batch_admin_module, "constance_config", constance_stub)
-    assert batch_admin._picture_import_session_ttl_seconds() == 3600
-
-    constance_stub.PICTURE_IMPORT_SESSION_TTL_SECONDS = 0
-    assert batch_admin._picture_import_session_ttl_seconds() == 3600
-
-
 def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: RequestFactory, user, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
@@ -443,7 +432,7 @@ def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: Req
         "broken": "not-a-dict",
     }
     mocker.patch.object(batch_admin_module, "time", return_value=now)
-    mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_picture_import_session_ttl_seconds", return_value=10)
+    mocker.patch.object(batch_admin_module, "constance_config", SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS=10))
     delete_stored_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_stored_zip")
 
     payloads = batch_admin._session_payloads(request)
@@ -465,7 +454,7 @@ def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admi
 def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
-    mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_picture_import_session_ttl_seconds", return_value=10)
+    mocker.patch.object(batch_admin_module, "constance_config", SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS=10))
     mocker.patch.object(batch_admin_module, "time", return_value=1000)
     mocker.patch.object(
         batch_admin_module.default_storage,
@@ -972,31 +961,10 @@ def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
         "constance_config",
         SimpleNamespace(
             PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
-            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=200 * 1024 * 1024,
         ),
     )
 
     with pytest.raises(PictureImportLimitError, match="too many files"):
-        BatchPictureImportService.extract_zip_images(upload)
-
-
-def test_extract_zip_images_raises_when_uncompressed_size_exceeds_limit(mocker) -> None:
-    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
-
-    payload = io.BytesIO()
-    with zipfile.ZipFile(payload, mode="w") as archive:
-        archive.writestr("big.jpg", b"12345")
-    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
-    mocker.patch.object(
-        picture_import_module,
-        "constance_config",
-        SimpleNamespace(
-            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=2000,
-            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=4,
-        ),
-    )
-
-    with pytest.raises(PictureImportLimitError, match="too large when extracted"):
         BatchPictureImportService.extract_zip_images(upload)
 
 
@@ -1166,7 +1134,6 @@ def test_picture_import_service_reads_limits_from_constance(mocker) -> None:
         SimpleNamespace(
             PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=123,
             PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
-            PICTURE_IMPORT_MAX_ZIP_UNCOMPRESSED_BYTES=456,
         ),
     )
 
