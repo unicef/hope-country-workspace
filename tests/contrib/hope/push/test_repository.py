@@ -454,6 +454,31 @@ def test_set_rdp_push_status(
     assert rdp.is_dedup_settings_locked is expected_locked
 
 
+@pytest.mark.parametrize(
+    ("hope_rdi_id", "expected"),
+    [
+        (" RDI-1 ", "RDI-1"),
+        ("", None),
+        ("   ", None),
+        (None, None),
+    ],
+    ids=["strips", "empty", "blank", "none"],
+)
+def test_set_rdp_push_status_normalizes_hope_rdi_id(
+    rdp,
+    hope_rdi_id: str | None,
+    expected: str | None,
+) -> None:
+    repo.set_rdp_push_status(
+        rdp=rdp,
+        status=RdpModel.PushStatus.PUSHED,
+        hope_rdi_id=hope_rdi_id,
+    )
+
+    rdp.refresh_from_db()
+    assert rdp.hope_rdi_id == expected
+
+
 def test_has_other_pending_rdp(program_with_serializer, pushed_by_user) -> None:
     owner = CountryRdpFactory(
         program=program_with_serializer,

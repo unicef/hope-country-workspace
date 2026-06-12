@@ -337,7 +337,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                 )
             raise HopePushError(hope_processor.total)
 
-    if not (hope_rdi_id := hope_processor.hope_rdi_id):
+    if not (hope_rdi_id := (hope_processor.hope_rdi_id or "").strip()):
         raise HopePushError({"errors": ["RDI id is not set after successful push."]})
 
     with transaction.atomic():
@@ -403,7 +403,7 @@ def _apply_final_hope_rdi_status(
     _finalize_deduplication_set_for_hope_callback(rdp=rdp, status=status)
 
     if status == Rdp.PushStatus.REJECTED:
-        _mark_rdp_beneficiaries_not_removed(rdp)
+        _restore_rdp_removed_beneficiaries(rdp)
 
     set_rdp_push_status(
         rdp=rdp,
@@ -504,7 +504,7 @@ def _finalize_deduplication_set_for_hope_callback(*, rdp: Rdp, status: Rdp.PushS
         ) from exc
 
 
-def _mark_rdp_beneficiaries_not_removed(rdp: Rdp) -> None:
+def _restore_rdp_removed_beneficiaries(rdp: Rdp) -> None:
     """Mark selection-owner beneficiaries as not removed."""
     owner = selection_owner_for_rdp(rdp=rdp)
     hh_ids = list(owner.households.values_list("pk", flat=True))

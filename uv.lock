@@ -1746,7 +1746,7 @@ requires-dist = [
     { name = "drf-spectacular", extras = ["sidecar"] },
     { name = "dukpy", specifier = ">=0.5" },
     { name = "flower", specifier = ">=2.0.1" },
-    { name = "hope-api-auth", specifier = ">=0.1" },
+    { name = "hope-api-auth", specifier = ">=0.1.1" },
     { name = "hope-flex-fields", specifier = ">=0.8.1" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },

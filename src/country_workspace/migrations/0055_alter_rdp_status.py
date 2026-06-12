@@ -3,6 +3,8 @@ from django.db import migrations, models
 from django.db.migrations.state import StateApps
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
+import country_workspace.models.rdp
+
 
 def _remap_rdp_statuses(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor, mapping: Mapping[str, str]) -> None:
     Rdp = apps.get_model("country_workspace", "Rdp")
@@ -46,13 +48,7 @@ class Migration(migrations.Migration):
             name="status",
             field=models.CharField(
                 blank=True,
-                choices=[
-                    ("PENDING", "Pending"),
-                    ("FAILURE", "Failure"),
-                    ("PUSHED", "Pushed"),
-                    ("MERGED", "Merged"),
-                    ("REJECTED", "Rejected"),
-                ],
+                choices=country_workspace.models.rdp.get_rdp_status_choices,
                 default="PENDING",
                 max_length=10,
             ),

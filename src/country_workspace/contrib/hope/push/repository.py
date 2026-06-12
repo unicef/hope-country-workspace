@@ -171,7 +171,7 @@ def set_rdp_push_status(
 ) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
-    rdp.hope_rdi_id = hope_rdi_id
+    rdp.hope_rdi_id = cleaned if hope_rdi_id and (cleaned := hope_rdi_id.strip()) else None
     update_fields = ["status", "hope_rdi_id"]
     if is_dedup_settings_locked is not None:
         rdp.is_dedup_settings_locked = is_dedup_settings_locked

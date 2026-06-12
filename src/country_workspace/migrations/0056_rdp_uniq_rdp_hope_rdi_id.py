@@ -1,6 +1,16 @@
 from django.db import migrations, models
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.migrations.state import StateApps
+from django.db.models.functions import NullIf, Trim
+
+
+def normalize_hope_rdi_ids(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor) -> None:
+    Rdp = apps.get_model("country_workspace", "Rdp")
+    db_alias = schema_editor.connection.alias
+
+    Rdp.objects.using(db_alias).filter(hope_rdi_id__isnull=False).update(
+        hope_rdi_id=NullIf(Trim("hope_rdi_id"), models.Value(""))
+    )
 
 
 def validate_unique_hope_rdi_id(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor) -> None:
@@ -26,11 +36,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(normalize_hope_rdi_ids, migrations.RunPython.noop),
         migrations.RunPython(validate_unique_hope_rdi_id, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name="rdp",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("hope_rdi_id__isnull", False)),
+                condition=models.Q(hope_rdi_id__isnull=False),
                 fields=("hope_rdi_id",),
                 name="uniq_rdp_hope_rdi_id",
                 violation_error_message="There is already an RDP for this HOPE RDI.",

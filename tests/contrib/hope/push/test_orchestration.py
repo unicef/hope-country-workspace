@@ -20,7 +20,7 @@ from country_workspace.contrib.hope.push.config import Beneficiary, HopeRdiCallb
 from country_workspace.contrib.hope.push.orchestration import (
     _deduplication_snapshot,
     _mark_rdp_beneficiaries_removed,
-    _mark_rdp_beneficiaries_not_removed,
+    _restore_rdp_removed_beneficiaries,
     _require_policy_check,
     _save_current_deduplication_snapshot,
     _steps,
@@ -833,7 +833,7 @@ def test_mark_rdp_beneficiaries_removed_empty_master_detail(mocker: MockerFixtur
     ],
     ids=["households", "individuals"],
 )
-def test_mark_rdp_beneficiaries_not_removed(
+def test_restore_rdp_removed_beneficiaries(
     mocker: MockerFixture,
     hh_ids: list[int],
     has_households: bool,
@@ -843,7 +843,7 @@ def test_mark_rdp_beneficiaries_not_removed(
     qs_inds = mocker.patch(f"{MOD}.qs_individuals_by_household_pks")
     mocker.patch(f"{MOD}.selection_owner_for_rdp", return_value=owner)
 
-    _mark_rdp_beneficiaries_not_removed(mocker.MagicMock())
+    _restore_rdp_removed_beneficiaries(mocker.MagicMock())
 
     if has_households:
         owner.households.update.assert_called_once_with(removed=False)
@@ -980,14 +980,20 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     next_step.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "hope_rdi_id",
+    ["", "   ", None],
+    ids=["empty", "blank", "none"],
+)
 def test_push_existing_rdp_core_requires_rdi_id_after_successful_steps(
     mocker: MockerFixture,
     err_contains,
+    hope_rdi_id: str | None,
 ) -> None:
     rdp = mocker.MagicMock(pk=1)
     rdp.pushed_by.email = "pushed@example.com"
     config = {"master_detail": True, "pks": [1], "rdp_id": 1}
-    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="")
+    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id=hope_rdi_id)
     job = mocker.MagicMock(config={"rdp_id": 1})
     job.owner.email = ""
 
@@ -1031,7 +1037,7 @@ def test_reset_rdp_core_uses_rejected_callback_flow(
 
     lock = mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status", side_effect=update_status)
 
     payload = reset_rdp_core(job)
@@ -1109,7 +1115,7 @@ def test_reset_rdp_core_wraps_callback_errors(
 
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
     with pytest.raises(HopePushError) as exc:
@@ -1158,7 +1164,7 @@ def test_apply_hope_rdi_final_status_returns_already_finalized(
     rdp = mocker.MagicMock(pk=1, status=status, hope_rdi_id="RID-1")
     lock = mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
     finalize = mocker.patch(f"{MOD}._finalize_deduplication_set_for_hope_callback")
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
     payload = apply_hope_rdi_final_status(hope_rdi_id="RID-1", status=status)
@@ -1175,7 +1181,7 @@ def test_apply_hope_rdi_final_status_rejects_invalid_transition(mocker: MockerFi
     rdp = mocker.MagicMock(pk=1, status=Rdp.PushStatus.FAILURE, hope_rdi_id="RID-1")
     lock = mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
     finalize = mocker.patch(f"{MOD}._finalize_deduplication_set_for_hope_callback")
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
     with pytest.raises(HopeRdiCallbackConflictError) as exc:
@@ -1221,7 +1227,7 @@ def test_apply_hope_rdi_final_status_syncs_dedup_engine(
 
     lock = mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status", side_effect=update_status)
 
     payload = apply_hope_rdi_final_status(hope_rdi_id="RID-1", status=status)
@@ -1264,7 +1270,7 @@ def test_apply_hope_rdi_final_status_wraps_dedup_remote_errors(
 
     lock = mocker.patch(f"{MOD}.lock_rdp_for_hope_callback", return_value=rdp)
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
-    restore = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_not_removed")
+    restore = mocker.patch(f"{MOD}._restore_rdp_removed_beneficiaries")
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
     with pytest.raises(HopeRdiCallbackError) as exc:
