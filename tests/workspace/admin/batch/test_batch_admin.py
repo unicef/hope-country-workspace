@@ -394,10 +394,10 @@ def test_batch_admin_picture_payload_helpers(batch_admin, rf: RequestFactory, us
     assert request.session.modified is True
 
 
-def test_batch_admin_delete_stored_zip_removes_existing_file(batch_admin) -> None:
+def test_batch_admin_delete_uploaded_zip_removes_existing_file(batch_admin) -> None:
     storage_name = default_storage.save("batch-picture-import/test-delete.zip", ContentFile(b"zip"))
     assert default_storage.exists(storage_name)
-    batch_admin._delete_stored_zip(storage_name)
+    batch_admin._delete_uploaded_zip(storage_name)
     assert not default_storage.exists(storage_name)
 
 
@@ -413,10 +413,10 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(batch_admin,
     request = rf.get("/")
     _add_middleware_to_request(request, user)
     old_storage_name = default_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
-    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {"tok": {"batch_id": 1, "zip_storage_name": old_storage_name}}
-    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 1, "zip_storage_name": "new.zip"})
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {"tok": {"batch_id": 1, "zip_file_name": old_storage_name}}
+    batch_admin._save_picture_import_payload(request, "tok", {"batch_id": 1, "zip_file_name": "new.zip"})
     assert not default_storage.exists(old_storage_name)
-    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_storage_name"] == "new.zip"
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_file_name"] == "new.zip"
 
 
 def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: RequestFactory, user, mocker) -> None:
@@ -427,20 +427,18 @@ def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: Req
     now = 1000
     request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
         "ok": {"batch_id": 1, "created_at": now},
-        "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_storage_name": "old-storage.zip"},
-        "expired-temp": {"batch_id": 1, "created_at": now - 999, "zip_temp_path": "/tmp/old-temp.zip"},
+        "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_file_name": "old-storage.zip"},
         "broken": "not-a-dict",
     }
     mocker.patch.object(batch_admin_module, "time", return_value=now)
     mocker.patch.object(batch_admin_module, "constance_config", SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS=10))
-    delete_stored_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_stored_zip")
+    delete_uploaded_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_uploaded_zip")
 
     payloads = batch_admin._session_payloads(request)
 
     assert payloads == {"ok": {"batch_id": 1, "created_at": now}}
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == payloads
-    delete_stored_zip.assert_any_call("old-storage.zip")
-    delete_stored_zip.assert_any_call("/tmp/old-temp.zip")
+    delete_uploaded_zip.assert_any_call("old-storage.zip")
 
 
 def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admin, mocker) -> None:
@@ -575,7 +573,7 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     assert payload["batch_id"] == batch.pk
     assert payload["match_field"] == "beneficiary_id"
     assert payload["target_field"] == "photo"
-    storage_name = payload["zip_storage_name"]
+    storage_name = payload["zip_file_name"]
     assert default_storage.exists(storage_name)
     default_storage.delete(storage_name)
 
@@ -709,7 +707,7 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
             "batch_id": batch.pk,
             "match_field": "beneficiary_id",
             "target_field": "photo",
-            "zip_storage_name": storage_name,
+            "zip_file_name": storage_name,
             "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
         }
     }
@@ -772,7 +770,7 @@ def test_import_pictures_post_confirm_handles_limit_error(
             "batch_id": batch.pk,
             "match_field": "beneficiary_id",
             "target_field": "photo",
-            "zip_storage_name": storage_name,
+            "zip_file_name": storage_name,
             "assignments": [],
         }
     }

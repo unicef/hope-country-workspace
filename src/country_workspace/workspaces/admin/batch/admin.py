@@ -190,7 +190,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 continue
             created_at = payload.get("created_at")
             if isinstance(created_at, int) and now - created_at > max_age_seconds:
-                CountryBatchAdmin._delete_stored_zip(payload.get("zip_storage_name") or payload.get("zip_temp_path"))
+                CountryBatchAdmin._delete_uploaded_zip(payload.get("zip_file_name"))
                 changed = True
                 continue
             cleaned_payloads[token] = payload
@@ -200,9 +200,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return cleaned_payloads
 
     @staticmethod
-    def _delete_stored_zip(storage_name: str | None) -> None:
-        if storage_name:
-            default_storage.delete(storage_name)
+    def _delete_uploaded_zip(file_name: str | None) -> None:
+        if file_name:
+            default_storage.delete(file_name)
 
     @staticmethod
     def _cleanup_stale_stored_zips() -> None:
@@ -211,23 +211,23 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         try:
             _, files = default_storage.listdir("batch-picture-import")
         except (OSError, NotImplementedError):
-            logger.debug("Could not list picture import storage directory", exc_info=True)
+            logger.exception("Could not list picture import storage directory")
             return
         for filename in files:
-            storage_name = f"batch-picture-import/{filename}"
+            file_name = f"batch-picture-import/{filename}"
             try:
-                modified_at = int(default_storage.get_modified_time(storage_name).astimezone(UTC).timestamp())
+                modified_at = int(default_storage.get_modified_time(file_name).astimezone(UTC).timestamp())
             except (OSError, NotImplementedError):
-                logger.debug("Could not get modified time for %s", storage_name, exc_info=True)
+                logger.exception("Could not get modified time for %s", file_name)
                 continue
             if now - modified_at > max_age_seconds:
-                default_storage.delete(storage_name)
+                default_storage.delete(file_name)
 
     @staticmethod
     def _store_uploaded_zip(uploaded: UploadedFile) -> str:
         CountryBatchAdmin._cleanup_stale_stored_zips()
-        storage_name = f"batch-picture-import/{uuid.uuid4()}.zip"
-        stored_name = default_storage.save(storage_name, uploaded)
+        file_name = f"batch-picture-import/{uuid.uuid4()}.zip"
+        stored_name = default_storage.save(file_name, uploaded)
         uploaded.seek(0)
         return stored_name
 
@@ -244,7 +244,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = self._session_payloads(request)
         old_payload = payloads.get(token)
         if old_payload:
-            self._delete_stored_zip(old_payload.get("zip_storage_name") or old_payload.get("zip_temp_path"))
+            self._delete_uploaded_zip(old_payload.get("zip_file_name"))
         payload["created_at"] = int(time())
         payloads[token] = payload
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
@@ -254,7 +254,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = self._session_payloads(request)
         payload = payloads.pop(token, None)
         if payload:
-            self._delete_stored_zip(payload.get("zip_storage_name") or payload.get("zip_temp_path"))
+            self._delete_uploaded_zip(payload.get("zip_file_name"))
         request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
         request.session.modified = True
 
@@ -306,12 +306,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 target_field_choices=target_field_choices,
             )
             if form.is_valid():
-                zip_storage_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
+                zip_file_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
                 try:
-                    with default_storage.open(zip_storage_name, "rb") as zip_stream:
+                    with default_storage.open(zip_file_name, "rb") as zip_stream:
                         preview = service.build_preview(form.cleaned_data["match_field"], zip_stream)
                 except PictureImportLimitError as exc:
-                    self._delete_stored_zip(zip_storage_name)
+                    self._delete_uploaded_zip(zip_file_name)
                     form.add_error("zip_file", str(exc))
                 else:
                     token = str(uuid.uuid4())
@@ -322,7 +322,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                             "batch_id": obj.pk,
                             "match_field": form.cleaned_data["match_field"],
                             "target_field": form.cleaned_data["target_field"],
-                            "zip_storage_name": zip_storage_name,
+                            "zip_file_name": zip_file_name,
                             **preview,
                         },
                     )
@@ -342,8 +342,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     )
                     response = HttpResponseRedirect(request.path)
                 else:
-                    zip_storage_name = payload.get("zip_storage_name")
-                    if not zip_storage_name or not default_storage.exists(zip_storage_name):
+                    zip_file_name = payload.get("zip_file_name")
+                    if not zip_file_name or not default_storage.exists(zip_file_name):
                         self._clear_picture_import_payload(request, token)
                         self.message_user(
                             request,
@@ -353,7 +353,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         response = HttpResponseRedirect(request.path)
                     else:
                         try:
-                            with default_storage.open(zip_storage_name, "rb") as zip_stream:
+                            with default_storage.open(zip_file_name, "rb") as zip_stream:
                                 assignments = service.enrich_assignments_with_zip_data(
                                     payload.get("assignments", []),
                                     zip_stream,
