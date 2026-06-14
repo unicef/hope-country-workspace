@@ -70,7 +70,11 @@ class RunTransformerForm(forms.Form):
         batch = cleaned_data.get("batch")
         apply_to = cleaned_data.get("apply_to")
 
-        if batch and apply_to == self.ApplyToOptions.HOUSEHOLDS and not batch.program.is_master_detail:
+        if (
+            batch
+            and not batch.program.is_master_detail
+            and apply_to in (self.ApplyToOptions.HOUSEHOLDS, self.ApplyToOptions.BOTH)
+        ):
             self.add_error(
                 "apply_to",
                 _("Cannot apply formula to households on a program that is not master-detail."),

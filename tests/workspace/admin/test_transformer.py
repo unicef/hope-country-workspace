@@ -171,16 +171,25 @@ class TestRunTransformerForm:
         choices = [choice[0] for choice in form.fields["apply_to"].choices]
         assert choices == [RunTransformerForm.ApplyToOptions.INDIVIDUALS]
 
+    @pytest.mark.parametrize(
+        "apply_to",
+        [
+            RunTransformerForm.ApplyToOptions.HOUSEHOLDS,
+            RunTransformerForm.ApplyToOptions.BOTH,
+        ],
+    )
     @patch("country_workspace.workspaces.admin.transformer.forms.Form.clean")
     @patch("country_workspace.workspaces.admin.transformer.Batch.objects")
-    def test_clean_rejects_households_for_non_master_detail_batch(self, mock_batch_objects, mock_form_clean):
+    def test_clean_rejects_household_targets_for_non_master_detail_batch(
+        self, mock_batch_objects, mock_form_clean, apply_to
+    ):
         qs = self._build_mock_queryset()
         mock_batch_objects.order_by.return_value = qs
         batch = MagicMock()
         batch.program.is_master_detail = False
         mock_form_clean.return_value = {
             "batch": batch,
-            "apply_to": RunTransformerForm.ApplyToOptions.HOUSEHOLDS,
+            "apply_to": apply_to,
         }
 
         form = RunTransformerForm()
