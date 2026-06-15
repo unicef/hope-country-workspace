@@ -2,7 +2,7 @@
 
 CW uses DataChecker to validate beneficiary records.
 
-DataChecker defines which fields are expected for beneficiaries and which validation rules should be applied to them.
+DataChecker defines which fields are expected for beneficiaries, how they are grouped, and which validation rules should be applied.
 
 Beneficiary validation can be run for:
 
@@ -10,4 +10,6 @@ Beneficiary validation can be run for:
 - all beneficiaries in a Program;
 - records edited through the beneficiary admin form.
 
-The detailed [DataChecker](datachecker.md) flow.
+DataChecker configuration is managed in the Django admin under **Home › Flex Fields**.
+
+See the detailed [DataChecker configuration](datachecker_configuration.md) guide.
