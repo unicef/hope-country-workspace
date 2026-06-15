@@ -4,7 +4,10 @@ import pytest
 from django.utils import timezone
 from hope_flex_fields.models import DataChecker
 from hope_flex_fields.models import DataCheckerFieldset
+from hope_flex_fields.models import Fieldset
 from strategy_field.utils import fqn
+from django.contrib.admin.sites import AdminSite
+from country_workspace.admin.flex_fields import CWFieldsetAdmin
 
 from country_workspace.contrib.hope.constants import (
     HOUSEHOLD_CHECKER_NAME,
@@ -226,11 +229,11 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker, ind_dcfieldset):
         mocked.assert_called_once_with(dc=ind_datachecker)
 
 
-def test_datachecker_update_triggers_processing(hh_datachecker):
+def test_datachecker_update_does_not_trigger_processing(hh_datachecker):
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         hh_datachecker.description = "Updated"
         hh_datachecker.save(update_fields=["description"])
-        mocked.assert_called_once_with(dc=hh_datachecker)
+        mocked.assert_not_called()
 
 
 def test_flexfield_update_triggers_processing(hh_datachecker, hh_flexfield):
@@ -418,3 +421,40 @@ def test_signal_handler_ignores_unrecognised_instance_type():
     with patch("country_workspace.signals._process_program") as mock_process:
         invalidate_entities_on_datachecker_change(sender=_Unrelated, instance=_Unrelated())
         mock_process.assert_not_called()
+
+
+def test_datachecker_save_does_not_invalidate_entities(hh_datachecker, checked_household):
+    hh_datachecker.description = "Changed description"
+    hh_datachecker.save()
+
+    checked_household.refresh_from_db()
+    assert checked_household.last_checked == CHECKED
+    assert checked_household.errors == {}
+
+
+def test_collect_invalidations_deduplicates_multiple_signal_sources(program, hh_flexfield, checked_household):
+    fs = hh_flexfield.fieldset
+
+    with patch("country_workspace.signals._process_program") as mock_process:
+        with collect_invalidations():
+            hh_flexfield.attrs = {"label": "New"}
+            hh_flexfield.save(update_fields=["attrs"])
+
+            fs.description = "Updated"
+            fs.save(update_fields=["description"])
+
+        mock_process.assert_called_once_with(program=program)
+
+
+def test_admin_fieldset_all_fields_post_uses_collect_invalidations(rf, hh_datachecker, hh_flexfield, program):
+    fs = hh_flexfield.fieldset
+    admin_instance = CWFieldsetAdmin(Fieldset, AdminSite())
+
+    request = rf.post(f"/admin/hope_flex_fields/fieldset/{fs.pk}/all_fields/")
+    request.user = type("U", (), {"is_authenticated": True, "has_perm": lambda *a: True})()
+
+    with patch("country_workspace.admin.flex_fields.FieldsetAdmin.all_fields") as mock_parent:
+        mock_parent.func = lambda self, request, pk: None
+        with patch("country_workspace.admin.flex_fields.collect_invalidations") as mock_ctx:
+            admin_instance.all_fields.func(admin_instance, request, str(fs.pk))
+            mock_ctx.assert_called_once()

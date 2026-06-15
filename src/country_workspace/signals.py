@@ -31,16 +31,10 @@ def _get_dc_associated_programs(dc: DataChecker) -> Any:
 
 
 def _invalidate_qs(qs: Any) -> None:
-    qs = qs.filter(last_checked__isnull=False)
-    batch_size = 500
-    pks = list(qs.values_list("pk", flat=True))
-
-    for start in range(0, len(pks), batch_size):
-        batch_pks = pks[start : start + batch_size]
-        qs.filter(pk__in=batch_pks).update(
-            errors={"data_checker": "Invalidated due to DataChecker change."},
-            last_checked=None,
-        )
+    qs.filter(last_checked__isnull=False).update(
+        errors={"data_checker": "Invalidated due to DataChecker change."},
+        last_checked=None,
+    )
 
 
 def _process_program(program: Program) -> None:
@@ -49,8 +43,7 @@ def _process_program(program: Program) -> None:
 
 
 def _process_datachecker_change(dc: DataChecker) -> None:
-    if not (programs := _get_dc_associated_programs(dc=dc)):
-        return
+    programs = _get_dc_associated_programs(dc=dc)
 
     deferred = getattr(_invalidation_state, "deferred_program_pks", None)
     if deferred is not None:
@@ -65,13 +58,12 @@ def _process_datachecker_change(dc: DataChecker) -> None:
 
 @receiver(post_save, sender=Fieldset, dispatch_uid="cw_on_fieldset_change")
 @receiver(post_save, sender=FlexField, dispatch_uid="cw_on_flexfield_change")
-@receiver(post_save, sender=DataChecker, dispatch_uid="cw_on_datachecker_change")
 @receiver(post_save, sender=DataCheckerFieldset, dispatch_uid="cw_on_dcfieldset_change")
 @receiver(pre_save, sender=Program, dispatch_uid="cw_on_program_change")
 @receiver(pre_save, sender=CountryProgram, dispatch_uid="cw_on_country_program_change")
-def invalidate_entities_on_datachecker_change(  # noqa: C901
-    sender: type[Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram],
-    instance: Fieldset | FlexField | DataCheckerFieldset | DataChecker | Program | CountryProgram,
+def invalidate_entities_on_datachecker_change(
+    sender: type[Fieldset | FlexField | DataCheckerFieldset | Program | CountryProgram],
+    instance: Fieldset | FlexField | DataCheckerFieldset | Program | CountryProgram,
     created: bool | None = None,
     **kwargs: Any,
 ) -> None:
@@ -83,8 +75,6 @@ def invalidate_entities_on_datachecker_change(  # noqa: C901
         dcs = instance.fieldset.datachecker_set.all().distinct()
         for dc in dcs:
             _process_datachecker_change(dc=dc)
-    elif isinstance(instance, DataChecker):
-        _process_datachecker_change(dc=instance)
     elif isinstance(instance, DataCheckerFieldset):
         dc = instance.checker
         _process_datachecker_change(dc=dc)
