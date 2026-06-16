@@ -45,6 +45,24 @@ The connector pulls submissions from the ONA API, maps ONA JSON fields into Coun
 It does not push anything directly to HOPE.
 
 
+### Approved ONA / INFORM forms
+
+ONA / INFORM imports are restricted by `ONA_APPROVED_FORMS`.
+
+The import form does not allow users to manually enter any arbitrary ONA form ID. Instead, approved forms are configured and shown as controlled choices for the current Country Workspace office/programme.
+
+Example configuration:
+
+```json
+{
+  "9153": {
+    "label": "Yemen INFORM Registration",
+    "programmes": ["IDP"],
+    "offices": ["Yemen CO"]
+  }
+}
+
+
 
 \## Main files
 
