@@ -56,6 +56,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     "AURORA_API_URL": (str, "", "", False, "Aurora API url"),
     "ONA_API_TOKEN": (str, "", "", False, "ONA API token"),
     "ONA_API_URL": (str, "https://data.inform.unicef.org", "https://data.inform.unicef.org", False, "ONA / INFORM API url"),
+    "ONA_APPROVED_FORMS": (str, "{}", "{}", False, "JSON mapping of approved ONA / INFORM form IDs to CW programmes/offices"),
     "CACHE_URL": (str, "redis://localhost:6379/0", "", True, setting("cache-url")),
     "SELECT2_CACHE": (
         str,

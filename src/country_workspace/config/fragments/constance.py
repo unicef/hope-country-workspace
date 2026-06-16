@@ -6,6 +6,7 @@ from .app import (
     NEW_USER_DEFAULT_GROUP,
     ONA_API_TOKEN,
     ONA_API_URL,
+    ONA_APPROVED_FORMS,
 )
 from .dedup import DEDUP_API_URL, DEDUP_API_TOKEN
 from .kobo import KOBO_API_TOKEN, KOBO_KF_URL, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID
@@ -57,6 +58,7 @@ CONSTANCE_CONFIG = {
     "AURORA_API_URL": (AURORA_API_URL, "Aurora API Server address", str),
     "ONA_API_TOKEN": (ONA_API_TOKEN, "ONA API Access Token", "write_only_text_input"),
     "ONA_API_URL": (ONA_API_URL, "ONA API Server address", str),
+    "ONA_APPROVED_FORMS": (ONA_APPROVED_FORMS, "JSON mapping of approved ONA / INFORM forms to CW programmes/offices", str),
     "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_text_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
     "KOBO_API_TOKEN": (KOBO_API_TOKEN, "Kobo API Access Token", "write_only_text_input"),
@@ -169,6 +171,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
 "Remote System Settings - ONA": (
     "ONA_API_TOKEN",
     "ONA_API_URL",
+    "ONA_APPROVED_FORMS",
     "ONA_HH_FIELDS_TO_IGNORE",
     "ONA_IND_FIELDS_TO_IGNORE",
 ),
