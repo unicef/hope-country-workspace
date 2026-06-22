@@ -4,7 +4,8 @@ import pytest
 
 from country_workspace.notifications.bitcaster_client import BitcasterClient
 from country_workspace.notifications.notifier import send_notification_event
-from country_workspace.notifications.tasks import NotifyError, send_bitcaster_event_task
+from country_workspace.notifications.bitcaster_client import NotifyError
+from country_workspace.notifications.tasks import send_bitcaster_event_task
 
 
 def _configure_bitcaster_settings(settings) -> None:
@@ -38,7 +39,7 @@ def test_trigger_event_propagates_sdk_errors(settings, mocker) -> None:
     sdk_client = mocker.patch("country_workspace.notifications.bitcaster_client.SDKClient")
     sdk_client.return_value.trigger.side_effect = RuntimeError("boom")
 
-    with pytest.raises(RuntimeError, match="boom"):
+    with pytest.raises(NotifyError, match="boom"):
         BitcasterClient().trigger_event("rdi_push_completed", {"program_id": 12})
 
 

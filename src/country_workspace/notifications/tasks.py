@@ -4,13 +4,10 @@ from typing import Any
 from django.conf import settings
 
 from country_workspace.config.celery import app
+from country_workspace.notifications.bitcaster_client import NotifyError
 from country_workspace.notifications.notifier import get_notification_backend, send_notification_event
 
 logger = logging.getLogger(__name__)
-
-
-class NotifyError(Exception):
-    """Raise the exception when a notification fails."""
 
 
 @app.task()
@@ -29,5 +26,5 @@ def send_bitcaster_event_task(event_name: str, payload: dict[str, Any]) -> None:
         success = send_notification_event(event_name, payload)
         if not success:
             logger.warning("Bitcaster client returned false for event '%s'", event_name)
-    except NotifyError as exc:  # pragma: no cover
+    except NotifyError as exc:
         logger.error("Bitcaster send failed for event '%s': %s", event_name, str(exc))

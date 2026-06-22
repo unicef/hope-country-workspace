@@ -8,6 +8,10 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+class NotifyError(Exception):
+    """Raised when a Bitcaster notification fails."""
+
+
 class BitcasterClient:
     """Client wrapper around bitcaster-sdk."""
 
@@ -41,11 +45,14 @@ class BitcasterClient:
             logger.warning("Bitcaster client is not fully configured. Skipping event '%s'.", event_name)
             return False
 
-        SDKClient(bae=self._build_bae()).trigger(
-            project=self.project_slug,
-            application=self.application_slug,
-            event=event_name,
-            context=payload,
-        )
+        try:
+            SDKClient(bae=self._build_bae()).trigger(
+                project=self.project_slug,
+                application=self.application_slug,
+                event=event_name,
+                context=payload,
+            )
+        except Exception as exc:
+            raise NotifyError(f"SDK call failed for event '{event_name}': {exc}") from exc
         logger.info("Successfully triggered Bitcaster event: %s", event_name)
         return True
