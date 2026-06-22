@@ -73,6 +73,16 @@ def test_decrypt_missing_payload_key_raises_remote_error(decryptor: AuroraPayloa
         decryptor.decrypt(envelope)
 
 
+@pytest.mark.parametrize("payload_value", [None, 123, [], {}])
+def test_decrypt_non_string_payload_raises_remote_error(
+    decryptor: AuroraPayloadDecryptor, payload_value: object
+) -> None:
+    envelope = json.dumps({"payload": payload_value})
+
+    with pytest.raises(RemoteError, match="malformed payload envelope"):
+        decryptor.decrypt(envelope)
+
+
 def test_decrypt_non_json_envelope_raises_remote_error(decryptor: AuroraPayloadDecryptor) -> None:
     with pytest.raises(RemoteError, match="malformed payload envelope"):
         decryptor.decrypt("this is not json at all")

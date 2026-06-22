@@ -50,12 +50,19 @@ class AuroraPayloadDecryptor:
         """
         try:
             outer = json.loads(response_text)
-            token: str = outer["payload"]
+            token = outer["payload"]
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.error("Aurora payload decryption failed: malformed response envelope. %s", exc)
+            raise RemoteError("Failed to decrypt Aurora response: malformed payload envelope") from exc
+
+        if not isinstance(token, str) or not token:
+            msg = f"payload must be a non-empty string, got {type(token).__name__}"
+            logger.error("Aurora payload decryption failed: malformed response envelope. %s", msg)
+            raise RemoteError("Failed to decrypt Aurora response: malformed payload envelope")
+
+        try:
             plaintext: bytes = self._fernet.decrypt(token.encode("utf-8"))
             return json.loads(plaintext)
         except InvalidToken as exc:
             logger.error("Aurora payload decryption failed: invalid or expired key. %s", exc)
             raise RemoteError("Failed to decrypt Aurora response: invalid or expired key") from exc
-        except (json.JSONDecodeError, KeyError) as exc:
-            logger.error("Aurora payload decryption failed: malformed response envelope. %s", exc)
-            raise RemoteError("Failed to decrypt Aurora response: malformed payload envelope") from exc
