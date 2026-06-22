@@ -12,6 +12,7 @@ from country_workspace.workspaces.admin.batch.reprocessing import (
     _sync_household_refs,
     _sync_kobo_household_refs,
     _sync_rdi_household_refs,
+    apply_batch_transformers,
     reprocess_batch,
 )
 from country_workspace.workspaces.models import CountryBatch
@@ -447,3 +448,77 @@ def test_reprocess_batch_creates_validation_jobs_for_people_only_batch(
     assert list(validation_jobs.call_args.kwargs["queryset"]) == list(batch.individual_set.filter(removed=False))
 
     postprocessing.assert_called_once()
+
+
+# --- apply_batch_transformers ----------------------------------------------------
+
+
+def test_apply_batch_transformers_requires_batch_id(user: User) -> None:
+    from testutils.factories import AsyncJobFactory
+
+    job = AsyncJobFactory(owner=user, config={})
+
+    with pytest.raises(ValueError, match="batch_id is required"):
+        apply_batch_transformers(job)
+
+
+def test_apply_batch_transformers_requires_transformer_ids(batch: CountryBatch, user: User) -> None:
+    from testutils.factories import AsyncJobFactory
+
+    job = AsyncJobFactory(owner=user, batch=batch, program=batch.program, config={"batch_id": batch.pk})
+
+    with pytest.raises(ValueError, match="At least one transformer id is required"):
+        apply_batch_transformers(job)
+
+
+def test_apply_batch_transformers_raises_for_missing_transformer(batch: CountryBatch, user: User) -> None:
+    from testutils.factories import AsyncJobFactory
+
+    job = AsyncJobFactory(
+        owner=user,
+        batch=batch,
+        program=batch.program,
+        config={"batch_id": batch.pk, "individual_transformer_id": 999999},
+    )
+
+    with pytest.raises(ValueError, match="Individual transformer 999999 is not available for this batch"):
+        apply_batch_transformers(job)
+
+
+def test_apply_batch_transformers_delegates_to_transformations_utility(
+    batch: CountryBatch,
+    user: User,
+    mocker,
+) -> None:
+    from testutils.factories import AsyncJobFactory, TransformerFactory
+
+    household_transformer = TransformerFactory(office=batch.country_office)
+    individual_transformer = TransformerFactory(office=batch.country_office)
+    job = AsyncJobFactory(
+        owner=user,
+        batch=batch,
+        program=batch.program,
+        config={
+            "batch_id": batch.pk,
+            "household_transformer_id": household_transformer.pk,
+            "individual_transformer_id": individual_transformer.pk,
+        },
+    )
+
+    apply_transformers = mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.apply_transformers_to_batch",
+        return_value={"transformed_households": 3, "transformed_individuals": 7},
+    )
+
+    response = apply_batch_transformers(job)
+
+    apply_transformers.assert_called_once_with(
+        batch,
+        household_transformer_id=household_transformer.pk,
+        individual_transformer_id=individual_transformer.pk,
+    )
+    assert response["batch_id"] == batch.pk
+    assert response["batch_name"] == batch.name
+    assert response["transformed_individuals"] == 7
+    if batch.program.is_master_detail:
+        assert response["transformed_households"] == 3

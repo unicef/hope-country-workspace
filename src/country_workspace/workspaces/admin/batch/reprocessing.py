@@ -19,6 +19,9 @@ from country_workspace.contrib.kobo.sync import (
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
 from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
+from country_workspace.utils.import_flow.transformations import (
+    apply_batch_transformers as apply_transformers_to_batch,
+)
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 
@@ -51,6 +54,26 @@ def _preserve_flex_fields(
     return records.annotate(
         **{attr: KeyTransform(field, "flex_fields") for field, attr in preserved.items()}
     ), preserved
+
+
+def _get_batch_from_job(job: AsyncJob) -> tuple[int, Batch]:
+    batch_id = job.config.get("batch_id")
+    if not batch_id:
+        raise ValueError("batch_id is required in job config")
+
+    batch = Batch.objects.select_related("program", "country_office").filter(pk=batch_id).first()
+    if not batch:
+        logger.error("Batch %s not found", batch_id)
+        raise Batch.DoesNotExist(f"Batch {batch_id} not found")
+    return batch_id, batch
+
+
+def _sync_household_refs(batch: Batch) -> None:
+    match batch.source:
+        case Batch.BatchSource.KOBO:
+            _sync_kobo_household_refs(batch)
+        case Batch.BatchSource.RDI:
+            _sync_rdi_household_refs(batch)
 
 
 def _apply_import_processor(
@@ -180,14 +203,6 @@ def _sync_kobo_household_refs(batch: Batch) -> None:
         )
 
 
-def _sync_household_refs(batch: Batch) -> None:
-    match batch.source:
-        case Batch.BatchSource.KOBO:
-            _sync_kobo_household_refs(batch)
-        case Batch.BatchSource.RDI:
-            _sync_rdi_household_refs(batch)
-
-
 def _resolve_config_object[T](
     queryset: QuerySet[T],
     object_id: int | None,
@@ -285,11 +300,7 @@ def _active_records(
 
 
 def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
-    if not (batch_id := job.config.get("batch_id")):
-        raise ValueError("batch_id is required in job config")
-    if not (batch := Batch.objects.select_related("program", "country_office").filter(pk=batch_id).first()):
-        logger.error("Batch %s not found", batch_id)
-        raise Batch.DoesNotExist(f"Batch {batch_id} not found")
+    batch_id, batch = _get_batch_from_job(job)
 
     config = _resolve_reprocess_config(batch, job.config)
     is_master_detail = batch.program.is_master_detail
@@ -377,4 +388,38 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
         )
 
     logger.info("Batch reprocessing initiated: %s", response)
+    return response
+
+
+def apply_batch_transformers(job: AsyncJob) -> dict[str, Any]:
+    batch_id, batch = _get_batch_from_job(job)
+
+    household_transformer_id, _ = _resolve_config_object(
+        batch.country_office.transformers.all(),
+        job.config.get("household_transformer_id"),
+        "Household transformer",
+    )
+    individual_transformer_id, _ = _resolve_config_object(
+        batch.country_office.transformers.all(),
+        job.config.get("individual_transformer_id"),
+        "Individual transformer",
+    )
+    if not household_transformer_id and not individual_transformer_id:
+        raise ValueError("At least one transformer id is required in job config")
+
+    transformer_result = apply_transformers_to_batch(
+        batch,
+        household_transformer_id=household_transformer_id,
+        individual_transformer_id=individual_transformer_id,
+    )
+
+    response = {
+        "batch_id": batch_id,
+        "batch_name": batch.name,
+        "transformed_individuals": transformer_result.get("transformed_individuals", 0),
+    }
+    if batch.program.is_master_detail:
+        response["transformed_households"] = transformer_result.get("transformed_households", 0)
+
+    logger.info("Batch transformer apply finished: %s", response)
     return response

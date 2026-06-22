@@ -196,6 +196,7 @@ class TenantAdminSite(admin.AdminSite):
             "workspaces_countryhousehold": "CountryHouseholdAdmin",
             "workspaces_countryindividual": "CountryIndividualAdmin",
             "workspaces_countrybatch": "CountryBatchAdmin",
+            "workspaces_countrytransformer": "CountryTransformerAdmin",
             "workspaces_countrymappingimporter": "CountryMappingImporterAdmin",
             "workspaces_countryrdp": "CountryRdpAdmin",
             "workspaces_countryasyncjob": "CountryJobAdmin",
@@ -292,6 +293,12 @@ class TenantAdminSite(admin.AdminSite):
                         "url": reverse("workspace:workspaces_countrymappingimporter_changelist"),
                         "icon": "icon-loop",
                         "selected": current_admin == "CountryMappingImporterAdmin",
+                    },
+                    {
+                        "name": _("Transformers"),
+                        "url": reverse("workspace:workspaces_countrytransformer_changelist"),
+                        "icon": "icon-equalizer",
+                        "selected": current_admin == "CountryTransformerAdmin",
                     },
                     {
                         "name": apps.get_model("country_workspace", "Rdp")._meta.verbose_name_plural,
