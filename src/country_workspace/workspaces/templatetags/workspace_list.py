@@ -86,7 +86,7 @@ def flex_field_lookup_field(
     field_name: str, result: "CountryIndividual", model_admin: "ModelAdmin"
 ) -> tuple[Field, str, str]:
     dict_key = field_name.replace("flex_fields__", "")
-    f, attr, value = lookup_field(lambda o: o.flex_fields.get(dict_key), result, model_admin)
+    f, attr, value = lookup_field(lambda o: o.get_flex_value(dict_key), result, model_admin)
     return f, attr, value
 
 

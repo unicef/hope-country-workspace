@@ -31,6 +31,7 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import Program, SyncLog
 from country_workspace.models.jobs import GracefulJobCancellationError
+from country_workspace.utils.flex_fields import decode_flex_files_blob
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
@@ -157,13 +158,16 @@ def test_extract_household_data() -> None:
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
+    get_checker_file_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_checker_file_fields")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
 
     processor_result = mocker.MagicMock()
     processor_result.get.return_value = "Full Name"
+    processor_result.items.return_value = [("full_name", "Full Name"), ("photo", "data:image/png;base64,AAA")]
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
     individual_class_mock.return_value.pk = None
+    get_checker_file_fields_mock.return_value = {"photo"}
 
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
@@ -193,16 +197,20 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         ImportedIndividual(individual=individual_class_mock.return_value, fields=processor_mock.return_value)
     ]
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
+    get_checker_file_fields_mock.assert_called_once_with(batch_mock.program.individual_checker)
     processor_mock.assert_called_once_with(individual_data)
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
         raw_data=individual_data,
-        flex_fields=processor_mock.return_value,
+        flex_fields={"full_name": "Full Name"},
+        flex_files=mocker.ANY,
         originating_id="KOB#asset-id#1#0001#1234567890123",
         household=household_mock,
         name=processor_result.get.return_value,
     )
+    kwargs = individual_class_mock.call_args.kwargs
+    assert decode_flex_files_blob(kwargs["flex_files"]) == {"photo": "data:image/png;base64,AAA"}
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
 

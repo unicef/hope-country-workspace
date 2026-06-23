@@ -30,11 +30,9 @@ from country_workspace.models.household import (
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_flow import (
-    build_import_processor,
-    get_or_create_collector,
-    run_batch_postprocessing,
-)
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.flex_fields import encode_flex_files_blob, get_checker_file_fields, split_flex_payload
+from country_workspace.utils.import_flow import get_or_create_collector
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -188,6 +186,7 @@ def create_individuals(  # noqa: PLR0913
     individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
     epoch_ms = int(batch.import_date.timestamp() * 1000)
+    file_fields = get_checker_file_fields(batch.program.individual_checker)
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
@@ -195,6 +194,7 @@ def create_individuals(  # noqa: PLR0913
             batch.program,
             individual_mapping_id,
         )(raw_individual)
+        text_fields, file_values = split_flex_payload(individual_fields, file_fields)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
         ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
@@ -216,7 +216,8 @@ def create_individuals(  # noqa: PLR0913
                 household=household,
                 name=name,
                 originating_id=ind_originating_id,
-                flex_fields=individual_fields,
+                flex_fields=text_fields,
+                flex_files=encode_flex_files_blob(file_values),
                 raw_data=raw_individual,
             )
             individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))

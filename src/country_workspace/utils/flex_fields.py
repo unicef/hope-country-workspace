@@ -1,7 +1,7 @@
 from base64 import b64encode
 import hashlib
 import json
-from typing import TYPE_CHECKING, Generator, Literal
+from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
@@ -15,6 +15,58 @@ if TYPE_CHECKING:
 
 
 FLEX_FILES_PREFIX = 8192  # bytes
+
+
+def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, str]:
+    if not value:
+        return {}
+    raw = bytes(value) if isinstance(value, memoryview | bytearray) else value
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def encode_flex_files_blob(value: dict[str, str]) -> bytes | None:
+    if not value:
+        return None
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def get_checker_file_fields(checker: DataChecker | None) -> set[str]:
+    if checker is None:
+        return set()
+    try:
+        form = checker.get_form()()
+    except Exception:  # noqa: BLE001
+        return set()
+    return {name for name, field in form.fields.items() if isinstance(field, forms.FileField)}
+
+
+def merge_flex_payload(
+    flex_fields: dict[str, Any] | None,
+    flex_files: bytes | memoryview | bytearray | None,
+    file_fields: set[str],
+) -> dict[str, Any]:
+    merged = dict(flex_fields or {})
+    files_map = decode_flex_files_blob(flex_files)
+    for field_name in file_fields:
+        if value := files_map.get(field_name):
+            merged[field_name] = value
+    return merged
+
+
+def split_flex_payload(payload: dict[str, Any], file_fields: set[str]) -> tuple[dict[str, Any], dict[str, str]]:
+    text_fields: dict[str, Any] = {}
+    file_values: dict[str, str] = {}
+    for key, value in payload.items():
+        if key not in file_fields:
+            text_fields[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            file_values[key] = value
+    return text_fields, file_values
 
 
 def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Generator[tuple[str, str], None, None]:

@@ -8,7 +8,14 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from country_workspace.cache.manager import cache_manager
-from country_workspace.utils.flex_fields import get_obj_checksum
+from country_workspace.utils.flex_fields import (
+    decode_flex_files_blob,
+    encode_flex_files_blob,
+    get_checker_file_fields,
+    get_obj_checksum,
+    merge_flex_payload,
+    split_flex_payload,
+)
 
 if TYPE_CHECKING:
     from django.db.models import Model, QuerySet
@@ -98,6 +105,7 @@ class Validable(Cachable, models.Model):
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
+        update_fields = self.normalize_flex_storage(update_fields)
         update_fields = self.update_checksum(update_fields)
         super().save(
             force_insert=force_insert,
@@ -105,6 +113,49 @@ class Validable(Cachable, models.Model):
             using=using,
             update_fields=update_fields,
         )
+
+    def _checker_file_fields(self) -> set[str]:
+        try:
+            checker = self.checker
+        except Exception:  # noqa: BLE001
+            return set()
+        return get_checker_file_fields(checker)
+
+    def get_flex_files_map(self) -> dict[str, str]:
+        return decode_flex_files_blob(self.flex_files)
+
+    def get_combined_flex_fields(self) -> dict[str, Any]:
+        return merge_flex_payload(self.flex_fields, self.flex_files, self._checker_file_fields())
+
+    def get_flex_value(self, field_name: str, default: object | None = None) -> object | None:
+        if field_name in self.flex_fields:
+            return self.flex_fields[field_name]
+        return self.get_flex_files_map().get(field_name, default)
+
+    def normalize_flex_storage(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
+        if update_fields is not None and not (set(update_fields) & {"flex_fields", "flex_files"}):
+            return update_fields
+
+        file_fields = self._checker_file_fields()
+        if not file_fields:
+            return update_fields
+
+        text_fields, new_file_values = split_flex_payload(self.flex_fields or {}, file_fields)
+        existing_file_values = self.get_flex_files_map()
+        file_values = {key: value for key, value in existing_file_values.items() if key not in file_fields}
+        file_values.update(new_file_values)
+
+        next_blob = encode_flex_files_blob(file_values)
+        if self.flex_fields != text_fields:
+            self.flex_fields = text_fields
+        if self.flex_files != next_blob:
+            self.flex_files = next_blob
+
+        if update_fields is not None:
+            fields = set(update_fields)
+            fields.update({"flex_fields", "flex_files"})
+            return fields
+        return None
 
     def update_checksum(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
         """Update models checksum if needed, returns fields to update on model save."""
@@ -124,7 +175,8 @@ class Validable(Cachable, models.Model):
 
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         update_fields = []
-        errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
+        current_data = self.get_combined_flex_fields()
+        errors = self.checker.validate([current_data], fail_if_alien=fail_if_alien)
         cleaned = self.checker.form.cleaned_data
         new_errors = next(iter((errors or {}).values()), {})
 
@@ -132,13 +184,12 @@ class Validable(Cachable, models.Model):
             self.errors = new_errors
             update_fields.append("errors")
 
-        flex_fields = self.flex_fields or {}
-        if cleaned != flex_fields:
-            self.flex_fields = cleaned
+        if cleaned != current_data:
+            self.flex_fields = dict(cleaned)
             # keep invalid values
             for field_name in new_errors:
-                if field_name in flex_fields:
-                    self.flex_fields[field_name] = flex_fields[field_name]
+                if field_name in current_data:
+                    self.flex_fields[field_name] = current_data[field_name]
             update_fields.append("flex_fields")
 
         self.last_checked = timezone.now()

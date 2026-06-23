@@ -11,7 +11,12 @@ from country_workspace.utils.flex_fields import (
     Base64ImageInput,
     Base64ImageField,
     ConsentSharingChoice,
+    decode_flex_files_blob,
+    encode_flex_files_blob,
+    split_flex_payload,
+    merge_flex_payload,
     split_options,
+    get_checker_file_fields,
 )
 
 
@@ -154,3 +159,37 @@ def test_normalize_reference_fallback_object_string() -> None:
             return "  x-ref  "
 
     assert to_reference_key(Obj()) == "x-ref"
+
+
+def test_encode_and_decode_flex_files_blob_roundtrip() -> None:
+    value = {"photo": "data:image/png;base64,AAA"}
+    encoded = encode_flex_files_blob(value)
+    assert decode_flex_files_blob(encoded) == value
+
+
+def test_split_and_merge_flex_payload_with_file_fields() -> None:
+    payload = {"name": "John", "photo": "data:image/png;base64,BBB"}
+    text, files = split_flex_payload(payload, {"photo"})
+
+    assert text == {"name": "John"}
+    assert files == {"photo": "data:image/png;base64,BBB"}
+
+    merged = merge_flex_payload(text, encode_flex_files_blob(files), {"photo"})
+    assert merged == payload
+
+
+def test_decode_flex_files_blob_invalid_data_returns_empty() -> None:
+    assert decode_flex_files_blob(b"not-json") == {}
+
+
+def test_split_flex_payload_ignores_empty_file_values() -> None:
+    payload = {"photo": "   ", "name": "John"}
+    text, files = split_flex_payload(payload, {"photo"})
+    assert text == {"name": "John"}
+    assert files == {}
+
+
+def test_get_checker_file_fields_handles_checker_form_errors(mocker: MockerFixture) -> None:
+    checker = mocker.MagicMock()
+    checker.get_form.side_effect = RuntimeError("broken form")
+    assert get_checker_file_fields(checker) == set()

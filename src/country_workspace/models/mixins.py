@@ -28,7 +28,7 @@ class FlexFieldGroupingMixin:
             return item | {"type": prefix.strip("_")} if item else None
 
         gi = self.get_grouping_info()
-        ff = dict(self.flex_fields)
+        ff = dict(self.get_combined_flex_fields())
         grouped = {}
 
         for group, members in gi.items():
