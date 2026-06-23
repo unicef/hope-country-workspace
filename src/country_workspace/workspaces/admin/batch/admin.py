@@ -11,6 +11,7 @@ from constance import config as constance_config
 from django import forms
 from django.contrib import messages
 from django.contrib.admin import register
+from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
@@ -231,6 +232,13 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         uploaded.seek(0)
         return stored_name
 
+    @staticmethod
+    def _acquire_batch_action_lock(batch_id: int) -> Any | None:
+        lock = cache.lock(f"lock:batch:{batch_id}", 60, auto_renewal=True)
+        if lock.acquire(blocking=False):
+            return lock
+        return None
+
     def _get_picture_import_payload(self, request: HttpRequest, token: str, batch_id: int) -> dict[str, Any] | None:
         payloads = self._session_payloads(request)
         payload = payloads.get(token)
@@ -352,25 +360,36 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         )
                         response = HttpResponseRedirect(request.path)
                     else:
-                        try:
-                            with default_storage.open(zip_file_name, "rb") as zip_stream:
-                                assignments = service.enrich_assignments_with_zip_data(
-                                    payload.get("assignments", []),
-                                    zip_stream,
-                                )
-                        except PictureImportLimitError as exc:
-                            self._clear_picture_import_payload(request, token)
-                            self.message_user(request, str(exc), messages.ERROR)
-                            response = HttpResponseRedirect(request.path)
-                        else:
-                            updated = service.apply_assignments(payload["target_field"], assignments)
-                            self._clear_picture_import_payload(request, token)
+                        batch_lock = self._acquire_batch_action_lock(obj.pk)
+                        if not batch_lock:
                             self.message_user(
                                 request,
-                                _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
-                                messages.SUCCESS,
+                                _("Another action is currently running for this batch. Please try again later."),
+                                messages.ERROR,
                             )
-                            response = redirect_to_change()
+                            response = HttpResponseRedirect(request.path)
+                        else:
+                            try:
+                                with default_storage.open(zip_file_name, "rb") as zip_stream:
+                                    assignments = service.enrich_assignments_with_zip_data(
+                                        payload.get("assignments", []),
+                                        zip_stream,
+                                    )
+                            except PictureImportLimitError as exc:
+                                self._clear_picture_import_payload(request, token)
+                                self.message_user(request, str(exc), messages.ERROR)
+                                response = HttpResponseRedirect(request.path)
+                            else:
+                                updated = service.apply_assignments(payload["target_field"], assignments)
+                                self._clear_picture_import_payload(request, token)
+                                self.message_user(
+                                    request,
+                                    _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
+                                    messages.SUCCESS,
+                                )
+                                response = redirect_to_change()
+                            finally:
+                                batch_lock.release()
         elif request.method == "GET" and request.GET.get("step") == "2" and token:
             payload = self._get_picture_import_payload(request, token, obj.pk)
             if not payload:

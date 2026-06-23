@@ -695,6 +695,8 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
     mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
+    batch_lock = mocker.MagicMock()
+    mocker.patch.object(batch_admin, "_acquire_batch_action_lock", return_value=batch_lock)
 
     request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
     _add_middleware_to_request(request, user)
@@ -721,6 +723,47 @@ def test_import_pictures_post_confirm_applies_and_clears_payload(
     service.apply_assignments.assert_called_once_with(
         "photo", [{"record_id": 1, "data_uri": "data:image/jpeg;base64,Zm9v"}]
     )
+    batch_lock.release.assert_called_once()
+
+
+def test_import_pictures_post_confirm_with_running_batch_action_redirects(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
+) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    service = mocker.MagicMock()
+    service.get_match_field_choices.return_value = [("beneficiary_id", "beneficiary_id")]
+    service.get_target_field_choices.return_value = [("photo", "Photo")]
+    _mock_picture_import_service(mocker, batch_admin_module, service)
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    message_user = mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch_admin, "_acquire_batch_action_lock", return_value=None)
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("A-1.jpg", b"content")
+    storage_name = default_storage.save("batch-picture-import/confirm-running.zip", ContentFile(payload.getvalue()))
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    _add_middleware_to_request(request, user)
+    request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = {
+        "tok": {
+            "batch_id": batch.pk,
+            "match_field": "beneficiary_id",
+            "target_field": "photo",
+            "zip_file_name": storage_name,
+            "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
+        }
+    }
+
+    response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    assert response.url == "/admin/import-pictures/"
+    service.enrich_assignments_with_zip_data.assert_not_called()
+    service.apply_assignments.assert_not_called()
+    assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY]["tok"]["zip_file_name"] == storage_name
+    message_user.assert_called()
+    default_storage.delete(storage_name)
 
 
 def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
@@ -761,6 +804,8 @@ def test_import_pictures_post_confirm_handles_limit_error(
     _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     message_user = mocker.patch.object(batch_admin, "message_user")
+    batch_lock = mocker.MagicMock()
+    mocker.patch.object(batch_admin, "_acquire_batch_action_lock", return_value=batch_lock)
 
     storage_name = default_storage.save("batch-picture-import/confirm-limit.zip", ContentFile(b"content"))
     request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
@@ -782,6 +827,7 @@ def test_import_pictures_post_confirm_handles_limit_error(
     assert request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] == {}
     assert not default_storage.exists(storage_name)
     message_user.assert_called()
+    batch_lock.release.assert_called_once()
 
 
 def test_import_pictures_get_step_two_with_expired_token_redirects(
