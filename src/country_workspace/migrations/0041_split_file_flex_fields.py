@@ -6,8 +6,8 @@ from collections import defaultdict
 from typing import Any
 
 from django.db import migrations, models
-from django.db.migrations.state import StateApps
-from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+from django.db.migrations.state import StateApps  # noqa: TC002
+from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
 
 FLEX_FILES_PREFIX = 8192
 
