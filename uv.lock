@@ -1592,7 +1592,7 @@ wheels = [
 
 [[package]]
 name = "hope-api-auth"
-version = "0.1.1"
+version = "0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
@@ -1603,9 +1603,9 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "swapper" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/34/43feb73012bbf6008b99398b4bbcea0df88b3a57dd8b9d2e0fff4c964d3b/hope_api_auth-0.1.1.tar.gz", hash = "sha256:59fc5f99ae354dabea3642dd963227dd07bc1c026eae422ccffbfa6acbce6be9", size = 5908, upload-time = "2026-06-10T14:55:21.823Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/4c/e4d397b8718f717a551be5e08292ad74c15227036036f448c0fd80af91e1/hope_api_auth-0.2.tar.gz", hash = "sha256:1996e44f3d798021397a0e2a2c2c0eb2234d1ca355c38019ae765921a2caace2", size = 5991, upload-time = "2026-06-23T11:51:47.091Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/da/eae5ff52bb0def1caadc7f42566219a37a1c7f0fc80470c189fc564226d4/hope_api_auth-0.1.1-py2.py3-none-any.whl", hash = "sha256:2eda8bb1bcccf897ed5b1b3d0b805147939a66a9b12966b1ce9ed98d33a9f9a1", size = 8215, upload-time = "2026-06-10T14:55:20.768Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/c4/93d8cc766703bb9f22e0d4c02e7973965457b23a62812df666bd667e39e2/hope_api_auth-0.2-py2.py3-none-any.whl", hash = "sha256:62700507a36cac4d3bbc2b5b2797e2a0fdec60c66e281bd409b2905b09e7ccc6", size = 8244, upload-time = "2026-06-23T11:51:45.991Z" },
 ]
 
 [[package]]
@@ -1746,7 +1746,7 @@ requires-dist = [
     { name = "drf-spectacular", extras = ["sidecar"] },
     { name = "dukpy", specifier = ">=0.5" },
     { name = "flower", specifier = ">=2.0.1" },
-    { name = "hope-api-auth", specifier = ">=0.1.1" },
+    { name = "hope-api-auth", specifier = ">=0.2" },
     { name = "hope-flex-fields", specifier = ">=0.8.1" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },
