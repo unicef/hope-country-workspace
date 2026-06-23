@@ -1,62 +1,51 @@
-# Hope Workspace Interfaces
+# Country Workspace interface
 
-Hope Workspace provides two interfaces for different roles:
+Country Workspace has two main interfaces used for different types of work:
 
-### **Collector Interface**
+* the **Country Workspace interface**, used by analysts and collectors to work with beneficiary data;
+* the **main Django admin**, used for technical configuration and system administration.
 
-The primary interface for data collection and processing, offering an enhanced user experience with additional workspace features.
+## Country Workspace interface
 
+The **Country Workspace interface** is the main working area for beneficiary data.
 
-#### Program page
+Users select an **Office** and a **Program**, then work in the context of that selected Program.
 
-Provides complete information about the selected program, along with available actions accessible via buttons, including:
+This interface is used for operational tasks such as beneficiary review, [import](data_import/import.md), [Batch](data_import/batches.md) review, validation results, mappings, and data push follow-up.
 
-??? abstract "[Household Columns]"
-    ##### **[Household Columns]**
-    Allows the user to configure mandatory columns for the Household Checker, which will be used with Household records.
+For import-related work, the selected [Program](data_import/program.md) defines the working context: beneficiary structure, validation setup, review columns, Alien Columns, and later processing options.
 
-??? abstract "[Individual Columns]"
-    ##### **[Individual Columns]**
-    Allows the user to configure mandatory columns for the Individual Checker, which will be used with Individual records.
+## Main Django admin
 
-??? abstract "[Update Records]"
-    ##### **[Update Records]**
-    Imports column updates from a file for either Household or Individual records.
+The **main Django admin** is used for technical configuration.
 
-??? abstract "[Import data]"
-    ##### **[Import data]**
-    Import Household and Individual data from different sources to ensure seamless integration into the system. This process supports multiple data formats and validation steps to maintain data consistency. For more details, refer to the [Import Data](import_data/index.md).
+It is used to configure objects that support Country Workspace processes, such as:
 
-For convenience, the **Program** page includes a dedicated button, represented by a shield icon, allowing quick access to essential admin functions.
+* [DataChecker configuration](data_validation/datachecker_configuration.md);
+* Flex Fields and Fieldsets;
+* [Transformers](data_import/mapping_transformers.md#transformers);
+* serializers;
+* user access and permissions;
+* system-level reference data and synchronization settings.
 
----
+Most users working with beneficiary data do not need to use the main Django admin directly.
 
-#### Households Page / Individuals Page
+## How the interfaces work together
 
-Displays a list of households and individuals related to the selected program, with filtering options and the ability to validate the entire program.
+Some objects are configured in the main Django admin and then used in the Country Workspace interface.
 
-When selecting an item, you can view or edit the imported data by columns, make necessary corrections, and validate the data for the chosen entry to detect any potential issues.
+For example:
 
----
+* DataCheckers are configured in the main Django admin and assigned to a Program;
+* Mappings are managed in the Country Workspace interface;
+* Transformers and serializers are configured in the main Django admin and selected or used during import, reprocessing, or later integrations.
 
-#### Batches page
+This separation keeps operational work focused in the Country Workspace interface while keeping technical setup in the main Django admin.
 
-Displays a list of batches. A batch is an entity that contains references to imported data sources for the selected program. The page includes filtering options, allowing users to refine the list. For a selected batch, you can view the imported records.
+## Unified Classifiers
 
----
-#### Jobs Page
+Unified Classifiers are shared reference data synchronized with the HOPE main system.
 
-Displays a list of asynchronous jobs with filtering options. For a selected job, you can perform various actions, such as *inspect*, *queue*, *revoke*, or *terminate* it.
+They may include offices, programs, registrations, and other reference data required by Country Workspace.
 
----
-
-###  **Admin Interface**
-A standard Django admin panel used for managing diverse configurations, setting up flex fields, controlling user access, and synchronizing Unified Classifiers with the HOPE main system.
-
----
-
-## Synchronize Unified Classifiers
-
-**Unified Classifiers** are centralized reference data that categorize key elements essential for process unification, including *offices*, *programs*, and *registrations*.
-
-To synchronize data in the admin interface, press the **[SYNC]** button for the corresponding classifier.
+When classifier data is missing or outdated, it should be synchronized from the main Django admin by a user with the required permissions.
