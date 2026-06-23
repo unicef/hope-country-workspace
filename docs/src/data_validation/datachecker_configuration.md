@@ -2,7 +2,7 @@
 
 DataChecker configuration is used to validate beneficiary data in CW.
 
-It defines which beneficiary fields are expected, how they are grouped, and which validation rules should be applied. DataChecker is configured on the Program and used to validate households and individuals.
+It defines which beneficiary fields are expected, how they are grouped, and which validation rules should be applied. DataChecker is configured on the [Program](../data_import/program.md#program-in-country-workspace) and used to validate households and individuals.
 
 DataChecker fields must fully match the beneficiary data structure expected by HOPE Core. HOPE Core is the source of truth for field names, required fields, field types, and validation expectations.
 
@@ -242,120 +242,9 @@ On the DataChecker change page, use:
 - **Create XLS importer** to download an XLSX import template generated from the DataChecker fields;
 - **Test** to open a generated form with all fields from this DataChecker and validate sample input.
 
+## How-to guides
 
-## Full example: creating a multiple choice field
-
-This example shows how to create a custom multiple choice field and use it in a DataChecker configuration.
-
-The example creates a `support_needs` field with three possible values:
-
-- `food`;
-- `cash`;
-- `shelter`.
-
-The field will allow selecting more than one value.
-
-### 1. Create a Field Definition
-
-Open **Field Definitions**, click **Add Field Definition**, and create a new record:
-
-- **Name**: `Support needs choices`;
-- **Field type**: `CustomMultipleChoiceField`;
-- **Description**: `Multiple choice field for household support needs.`
-
-Save the record.
-
-Open the created Field Definition and click **Configure**.
-
-Set the field attributes:
-
-```json
-{
-  "label": "Support needs",
-  "required": false,
-  "help_text": "Select one or more support needs.",
-  "choices": [
-    ["food", "Food assistance"],
-    ["cash", "Cash assistance"],
-    ["shelter", "Shelter support"]
-  ]
-}
-```
-
-Save the configuration.
-
-Use **Test** to check that the field accepts one or more selected values.
-
-### 2. Create a Fieldset
-
-Open **Fieldsets**, click **Add Fieldset**, and create a new record:
-
-- **Name**: `Household support needs`;
-- **Description**: `Fields related to household support needs.`
-
-Leave **Extends**, **Content type**, **Group**, and **Validation** empty.
-
-Save the record.
-
-### 3. Create a Flex Field
-
-Open **Flex Fields**, click **Add Flex Field**, and create a new record:
-
-- **Name**: `support_needs`;
-- **Definition**: `Support needs choices`;
-- **Fieldset**: `Household support needs`.
-
-Leave **Master** and **Overrides** empty.
-
-Save the record.
-
-The `support_needs` name is the technical field name used in imports, validation, and beneficiary data.
-
-### 4. Create a DataChecker
-
-Open **DataCheckers**, click **Add DataChecker**, and create a new record:
-
-- **Name**: `Household support needs checker`;
-- **Description**: `Validation configuration for household support needs.`
-
-In **Data Checker Fieldsets**, add the new `Household support needs` Fieldset together with the existing Fieldsets required by the beneficiary structure.
-
-For example, add:
-
-- `HOPE Household core`;
-- `HOPE Admin Areas`;
-- `Household support needs`.
-
-For the `Household support needs` Fieldset, use:
-
-- **Prefix**: empty;
-- **Order**: `3`;
-- **Override group default value**: unchecked.
-
-Save the record.
-
-### 5. Test the configuration
-
-Open the created DataChecker and use:
-
-- **Inspect** to check that `support_needs` is included in the generated field structure;
-- **Test** to validate the field manually;
-- **Create XLS importer** to generate an import template;
-- **Validate** to test a sample import file.
-
-Example valid values for import:
-
-```text
-food,cash
-```
-
-or:
-
-```text
-food cash
-```
-
-The value will be treated as a list of selected choices.
+For a step-by-step example, see [Create a multiple choice field](howto/create-multiple-choice-field.md).
 
 ## Recommended workflow
 
