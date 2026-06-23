@@ -122,7 +122,7 @@ def split_file_flex_fields(apps: StateApps, schema_editor: BaseDatabaseSchemaEdi
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0040_add_originating_id_to_validable"),
+        ("country_workspace", "0054_rdp_deduplication_snapshots_and_more"),
     ]
     atomic = False
     operations = [
