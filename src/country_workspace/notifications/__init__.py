@@ -1,4 +1,4 @@
 # Expose the client for easier imports
-from .bitcaster_client import BitcasterClient
+from .bitcaster_client import BitcasterManager
 
-__all__ = ["BitcasterClient"]
+__all__ = ["BitcasterManager"]

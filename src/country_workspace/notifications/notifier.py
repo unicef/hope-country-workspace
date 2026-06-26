@@ -1,6 +1,6 @@
 from typing import Any, Protocol
 
-from country_workspace.notifications.bitcaster_client import BitcasterClient
+from country_workspace.notifications.bitcaster_client import BitcasterManager
 
 
 class NotificationBackend(Protocol):
@@ -8,7 +8,7 @@ class NotificationBackend(Protocol):
 
 
 def get_notification_backend() -> NotificationBackend:
-    return BitcasterClient()
+    return BitcasterManager()
 
 
 def send_notification_event(event_name: str, payload: dict[str, Any]) -> bool:

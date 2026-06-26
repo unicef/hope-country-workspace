@@ -529,9 +529,9 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             processor=hope_processor,
         )
         pushed_count = (
-                hope_processor.total.get("households", 0)
-                + hope_processor.total.get("individuals", 0)
-                + hope_processor.total.get("people", 0)
+            hope_processor.total.get("households", 0)
+            + hope_processor.total.get("individuals", 0)
+            + hope_processor.total.get("people", 0)
         )
 
         rdi_push_completed_signal.send(

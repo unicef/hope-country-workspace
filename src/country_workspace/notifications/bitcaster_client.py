@@ -12,7 +12,7 @@ class NotifyError(Exception):
     """Raised when a Bitcaster notification fails."""
 
 
-class BitcasterClient:
+class BitcasterManager:
     """Client wrapper around bitcaster-sdk."""
 
     def __init__(

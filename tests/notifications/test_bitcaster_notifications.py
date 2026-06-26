@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from country_workspace.notifications.bitcaster_client import BitcasterClient
+from country_workspace.notifications.bitcaster_client import BitcasterManager
 from country_workspace.notifications.notifier import send_notification_event
 from country_workspace.notifications.bitcaster_client import NotifyError
 from country_workspace.notifications.tasks import send_bitcaster_event_task
@@ -21,7 +21,7 @@ def test_trigger_event_uses_bitcaster_trigger_contract(settings, mocker) -> None
     _configure_bitcaster_settings(settings)
     sdk_client = mocker.patch("country_workspace.notifications.bitcaster_client.SDKClient")
 
-    client = BitcasterClient()
+    client = BitcasterManager()
     result = client.trigger_event("data_imported", {"program_id": 123})
 
     assert result is True
@@ -40,7 +40,7 @@ def test_trigger_event_propagates_sdk_errors(settings, mocker) -> None:
     sdk_client.return_value.trigger.side_effect = RuntimeError("boom")
 
     with pytest.raises(NotifyError, match="boom"):
-        BitcasterClient().trigger_event("rdi_push_completed", {"program_id": 12})
+        BitcasterManager().trigger_event("rdi_push_completed", {"program_id": 12})
 
 
 def test_trigger_event_returns_false_when_client_not_configured(settings) -> None:
@@ -50,7 +50,7 @@ def test_trigger_event_returns_false_when_client_not_configured(settings) -> Non
     settings.BITCASTER_PROJECT_SLUG = ""
     settings.BITCASTER_APPLICATION_SLUG = ""
 
-    assert BitcasterClient().trigger_event("data_imported", {"program_id": 12}) is False
+    assert BitcasterManager().trigger_event("data_imported", {"program_id": 12}) is False
 
 
 def test_send_notification_event_delegates_to_backend(mocker) -> None:
