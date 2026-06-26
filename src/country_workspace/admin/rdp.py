@@ -7,12 +7,9 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
-from strategy_field.utils import fqn
 
-from country_workspace.compat.admin_extra_buttons import confirm_action
-from country_workspace.contrib.hope.push.orchestration import reset_rdp_core
-from country_workspace.models import AsyncJob, Rdp
-
+from ..compat.admin_extra_buttons import confirm_action
+from ..models import Rdp
 from .base import BaseModelAdmin
 
 
@@ -77,34 +74,22 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.PUSHED,
+        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
-        obj = self.get_object(request, str(pk))
-        change_url = reverse("admin:country_workspace_rdp_change", args=[pk])
+        obj: Rdp = self.get_object(request, str(pk))
 
-        if obj is None:
-            self.message_user(request, "RDP not found.", level="error")
-            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_changelist"))
-
-        if obj.status != Rdp.PushStatus.PUSHED:
-            self.message_user(request, "Reset is only allowed for PUSHED status.", level="error")
-            return HttpResponseRedirect(change_url)
+        if obj.status != Rdp.PushStatus.SUCCESS:
+            self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:
             with transaction.atomic():
-                job = AsyncJob.objects.create(
-                    description="Reset pushed RDP after manual HOPE rejection confirmation",
-                    type=AsyncJob.JobType.TASK,
-                    owner=request.user,
-                    action=fqn(reset_rdp_core),
-                    program=obj.program,
-                    rdp=obj,
-                    config={"rdp_id": obj.pk},
-                )
-                transaction.on_commit(job.queue)
-
-            return HttpResponseRedirect(change_url)
+                obj.households.all().update(removed=False)
+                obj.individuals.all().update(removed=False)
+                obj.status = Rdp.PushStatus.CANCELLED
+                obj.save()
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         return confirm_action(
             self,
@@ -112,9 +97,9 @@ class RdpAdmin(BaseModelAdmin):
             _action,
             "Are you sure you want to reset this RDP?",
             description=(
-                "It will schedule an async job that will reject the active DedupEngine set if present, "
-                "restore related beneficiaries, and mark the RDP status as REJECTED."
+                "This will set all related households and individuals to removed=False "
+                "and mark the RDP status as CANCELLED. This action cannot be undone."
             ),
-            success_message="RDP reset task scheduled.",
+            success_message="RDP reset successfully. Related beneficiaries marked as not removed.",
             pk=str(pk),
         )

@@ -1,9 +1,7 @@
-from uuid import uuid4
-
 import pytest
-from django.utils import timezone
 from pytest_mock import MockerFixture
-
+from django.utils import timezone
+from uuid import uuid4
 import country_workspace.contrib.hope.push.repository as repo
 from country_workspace.models import Rdp as RdpModel
 from testutils.factories import (
@@ -124,19 +122,6 @@ def test_rdp_for_push(mocker: MockerFixture) -> None:
         "pushed_by",
     )
     qs.get.assert_called_once_with(pk=123)
-
-
-def test_lock_rdp_for_hope_callback(mocker: MockerFixture) -> None:
-    qs = mocker.MagicMock()
-    rdp = mocker.MagicMock()
-
-    select_for_update = mocker.patch.object(repo.Rdp.objects, "select_for_update", return_value=qs)
-    qs.get.return_value = rdp
-
-    assert repo.lock_rdp_for_hope_callback(hope_rdi_id="RDI-1") is rdp
-
-    select_for_update.assert_called_once_with()
-    qs.get.assert_called_once_with(hope_rdi_id="RDI-1")
 
 
 def test_selection_owner_for_rdp_returns_self(rdp) -> None:
@@ -328,11 +313,11 @@ def test_preflight_errors_rejects_empty_selection(master_detail: bool) -> None:
 def test_preflight_errors_flat() -> None:
     invalid = CountryIndividualFactory(last_checked=None, errors={})
     linked = CountryIndividualFactory(last_checked=timezone.now(), errors={})
-    linked.rdp.add(CountryRdpFactory(status=RdpModel.PushStatus.PUSHED))
+    linked.rdp.add(CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS))
 
     assert repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=False) == [
         f"Ind #{invalid.pk} invalid",
-        f"Ind #{linked.pk} already in another RDP(s) (pending/pushed/merged)",
+        f"Ind #{linked.pk} already in another RDP(s) (pending/success)",
     ]
 
 
@@ -342,21 +327,21 @@ def test_preflight_errors_master_detail() -> None:
 
     linked = CountryHouseholdFactory(last_checked=timezone.now(), errors={})
     linked_member = CountryIndividualFactory(household=linked, last_checked=timezone.now(), errors={})
-    rdp = CountryRdpFactory(status=RdpModel.PushStatus.PUSHED)
+    rdp = CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS)
     linked.rdp.add(rdp)
     linked_member.rdp.add(rdp)
 
     errors = repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=True)
 
     assert f"HH #{invalid.pk} invalid" in errors
-    assert f"HH #{linked.pk} already in another RDP(s) (pending/pushed/merged)" in errors
+    assert f"HH #{linked.pk} already in another RDP(s) (pending/success)" in errors
     assert f"Ind #{invalid_member.pk} invalid" in errors
-    assert f"Ind #{linked_member.pk} already in another RDP(s) (pending/pushed/merged)" in errors
+    assert f"Ind #{linked_member.pk} already in another RDP(s) (pending/success)" in errors
 
 
 def test_preflight_errors_excludes_rdp_ids() -> None:
     individual = CountryIndividualFactory(last_checked=timezone.now(), errors={})
-    rdp = CountryRdpFactory(status=RdpModel.PushStatus.PUSHED)
+    rdp = CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS)
     individual.rdp.add(rdp)
 
     assert (
@@ -438,7 +423,7 @@ def test_set_rdp_push_status(
 
     kwargs = {
         "rdp": rdp,
-        "status": RdpModel.PushStatus.PUSHED,
+        "status": RdpModel.PushStatus.SUCCESS,
         "hope_rdi_id": "RDI-1",
     }
     if lock_value is not None:
@@ -449,41 +434,16 @@ def test_set_rdp_push_status(
     save.assert_called_once_with(update_fields=expected_update_fields)
 
     rdp.refresh_from_db()
-    assert rdp.status == RdpModel.PushStatus.PUSHED
+    assert rdp.status == RdpModel.PushStatus.SUCCESS
     assert rdp.hope_rdi_id == "RDI-1"
     assert rdp.is_dedup_settings_locked is expected_locked
-
-
-@pytest.mark.parametrize(
-    ("hope_rdi_id", "expected"),
-    [
-        (" RDI-1 ", "RDI-1"),
-        ("", None),
-        ("   ", None),
-        (None, None),
-    ],
-    ids=["strips", "empty", "blank", "none"],
-)
-def test_set_rdp_push_status_normalizes_hope_rdi_id(
-    rdp,
-    hope_rdi_id: str | None,
-    expected: str | None,
-) -> None:
-    repo.set_rdp_push_status(
-        rdp=rdp,
-        status=RdpModel.PushStatus.PUSHED,
-        hope_rdi_id=hope_rdi_id,
-    )
-
-    rdp.refresh_from_db()
-    assert rdp.hope_rdi_id == expected
 
 
 def test_has_other_pending_rdp(program_with_serializer, pushed_by_user) -> None:
     owner = CountryRdpFactory(
         program=program_with_serializer,
         pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.PUSHED,
+        status=RdpModel.PushStatus.SUCCESS,
     )
     CountryRdpFactory(
         program=program_with_serializer,
@@ -498,7 +458,7 @@ def test_has_other_pending_rdp_respects_exclude_ids(program_with_serializer, pus
     owner = CountryRdpFactory(
         program=program_with_serializer,
         pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.PUSHED,
+        status=RdpModel.PushStatus.SUCCESS,
     )
     other = CountryRdpFactory(
         program=program_with_serializer,
@@ -513,12 +473,12 @@ def test_has_other_pending_rdp_ignores_non_pending(program_with_serializer, push
     owner = CountryRdpFactory(
         program=program_with_serializer,
         pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.MERGED,
+        status=RdpModel.PushStatus.SUCCESS,
     )
     CountryRdpFactory(
         program=program_with_serializer,
         pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.MERGED,
+        status=RdpModel.PushStatus.SUCCESS,
     )
 
     assert repo.has_other_pending_rdp(owner=owner) is False
