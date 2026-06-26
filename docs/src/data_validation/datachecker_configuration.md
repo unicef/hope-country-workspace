@@ -2,9 +2,29 @@
 
 DataChecker configuration is used to validate beneficiary data in CW.
 
+## DataChecker context
+
 It defines which beneficiary fields are expected, how they are grouped, and which validation rules should be applied. DataChecker is configured on the [Program](../data_import/program.md#program-in-country-workspace) and used to validate households and individuals.
 
 DataChecker fields must fully match the beneficiary data structure expected by HOPE Core. HOPE Core is the source of truth for field names, required fields, field types, and validation expectations.
+
+## Required HOPE Core fields
+
+If a field is required by HOPE Core, the corresponding DataChecker field must be marked as required.
+
+For a [Flex Field](#flex-field), make sure the final field attributes contain:
+
+```json
+{
+  "required": true
+}
+```
+
+This can be configured on the [Field Definition](#field-definition) when the field is always required, or in the **Flex Field Overrides › Attrs** when the field should be required only in this specific configuration.
+
+Use **Inspect** on the [DataChecker](#datachecker) to check the final field attributes before assigning the DataChecker to a [Program](../data_import/program.md#program-in-country-workspace).
+
+
 
 ## Where to find it
 
