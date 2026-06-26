@@ -22,18 +22,21 @@ logger = logging.getLogger(__name__)
 
 @app.task()
 def cleanup_merged_rdp_data() -> None:
+    """Delete removed beneficiaries linked only to old merged RDPs."""
     days = constance_config.RDP_CLEANUP_DAYS
     if not days or days <= 0:
         return
 
-    # Find successful RDPs older than threshold
-    old_rdps = Rdp.objects.filter(status=Rdp.PushStatus.SUCCESS, push_date__lt=timezone.now() - timedelta(days=days))
+    old_rdps = Rdp.objects.filter(
+        status=Rdp.PushStatus.MERGED,
+        push_date__lt=timezone.now() - timedelta(days=days),
+    )
 
     if not old_rdps.exists():
         return
 
-    # Delete Households and Individuals associated with these RDPs,
-    # but ONLY if they are not linked to any other RDP (pending, failed, or recent success).
+    # Delete Households and Individuals associated with old merged RDPs,
+    # but only if they are not linked to any other RDP that still needs them.
     other_rdps = Rdp.objects.exclude(pk__in=old_rdps)
 
     households_to_delete = (

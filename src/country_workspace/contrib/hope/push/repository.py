@@ -123,7 +123,7 @@ def preflight_errors(
     if not pks:
         return ["RDP: no beneficiaries selected"]
 
-    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
+    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.PUSHED, Rdp.PushStatus.MERGED])
     if excluded := tuple(exclude_rdp_ids):
         rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
@@ -134,7 +134,7 @@ def preflight_errors(
             if not _is_valid_row(last_checked=last_checked, errors=obj_errors):
                 errors.append(f"{base} invalid")
             if has_rdp:
-                errors.append(f"{base} already in another RDP(s) (pending/success)")
+                errors.append(f"{base} already in another RDP(s) (pending/pushed/merged)")
         return errors
 
     def individual_rows() -> QuerySet:
@@ -163,11 +163,15 @@ def preflight_errors(
 
 
 def set_rdp_push_status(
-    *, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str, is_dedup_settings_locked: bool | None = None
+    *,
+    rdp: Rdp,
+    status: Rdp.PushStatus,
+    hope_rdi_id: str | None,
+    is_dedup_settings_locked: bool | None = None,
 ) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
-    rdp.hope_rdi_id = hope_rdi_id
+    rdp.hope_rdi_id = cleaned if hope_rdi_id and (cleaned := hope_rdi_id.strip()) else None
     update_fields = ["status", "hope_rdi_id"]
     if is_dedup_settings_locked is not None:
         rdp.is_dedup_settings_locked = is_dedup_settings_locked
@@ -190,3 +194,8 @@ def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> boo
     if excluded := tuple(exclude_ids):
         qs = qs.exclude(pk__in=excluded)
     return qs.exists()
+
+
+def lock_rdp_for_hope_callback(*, hope_rdi_id: str) -> Rdp:
+    """Return an RDP locked for a HOPE callback."""
+    return Rdp.objects.select_for_update().get(hope_rdi_id=hope_rdi_id)

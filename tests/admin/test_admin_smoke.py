@@ -34,6 +34,8 @@ GLOBAL_EXCLUDED_MODELS = RegexList(
     [
         r"django_celery_beat\.ClockedSchedule",
         r"contenttypes\.ContentType",
+        r"hope_api_auth\.APIToken",
+        r"hope_api_auth\.APILogEntry",
         r"webpush\.BrowserAdmin",
         "authtoken",
         "social_django",

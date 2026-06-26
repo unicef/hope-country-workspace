@@ -6,14 +6,20 @@ from .base import BaseModel
 from .user import User
 
 
+# Do not rename: migrations reference this callable by dotted path.
+def get_rdp_status_choices() -> list[tuple[str, str]]:
+    return Rdp.PushStatus.choices
+
+
 class Rdp(BaseModel):
     """Represents a Registration Data Push (RDP) object in the system."""
 
     class PushStatus(models.TextChoices):
         PENDING = "PENDING", _("Pending")
-        SUCCESS = "SUCCESS", _("Success")
         FAILURE = "FAILURE", _("Failure")
-        CANCELLED = "CANCELLED", _("Cancelled")
+        PUSHED = "PUSHED", _("Pushed")
+        MERGED = "MERGED", _("Merged")
+        REJECTED = "REJECTED", _("Rejected")
 
     class DedupTrackingState(models.TextChoices):
         NOT_RUN = "NOT_RUN", _("Not run yet")
@@ -23,7 +29,7 @@ class Rdp(BaseModel):
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
     name = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=10, choices=PushStatus.choices, default=PushStatus.PENDING, blank=True)
+    status = models.CharField(max_length=10, choices=get_rdp_status_choices, default=PushStatus.PENDING, blank=True)
     hope_rdi_id = models.CharField(
         max_length=200, null=True, editable=False, help_text=_("RDI unique ID within the HOPE core.")
     )
@@ -57,6 +63,12 @@ class Rdp(BaseModel):
                 condition=Q(status="PENDING"),
                 name="uniq_pending_rdp_per_program",
                 violation_error_message=_("There is already an active (PENDING) RDP for this program."),
+            ),
+            models.UniqueConstraint(
+                fields=["hope_rdi_id"],
+                condition=Q(hope_rdi_id__isnull=False),
+                name="uniq_rdp_hope_rdi_id",
+                violation_error_message=_("There is already an RDP for this HOPE RDI."),
             ),
         ]
         permissions = [

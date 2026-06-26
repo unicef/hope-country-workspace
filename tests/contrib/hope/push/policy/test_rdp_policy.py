@@ -154,7 +154,7 @@ def test_deduplication_set_state_cached_property(
         (Rdp.PushStatus.PENDING, True, "ds-1", (True, True, True, True)),
         (Rdp.PushStatus.PENDING, True, "", (True, False, True, True)),
         (Rdp.PushStatus.PENDING, False, "ds-1", (False, False, False, True)),
-        (Rdp.PushStatus.SUCCESS, True, "ds-1", (False, False, True, False)),
+        (Rdp.PushStatus.PUSHED, True, "ds-1", (False, False, True, False)),
     ],
     ids=["pending_with_set", "pending_without_set", "pending_disabled", "non_pending"],
 )
@@ -182,12 +182,12 @@ def test_visibility_methods(
     ("status", "enabled", "set_id", "state", "can_create", "expected"),
     [
         (
-            Rdp.PushStatus.SUCCESS,
+            Rdp.PushStatus.PUSHED,
             True,
             "ds-1",
             DeduplicationSetState.READY,
             True,
-            ActionCheck(False, f"RDP: can not run dedup in status={Rdp.PushStatus.SUCCESS}"),
+            ActionCheck(False, f"RDP: can not run dedup in status={Rdp.PushStatus.PUSHED}"),
         ),
         (
             Rdp.PushStatus.PENDING,
@@ -296,11 +296,11 @@ def test_deduplicate_check(
     ("status", "enabled", "set_id", "state", "expected"),
     [
         (
-            Rdp.PushStatus.SUCCESS,
+            Rdp.PushStatus.PUSHED,
             True,
             "ds-1",
             DeduplicationSetState.DEDUPLICATED,
-            ActionCheck(False, f"RDP: can not reject deduplication set in status={Rdp.PushStatus.SUCCESS}"),
+            ActionCheck(False, f"RDP: can not reject deduplication set in status={Rdp.PushStatus.PUSHED}"),
         ),
         (
             Rdp.PushStatus.PENDING,
@@ -370,11 +370,11 @@ def test_reject_ds_check(
             ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program."),
         ),
         (
-            Rdp.PushStatus.SUCCESS,
+            Rdp.PushStatus.PUSHED,
             True,
             False,
             ActionCheck(True),
-            ActionCheck(False, "RDP: can not clone a successful RDP."),
+            ActionCheck(False, f"RDP: can not clone in status={Rdp.PushStatus.PUSHED}"),
         ),
         (
             Rdp.PushStatus.PENDING,
@@ -398,7 +398,7 @@ def test_reject_ds_check(
             ActionCheck(True),
         ),
     ],
-    ids=["disabled", "success", "other_pending", "dedup_blocked", "ok"],
+    ids=["disabled", "pushed", "other_pending", "dedup_blocked", "ok"],
 )
 def test_clone_check(
     mocker: MockerFixture,
@@ -419,12 +419,12 @@ def test_clone_check(
 
     assert RdpActionPolicy(rdp).clone_check() == expected
 
-    if enabled and status != Rdp.PushStatus.SUCCESS:
+    if enabled and status not in [Rdp.PushStatus.PUSHED, Rdp.PushStatus.MERGED]:
         pending.assert_called_once_with(owner=owner, exclude_ids=(1,))
     else:
         pending.assert_not_called()
 
-    if enabled and status != Rdp.PushStatus.SUCCESS and not has_pending:
+    if enabled and status not in [Rdp.PushStatus.PUSHED, Rdp.PushStatus.MERGED] and not has_pending:
         dedup.assert_called_once_with()
     else:
         dedup.assert_not_called()
@@ -479,11 +479,11 @@ def test_clone_deduplication_check(
     ("status", "enabled", "set_id", "state", "expected"),
     [
         (
-            Rdp.PushStatus.SUCCESS,
+            Rdp.PushStatus.PUSHED,
             True,
             "ds-1",
             DeduplicationSetState.DEDUPLICATED,
-            ActionCheck(False, f"RDP: can not push in status={Rdp.PushStatus.SUCCESS}"),
+            ActionCheck(False, f"RDP: can not push in status={Rdp.PushStatus.PUSHED}"),
         ),
         (
             Rdp.PushStatus.PENDING,
@@ -617,7 +617,7 @@ def test_dedup_engine_state_unavailable() -> None:
     ("rdp_status", "status_obj", "can_create", "expected_state", "expected_display"),
     [
         (
-            Rdp.PushStatus.SUCCESS,
+            Rdp.PushStatus.PUSHED,
             None,
             True,
             DedupEngineState(),

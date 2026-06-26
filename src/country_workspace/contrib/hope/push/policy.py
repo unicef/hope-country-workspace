@@ -77,7 +77,7 @@ class ProgramDedupSettingsPolicy:
         if self._has_locked_dedup_settings():
             return ActionCheck(
                 False,
-                "Deduplication settings cannot be updated after a successful RDP "
+                "Deduplication settings cannot be updated after an RDP was pushed or merged "
                 "or while a pending RDP has requested a new deduplication run.",
             )
 
@@ -86,7 +86,10 @@ class ProgramDedupSettingsPolicy:
     def _has_locked_dedup_settings(self) -> bool:
         return (
             Rdp.objects.filter(program=self.program)
-            .filter(Q(status=Rdp.PushStatus.SUCCESS) | Q(status=Rdp.PushStatus.PENDING, is_dedup_settings_locked=True))
+            .filter(
+                Q(status__in=[Rdp.PushStatus.MERGED, Rdp.PushStatus.PUSHED])
+                | Q(status=Rdp.PushStatus.PENDING, is_dedup_settings_locked=True)
+            )
             .exists()
         )
 
@@ -222,8 +225,8 @@ class RdpActionPolicy:
     def clone_check(self) -> ActionCheck:
         if not self.is_biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self.rdp.status == Rdp.PushStatus.SUCCESS:
-            return ActionCheck(False, "RDP: can not clone a successful RDP.")
+        if self.rdp.status in [Rdp.PushStatus.PUSHED, Rdp.PushStatus.MERGED]:
+            return ActionCheck(False, f"RDP: can not clone in status={self.rdp.status}")
 
         exclude_ids = (self.rdp.pk,) if self.is_pending else ()
         if has_other_pending_rdp(owner=self.owner, exclude_ids=exclude_ids):
