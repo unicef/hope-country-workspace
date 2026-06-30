@@ -30,14 +30,6 @@ class Rdp(BaseModel):
     push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
     deduplication_set_id = models.UUIDField(blank=True, null=True)
-    parent = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="children",
-        help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
-    )
     is_dedup_settings_locked = models.BooleanField(
         default=False,
         help_text=_(

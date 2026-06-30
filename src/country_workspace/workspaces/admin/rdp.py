@@ -8,19 +8,16 @@ from django.contrib.admin import register
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 
-from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
     DedupEngineState,
     PushExistingRdpConfig,
     claim_rdp_deduplication,
-    clone_rdp_core,
     get_rdp_policy,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
@@ -28,7 +25,6 @@ from country_workspace.contrib.hope.push import (
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
-from country_workspace.utils.fields import rdi_name_default
 
 
 from ...state import state
@@ -67,7 +63,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
         fields = [
             "name",
-            "parent",
             "push_date",
             "status",
         ]
@@ -216,57 +211,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Clone RDP",
-        change_form=True,
-        change_list=False,
-        permission="country_workspace.create_rdp",
-        visible=lambda btn: _is_visible(btn, "is_clone_visible"),
-        enabled=lambda btn: _is_allowed(btn, "clone_check"),
-        html_attrs={"title": "Create a child RDP that reuses the parent selection."},
-    )
-    def clone_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Create a child RDP without copying beneficiary M2M links."""
-        if (obj := self.get_object(request, pk)) is None:
-            messages.error(request, "RDP not found")
-            return redirect("workspace:workspaces_countryrdp_changelist")
-        if response := self._deny_if_not_allowed(request, obj, "clone_check"):
-            return response
-
-        if request.method == "POST" and "_clone" in request.POST:
-            if (form := CreateRDPForm(request.POST)).is_valid():
-                try:
-                    cloned = clone_rdp_core(
-                        source=obj,
-                        batch_name=form.cleaned_data["batch_name"] or rdi_name_default(),
-                        pushed_by_id=request.user.id,
-                    )
-                except HopePushError as e:
-                    messages.error(request, str(e))
-                else:
-                    messages.success(request, "RDP cloned")
-                    return redirect(self._change_url(cloned))
-        else:
-            form = CreateRDPForm(
-                initial={
-                    "action": "clone_rdp",
-                    "select_across": False,
-                    "_selected_action": [str(obj.pk)],
-                },
-            )
-        ctx = self.get_common_context(
-            request,
-            title="Clone RDP",
-            form=form,
-            original=obj,
-            changelist_url=reverse("workspace:workspaces_countryrdp_changelist"),
-            original_change_url=self._change_url(obj),
-            intro_text="A new RDP will be created using the parent RDP beneficiary selection.",
-            submit_label="Clone RDP",
-            submit_name="_clone",
-        )
-        return render(request, "workspace/actions/create_rdp.html", ctx)
-
-    @button(
         label="Push to HOPE",
         change_form=True,
         change_list=False,
@@ -305,4 +249,4 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return
         item = "countryhousehold" if obj.program.beneficiary_group.master_detail else "countryindividual"
         base = reverse(f"workspace:workspaces_{item}_changelist")
-        btn.href = f"{base}?rdp__exact={get_rdp_policy(obj).owner.pk}"
+        btn.href = f"{base}?rdp__exact={obj.pk}"

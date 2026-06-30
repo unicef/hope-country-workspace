@@ -5,7 +5,6 @@ from typing import NamedTuple
 from django.db.models import Q
 
 from country_workspace.contrib.dedup_engine import (
-    CLONEABLE_DEDUPLICATION_SET_STATES,
     PROCESSABLE_DEDUPLICATION_SET_STATES,
     PUSHABLE_DEDUPLICATION_SET_STATES,
     REJECTABLE_DEDUPLICATION_SET_STATES,
@@ -17,8 +16,6 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import Program, Rdp
-
-from .repository import has_other_pending_rdp, selection_owner_for_rdp
 
 
 @dataclass(slots=True, frozen=True)
@@ -96,10 +93,6 @@ class RdpActionPolicy:
         self.rdp = rdp
 
     @property
-    def owner(self) -> Rdp:
-        return selection_owner_for_rdp(rdp=self.rdp)
-
-    @property
     def is_pending(self) -> bool:
         return self.rdp.status == self.rdp.PushStatus.PENDING
 
@@ -145,19 +138,8 @@ class RdpActionPolicy:
     def is_reject_ds_visible(self) -> bool:
         return self.is_deduplicate_visible() and self.has_deduplication_set_id
 
-    def is_clone_visible(self) -> bool:
-        return self.is_biometric_deduplication_enabled
-
     def is_push_visible(self) -> bool:
         return self.is_pending
-
-    def clone_deduplication_source(self) -> Rdp | None:
-        """Return the RDP whose deduplication set should drive clone eligibility."""
-        if self.rdp.deduplication_set_id:
-            return self.rdp
-        if self.owner.deduplication_set_id:
-            return self.owner
-        return None
 
     def deduplicate_check(self) -> ActionCheck:
         if not self.is_pending:
@@ -199,37 +181,6 @@ class RdpActionPolicy:
             )
 
         return ActionCheck(True)
-
-    def _clone_deduplication_check(self) -> ActionCheck:
-        """Validate deduplication state used for cloning."""
-        if (dedup_source := self.clone_deduplication_source()) is None:
-            return ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")
-
-        status = self.deduplication_status(dedup_source)
-        if status is None:
-            return ActionCheck(False, "DedupEngine: deduplication_set_id is not set for this RDP.")
-        if status.response_status != DedupResponseStatus.OK:
-            return ActionCheck(False, "DedupEngine: can not retrieve deduplication set status.")
-
-        if status.deduplication_set_status not in CLONEABLE_DEDUPLICATION_SET_STATES:
-            return ActionCheck(
-                False,
-                f"DedupEngine: can not clone RDP for deduplication set in state={status.deduplication_set_status!r}.",
-            )
-
-        return ActionCheck(True)
-
-    def clone_check(self) -> ActionCheck:
-        if not self.is_biometric_deduplication_enabled:
-            return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self.rdp.status == Rdp.PushStatus.SUCCESS:
-            return ActionCheck(False, "RDP: can not clone a successful RDP.")
-
-        exclude_ids = (self.rdp.pk,) if self.is_pending else ()
-        if has_other_pending_rdp(owner=self.owner, exclude_ids=exclude_ids):
-            return ActionCheck(False, "RDP: can not clone while another RDP is pending")
-
-        return self._clone_deduplication_check()
 
     def push_check(self) -> ActionCheck:
         if not self.is_pending:

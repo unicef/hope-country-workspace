@@ -17,40 +17,31 @@ def lock_rdp_for_update(*, pk: int) -> Rdp:
 
 def rdp_for_dedup(*, pk: int) -> Rdp:
     """Return RDP with related Program loaded for dedup workflow."""
-    return Rdp.objects.select_related("program", "parent").get(pk=pk)
+    return Rdp.objects.select_related("program").get(pk=pk)
 
 
 def rdp_for_push(*, pk: int) -> Rdp:
     """Return RDP with relations required for push workflow."""
     return Rdp.objects.select_related(
-        "parent",
         "program__country_office",
         "program__beneficiary_group",
         "pushed_by",
     ).get(pk=pk)
 
 
-def selection_owner_for_rdp(*, rdp: Rdp) -> Rdp:
-    """Return the RDP that owns the beneficiary selection."""
-    return rdp.parent if rdp.parent_id else rdp
-
-
 def preflight_exclude_rdp_ids(*, rdp_id: int | None = None, rdp: Rdp | None = None) -> tuple[int, ...]:
-    """Return RDP ids excluded from preflight for the RDP and its parent."""
-    if rdp is None:
-        if rdp_id is None:
-            return ()
-        rdp = Rdp.objects.only("id", "parent_id").get(pk=rdp_id)
-    return (rdp.pk, rdp.parent_id) if rdp.parent_id else (rdp.pk,)
+    """Return RDP ids excluded from preflight."""
+    if rdp is not None:
+        return (rdp.pk,)
+    return (rdp_id,) if rdp_id is not None else ()
 
 
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
-    """Return (master_detail, pks) based on actual RDP links."""
-    owner = selection_owner_for_rdp(rdp=rdp)
-    hh_pks = list(owner.households.order_by("pk").values_list("pk", flat=True))
+    """Return (master_detail, pks) based on this RDP links."""
+    hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))
     if hh_pks:
         return True, hh_pks
-    return False, list(owner.individuals.order_by("pk").values_list("pk", flat=True))
+    return False, list(rdp.individuals.order_by("pk").values_list("pk", flat=True))
 
 
 def serializer_for_program(hope_id: str) -> Serializer:
@@ -182,11 +173,3 @@ def set_rdp_deduplication_snapshot(*, rdp: Rdp, key: str, snapshot: dict[str, An
         key: snapshot,
     }
     rdp.save(update_fields=["deduplication_snapshots"])
-
-
-def has_other_pending_rdp(*, owner: Rdp, exclude_ids: Iterable[int] = ()) -> bool:
-    """Return True when the program has another pending RDP."""
-    qs = Rdp.objects.filter(program_id=owner.program_id, status=Rdp.PushStatus.PENDING)
-    if excluded := tuple(exclude_ids):
-        qs = qs.exclude(pk__in=excluded)
-    return qs.exists()
