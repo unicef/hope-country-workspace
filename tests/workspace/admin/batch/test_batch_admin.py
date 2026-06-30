@@ -303,7 +303,7 @@ def test_batch_picture_import_form_clean_zip_file_rejects_oversized_archive(mock
     mocker.patch.object(
         batch_admin_module,
         "constance_config",
-        SimpleNamespace(PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=1),
+        SimpleNamespace(PICTURE_IMPORT_MAX_ZIP_UPLOAD_MB=0),
     )
     form = BatchPictureImportForm(
         data={"match_field": "id", "target_field": "photo"},
@@ -431,7 +431,7 @@ def test_batch_admin_session_payloads_prune_expired_entries(batch_admin, rf: Req
         "broken": "not-a-dict",
     }
     mocker.patch.object(batch_admin_module, "time", return_value=now)
-    mocker.patch.object(batch_admin_module, "constance_config", SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS=10))
+    mocker.patch.object(batch_admin_module, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 10)
     delete_uploaded_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_uploaded_zip")
 
     payloads = batch_admin._session_payloads(request)
@@ -452,7 +452,7 @@ def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admi
 def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
-    mocker.patch.object(batch_admin_module, "constance_config", SimpleNamespace(PICTURE_IMPORT_SESSION_TTL_SECONDS=10))
+    mocker.patch.object(batch_admin_module, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 10)
     mocker.patch.object(batch_admin_module, "time", return_value=1000)
     mocker.patch.object(
         batch_admin_module.default_storage,
@@ -945,7 +945,7 @@ def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -
     hh = CountryHouseholdFactory(batch=batch, individuals=0)
     individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": ""})
 
-    updated = BatchPictureImportService.apply_assignments(
+    updated = BatchPictureImportService(batch).apply_assignments(
         "photo",
         [{"record_id": individual.pk, "data_uri": "data:image/jpeg;base64,Zm9v"}],
     )
@@ -977,6 +977,18 @@ def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
     assert upload.tell() == 0
 
 
+def test_extract_zip_images_ignores_invalid_image_content() -> None:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, mode="w") as archive:
+        archive.writestr("looks-like-image.jpg", b"not-really-an-image")
+    upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+    entries, duplicate_keys = BatchPictureImportService.extract_zip_images(upload)
+
+    assert entries == []
+    assert duplicate_keys == set()
+
+
 def test_extract_zip_images_skips_empty_filename_entries(mocker) -> None:
     from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
 
@@ -1003,9 +1015,7 @@ def test_extract_zip_images_raises_when_zip_has_too_many_files(mocker) -> None:
     mocker.patch.object(
         picture_import_module,
         "constance_config",
-        SimpleNamespace(
-            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
-        ),
+        SimpleNamespace(PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1),
     )
 
     with pytest.raises(PictureImportLimitError, match="too many files"):
@@ -1078,8 +1088,8 @@ def test_build_preview_marks_ambiguous_and_duplicate_keys(batch: CountryBatch) -
     assert report["unmatched_filenames"] == ["MISSING.jpg"]
 
 
-def test_apply_picture_assignments_returns_zero_without_assignments() -> None:
-    assert BatchPictureImportService.apply_assignments("photo", []) == 0
+def test_apply_picture_assignments_returns_zero_without_assignments(batch: CountryBatch) -> None:
+    assert BatchPictureImportService(batch).apply_assignments("photo", []) == 0
 
 
 def test_apply_picture_assignments_skips_missing_and_unchanged_records(batch: CountryBatch) -> None:
@@ -1088,7 +1098,7 @@ def test_apply_picture_assignments_skips_missing_and_unchanged_records(batch: Co
     hh = CountryHouseholdFactory(batch=batch, individuals=0)
     individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": "same"})
 
-    updated = BatchPictureImportService.apply_assignments(
+    updated = BatchPictureImportService(batch).apply_assignments(
         "photo",
         [
             {"record_id": individual.pk, "data_uri": "same"},
@@ -1097,6 +1107,31 @@ def test_apply_picture_assignments_skips_missing_and_unchanged_records(batch: Co
     )
 
     assert updated == 0
+
+
+def test_apply_picture_assignments_enforces_batch_and_not_removed(batch: CountryBatch) -> None:
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    removable = CountryIndividualFactory(batch=batch, household=hh, removed=True, flex_fields={"photo": ""})
+
+    other_batch = CountryBatchFactory(program=batch.program, country_office=batch.country_office)
+    other_hh = CountryHouseholdFactory(batch=other_batch, individuals=0)
+    outsider = CountryIndividualFactory(batch=other_batch, household=other_hh, flex_fields={"photo": ""})
+
+    updated = BatchPictureImportService(batch).apply_assignments(
+        "photo",
+        [
+            {"record_id": removable.pk, "data_uri": "data:image/jpeg;base64,Zm9v"},
+            {"record_id": outsider.pk, "data_uri": "data:image/jpeg;base64,YmFy"},
+        ],
+    )
+
+    removable.refresh_from_db()
+    outsider.refresh_from_db()
+    assert updated == 0
+    assert removable.flex_fields.get("photo") == ""
+    assert outsider.flex_fields.get("photo") == ""
 
 
 @pytest.mark.parametrize(
@@ -1169,16 +1204,13 @@ def test_batch_actions_visible_with_any_permission(batch_admin, batch: CountryBa
     assert button.visible is True
 
 
-def test_picture_import_service_reads_limits_from_constance(mocker) -> None:
+def test_picture_import_service_reads_file_count_limit_from_constance(mocker) -> None:
     from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
 
     mocker.patch.object(
         picture_import_module,
         "constance_config",
-        SimpleNamespace(
-            PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES=123,
-            PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1,
-        ),
+        SimpleNamespace(PICTURE_IMPORT_MAX_ZIP_FILE_COUNT=1),
     )
 
     payload = io.BytesIO()

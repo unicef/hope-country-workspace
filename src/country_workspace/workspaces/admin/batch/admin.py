@@ -103,6 +103,7 @@ class BatchReprocessForm(forms.Form):
 
 
 BATCH_PICTURE_IMPORT_SESSION_KEY = "batch_picture_import"
+PICTURE_IMPORT_SESSION_TTL_SECONDS = 3600
 
 
 class BatchPictureImportForm(forms.Form):
@@ -138,10 +139,11 @@ class BatchPictureImportForm(forms.Form):
         zip_file: UploadedFile = self.cleaned_data["zip_file"]
         if not zipfile.is_zipfile(zip_file):
             raise forms.ValidationError(_("Please upload a valid zip archive."))
-        max_zip_upload_bytes = int(constance_config.PICTURE_IMPORT_MAX_ZIP_UPLOAD_BYTES)
+        max_zip_upload_mb = int(constance_config.PICTURE_IMPORT_MAX_ZIP_UPLOAD_MB)
+        max_zip_upload_bytes = max_zip_upload_mb * 1024 * 1024
         if zip_file.size and zip_file.size > max_zip_upload_bytes:
             raise forms.ValidationError(
-                _("ZIP archive is too large (max %(max_mb)d MB).") % {"max_mb": max_zip_upload_bytes // (1024 * 1024)}
+                _("ZIP archive is too large (max %(max_mb)d MB).") % {"max_mb": max_zip_upload_mb}
             )
         zip_file.seek(0)
         return zip_file
@@ -181,7 +183,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         payloads = request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY, {})
         if not isinstance(payloads, dict):
             return {}
-        max_age_seconds = int(constance_config.PICTURE_IMPORT_SESSION_TTL_SECONDS)
         now = int(time())
         cleaned_payloads: dict[str, dict[str, Any]] = {}
         changed = False
@@ -190,7 +191,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 changed = True
                 continue
             created_at = payload.get("created_at")
-            if isinstance(created_at, int) and now - created_at > max_age_seconds:
+            if isinstance(created_at, int) and now - created_at > PICTURE_IMPORT_SESSION_TTL_SECONDS:
                 CountryBatchAdmin._delete_uploaded_zip(payload.get("zip_file_name"))
                 changed = True
                 continue
@@ -207,7 +208,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     @staticmethod
     def _cleanup_stale_stored_zips() -> None:
-        max_age_seconds = int(constance_config.PICTURE_IMPORT_SESSION_TTL_SECONDS)
         now = int(time())
         try:
             _, files = default_storage.listdir("batch-picture-import")
@@ -221,7 +221,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             except (OSError, NotImplementedError):
                 logger.exception("Could not get modified time for %s", file_name)
                 continue
-            if now - modified_at > max_age_seconds:
+            if now - modified_at > PICTURE_IMPORT_SESSION_TTL_SECONDS:
                 default_storage.delete(file_name)
 
     @staticmethod

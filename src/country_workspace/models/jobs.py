@@ -39,8 +39,14 @@ class AsyncJob(CeleryTaskModel, models.Model):
         return f"{self.description or 'Background Job'} #{self.pk}"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self.group_key and self.batch_id:
-            self.group_key = f"batch:{self.batch_id}"
+        if not self.group_key:
+            batch_id = self.batch_id
+            if not batch_id and isinstance(self.config, dict):
+                maybe_batch_id = self.config.get("batch_id")
+                if isinstance(maybe_batch_id, int):
+                    batch_id = maybe_batch_id
+            if batch_id:
+                self.group_key = f"batch:{batch_id}"
 
         if not self.pk and self.description and self.program:
             existing_count = AsyncJob.objects.filter(program=self.program, action=self.action).count()

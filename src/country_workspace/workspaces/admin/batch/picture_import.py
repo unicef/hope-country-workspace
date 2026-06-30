@@ -2,11 +2,14 @@ import base64
 import mimetypes
 import zipfile
 from collections import defaultdict
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from constance import config as constance_config
+from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
+from PIL import Image, UnidentifiedImageError
 
 from ...models import CountryBatch, CountryIndividual
 from ....utils.flex_fields import Base64ImageField
@@ -27,7 +30,17 @@ class BatchPictureImportService:
         return str(value).strip().lower()
 
     @staticmethod
-    def _guess_image_mimetype(filename: str) -> str:
+    def _guess_image_mimetype(filename: str, content: bytes) -> str:
+        try:
+            with Image.open(BytesIO(content)) as image:
+                image.verify()
+                image_format = image.format
+        except (UnidentifiedImageError, OSError):
+            return "application/octet-stream"
+        if image_format:
+            pil_mime = Image.MIME.get(image_format)
+            if pil_mime and pil_mime.startswith("image/"):
+                return pil_mime
         guessed, _ = mimetypes.guess_type(filename)
         if guessed and guessed.startswith("image/"):
             return guessed
@@ -45,7 +58,9 @@ class BatchPictureImportService:
                 raise PictureImportLimitError(f"ZIP archive contains too many files (max {max_zip_file_count}).")
 
     @classmethod
-    def extract_zip_images(cls, zip_file: UploadedFile) -> tuple[list[dict[str, str]], set[str]]:
+    def extract_zip_images(
+        cls, zip_file: UploadedFile, *, include_data_uri: bool = True
+    ) -> tuple[list[dict[str, str]], set[str]]:
         entries: list[dict[str, str]] = []
         duplicates: set[str] = set()
         seen_keys: set[str] = set()
@@ -60,7 +75,8 @@ class BatchPictureImportService:
                 if not filename:
                     continue
 
-                mimetype = cls._guess_image_mimetype(filename)
+                content = archive.read(info)
+                mimetype = cls._guess_image_mimetype(filename, content)
                 if not mimetype.startswith("image/"):
                     continue
 
@@ -73,9 +89,10 @@ class BatchPictureImportService:
                     continue
                 seen_keys.add(key)
 
-                content = archive.read(info)
-                data_uri = f"data:{mimetype};base64,{base64.b64encode(content).decode()}"
-                entries.append({"filename": filename, "key": key, "data_uri": data_uri})
+                item: dict[str, str] = {"filename": filename, "key": key}
+                if include_data_uri:
+                    item["data_uri"] = f"data:{mimetype};base64,{base64.b64encode(content).decode()}"
+                entries.append(item)
 
         zip_file.seek(0)
         return entries, duplicates
@@ -107,7 +124,7 @@ class BatchPictureImportService:
             if key:
                 by_key[key].append(individual.id)
 
-        zip_entries, duplicate_zip_keys = self.extract_zip_images(zip_file)
+        zip_entries, duplicate_zip_keys = self.extract_zip_images(zip_file, include_data_uri=include_data_uri)
         assignments: list[dict[str, Any]] = []
         unmatched_filenames: list[str] = []
         ambiguous_record_keys: set[str] = set()
@@ -147,7 +164,7 @@ class BatchPictureImportService:
     ) -> list[dict[str, Any]]:
         if not assignments:
             return []
-        zip_entries, _ = cls.extract_zip_images(zip_file)
+        zip_entries, _ = cls.extract_zip_images(zip_file, include_data_uri=True)
         by_filename = {item["filename"]: item["data_uri"] for item in zip_entries}
         enriched: list[dict[str, Any]] = []
         for assignment in assignments:
@@ -160,24 +177,28 @@ class BatchPictureImportService:
             enriched.append({**assignment, "data_uri": data_uri})
         return enriched
 
-    @staticmethod
-    def apply_assignments(target_field: str, assignments: list[dict[str, Any]]) -> int:
+    def apply_assignments(self, target_field: str, assignments: list[dict[str, Any]]) -> int:
         if not assignments:
             return 0
         record_ids = [item["record_id"] for item in assignments]
-        individuals = CountryIndividual.objects.filter(pk__in=record_ids).in_bulk()
+        individuals = CountryIndividual.objects.filter(
+            pk__in=record_ids,
+            batch=self.batch,
+            removed=False,
+        ).in_bulk()
 
         updated = 0
-        for item in assignments:
-            individual = individuals.get(item["record_id"])
-            if not individual:
-                continue
-            current = dict(individual.flex_fields or {})
-            current[target_field] = item["data_uri"]
-            if current != individual.flex_fields:
-                individual.flex_fields = current
-                individual.last_checked = None
-                individual.errors = {}
-                individual.save(update_fields=["flex_fields", "last_checked", "errors"])
-                updated += 1
+        with transaction.atomic():
+            for item in assignments:
+                individual = individuals.get(item["record_id"])
+                if not individual:
+                    continue
+                current = dict(individual.flex_fields or {})
+                current[target_field] = item["data_uri"]
+                if current != individual.flex_fields:
+                    individual.flex_fields = current
+                    individual.last_checked = None
+                    individual.errors = {}
+                    individual.save(update_fields=["flex_fields", "last_checked", "errors"])
+                    updated += 1
         return updated

@@ -44,6 +44,13 @@ def test_job_save_keeps_existing_group_key_for_batch() -> None:
     assert job.group_key == "custom-key"
 
 
+@pytest.mark.django_db
+def test_job_save_sets_group_key_from_batch_id_in_config(program) -> None:
+    job = AsyncJobFactory(program=program, batch=None, group_key=None, config={"batch_id": 77})
+
+    assert job.group_key == "batch:77"
+
+
 def test_job_info_no_result(program):
     job = AsyncJobFactory(program=program)
     assert job.info == "-"
