@@ -44,7 +44,7 @@ def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
         for filename, content in files.items():
             suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
             if suffix in {"jpg", "jpeg", "png"}:
-                content = _make_image_bytes("PNG" if suffix == "png" else "JPEG")
+                content = _make_image_bytes("PNG" if suffix == "png" else "JPEG")  # noqa: PLW2901
             archive.writestr(filename, content)
     return SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
@@ -969,9 +969,7 @@ def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -
 def test_picture_import_service_helpers() -> None:
     assert BatchPictureImportService._normalize_match_key(None) == ""
     assert BatchPictureImportService._normalize_match_key("  AbC ") == "abc"
-    assert (
-        BatchPictureImportService._guess_image_mimetype("unknown.ext", b"not-an-image") == "application/octet-stream"
-    )
+    assert BatchPictureImportService._guess_image_mimetype("unknown.ext", b"not-an-image") == "application/octet-stream"
 
 
 def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
