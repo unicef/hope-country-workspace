@@ -13,6 +13,7 @@ from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
 from django.test import RequestFactory
+from PIL import Image
 
 from country_workspace.models import AsyncJob
 from country_workspace.workspaces.admin.batch import BatchPictureImportForm, BatchReprocessForm
@@ -41,8 +42,18 @@ def _make_zip_upload(files: dict[str, bytes]) -> SimpleUploadedFile:
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
         for filename, content in files.items():
+            suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if suffix in {"jpg", "jpeg", "png"}:
+                content = _make_image_bytes("PNG" if suffix == "png" else "JPEG")
             archive.writestr(filename, content)
     return SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
+
+
+def _make_image_bytes(image_format: str = "JPEG") -> bytes:
+    image = Image.new("RGB", (2, 2), color=(255, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format=image_format)
+    return buffer.getvalue()
 
 
 def _mock_picture_import_service(mocker, batch_admin_module, service) -> None:
@@ -904,8 +915,8 @@ def test_import_pictures_get_default_renders_form(
 def test_extract_zip_images_skips_duplicate_picture_keys() -> None:
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
-        archive.writestr("ABC.jpg", b"jpg-data")
-        archive.writestr("abc.png", b"png-data")
+        archive.writestr("ABC.jpg", _make_image_bytes("JPEG"))
+        archive.writestr("abc.png", _make_image_bytes("PNG"))
         archive.writestr("notes.txt", b"ignored")
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
@@ -924,8 +935,8 @@ def test_build_picture_import_preview_matches_by_raw_data_field(batch: CountryBa
 
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
-        archive.writestr("A-001.jpg", b"john-face")
-        archive.writestr("MISSING.jpg", b"missing")
+        archive.writestr("A-001.jpg", _make_image_bytes("JPEG"))
+        archive.writestr("MISSING.jpg", _make_image_bytes("JPEG"))
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
     report = BatchPictureImportService(batch).build_preview("beneficiary_id", upload)
@@ -958,7 +969,9 @@ def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -
 def test_picture_import_service_helpers() -> None:
     assert BatchPictureImportService._normalize_match_key(None) == ""
     assert BatchPictureImportService._normalize_match_key("  AbC ") == "abc"
-    assert BatchPictureImportService._guess_image_mimetype("unknown.ext") == "application/octet-stream"
+    assert (
+        BatchPictureImportService._guess_image_mimetype("unknown.ext", b"not-an-image") == "application/octet-stream"
+    )
 
 
 def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
@@ -966,8 +979,8 @@ def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("images/", b"")
         archive.writestr("notes.txt", b"ignored")
-        archive.writestr(" .png", b"blank-stem")
-        archive.writestr("valid.jpeg", b"ok")
+        archive.writestr(" .png", _make_image_bytes("PNG"))
+        archive.writestr("valid.jpeg", _make_image_bytes("JPEG"))
     upload = SimpleUploadedFile("pictures.zip", payload.getvalue(), content_type="application/zip")
 
     entries, duplicate_keys = BatchPictureImportService.extract_zip_images(upload)
