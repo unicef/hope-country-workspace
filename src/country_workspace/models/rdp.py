@@ -20,6 +20,13 @@ class Rdp(BaseModel):
         IN_PROGRESS = "IN_PROGRESS", _("In progress")
         FINISHED = "FINISHED", _("Finished")
 
+    class OperationAction(models.TextChoices):
+        CREATE_RDP = "CREATE_RDP", _("Create RDP")
+        START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
+        REJECT_DEDUPLICATION_SET = "REJECT_DEDUPLICATION_SET", _("Reject deduplication set")
+        PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
+        APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
     name = models.CharField(max_length=255, blank=True, null=True)
@@ -36,7 +43,11 @@ class Rdp(BaseModel):
             "Locks program-level deduplication settings while this pending RDP has requested a new deduplication run."
         ),
     )
-    deduplication_snapshots = models.JSONField(default=dict, blank=True)
+    operation_log = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_("Append-only chronological log of RDP operations."),
+    )
 
     class Meta:
         constraints = [

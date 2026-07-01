@@ -1,16 +1,20 @@
 from typing import Any
 
+import json
 import sentry_sdk
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
-from django.contrib.admin import register
+from django.contrib.admin import display, register
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
-from django.utils.html import format_html_join
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
+from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html_join, format_html
 from strategy_field.utils import fqn
 
 
@@ -67,8 +71,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             "status",
         ]
         if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(("dedup_engine_state", "deduplication_set_id", "deduplication_snapshots"))
-        fields.append("related_jobs")
+            fields.extend(("dedup_engine_state", "deduplication_set_id"))
+        fields.extend(("related_jobs", "operation_log_display"))
         return fields
 
     def get_readonly_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
@@ -108,6 +112,33 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 )
                 for job in jobs
             ),
+        )
+
+    @display(description="Operation log")
+    def operation_log_display(self, obj: CountryRdp) -> str:
+        """Return formatted RDP operation log."""
+        if not obj.operation_log:
+            return "—"
+
+        rows = []
+        for entry in obj.operation_log:
+            timestamp = entry.get("timestamp", "—")
+            if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
+                timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
+
+            result = entry.get("result")
+            rows.append(
+                (
+                    entry.get("action", "—"),
+                    timestamp,
+                    format_html("<pre>{}</pre>", json.dumps(result, indent=2, ensure_ascii=False)) if result else "",
+                )
+            )
+
+        return format_html_join(
+            "",
+            "<div><strong>{}</strong> · {}{}</div>",
+            rows,
         )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:

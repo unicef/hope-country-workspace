@@ -1,13 +1,13 @@
 from collections.abc import Iterable
-from typing import Any
 
 from django.db.models import Exists, OuterRef, Prefetch, QuerySet
+from django.utils import timezone
 
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Program, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import PushWorkflowConfig, Serializer
+from .config import OperationLogEntry, OperationLogResult, PushWorkflowConfig, Serializer
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -55,7 +55,7 @@ def workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflow
     master_detail, pks = rdp_selection(rdp=rdp)
     program = rdp.program
     config: PushWorkflowConfig = {
-        "batch_name": rdp.name,
+        "batch_name": rdp.name or str(rdp),
         "co_slug": program.country_office.slug,
         "imported_by_email": imported_by_email,
         "master_detail": master_detail,
@@ -166,10 +166,22 @@ def set_rdp_push_status(
     rdp.save(update_fields=update_fields)
 
 
-def set_rdp_deduplication_snapshot(*, rdp: Rdp, key: str, snapshot: dict[str, Any]) -> None:
-    """Persist a deduplication snapshot for an already-locked RDP."""
-    rdp.deduplication_snapshots = {
-        **(rdp.deduplication_snapshots or {}),
-        key: snapshot,
+def append_rdp_operation_log(
+    *,
+    rdp: Rdp,
+    action: Rdp.OperationAction,
+    job_id: int | None = None,
+    result: OperationLogResult | None = None,
+) -> None:
+    """Append an operation log entry to the RDP."""
+    entry: OperationLogEntry = {
+        "timestamp": timezone.now().isoformat(),
+        "action": action.value,
     }
-    rdp.save(update_fields=["deduplication_snapshots"])
+    if job_id is not None:
+        entry["job_id"] = job_id
+    if result is not None:
+        entry["result"] = result
+
+    rdp.operation_log = [*(rdp.operation_log or []), entry]
+    rdp.save(update_fields=["operation_log"])

@@ -63,3 +63,16 @@ class ErrorConfig(NamedTuple):
 
 
 ERROR_CONFIG: Final[ErrorConfig] = ErrorConfig()
+
+
+type OperationLogJSONValue = (
+    str | int | float | bool | None | list[OperationLogJSONValue] | dict[str, OperationLogJSONValue]
+)
+type OperationLogResult = dict[str, OperationLogJSONValue]
+
+
+class OperationLogEntry(TypedDict):
+    timestamp: ReadOnly[str]
+    action: ReadOnly[str]
+    job_id: NotRequired[int]
+    result: NotRequired[OperationLogResult]
