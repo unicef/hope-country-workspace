@@ -9,6 +9,7 @@ from django.db import migrations, models
 from django.db.migrations.state import StateApps  # noqa: TC002
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
 
+
 def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, str]:
     if not blob:
         return {}
