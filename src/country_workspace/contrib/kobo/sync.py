@@ -238,13 +238,17 @@ def create_household(
         batch.program,
         household_mapping_id,
     )(raw_household_fields)
+    file_fields = get_checker_file_fields(batch.program.household_checker)
+    text_fields, file_values = split_flex_payload(household_fields, file_fields)
     household_fields["household_id"] = id_generator()
+    text_fields["household_id"] = household_fields["household_id"]
     return cast(
         "Household",
         batch.program.households.create(
             batch=batch,
             originating_id=originating_id,
-            flex_fields=household_fields,
+            flex_fields=text_fields,
+            flex_files=encode_flex_files_blob(file_values),
             raw_data=raw_household_fields,
         ),
     )

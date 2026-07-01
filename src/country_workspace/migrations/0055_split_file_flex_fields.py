@@ -9,9 +9,6 @@ from django.db import migrations, models
 from django.db.migrations.state import StateApps  # noqa: TC002
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
 
-FLEX_FILES_PREFIX = 8192
-
-
 def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, str]:
     if not blob:
         return {}
@@ -33,7 +30,7 @@ def _checksum(flex_fields: dict[str, Any], flex_files: bytes | None, removed: bo
     hasher = hashlib.md5()  # noqa: S324
     hasher.update(json.dumps(flex_fields, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     if flex_files:
-        hasher.update(memoryview(flex_files)[:FLEX_FILES_PREFIX])
+        hasher.update(memoryview(flex_files))
     hasher.update(bytes([1 if removed else 0]))
     return hasher.hexdigest()
 

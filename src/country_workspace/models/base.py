@@ -117,7 +117,7 @@ class Validable(Cachable, models.Model):
     def _checker_file_fields(self) -> set[str]:
         try:
             checker = self.checker
-        except Exception:  # noqa: BLE001
+        except (AttributeError, NotImplementedError):
             return set()
         return get_checker_file_fields(checker)
 
@@ -142,7 +142,7 @@ class Validable(Cachable, models.Model):
 
         text_fields, new_file_values = split_flex_payload(self.flex_fields or {}, file_fields)
         existing_file_values = self.get_flex_files_map()
-        file_values = {key: value for key, value in existing_file_values.items() if key not in file_fields}
+        file_values = dict(existing_file_values)
         file_values.update(new_file_values)
 
         next_blob = encode_flex_files_blob(file_values)

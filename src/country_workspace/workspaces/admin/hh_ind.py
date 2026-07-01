@@ -25,7 +25,7 @@ from ...utils.imports import validate_alien_fields
 from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from ...utils.flex_fields import Base64ImageField, get_checker_fields, merge_flex_payload
+from ...utils.flex_fields import Base64ImageField, get_checker_fields
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -294,10 +294,8 @@ class BeneficiaryBaseAdmin(
         elif not self.has_view_or_change_permission(request, obj):
             raise PermissionDenied
 
-        if obj.flex_fields or obj.flex_files:
-            file_fields = {name for name, field in form_class().fields.items() if isinstance(field, Base64ImageField)}
-            combined = merge_flex_payload(obj.flex_fields, obj.flex_files, file_fields)
-            initials = {k.replace("flex_fields__", ""): v for k, v in combined.items()}
+        if obj.flex_fields:
+            initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
         else:
             initials = {}
         if request.method == "POST":

@@ -14,9 +14,6 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-FLEX_FILES_PREFIX = 8192  # bytes
-
-
 def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, str]:
     if not value:
         return {}
@@ -37,10 +34,7 @@ def encode_flex_files_blob(value: dict[str, str]) -> bytes | None:
 def get_checker_file_fields(checker: DataChecker | None) -> set[str]:
     if checker is None:
         return set()
-    try:
-        form = checker.get_form()()
-    except Exception:  # noqa: BLE001
-        return set()
+    form = checker.get_form()()
     return {name for name, field in form.fields.items() if isinstance(field, forms.FileField)}
 
 
@@ -82,7 +76,7 @@ def get_obj_checksum(obj: "Validable") -> str:
     h = hashlib.md5()  # noqa: S324
     h.update(json.dumps(obj.flex_fields, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     if obj.flex_files:
-        h.update(memoryview(obj.flex_files)[:FLEX_FILES_PREFIX])
+        h.update(memoryview(obj.flex_files))
     h.update(bytes([1 if getattr(obj, "removed", False) else 0]))
     return h.hexdigest()
 
