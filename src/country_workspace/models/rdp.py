@@ -15,15 +15,10 @@ class Rdp(BaseModel):
         FAILURE = "FAILURE", _("Failure")
         CANCELLED = "CANCELLED", _("Cancelled")
 
-    class DedupTrackingState(models.TextChoices):
-        NOT_RUN = "NOT_RUN", _("Not run yet")
-        IN_PROGRESS = "IN_PROGRESS", _("In progress")
-        FINISHED = "FINISHED", _("Finished")
-
     class OperationAction(models.TextChoices):
         CREATE_RDP = "CREATE_RDP", _("Create RDP")
         START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
-        REJECT_DEDUPLICATION_SET = "REJECT_DEDUPLICATION_SET", _("Reject deduplication set")
+        CANCEL_RDP = "CANCEL_RDP", _("Cancel RDP")
         PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
         APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
 
@@ -40,8 +35,12 @@ class Rdp(BaseModel):
     is_dedup_settings_locked = models.BooleanField(
         default=False,
         help_text=_(
-            "Locks program-level deduplication settings while this pending RDP has requested a new deduplication run."
+            "Locks program-level deduplication settings while this open RDP has requested a new deduplication run."
         ),
+    )
+    is_push_locked = models.BooleanField(
+        default=False,
+        help_text=_("Locks this RDP while its push to HOPE is queued or running."),
     )
     operation_log = models.JSONField(
         default=list,
@@ -57,17 +56,17 @@ class Rdp(BaseModel):
             ),
             models.UniqueConstraint(
                 fields=["program"],
-                condition=Q(status="PENDING"),
-                name="uniq_pending_rdp_per_program",
-                violation_error_message=_("There is already an active (PENDING) RDP for this program."),
+                condition=Q(status__in=["PENDING", "FAILURE"]),
+                name="uniq_open_rdp_per_program",
+                violation_error_message=_("There is already an active RDP for this program."),
             ),
         ]
         permissions = [
-            ("reset_rdp", _("Can reset RDP")),
+            ("cancel_rdp", _("Can cancel RDP")),
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("deduplicate_rdp", _("Can run RDP deduplication")),
-            ("reject_deduplication_set", _("Can reject deduplication set")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
+            ("reset_rdp", _("Can reset RDP")),
         ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")

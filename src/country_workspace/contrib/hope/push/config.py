@@ -25,10 +25,6 @@ class CreateRdpConfig(SelectionConfig):
     pushed_by_id: ReadOnly[int]
 
 
-class PushExistingRdpConfig(TypedDict):
-    rdp_id: ReadOnly[int]
-
-
 class PushWorkflowConfig(SelectionConfig):
     batch_name: ReadOnly[str]
     co_slug: ReadOnly[str]

@@ -3,14 +3,23 @@ from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
-from ..compat.admin_extra_buttons import confirm_action
-from ..models import Rdp
+from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.models import Rdp
 from .base import BaseModelAdmin
+
+
+def is_latest_successful_rdp(obj: Rdp) -> bool:
+    """Return True if this RDP is the latest successful RDP for its program."""
+    return not Rdp.objects.filter(
+        Q(push_date__gt=obj.push_date) | Q(push_date=obj.push_date, pk__gt=obj.pk),
+        program_id=obj.program_id,
+        status=Rdp.PushStatus.SUCCESS,
+    ).exists()
 
 
 @admin.register(Rdp)
@@ -72,13 +81,20 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
+        enabled=lambda btn: (
+            btn.context["original"].status == Rdp.PushStatus.SUCCESS
+            and is_latest_successful_rdp(btn.context["original"])
+        ),
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
         obj: Rdp = self.get_object(request, str(pk))
 
         if obj.status != Rdp.PushStatus.SUCCESS:
             self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
+
+        if not is_latest_successful_rdp(obj):
+            self.message_user(request, "Reset is only allowed for the latest successful RDP.", level="error")
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:

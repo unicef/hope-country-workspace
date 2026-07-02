@@ -29,13 +29,6 @@ def rdp_for_push(*, pk: int) -> Rdp:
     ).get(pk=pk)
 
 
-def preflight_exclude_rdp_ids(*, rdp_id: int | None = None, rdp: Rdp | None = None) -> tuple[int, ...]:
-    """Return RDP ids excluded from preflight."""
-    if rdp is not None:
-        return (rdp.pk,)
-    return (rdp_id,) if rdp_id is not None else ()
-
-
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     """Return (master_detail, pks) based on this RDP links."""
     hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))
@@ -114,7 +107,7 @@ def preflight_errors(
     if not pks:
         return ["RDP: no beneficiaries selected"]
 
-    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.SUCCESS])
+    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE, Rdp.PushStatus.SUCCESS])
     if excluded := tuple(exclude_rdp_ids):
         rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
@@ -125,7 +118,7 @@ def preflight_errors(
             if not _is_valid_row(last_checked=last_checked, errors=obj_errors):
                 errors.append(f"{base} invalid")
             if has_rdp:
-                errors.append(f"{base} already in another RDP(s) (pending/success)")
+                errors.append(f"{base} already in another RDP(s) (open/success)")
         return errors
 
     def individual_rows() -> QuerySet:
@@ -154,7 +147,12 @@ def preflight_errors(
 
 
 def set_rdp_push_status(
-    *, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str, is_dedup_settings_locked: bool | None = None
+    *,
+    rdp: Rdp,
+    status: Rdp.PushStatus,
+    hope_rdi_id: str,
+    is_dedup_settings_locked: bool | None = None,
+    is_push_locked: bool | None = None,
 ) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
@@ -163,7 +161,15 @@ def set_rdp_push_status(
     if is_dedup_settings_locked is not None:
         rdp.is_dedup_settings_locked = is_dedup_settings_locked
         update_fields.append("is_dedup_settings_locked")
+    if is_push_locked is not None:
+        rdp.is_push_locked = is_push_locked
+        update_fields.append("is_push_locked")
     rdp.save(update_fields=update_fields)
+
+
+def release_rdp_push_lock(*, rdp_id: int) -> None:
+    """Release the push lock for an RDP."""
+    Rdp.objects.filter(pk=rdp_id, is_push_locked=True).update(is_push_locked=False)
 
 
 def append_rdp_operation_log(
