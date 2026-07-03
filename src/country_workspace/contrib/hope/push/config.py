@@ -35,19 +35,21 @@ class PushWorkflowConfig(SelectionConfig):
 
 
 class Route(StrEnum):
-    CREATE = auto()
+    CREATE_RDI = auto()
+    COMPLETE_RDI = auto()
+    DELETE_RDI = auto()
     INDIVIDUALS = auto()
     HOUSEHOLDS = auto()
     PEOPLE = auto()
-    COMPLETE = auto()
 
 
 ROUTES: Final[dict[Route, str]] = {
-    Route.CREATE: "{co_slug}/rdi/create/",
+    Route.CREATE_RDI: "{co_slug}/rdi/create/",
+    Route.COMPLETE_RDI: "{co_slug}/rdi/{rdi_id}/completed/",
+    Route.DELETE_RDI: "{co_slug}/rdi/{rdi_id}/",
     Route.INDIVIDUALS: "{co_slug}/rdi/{rdi_id}/push/lax/individuals/",
     Route.HOUSEHOLDS: "{co_slug}/rdi/{rdi_id}/push/lax/households/",
     Route.PEOPLE: "{co_slug}/rdi/{rdi_id}/push/people/",
-    Route.COMPLETE: "{co_slug}/rdi/{rdi_id}/completed/",
 }
 
 

@@ -29,6 +29,12 @@ def rdp_for_push(*, pk: int) -> Rdp:
     ).get(pk=pk)
 
 
+def existing_hope_rdi_id(*, rdp_id: int) -> str | None:
+    """Return a real HOPE RDI id previously stored for this RDP."""
+    rdi_id = Rdp.objects.values_list("hope_rdi_id", flat=True).get(pk=rdp_id)
+    return rdi_id if rdi_id and rdi_id != "N/A" else None
+
+
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     """Return (master_detail, pks) based on this RDP links."""
     hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))

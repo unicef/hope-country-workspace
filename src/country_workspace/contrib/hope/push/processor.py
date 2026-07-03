@@ -16,6 +16,7 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from .config import Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
+    existing_hope_rdi_id,
     qs_individuals_for_rdp,
     preflight_errors,
     serializer_for_program,
@@ -157,10 +158,15 @@ class PushProcessor(ProcessorBase):
         if self.country_workspace_id:
             payload["country_workspace_id"] = self.country_workspace_id
 
+        if (rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id)) and not self.run_remote(
+            "RDI",
+            lambda: self.api.delete_rdi(rdi_id),
+        ):
+            return
+
         resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
         if resp is None:
             return
-
         if "id" not in resp or not resp.get("id"):
             self.fail("RDI", "can't create: no id in response", response=resp)
             return

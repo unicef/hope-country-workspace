@@ -1,12 +1,15 @@
 import hashlib
 import re
 import time
-from typing import TYPE_CHECKING, Any, Generator, Final
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Final, Generator
 
 import requests
 from constance import config
-from requests.exceptions import RequestException, HTTPError
 from requests.adapters import HTTPAdapter
+from requests.exceptions import HTTPError, RequestException
+
 from country_workspace.exceptions import RemoteError
 
 from .signals import hope_request_end, hope_request_start
@@ -88,30 +91,36 @@ class HopeClient:
 
         hope_request_end.send(self.__class__, url=url, params=params, pages=pages, signature=signature)
 
-    def post(self, path: str, data: "JsonType | None") -> "FlatJsonType":
+    def _send(self, method: str, path: str, data: "JsonType | None" = None) -> tuple[str, requests.Response]:
         url = self.get_url(path)
-        signature = hashlib.sha256(f"{url}{data}{time.perf_counter_ns()}".encode()).hexdigest()
+        signature = hashlib.sha256(f"{method}{url}{data}{time.perf_counter_ns()}".encode()).hexdigest()
         hope_request_start.send(self.__class__, url=url, data=data, signature=signature)
-
         try:
-            response = self.session.post(url, json=data, timeout=TIMEOUTS)
-
-            # people endpoint
-            if response.status_code == 400 and path.endswith("/push/people/"):
-                try:
-                    return {"errors": True, "people": response.json()}
-                except ValueError as e:
-                    raise RemoteError(self._err("POST", url, err="invalid JSON response", response=response)) from e
-
-            response.raise_for_status()
-            result = response.json()
-
-        except HTTPError as e:
-            raise RemoteError(self._err("POST", url, err=str(e), response=response)) from e
-        except ValueError as e:
-            raise RemoteError(self._err("POST", url, err="invalid JSON response", response=response)) from e
+            return url, self.session.request(method, url, json=data, timeout=TIMEOUTS)
         except RequestException as e:
-            raise RemoteError(self._err("POST", url, err=str(e), response=getattr(e, "response", None))) from e
+            raise RemoteError(self._err(method, url, err=str(e), response=getattr(e, "response", None))) from e
+        finally:
+            hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
 
-        hope_request_end.send(self.__class__, url=url, data=data, signature=signature)
-        return result
+    @contextmanager
+    def _response_errors(self, method: str, url: str, response: requests.Response) -> Iterator[None]:
+        try:
+            yield
+        except HTTPError as e:
+            raise RemoteError(self._err(method, url, err=str(e), response=response)) from e
+        except ValueError as e:
+            raise RemoteError(self._err(method, url, err="invalid JSON response", response=response)) from e
+
+    def post(self, path: str, data: "JsonType | None") -> "FlatJsonType":
+        url, response = self._send("POST", path, data=data)
+        with self._response_errors("POST", url, response):
+            if response.status_code == 400 and path.endswith("/push/people/"):
+                return {"errors": True, "people": response.json()}
+            response.raise_for_status()
+            return response.json()
+
+    def delete(self, path: str) -> "FlatJsonType":
+        url, response = self._send("DELETE", path)
+        with self._response_errors("DELETE", url, response):
+            response.raise_for_status()
+            return response.json() if response.content else {}
