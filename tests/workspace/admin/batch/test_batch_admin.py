@@ -421,6 +421,15 @@ def test_batch_admin_get_picture_import_payload_is_user_scoped(
     assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
 
 
+def test_batch_admin_get_picture_import_payload_rejects_wrong_batch(batch_admin, batch: CountryBatch, rf, user) -> None:
+    request = rf.get("/")
+    _add_middleware_to_request(request, user)
+    batch.picture_import_state = {"tok": {"batch_id": batch.pk + 1, "created_by_id": user.pk}}
+    batch.save(update_fields=["picture_import_state"])
+
+    assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
+
+
 def test_batch_admin_delete_uploaded_zip_removes_existing_file(batch_admin) -> None:
     storage_name = default_storage.save("batch-picture-import/test-delete.zip", ContentFile(b"zip"))
     assert default_storage.exists(storage_name)
@@ -478,6 +487,14 @@ def test_batch_admin_picture_import_payloads_prune_expired_entries(
     delete_uploaded_zip.assert_any_call("old-storage.zip")
 
 
+def test_batch_admin_picture_import_payloads_handles_non_dict_values(batch_admin, batch: CountryBatch, mocker) -> None:
+    mocker.patch.object(batch, "get_picture_import_state", return_value={"bad": "value", "ok": {"batch_id": 1}})
+
+    payloads = batch_admin._picture_import_payloads(batch)
+
+    assert payloads == {"ok": {"batch_id": 1}}
+
+
 def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admin, mocker) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
 
@@ -510,6 +527,26 @@ def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin
     batch_admin._cleanup_stale_stored_zips()
 
     delete.assert_called_once_with("batch-picture-import/old.zip")
+
+
+def test_batch_admin_acquire_batch_action_lock_returns_lock_when_available(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    lock = mocker.MagicMock()
+    lock.acquire.return_value = True
+    mocker.patch.object(batch_admin_module.cache, "lock", return_value=lock)
+
+    assert batch_admin._acquire_batch_action_lock(5) is lock
+
+
+def test_batch_admin_acquire_batch_action_lock_returns_none_when_unavailable(batch_admin, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+
+    lock = mocker.MagicMock()
+    lock.acquire.return_value = False
+    mocker.patch.object(batch_admin_module.cache, "lock", return_value=lock)
+
+    assert batch_admin._acquire_batch_action_lock(5) is None
 
 
 def test_batch_admin_clear_payload_handles_missing_token(
@@ -1020,6 +1057,24 @@ def test_picture_import_service_helpers() -> None:
     assert BatchPictureImportService._guess_image_mimetype("unknown.ext", b"not-an-image") == "application/octet-stream"
 
 
+def test_picture_import_service_guess_image_mimetype_prefers_pillow_result() -> None:
+    assert BatchPictureImportService._guess_image_mimetype("photo.bin", _make_image_bytes("PNG")) == "image/png"
+
+
+def test_picture_import_service_guess_image_mimetype_falls_back_to_extension(mocker) -> None:
+    from country_workspace.workspaces.admin.batch import picture_import as picture_import_module
+
+    image_stub = mocker.MagicMock()
+    image_stub.verify.return_value = None
+    image_stub.format = None
+    cm = mocker.MagicMock()
+    cm.__enter__.return_value = image_stub
+    cm.__exit__.return_value = False
+    mocker.patch.object(picture_import_module.Image, "open", return_value=cm)
+
+    assert BatchPictureImportService._guess_image_mimetype("photo.jpg", b"x") == "image/jpeg"
+
+
 def test_extract_zip_images_ignores_non_images_and_blank_keys() -> None:
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
@@ -1104,6 +1159,16 @@ def test_get_match_field_choices_includes_union_of_keys_across_records(batch: Co
     assert BatchPictureImportService(batch).get_match_field_choices() == [("a_key", "a_key"), ("b_key", "b_key")]
 
 
+def test_get_match_field_choices_ignores_non_dict_raw_data(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data=["a"])
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"a_key": "1"})
+
+    assert BatchPictureImportService(batch).get_match_field_choices() == [("a_key", "a_key")]
+
+
 def test_get_target_field_choices_without_checker(batch: CountryBatch) -> None:
     batch.program.individual_checker = None
     batch.program.save(update_fields=["individual_checker"])
@@ -1145,6 +1210,34 @@ def test_build_preview_marks_ambiguous_and_duplicate_keys(batch: CountryBatch) -
     assert report["duplicate_zip_keys"] == ["unique"]
     assert report["ambiguous_record_keys"] == ["dup"]
     assert report["unmatched_filenames"] == ["MISSING.jpg"]
+
+
+def test_build_preview_skips_records_with_empty_or_missing_match_values(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": None})
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={})
+
+    report = BatchPictureImportService(batch).build_preview("beneficiary_id", _make_zip_upload({"A.jpg": b"x"}))
+
+    assert report["matched_files_count"] == 0
+
+
+def test_build_preview_include_data_uri_adds_data_uri_to_assignments(batch: CountryBatch) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-1"})
+
+    report = BatchPictureImportService(batch).build_preview(
+        "beneficiary_id",
+        _make_zip_upload({"A-1.jpg": b"x"}),
+        include_data_uri=True,
+    )
+
+    assert report["assignments"]
+    assert "data_uri" in report["assignments"][0]
 
 
 def test_apply_picture_assignments_returns_zero_without_assignments(batch: CountryBatch) -> None:
@@ -1296,3 +1389,9 @@ def test_enrich_assignments_with_zip_data_skips_missing_items() -> None:
     assert enriched[0]["record_id"] == 1
     assert enriched[0]["filename"] == "A-1.jpg"
     assert "data_uri" in enriched[0]
+
+
+def test_enrich_assignments_with_zip_data_returns_empty_for_empty_input() -> None:
+    upload = _make_zip_upload({"A-1.jpg": b"content"})
+
+    assert BatchPictureImportService.enrich_assignments_with_zip_data([], upload) == []
