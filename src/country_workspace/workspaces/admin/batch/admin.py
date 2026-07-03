@@ -236,7 +236,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return lock
         return None
 
-    def _get_picture_import_payload(self, request: HttpRequest, batch: CountryBatch, token: str) -> dict[str, Any] | None:
+    def _get_picture_import_payload(
+        self, request: HttpRequest, batch: CountryBatch, token: str
+    ) -> dict[str, Any] | None:
         payloads = self._picture_import_payloads(batch)
         payload = payloads.get(token)
         if not payload:

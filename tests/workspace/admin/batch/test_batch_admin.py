@@ -407,7 +407,9 @@ def test_batch_admin_picture_payload_helpers(batch_admin, batch: CountryBatch, r
     assert batch.picture_import_state == {}
 
 
-def test_batch_admin_get_picture_import_payload_is_user_scoped(batch_admin, batch: CountryBatch, rf: RequestFactory, user) -> None:
+def test_batch_admin_get_picture_import_payload_is_user_scoped(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user
+) -> None:
     from testutils.factories import UserFactory
 
     other_user = UserFactory()
@@ -440,7 +442,9 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(
     request = rf.get("/")
     _add_middleware_to_request(request, user)
     old_storage_name = default_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
-    batch.picture_import_state = {"tok": {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}}
+    batch.picture_import_state = {
+        "tok": {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}
+    }
     batch.save(update_fields=["picture_import_state"])
     batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk, "zip_file_name": "new.zip"})
     batch.refresh_from_db()
@@ -508,7 +512,9 @@ def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin
     delete.assert_called_once_with("batch-picture-import/old.zip")
 
 
-def test_batch_admin_clear_payload_handles_missing_token(batch_admin, batch: CountryBatch, rf: RequestFactory, user) -> None:
+def test_batch_admin_clear_payload_handles_missing_token(
+    batch_admin, batch: CountryBatch, rf: RequestFactory, user
+) -> None:
     request = rf.get("/")
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {}
