@@ -16,11 +16,7 @@ class Rdp(BaseModel):
         CANCELLED = "CANCELLED", _("Cancelled")
 
     class OperationAction(models.TextChoices):
-        CREATE_RDP = "CREATE_RDP", _("Create RDP")
         START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
-        CANCEL_RDP = "CANCEL_RDP", _("Cancel RDP")
-        PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
-        APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
@@ -34,9 +30,7 @@ class Rdp(BaseModel):
     deduplication_set_id = models.UUIDField(blank=True, null=True)
     is_dedup_settings_locked = models.BooleanField(
         default=False,
-        help_text=_(
-            "Locks program-level deduplication settings while this open RDP has requested a new deduplication run."
-        ),
+        help_text=_("Locks program-level deduplication settings while this RDP deduplication is queued or running."),
     )
     is_push_locked = models.BooleanField(
         default=False,

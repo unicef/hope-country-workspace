@@ -7,7 +7,7 @@ from django.db.models import Q
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
     PUSHABLE_DEDUPLICATION_SET_STATES,
-    REJECTABLE_DEDUPLICATION_SET_STATES,
+    RUNNING_DEDUPLICATION_SET_STATES,
     DedupClientStatus,
     DedupResponseStatus,
     get_deduplication_status,
@@ -70,15 +70,15 @@ class ProgramDedupSettingsPolicy:
     def update_dedup_settings_check(self) -> ActionCheck:
         if not self.program.biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self._has_locked_dedup_settings():
+        if self._has_db_locked_dedup_settings() or self._has_running_deduplication_set():
             return ActionCheck(
                 False,
                 "Deduplication settings cannot be updated after a successful RDP "
-                "or while an open RDP has requested a new deduplication run.",
+                "or while RDP deduplication is queued or running.",
             )
         return ActionCheck(True)
 
-    def _has_locked_dedup_settings(self) -> bool:
+    def _has_db_locked_dedup_settings(self) -> bool:
         return (
             Rdp.objects.filter(program=self.program)
             .filter(
@@ -90,6 +90,18 @@ class ProgramDedupSettingsPolicy:
             )
             .exists()
         )
+
+    def _has_running_deduplication_set(self) -> bool:
+        rdp = (
+            Rdp.objects.filter(
+                program=self.program,
+                status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE],
+                deduplication_set_id__isnull=False,
+            )
+            .select_related("program")
+            .first()
+        )
+        return bool(rdp and RdpActionPolicy(rdp).deduplication_set_state in RUNNING_DEDUPLICATION_SET_STATES)
 
 
 class RdpActionPolicy:
@@ -175,16 +187,16 @@ class RdpActionPolicy:
             return ActionCheck(False, f"RDP: can not cancel in status={self.rdp.status}")
         if self.rdp.is_push_locked:
             return ActionCheck(False, "RDP: can not cancel while push to HOPE is queued or running.")
-        if not self.is_biometric_deduplication_enabled:
+        if self.rdp.is_dedup_settings_locked:
+            return ActionCheck(False, "RDP: can not cancel while deduplication is queued or running.")
+        if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set_id:
             return ActionCheck(True)
-        if not self.has_deduplication_set_id:
-            return ActionCheck(True)
-        if self.deduplication_set_state in REJECTABLE_DEDUPLICATION_SET_STATES:
-            return ActionCheck(True)
-        return ActionCheck(
-            False,
-            f"DedupEngine: can not cancel RDP with deduplication set in state={self.deduplication_set_state!r}.",
-        )
+        if (state := self.deduplication_set_state) in RUNNING_DEDUPLICATION_SET_STATES:
+            return ActionCheck(
+                False,
+                f"DedupEngine: can not cancel RDP with deduplication set in state={state!r}.",
+            )
+        return ActionCheck(True)
 
     def start_push_check(self) -> ActionCheck:
         if self.rdp.is_push_locked:

@@ -91,8 +91,7 @@ class Migration(migrations.Migration):
             field=models.BooleanField(
                 default=False,
                 help_text=(
-                    "Locks program-level deduplication settings while this open RDP "
-                    "has requested a new deduplication run."
+                    "Locks program-level deduplication settings while this RDP deduplication is queued or running."
                 ),
             ),
         ),

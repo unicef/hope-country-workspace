@@ -172,6 +172,11 @@ def release_rdp_push_lock(*, rdp_id: int) -> None:
     Rdp.objects.filter(pk=rdp_id, is_push_locked=True).update(is_push_locked=False)
 
 
+def release_rdp_dedup_settings_lock(*, rdp_id: int) -> None:
+    """Release the dedup settings lock for an RDP."""
+    Rdp.objects.filter(pk=rdp_id, is_dedup_settings_locked=True).update(is_dedup_settings_locked=False)
+
+
 def append_rdp_operation_log(
     *,
     rdp: Rdp,

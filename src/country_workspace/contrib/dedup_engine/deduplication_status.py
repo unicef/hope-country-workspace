@@ -26,6 +26,12 @@ PUSHABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (D
 
 REJECTABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.DEDUPLICATED,)
 
+RUNNING_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    DeduplicationSetState.UPLOADING_IN_PROGRESS,
+    DeduplicationSetState.ENCODING_IN_PROGRESS,
+    DeduplicationSetState.DEDUPLICATION_IN_PROGRESS,
+)
+
 
 class DedupResponseStatus(StrEnum):
     OK = auto()
