@@ -102,7 +102,6 @@ class BatchReprocessForm(forms.Form):
                 self.fields.pop("individual_mapping", None)
 
 
-BATCH_PICTURE_IMPORT_SESSION_KEY = "batch_picture_import"
 PICTURE_IMPORT_SESSION_TTL_SECONDS = 3600
 
 
@@ -179,10 +178,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return False
 
     @staticmethod
-    def _session_payloads(request: HttpRequest) -> dict[str, dict[str, Any]]:
-        payloads = request.session.get(BATCH_PICTURE_IMPORT_SESSION_KEY, {})
-        if not isinstance(payloads, dict):
-            return {}
+    def _picture_import_payloads(batch: CountryBatch) -> dict[str, dict[str, Any]]:
+        payloads = batch.get_picture_import_state()
         now = int(time())
         cleaned_payloads: dict[str, dict[str, Any]] = {}
         changed = False
@@ -197,8 +194,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 continue
             cleaned_payloads[token] = payload
         if changed:
-            request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = cleaned_payloads
-            request.session.modified = True
+            batch.picture_import_state = cleaned_payloads
+            batch.save(update_fields=["picture_import_state"])
         return cleaned_payloads
 
     @staticmethod
@@ -239,32 +236,33 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return lock
         return None
 
-    def _get_picture_import_payload(self, request: HttpRequest, token: str, batch_id: int) -> dict[str, Any] | None:
-        payloads = self._session_payloads(request)
+    def _get_picture_import_payload(self, request: HttpRequest, batch: CountryBatch, token: str) -> dict[str, Any] | None:
+        payloads = self._picture_import_payloads(batch)
         payload = payloads.get(token)
         if not payload:
             return None
-        if payload.get("batch_id") != batch_id:
+        if payload.get("batch_id") != batch.pk:
+            return None
+        if payload.get("created_by_id") != request.user.pk:
             return None
         return payload
 
-    def _save_picture_import_payload(self, request: HttpRequest, token: str, payload: dict[str, Any]) -> None:
-        payloads = self._session_payloads(request)
-        old_payload = payloads.get(token)
+    def _save_picture_import_payload(
+        self, request: HttpRequest, batch: CountryBatch, token: str, payload: dict[str, Any]
+    ) -> None:
+        payload_to_store = {
+            **payload,
+            "created_at": int(time()),
+            "created_by_id": request.user.pk,
+        }
+        old_payload = batch.start_picture_import(token=token, payload=payload_to_store, user=request.user)
         if old_payload:
             self._delete_uploaded_zip(old_payload.get("zip_file_name"))
-        payload["created_at"] = int(time())
-        payloads[token] = payload
-        request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
-        request.session.modified = True
 
-    def _clear_picture_import_payload(self, request: HttpRequest, token: str) -> None:
-        payloads = self._session_payloads(request)
-        payload = payloads.pop(token, None)
+    def _clear_picture_import_payload(self, request: HttpRequest, batch: CountryBatch, token: str) -> None:
+        payload = batch.finish_picture_import(token=token, user=request.user)
         if payload:
             self._delete_uploaded_zip(payload.get("zip_file_name"))
-        request.session[BATCH_PICTURE_IMPORT_SESSION_KEY] = payloads
-        request.session.modified = True
 
     @button(
         visible=False,
@@ -325,6 +323,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     token = str(uuid.uuid4())
                     self._save_picture_import_payload(
                         request,
+                        obj,
                         token,
                         {
                             "batch_id": obj.pk,
@@ -341,7 +340,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 self.message_user(request, _("Picture import confirmation is missing."), messages.ERROR)
                 response = HttpResponseRedirect(request.path)
             else:
-                payload = self._get_picture_import_payload(request, token, obj.pk)
+                payload = self._get_picture_import_payload(request, obj, token)
                 if not payload:
                     self.message_user(
                         request,
@@ -352,7 +351,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 else:
                     zip_file_name = payload.get("zip_file_name")
                     if not zip_file_name or not default_storage.exists(zip_file_name):
-                        self._clear_picture_import_payload(request, token)
+                        self._clear_picture_import_payload(request, obj, token)
                         self.message_user(
                             request,
                             _("Picture import session has expired. Please run the matching step again."),
@@ -376,12 +375,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                                         zip_stream,
                                     )
                             except PictureImportLimitError as exc:
-                                self._clear_picture_import_payload(request, token)
+                                self._clear_picture_import_payload(request, obj, token)
                                 self.message_user(request, str(exc), messages.ERROR)
                                 response = HttpResponseRedirect(request.path)
                             else:
                                 updated = service.apply_assignments(payload["target_field"], assignments)
-                                self._clear_picture_import_payload(request, token)
+                                self._clear_picture_import_payload(request, obj, token)
                                 self.message_user(
                                     request,
                                     _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
@@ -391,7 +390,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                             finally:
                                 batch_lock.release()
         elif request.method == "GET" and request.GET.get("step") == "2" and token:
-            payload = self._get_picture_import_payload(request, token, obj.pk)
+            payload = self._get_picture_import_payload(request, obj, token)
             if not payload:
                 self.message_user(
                     request,
