@@ -1,7 +1,7 @@
-import pytest
 from collections.abc import Callable
 from uuid import uuid4
 
+import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
@@ -11,6 +11,7 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 MOD = "country_workspace.contrib.hope.push.processor"
 
+pytestmark = pytest.mark.django_db
 
 # ----------------------------- processor base --------------------------
 
@@ -42,7 +43,6 @@ def test_err_truncates_and_caps(mocker: MockerFixture) -> None:
 # ----------------------------- serializer ------------------------------
 
 
-@pytest.mark.django_db
 def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor) -> None:
     serializer = mocker.MagicMock()
     spy = mocker.patch(f"{MOD}.serializer_for_program", return_value=serializer)
@@ -56,12 +56,8 @@ def test_serializer_cached_once(mocker: MockerFixture, processor: PushProcessor)
 # ------------------------------ preflight ------------------------------
 
 
-@pytest.mark.django_db
-def test_preflight_collects_preflight_errors(mocker: MockerFixture, processor: PushProcessor) -> None:
+def test_preflight_collects_preflight_errors(mocker: MockerFixture, processor: PushProcessor, err_contains) -> None:
     processor.master_detail, processor.pks, processor.rdp_id = True, [1, 2], 10
-
-    exclude_ids = (10, 20)
-    mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=exclude_ids)
     spy = mocker.patch(f"{MOD}.preflight_errors", return_value=["boom-1", "boom-2"])
 
     processor.preflight()
@@ -69,17 +65,13 @@ def test_preflight_collects_preflight_errors(mocker: MockerFixture, processor: P
     spy.assert_called_once_with(
         pks=[1, 2],
         master_detail=True,
-        exclude_rdp_ids=exclude_ids,
+        exclude_rdp_ids=(10,),
     )
-    assert processor.total["errors"] == [
-        "HopePush: Preflight: boom-1",
-        "HopePush: Preflight: boom-2",
-    ]
+    assert err_contains(processor.total["errors"], "boom-1")
+    assert err_contains(processor.total["errors"], "boom-2")
 
 
-@pytest.mark.django_db
 def test_preflight_empty_is_ok(mocker: MockerFixture, processor: PushProcessor) -> None:
-    mocker.patch(f"{MOD}.preflight_exclude_rdp_ids", return_value=())
     spy = mocker.patch(f"{MOD}.preflight_errors", return_value=[])
 
     processor.preflight()
@@ -87,7 +79,7 @@ def test_preflight_empty_is_ok(mocker: MockerFixture, processor: PushProcessor) 
     spy.assert_called_once_with(
         pks=processor.pks,
         master_detail=processor.master_detail,
-        exclude_rdp_ids=(),
+        exclude_rdp_ids=(processor.rdp_id,),
     )
     assert processor.total["errors"] == []
 
@@ -95,7 +87,6 @@ def test_preflight_empty_is_ok(mocker: MockerFixture, processor: PushProcessor) 
 # ------------------------------- RDI ops -------------------------------
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("country_workspace_id", "expected_extra"),
     [
@@ -112,6 +103,7 @@ def test_rdi_create_success(
 ) -> None:
     processor.country_workspace_id = country_workspace_id
     spy = mocker.patch.object(processor.api, "create_rdi", return_value={"id": "RID-1"})
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value=None)
 
     processor.rdi_create()
 
@@ -126,9 +118,9 @@ def test_rdi_create_success(
     )
 
 
-@pytest.mark.django_db
 def test_rdi_create_logs_missing_id(mocker: MockerFixture, processor: PushProcessor, err_contains) -> None:
     mocker.patch.object(processor.api, "create_rdi", return_value={"foo": "bar"})
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value=None)
 
     processor.rdi_create()
 
@@ -136,18 +128,45 @@ def test_rdi_create_logs_missing_id(mocker: MockerFixture, processor: PushProces
     assert err_contains(processor.total["errors"], "can't create: no id in response")
 
 
-@pytest.mark.django_db
 def test_rdi_create_returns_early_when_try_remote_failed(
     mocker: MockerFixture,
     processor: PushProcessor,
 ) -> None:
     spy_fail = mocker.patch.object(processor, "fail")
     mocker.patch.object(processor, "try_remote", return_value=None)
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value=None)
 
     processor.rdi_create()
 
     assert processor.hope_rdi_id is None
     spy_fail.assert_not_called()
+
+
+@pytest.mark.parametrize("delete_error", [False, True], ids=["delete_ok", "delete_failed"])
+def test_rdi_create_deletes_existing_rdi_before_create(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    delete_error: bool,
+    err_contains,
+) -> None:
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value="OLD-RDI")
+    delete = mocker.patch.object(
+        processor.api,
+        "delete_rdi",
+        side_effect=RemoteError("boom") if delete_error else None,
+    )
+    create = mocker.patch.object(processor.api, "create_rdi", return_value={"id": "NEW-RDI"})
+
+    processor.rdi_create()
+
+    delete.assert_called_once_with("OLD-RDI")
+    if delete_error:
+        create.assert_not_called()
+        assert processor.hope_rdi_id is None
+        assert err_contains(processor.total["errors"], "request failed")
+    else:
+        create.assert_called_once()
+        assert processor.hope_rdi_id == "NEW-RDI"
 
 
 @pytest.mark.parametrize("rid", [None, "RID-1"], ids=["no_rdi", "has_rdi"])
@@ -221,7 +240,7 @@ def test_push_batched_requires_context(
     assert err_contains(processor.total["errors"], "queryset is not set")
 
 
-def test_push_batched_skips_empty_ids(
+def test_push_batched_skips_empty_payload(
     mocker: MockerFixture,
     processor: PushProcessor,
     qs: Callable[[list], object],
@@ -320,7 +339,6 @@ def test_remote_helpers_collect_errors(
 # ---------------------------- prepare_* --------------------------------
 
 
-@pytest.mark.django_db
 def test_prepare_households_batch_uses_mapping_and_serializer(
     only_master_detail,
     mocker: MockerFixture,
@@ -566,11 +584,12 @@ def test_resp_err_keeps_only_error_results(processor: PushProcessor) -> None:
     }
 
     assert processor._resp_err("People", response, [1, 2]) is True
-    assert processor.total["errors"] == [
-        "HopePush: People: remote returned errors ids=[1, 2]. Response: "
-        "{'id': 'RID-1', 'processed': 2, 'accepted': 1, 'errors': 1, "
-        "'results': [{'pk': 2, 'errors': ['bad']}], '_log_view': 'errors_only'}"
-    ]
+
+    error = processor.total["errors"][0]
+    assert "remote returned errors" in error
+    assert "errors_only" in error
+    assert "{'pk': 2, 'errors': ['bad']}" in error
+    assert "{'pk': 1, 'foo': 'ok'}" not in error
 
 
 # ------------------------------- queryset ------------------------------

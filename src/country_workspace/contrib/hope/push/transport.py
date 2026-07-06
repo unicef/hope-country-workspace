@@ -3,7 +3,6 @@ from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
 
-
 from .config import ROUTES, Route
 
 

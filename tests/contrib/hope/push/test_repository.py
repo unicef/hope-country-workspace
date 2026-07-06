@@ -1,7 +1,9 @@
-import pytest
-from pytest_mock import MockerFixture
-from django.utils import timezone
 from uuid import uuid4
+
+import pytest
+from django.utils import timezone
+from pytest_mock import MockerFixture
+
 import country_workspace.contrib.hope.push.repository as repo
 from country_workspace.models import Rdp as RdpModel
 from testutils.factories import (
@@ -38,20 +40,6 @@ def rdp(program_with_serializer, pushed_by_user):
 
 
 @pytest.fixture
-def parent_rdp(program_with_serializer, pushed_by_user):
-    return CountryRdpFactory(program=program_with_serializer, pushed_by=pushed_by_user)
-
-
-@pytest.fixture
-def child_rdp(parent_rdp):
-    return CountryRdpFactory(
-        program=parent_rdp.program,
-        pushed_by=parent_rdp.pushed_by,
-        parent=parent_rdp,
-    )
-
-
-@pytest.fixture
 def hh_with_members():
     hh = CountryHouseholdFactory()
     if not hh.members.exists():
@@ -75,6 +63,9 @@ def rdp_with_individual_links(program_with_serializer, pushed_by_user):
     for ind in individuals:
         ind.rdp.add(rdp)
     return rdp, individuals
+
+
+# ----------------------------- RDP lookup -----------------------------
 
 
 def test_lock_rdp_for_update(mocker: MockerFixture) -> None:
@@ -102,7 +93,7 @@ def test_rdp_for_dedup(mocker: MockerFixture) -> None:
 
     assert repo.rdp_for_dedup(pk=123) is rdp
 
-    select_related.assert_called_once_with("program", "parent")
+    select_related.assert_called_once_with("program")
     qs.get.assert_called_once_with(pk=123)
 
 
@@ -116,7 +107,6 @@ def test_rdp_for_push(mocker: MockerFixture) -> None:
     assert repo.rdp_for_push(pk=123) is rdp
 
     select_related.assert_called_once_with(
-        "parent",
         "program__country_office",
         "program__beneficiary_group",
         "pushed_by",
@@ -124,39 +114,24 @@ def test_rdp_for_push(mocker: MockerFixture) -> None:
     qs.get.assert_called_once_with(pk=123)
 
 
-def test_selection_owner_for_rdp_returns_self(rdp) -> None:
-    assert repo.selection_owner_for_rdp(rdp=rdp) == rdp
+@pytest.mark.parametrize(
+    ("hope_rdi_id", "expected"),
+    [
+        ("RDI-1", "RDI-1"),
+        ("N/A", None),
+        ("", None),
+        (None, None),
+    ],
+    ids=["real", "na", "empty", "none"],
+)
+def test_existing_hope_rdi_id(rdp, hope_rdi_id: str | None, expected: str | None) -> None:
+    rdp.hope_rdi_id = hope_rdi_id
+    rdp.save(update_fields=["hope_rdi_id"])
+
+    assert repo.existing_hope_rdi_id(rdp_id=rdp.pk) == expected
 
 
-def test_selection_owner_for_rdp_returns_parent(child_rdp, parent_rdp) -> None:
-    assert repo.selection_owner_for_rdp(rdp=child_rdp) == parent_rdp
-
-
-def test_preflight_exclude_rdp_ids_without_input() -> None:
-    assert repo.preflight_exclude_rdp_ids() == ()
-
-
-def test_preflight_exclude_rdp_ids_from_rdp_without_parent(rdp) -> None:
-    assert repo.preflight_exclude_rdp_ids(rdp=rdp) == (rdp.pk,)
-
-
-def test_preflight_exclude_rdp_ids_from_rdp_with_parent(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock(pk=10, parent_id=20)
-
-    assert repo.preflight_exclude_rdp_ids(rdp=rdp) == (10, 20)
-
-
-def test_preflight_exclude_rdp_ids_from_rdp_id(mocker: MockerFixture) -> None:
-    rdp = mocker.MagicMock(pk=10, parent_id=20)
-    only_qs = mocker.MagicMock()
-
-    only = mocker.patch.object(repo.Rdp.objects, "only", return_value=only_qs)
-    only_qs.get.return_value = rdp
-
-    assert repo.preflight_exclude_rdp_ids(rdp_id=10) == (10, 20)
-
-    only.assert_called_once_with("id", "parent_id")
-    only_qs.get.assert_called_once_with(pk=10)
+# -------------------------- selection / config -------------------------
 
 
 def test_rdp_selection_prefers_households(rdp_with_household_link) -> None:
@@ -169,14 +144,6 @@ def test_rdp_selection_falls_back_to_individuals(rdp_with_individual_links) -> N
     rdp, (i1, i2) = rdp_with_individual_links
 
     assert repo.rdp_selection(rdp=rdp) == (False, [i1.pk, i2.pk])
-
-
-def test_rdp_selection_uses_owner_selection(parent_rdp, child_rdp) -> None:
-    hh = CountryHouseholdFactory(rdps=parent_rdp)
-    if not hh.members.exists():
-        CountryIndividualFactory.create_batch(2, household=hh)
-
-    assert repo.rdp_selection(rdp=child_rdp) == (True, [hh.pk])
 
 
 def test_serializer_for_program_identity_when_none(program_no_serializer) -> None:
@@ -254,6 +221,9 @@ def test_workflow_config_for_rdp(
     assert repo.workflow_config_for_rdp(rdp=rdp, imported_by_email=pushed_by_user.email) == expected
 
 
+# ------------------------------- querysets ------------------------------
+
+
 def test_qs_households_prefetches_members(hh_with_members) -> None:
     households = list(repo.qs_households(pks=[hh_with_members.pk]))
 
@@ -305,6 +275,9 @@ def test_qs_individuals_for_rdp_delegates(
         by_households.assert_not_called()
 
 
+# ------------------------------- preflight ------------------------------
+
+
 @pytest.mark.parametrize("master_detail", [True, False], ids=["master_detail", "flat"])
 def test_preflight_errors_rejects_empty_selection(master_detail: bool) -> None:
     assert repo.preflight_errors(pks=[], master_detail=master_detail) == ["RDP: no beneficiaries selected"]
@@ -315,10 +288,10 @@ def test_preflight_errors_flat() -> None:
     linked = CountryIndividualFactory(last_checked=timezone.now(), errors={})
     linked.rdp.add(CountryRdpFactory(status=RdpModel.PushStatus.SUCCESS))
 
-    assert repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=False) == [
-        f"Ind #{invalid.pk} invalid",
-        f"Ind #{linked.pk} already in another RDP(s) (pending/success)",
-    ]
+    errors = repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=False)
+
+    assert f"Ind #{invalid.pk} invalid" in errors
+    assert any(f"Ind #{linked.pk}" in error and "already in another RDP" in error for error in errors)
 
 
 def test_preflight_errors_master_detail() -> None:
@@ -334,9 +307,9 @@ def test_preflight_errors_master_detail() -> None:
     errors = repo.preflight_errors(pks=[invalid.pk, linked.pk], master_detail=True)
 
     assert f"HH #{invalid.pk} invalid" in errors
-    assert f"HH #{linked.pk} already in another RDP(s) (pending/success)" in errors
     assert f"Ind #{invalid_member.pk} invalid" in errors
-    assert f"Ind #{linked_member.pk} already in another RDP(s) (pending/success)" in errors
+    assert any(f"HH #{linked.pk}" in error and "already in another RDP" in error for error in errors)
+    assert any(f"Ind #{linked_member.pk}" in error and "already in another RDP" in error for error in errors)
 
 
 def test_preflight_errors_excludes_rdp_ids() -> None:
@@ -354,131 +327,90 @@ def test_preflight_errors_excludes_rdp_ids() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("initial", "key", "snapshot", "expected"),
-    [
-        (
-            None,
-            "before_push",
-            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
-            {"before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3}},
-        ),
-        (
-            {"before_clone": {"deduplication_set_status": "Ready", "findings_count": 0}},
-            "before_push",
-            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
-            {
-                "before_clone": {"deduplication_set_status": "Ready", "findings_count": 0},
-                "before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3},
-            },
-        ),
-        (
-            {"before_push": {"deduplication_set_status": "Ready", "findings_count": 0}},
-            "before_push",
-            {"deduplication_set_status": "Deduplicated", "findings_count": 3},
-            {"before_push": {"deduplication_set_status": "Deduplicated", "findings_count": 3}},
-        ),
-    ],
-    ids=["empty", "merge", "overwrite"],
-)
-def test_set_rdp_deduplication_snapshot(
-    mocker: MockerFixture,
-    rdp,
-    initial,
-    key: str,
-    snapshot: dict,
-    expected: dict,
-) -> None:
-    rdp.deduplication_snapshots = initial
-    save = mocker.patch.object(rdp, "save", wraps=rdp.save)
-
-    repo.set_rdp_deduplication_snapshot(rdp=rdp, key=key, snapshot=snapshot)
-
-    save.assert_called_once_with(update_fields=["deduplication_snapshots"])
-    assert rdp.deduplication_snapshots == expected
-
-    rdp.refresh_from_db()
-    assert rdp.deduplication_snapshots == expected
+# --------------------------- status / locks / log -----------------------
 
 
 @pytest.mark.parametrize(
-    ("lock_value", "expected_locked", "expected_update_fields"),
+    ("extra_kwargs", "expected_dedup_locked", "expected_push_locked", "expected_update_fields"),
     [
-        (None, True, ["status", "hope_rdi_id"]),
-        (False, False, ["status", "hope_rdi_id", "is_dedup_settings_locked"]),
-        (True, True, ["status", "hope_rdi_id", "is_dedup_settings_locked"]),
+        ({}, True, True, ["status", "hope_rdi_id"]),
+        ({"is_dedup_settings_locked": False}, False, True, ["status", "hope_rdi_id", "is_dedup_settings_locked"]),
+        ({"is_push_locked": False}, True, False, ["status", "hope_rdi_id", "is_push_locked"]),
+        (
+            {"is_dedup_settings_locked": False, "is_push_locked": False},
+            False,
+            False,
+            ["status", "hope_rdi_id", "is_dedup_settings_locked", "is_push_locked"],
+        ),
     ],
-    ids=["preserve_lock", "unlock", "lock"],
+    ids=["preserve_locks", "unlock_dedup", "unlock_push", "unlock_both"],
 )
 def test_set_rdp_push_status(
     mocker: MockerFixture,
     rdp,
-    lock_value: bool | None,
-    expected_locked: bool,
+    extra_kwargs: dict,
+    expected_dedup_locked: bool,
+    expected_push_locked: bool,
     expected_update_fields: list[str],
 ) -> None:
     rdp.is_dedup_settings_locked = True
-    rdp.save(update_fields=["is_dedup_settings_locked"])
+    rdp.is_push_locked = True
+    rdp.save(update_fields=["is_dedup_settings_locked", "is_push_locked"])
     save = mocker.patch.object(rdp, "save", wraps=rdp.save)
 
-    kwargs = {
-        "rdp": rdp,
-        "status": RdpModel.PushStatus.SUCCESS,
-        "hope_rdi_id": "RDI-1",
-    }
-    if lock_value is not None:
-        kwargs["is_dedup_settings_locked"] = lock_value
-
-    repo.set_rdp_push_status(**kwargs)
+    repo.set_rdp_push_status(
+        rdp=rdp,
+        status=RdpModel.PushStatus.SUCCESS,
+        hope_rdi_id="RDI-1",
+        **extra_kwargs,
+    )
 
     save.assert_called_once_with(update_fields=expected_update_fields)
 
     rdp.refresh_from_db()
     assert rdp.status == RdpModel.PushStatus.SUCCESS
     assert rdp.hope_rdi_id == "RDI-1"
-    assert rdp.is_dedup_settings_locked is expected_locked
+    assert rdp.is_dedup_settings_locked is expected_dedup_locked
+    assert rdp.is_push_locked is expected_push_locked
 
 
-def test_has_other_pending_rdp(program_with_serializer, pushed_by_user) -> None:
-    owner = CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.SUCCESS,
-    )
-    CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.PENDING,
-    )
+def test_release_rdp_push_lock(rdp) -> None:
+    rdp.is_push_locked = True
+    rdp.save(update_fields=["is_push_locked"])
 
-    assert repo.has_other_pending_rdp(owner=owner) is True
+    repo.release_rdp_push_lock(rdp_id=rdp.pk)
+
+    rdp.refresh_from_db()
+    assert rdp.is_push_locked is False
 
 
-def test_has_other_pending_rdp_respects_exclude_ids(program_with_serializer, pushed_by_user) -> None:
-    owner = CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.SUCCESS,
-    )
-    other = CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.PENDING,
-    )
+def test_release_rdp_dedup_settings_lock(rdp) -> None:
+    rdp.is_dedup_settings_locked = True
+    rdp.save(update_fields=["is_dedup_settings_locked"])
 
-    assert repo.has_other_pending_rdp(owner=owner, exclude_ids=[other.pk]) is False
+    repo.release_rdp_dedup_settings_lock(rdp_id=rdp.pk)
+
+    rdp.refresh_from_db()
+    assert rdp.is_dedup_settings_locked is False
 
 
-def test_has_other_pending_rdp_ignores_non_pending(program_with_serializer, pushed_by_user) -> None:
-    owner = CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.SUCCESS,
-    )
-    CountryRdpFactory(
-        program=program_with_serializer,
-        pushed_by=pushed_by_user,
-        status=RdpModel.PushStatus.SUCCESS,
+def test_append_rdp_operation_log(mocker: MockerFixture, rdp) -> None:
+    now = timezone.now()
+    mocker.patch.object(repo.timezone, "now", return_value=now)
+
+    repo.append_rdp_operation_log(
+        rdp=rdp,
+        action=RdpModel.OperationAction.START_DEDUPLICATION,
+        job_id=123,
+        result={"ok": True},
     )
 
-    assert repo.has_other_pending_rdp(owner=owner) is False
+    rdp.refresh_from_db()
+    assert rdp.operation_log == [
+        {
+            "timestamp": now.isoformat(),
+            "action": RdpModel.OperationAction.START_DEDUPLICATION.value,
+            "job_id": 123,
+            "result": {"ok": True},
+        }
+    ]

@@ -1,4 +1,4 @@
-from enum import StrEnum, auto
+from enum import StrEnum
 from typing import Final, NamedTuple
 import sentry_sdk
 
@@ -34,7 +34,7 @@ RUNNING_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
 
 
 class DedupResponseStatus(StrEnum):
-    OK = auto()
+    OK = "OK"
     STATUS_UNAVAILABLE = "N/A"
 
 
@@ -68,8 +68,7 @@ def get_deduplication_status(
 
     state = payload.get("state")
     findings_count = payload.get("findings_count")
-
-    if not isinstance(state, str) or not isinstance(findings_count, int):
+    if not isinstance(state, str) or type(findings_count) is not int:
         raise RemoteError(f"DedupEngine: malformed deduplication set status response: {payload}")
 
     return DedupClientStatus(

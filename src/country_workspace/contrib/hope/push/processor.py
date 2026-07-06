@@ -315,6 +315,8 @@ class PushProcessor(ProcessorBase):
             ids, payload = prepare(batch)
             if self.has_errors:
                 return
+            if not payload:
+                continue
             resp = self.try_remote(name, lambda payload=payload: post(self.hope_rdi_id, payload), ids=ids)
             if resp is None:
                 return
