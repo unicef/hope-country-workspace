@@ -15,6 +15,8 @@ x-env: &env
     - MEDIA_ROOT=/var/country_workspace/media
     - SECRET_KEY=sensitive-secret-key
     - STATIC_ROOT=/var/country_workspace/static
+    - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    - INIT_HOPE_STORAGE=1
 
 x-common: &common
   build:
@@ -34,6 +36,8 @@ x-common: &common
     db:
       condition: service_healthy
     redis:
+      condition: service_healthy
+    azurite:
       condition: service_healthy
 
 services:
@@ -96,6 +100,23 @@ services:
       timeout: 4s
       retries: 5
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+    ports:
+      - 10000:10000
+    volumes:
+      - azurite_data:/data
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "127.0.0.1", "10000" ]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+
 
 volumes:
   postgres_data14:
+  azurite_data:

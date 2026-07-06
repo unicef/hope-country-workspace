@@ -13,6 +13,7 @@ class HCWConfig(AppConfig):
     def ready(self) -> None:
         import admin_extra_buttons.api
         import django_celery_boost.admin
+        import country_workspace.checks
         import country_workspace.signals  # noqa: F401
 
         import country_workspace.compat.admin_extra_buttons as c

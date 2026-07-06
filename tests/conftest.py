@@ -93,8 +93,6 @@ def pytest_configure(config):
     os.environ["CELERY_TASK_ALWAYS_EAGER"] = "1"
     os.environ["CELERY_TASK_STORE_EAGER_RESULT"] = "1"
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
-    os.environ["FILE_STORAGE_DEFAULT"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
-    os.environ["FILE_STORAGE_MEDIA"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
     os.environ.setdefault("SECRET_KEY", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")
     os.environ.setdefault("HOPE_API_TOKEN", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")
@@ -110,6 +108,21 @@ def pytest_configure(config):
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
     django.setup()
+    settings.STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": str(here / "../~tests/storage")},
+        },
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage", "OPTIONS": {}},
+        "media": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": str(here / "../~tests/storage")},
+        },
+        "hope": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": str(here / "../~tests/storage/hope")},
+        },
+    }
     from country_workspace.cache.manager import cache_manager
 
     cache_manager.active = False
