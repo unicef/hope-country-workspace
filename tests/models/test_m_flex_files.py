@@ -63,7 +63,7 @@ def test_validate_with_checker_reads_file_fields_from_flex_files() -> None:
 
 
 @pytest.mark.django_db
-def test_set_flex_data_splits_files_and_preserves_existing() -> None:
+def test_save_only_text_field_preserves_existing_file() -> None:
     from testutils.factories import (
         CountryBatchFactory,
         CountryHouseholdFactory,
@@ -85,7 +85,10 @@ def test_set_flex_data_splits_files_and_preserves_existing() -> None:
     )
     individual.refresh_from_db()
 
-    individual.set_flex_data({"full_name": "John Doe"})
+    # Update only a text field; the file value must survive the save.
+    individual.flex_fields["full_name"] = "John Doe"
+    individual.save(update_fields=["flex_fields"])
+    individual.refresh_from_db()
 
     assert individual.flex_fields == {"full_name": "John Doe"}
     assert individual.get_flex_value("photo") == payload

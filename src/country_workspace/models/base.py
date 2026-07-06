@@ -125,35 +125,20 @@ class Validable(Cachable, models.Model):
         return decode_flex_files_blob(self.flex_files)
 
     def get_combined_flex_fields(self) -> dict[str, Any]:
-        return merge_flex_payload(self.flex_fields, self.flex_files, self._checker_file_fields())
+        return merge_flex_payload(self.flex_fields, self.flex_files)
 
     def get_flex_value(self, field_name: str, default: object | None = None) -> object | None:
         if field_name in self.flex_fields:
             return self.flex_fields[field_name]
         return self.get_flex_files_map().get(field_name, default)
 
-    def set_flex_data(self, data: dict[str, Any]) -> None:
-        """Assign flex data, routing file fields to ``flex_files`` immediately.
-
-        Preferred over assigning ``self.flex_fields`` directly: the data checker
-        decides which keys are files, so text and binary data are separated at
-        assignment time. Existing file values are preserved unless overwritten.
-        """
-        file_fields = self._checker_file_fields()
-        text_fields, new_file_values = split_flex_payload(data, file_fields)
-        files_map = self.get_flex_files_map()
-        files_map.update(new_file_values)
-        self.flex_fields = text_fields
-        self.flex_files = encode_flex_files_blob(files_map)
-
     def normalize_flex_storage(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
         """Guarantee text/file separation at save time.
 
         This is an intentional, idempotent invariant (not a hidden contract):
-        no matter how ``flex_fields`` was populated, any file-typed keys are
-        moved into ``flex_files`` before the row is written, while existing file
-        values are preserved. New code should prefer :meth:`set_flex_data` to
-        keep the split explicit at assignment time.
+        no matter how ``flex_fields`` was populated, any file-typed keys (as
+        reported by the data checker) are moved into ``flex_files`` before the
+        row is written, while existing file values are preserved.
         """
         if update_fields is not None and not (set(update_fields) & {"flex_fields", "flex_files"}):
             return update_fields

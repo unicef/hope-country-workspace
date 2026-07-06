@@ -176,7 +176,7 @@ def test_split_and_merge_flex_payload_with_file_fields() -> None:
     assert text == {"name": "John"}
     assert files == {"photo": "data:image/png;base64,BBB"}
 
-    merged = merge_flex_payload(text, encode_flex_files_blob(files), {"photo"})
+    merged = merge_flex_payload(text, encode_flex_files_blob(files))
     assert merged == payload
 
 

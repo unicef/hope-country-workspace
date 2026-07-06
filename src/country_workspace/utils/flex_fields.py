@@ -78,12 +78,15 @@ def get_checker_file_fields(checker: DataChecker | None) -> set[str]:
 def merge_flex_payload(
     flex_fields: dict[str, Any] | None,
     flex_files: bytes | memoryview | bytearray | None,
-    file_fields: set[str],
 ) -> dict[str, Any]:
+    """Overlay stored file values on top of the text fields.
+
+    The blob only ever holds file-typed keys, so no field-name filtering (and
+    therefore no checker lookup) is needed here.
+    """
     merged = dict(flex_fields or {})
-    files_map = decode_flex_files_blob(flex_files)
-    for field_name in file_fields:
-        if value := files_map.get(field_name):
+    for field_name, value in decode_flex_files_blob(flex_files).items():
+        if value:
             merged[field_name] = value
     return merged
 
