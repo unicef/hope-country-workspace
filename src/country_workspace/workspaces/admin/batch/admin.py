@@ -11,7 +11,6 @@ from constance import config as constance_config
 from django import forms
 from django.contrib import messages
 from django.contrib.admin import register
-from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
@@ -29,7 +28,7 @@ from ...permissions import can_import_program_data, can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from ..hh_ind import SelectedProgramMixin
-from .picture_import import BatchPictureImportService, PictureImportLimitError
+from .picture_import import BatchPictureImportService, PictureImportLimitError, import_pictures_for_batch
 from .reprocessing import reprocess_batch as reprocess_batch_task
 
 logger = logging.getLogger(__name__)
@@ -229,13 +228,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         uploaded.seek(0)
         return stored_name
 
-    @staticmethod
-    def _acquire_batch_action_lock(batch_id: int) -> Any | None:
-        lock = cache.lock(f"lock:batch:{batch_id}", 60, auto_renewal=True)
-        if lock.acquire(blocking=False):
-            return lock
-        return None
-
     def _get_picture_import_payload(
         self, request: HttpRequest, batch: CountryBatch, token: str
     ) -> dict[str, Any] | None:
@@ -361,36 +353,22 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         )
                         response = HttpResponseRedirect(request.path)
                     else:
-                        batch_lock = self._acquire_batch_action_lock(obj.pk)
-                        if not batch_lock:
-                            self.message_user(
-                                request,
-                                _("Another action is currently running for this batch. Please try again later."),
-                                messages.ERROR,
-                            )
-                            response = HttpResponseRedirect(request.path)
-                        else:
-                            try:
-                                with default_storage.open(zip_file_name, "rb") as zip_stream:
-                                    assignments = service.enrich_assignments_with_zip_data(
-                                        payload.get("assignments", []),
-                                        zip_stream,
-                                    )
-                            except PictureImportLimitError as exc:
-                                self._clear_picture_import_payload(request, obj, token)
-                                self.message_user(request, str(exc), messages.ERROR)
-                                response = HttpResponseRedirect(request.path)
-                            else:
-                                updated = service.apply_assignments(payload["target_field"], assignments)
-                                self._clear_picture_import_payload(request, obj, token)
-                                self.message_user(
-                                    request,
-                                    _("Picture import completed: %(updated)d records updated.") % {"updated": updated},
-                                    messages.SUCCESS,
-                                )
-                                response = redirect_to_change()
-                            finally:
-                                batch_lock.release()
+                        job = AsyncJob.objects.create(
+                            description=f"Import pictures: {obj.name}",
+                            type=AsyncJob.JobType.TASK,
+                            owner=request.user,
+                            action=fqn(import_pictures_for_batch),
+                            program=obj.program,
+                            batch=obj,
+                            config={"batch_id": obj.pk, "token": token},
+                        )
+                        job.queue()
+                        self.message_user(
+                            request,
+                            _("Picture import has been scheduled and will run in the background."),
+                            messages.SUCCESS,
+                        )
+                        response = redirect_to_change()
         elif request.method == "GET" and request.GET.get("step") == "2" and token:
             payload = self._get_picture_import_payload(request, obj, token)
             if not payload:

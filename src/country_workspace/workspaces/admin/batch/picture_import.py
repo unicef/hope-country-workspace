@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from constance import config as constance_config
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
 from PIL import Image, UnidentifiedImageError
 
+from country_workspace.models import AsyncJob
 from ...models import CountryBatch, CountryIndividual
 from ....utils.flex_fields import Base64ImageField
-
 
 class PictureImportLimitError(ValueError):
     pass
@@ -202,3 +203,33 @@ class BatchPictureImportService:
                     individual.save(update_fields=["flex_fields", "last_checked", "errors"])
                     updated += 1
         return updated
+
+
+def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
+    if not (batch_id := job.config.get("batch_id")):
+        raise ValueError("batch_id is required in job config")
+    if not (token := job.config.get("token")):
+        raise ValueError("token is required in job config")
+    batch = CountryBatch.objects.select_related("program", "country_office").filter(pk=batch_id).first()
+    if not batch:
+        raise ValueError(f"Batch {batch_id} not found")
+
+    payload = batch.get_picture_import_state().get(token)
+    if not isinstance(payload, dict):
+        raise ValueError("Picture import payload not found")
+    match_field = payload.get("match_field")
+    target_field = payload.get("target_field")
+    zip_file_name = payload.get("zip_file_name")
+    if not match_field or not target_field or not zip_file_name:
+        raise ValueError("Picture import payload is incomplete")
+
+    service = BatchPictureImportService(batch)
+    try:
+        with default_storage.open(zip_file_name, "rb") as zip_stream:
+            preview = service.build_preview(match_field, zip_stream, include_data_uri=True)
+        updated = service.apply_assignments(target_field, preview.get("assignments", []))
+        return {"updated": updated}
+    finally:
+        # Always clear draft state + temp ZIP after the job run.
+        batch.finish_picture_import(token=token, user=job.owner)
+        default_storage.delete(zip_file_name)
