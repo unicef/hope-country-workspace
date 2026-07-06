@@ -16,6 +16,7 @@ from country_workspace.models import AsyncJob
 from ...models import CountryBatch, CountryIndividual
 from ....utils.flex_fields import Base64ImageField
 
+
 class PictureImportLimitError(ValueError):
     pass
 
@@ -216,7 +217,7 @@ def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
 
     payload = batch.get_picture_import_state().get(token)
     if not isinstance(payload, dict):
-        raise ValueError("Picture import payload not found")
+        raise TypeError("Picture import payload not found")
     match_field = payload.get("match_field")
     target_field = payload.get("target_field")
     zip_file_name = payload.get("zip_file_name")
