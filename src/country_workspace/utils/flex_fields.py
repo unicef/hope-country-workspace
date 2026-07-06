@@ -1,6 +1,7 @@
 from base64 import b64encode
 import hashlib
 import json
+import pickle
 from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
@@ -14,27 +15,63 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, str]:
-    if not value:
-        return {}
-    raw = bytes(value) if isinstance(value, memoryview | bytearray) else value
+def _decode_legacy_json_blob(raw: bytes) -> dict[str, Any]:
+    """Fallback decoder for blobs stored by the previous JSON-based format."""
     try:
         parsed = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
 
-def encode_flex_files_blob(value: dict[str, str]) -> bytes | None:
+def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, Any]:
+    """Decode the ``flex_files`` binary blob into a ``{field_name: content}`` mapping.
+
+    Files are stored as a pickled dict so any Python object (image bytes, PDFs,
+    data URIs, ...) can be kept without extra base64/JSON encoding. Blobs written
+    by the earlier JSON format are still read via a fallback.
+    """
+    if not value:
+        return {}
+    raw = bytes(value) if isinstance(value, memoryview | bytearray) else value
+    try:
+        parsed = pickle.loads(raw)  # noqa: S301 - trusted, app-written blob
+    except (
+        pickle.UnpicklingError,
+        EOFError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        ImportError,
+        IndexError,
+        KeyError,
+    ):
+        parsed = _decode_legacy_json_blob(raw)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def encode_flex_files_blob(value: dict[str, Any]) -> bytes | None:
+    """Pickle a ``{field_name: content}`` mapping for storage in ``flex_files``.
+
+    Keys are sorted so the resulting bytes are deterministic (stable checksums).
+    """
     if not value:
         return None
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return pickle.dumps(dict(sorted(value.items())), protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def get_checker_file_fields(checker: DataChecker | None) -> set[str]:
+    """Return the set of file-field names for a checker.
+
+    Detection is delegated to the data checker (single source of truth). A
+    minimal fallback keeps older checkers without the API working.
+    """
     if checker is None:
         return set()
-    form = checker.get_form()()
+    getter = getattr(checker, "get_file_field_names", None)
+    if callable(getter):
+        return set(getter())
+    form = checker.get_form_class()()
     return {name for name, field in form.fields.items() if isinstance(field, forms.FileField)}
 
 
@@ -51,14 +88,14 @@ def merge_flex_payload(
     return merged
 
 
-def split_flex_payload(payload: dict[str, Any], file_fields: set[str]) -> tuple[dict[str, Any], dict[str, str]]:
+def split_flex_payload(payload: dict[str, Any], file_fields: set[str]) -> tuple[dict[str, Any], dict[str, Any]]:
     text_fields: dict[str, Any] = {}
-    file_values: dict[str, str] = {}
+    file_values: dict[str, Any] = {}
     for key, value in payload.items():
         if key not in file_fields:
             text_fields[key] = value
             continue
-        if isinstance(value, str) and value.strip():
+        if value not in (None, "") and not (isinstance(value, str) and not value.strip()):
             file_values[key] = value
     return text_fields, file_values
 

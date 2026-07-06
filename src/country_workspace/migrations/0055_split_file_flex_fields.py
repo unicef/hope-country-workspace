@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import pickle
 from collections import defaultdict
 from typing import Any
 
@@ -9,22 +11,38 @@ from django.db import migrations, models
 from django.db.migrations.state import StateApps  # noqa: TC002
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
 
+logger = logging.getLogger(__name__)
 
-def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, str]:
+BATCH_SIZE = 500
+
+
+def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, Any]:
     if not blob:
         return {}
     raw = bytes(blob) if isinstance(blob, memoryview | bytearray) else blob
     try:
-        parsed = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
+        parsed = pickle.loads(raw)  # noqa: S301 - trusted, app-written blob
+    except (
+        pickle.UnpicklingError,
+        EOFError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        ImportError,
+        IndexError,
+        KeyError,
+    ):
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _encode_blob(value: dict[str, str]) -> bytes | None:
+def _encode_blob(value: dict[str, Any]) -> bytes | None:
     if not value:
         return None
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return pickle.dumps(dict(sorted(value.items())), protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def _checksum(flex_fields: dict[str, Any], flex_files: bytes | None, removed: bool) -> str:
@@ -65,6 +83,15 @@ def _checker_file_field_names(apps: StateApps) -> dict[int, set[str]]:
     return checker_fields
 
 
+def _flush(model: type[models.Model], pending: list[models.Model]) -> int:
+    if not pending:
+        return 0
+    model.objects.bulk_update(pending, ["flex_fields", "flex_files", "checksum"], batch_size=BATCH_SIZE)
+    flushed = len(pending)
+    pending.clear()
+    return flushed
+
+
 def _migrate_model_records(
     model: type[models.Model], checker_field_map: dict[int, set[str]], checker_attr: str
 ) -> None:
@@ -77,7 +104,11 @@ def _migrate_model_records(
         "batch__program__household_checker_id",
         "batch__program__individual_checker_id",
     )
-    for record in queryset.iterator():
+    pending: list[models.Model] = []
+    processed = 0
+    updated = 0
+    for record in queryset.iterator(chunk_size=BATCH_SIZE):
+        processed += 1
         checker_id = getattr(record.batch.program, checker_attr)
         file_fields = checker_field_map.get(checker_id, set())
         if not file_fields:
@@ -103,7 +134,14 @@ def _migrate_model_records(
         record.flex_fields = flex_fields
         record.flex_files = blob
         record.checksum = _checksum(flex_fields, blob, bool(record.removed))
-        record.save(update_fields=["flex_fields", "flex_files", "checksum"])
+        pending.append(record)
+
+        if len(pending) >= BATCH_SIZE:
+            updated += _flush(model, pending)
+            logger.info("%s: processed=%s updated=%s", model.__name__, processed, updated)
+
+    updated += _flush(model, pending)
+    logger.info("%s: migration complete processed=%s updated=%s", model.__name__, processed, updated)
 
 
 def split_file_flex_fields(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor) -> None:

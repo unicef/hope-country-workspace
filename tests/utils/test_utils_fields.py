@@ -1,6 +1,8 @@
+import json
 from unittest.mock import Mock, call
 
 import pytest
+from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_mock import MockerFixture
 
@@ -178,18 +180,49 @@ def test_split_and_merge_flex_payload_with_file_fields() -> None:
     assert merged == payload
 
 
+def test_encode_flex_files_blob_uses_pickle_not_json() -> None:
+    value = {"photo": b"\x89PNG\r\n", "doc": "data:application/pdf;base64,AAA"}
+    encoded = encode_flex_files_blob(value)
+    assert decode_flex_files_blob(encoded) == value
+    with pytest.raises((json.JSONDecodeError, UnicodeDecodeError)):
+        json.loads(encoded.decode("utf-8"))
+
+
+def test_encode_flex_files_blob_empty_returns_none() -> None:
+    assert encode_flex_files_blob({}) is None
+
+
 def test_decode_flex_files_blob_invalid_data_returns_empty() -> None:
-    assert decode_flex_files_blob(b"not-json") == {}
+    assert decode_flex_files_blob(b"not-a-pickle-or-json") == {}
+
+
+def test_decode_flex_files_blob_reads_legacy_json_format() -> None:
+    legacy = json.dumps({"photo": "data:image/png;base64,AAA"}).encode("utf-8")
+    assert decode_flex_files_blob(legacy) == {"photo": "data:image/png;base64,AAA"}
 
 
 def test_split_flex_payload_ignores_empty_file_values() -> None:
-    payload = {"photo": "   ", "name": "John"}
-    text, files = split_flex_payload(payload, {"photo"})
+    payload = {"photo": "   ", "name": "John", "empty": "", "missing": None}
+    text, files = split_flex_payload(payload, {"photo", "empty", "missing"})
     assert text == {"name": "John"}
     assert files == {}
 
 
-def test_get_checker_file_fields_handles_checker_form_errors(mocker: MockerFixture) -> None:
-    checker = mocker.MagicMock()
-    checker.get_form.side_effect = RuntimeError("broken form")
-    assert get_checker_file_fields(checker) == set()
+def test_get_checker_file_fields_none_returns_empty() -> None:
+    assert get_checker_file_fields(None) == set()
+
+
+def test_get_checker_file_fields_uses_checker_api() -> None:
+    checker = Mock(spec=["get_file_field_names"])
+    checker.get_file_field_names.return_value = {"photo", "id_card"}
+    assert get_checker_file_fields(checker) == {"photo", "id_card"}
+    checker.get_file_field_names.assert_called_once_with()
+
+
+def test_get_checker_file_fields_fallback_to_form_introspection() -> None:
+    class _Form:
+        fields = {"photo": forms.FileField(), "name": forms.CharField()}
+
+    checker = Mock(spec=["get_form_class"])
+    checker.get_form_class.return_value = _Form
+    assert get_checker_file_fields(checker) == {"photo"}
