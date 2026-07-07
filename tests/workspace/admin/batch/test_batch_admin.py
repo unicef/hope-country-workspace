@@ -398,17 +398,15 @@ def test_batch_admin_picture_payload_helpers(batch_admin, batch: CountryBatch, r
 
     batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk})
     batch.refresh_from_db()
-    assert batch.picture_import_state["tok"]["batch_id"] == batch.pk
-    assert batch.picture_import_state["tok"]["created_by_id"] == user.pk
-    assert batch.picture_import_state_updated_by_id == user.pk
-    assert batch.picture_import_state_updated_at is not None
+    assert batch.get_picture_import_state()["tok"]["batch_id"] == batch.pk
+    assert batch.get_picture_import_state()["tok"]["created_by_id"] == user.pk
 
     assert batch_admin._get_picture_import_payload(request, batch, "missing") is None
     assert batch_admin._get_picture_import_payload(request, batch, "tok")["batch_id"] == batch.pk
 
     batch_admin._clear_picture_import_payload(request, batch, "tok")
     batch.refresh_from_db()
-    assert batch.picture_import_state == {}
+    assert batch.get_picture_import_state() == {}
 
 
 def test_batch_admin_get_picture_import_payload_is_user_scoped(
@@ -462,7 +460,7 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(
     batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk, "zip_file_name": "new.zip"})
     batch.refresh_from_db()
     assert not default_storage.exists(old_storage_name)
-    assert batch.picture_import_state["tok"]["zip_file_name"] == "new.zip"
+    assert batch.get_picture_import_state()["tok"]["zip_file_name"] == "new.zip"
 
 
 def test_batch_admin_picture_import_payloads_prune_expired_entries(
@@ -544,7 +542,7 @@ def test_batch_admin_clear_payload_handles_missing_token(
     batch_admin._clear_picture_import_payload(request, batch, "missing-token")
     batch.refresh_from_db()
 
-    assert batch.picture_import_state == {}
+    assert batch.get_picture_import_state() == {}
 
 
 def test_import_pictures_returns_404_for_missing_batch(batch_admin, rf: RequestFactory, user, mocker) -> None:
@@ -631,7 +629,7 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     assert response.status_code == 302
     assert "step=2&token=token-123" in response.url
     batch.refresh_from_db()
-    payload = batch.picture_import_state["token-123"]
+    payload = batch.get_picture_import_state()["token-123"]
     assert payload["batch_id"] == batch.pk
     assert payload["match_field"] == "beneficiary_id"
     assert payload["target_field"] == "photo"
@@ -697,7 +695,7 @@ def test_import_pictures_post_preview_handles_limit_error_and_cleans_temp_file(
     form = get_common_context.call_args.kwargs["form"]
     assert "zip_file" in form.errors
     batch.refresh_from_db()
-    assert batch.picture_import_state == {}
+    assert batch.get_picture_import_state() == {}
 
 
 def test_import_pictures_post_confirm_without_token_redirects_with_error(
@@ -815,7 +813,7 @@ def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
     assert response.status_code == 302
     assert response.url == "/admin/import-pictures/"
     batch.refresh_from_db()
-    assert batch.picture_import_state == {}
+    assert batch.get_picture_import_state() == {}
     message_user.assert_called()
 
 
@@ -1325,6 +1323,6 @@ def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: C
     assert result["updated"] == 1
     batch.refresh_from_db()
     individual.refresh_from_db()
-    assert batch.picture_import_state == {}
+    assert batch.get_picture_import_state() == {}
     assert not default_storage.exists(zip_name)
     assert individual.flex_fields.get("photo", "").startswith("data:image/")

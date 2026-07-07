@@ -31,14 +31,6 @@ class Batch(BaseModel):
         db_index=True,
     )
     picture_import_state = models.JSONField(default=dict, blank=True)
-    picture_import_state_updated_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="picture_import_state_batches",
-    )
-    picture_import_state_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = (("import_date", "name"),)
@@ -53,35 +45,30 @@ class Batch(BaseModel):
         state = self.picture_import_state
         if not isinstance(state, dict):
             return {}
-        return {token: payload for token, payload in state.items() if isinstance(payload, dict)}
+        tokens = state.get("tokens")
+        if not isinstance(tokens, dict):
+            return {}
+        return {token: payload for token, payload in tokens.items() if isinstance(payload, dict)}
 
     def start_picture_import(self, *, token: str, payload: dict[str, Any], user: User) -> dict[str, Any] | None:
-        state = self.get_picture_import_state()
-        previous = state.get(token)
-        state[token] = payload
-        self.picture_import_state = state
-        self.picture_import_state_updated_by = user
-        self.picture_import_state_updated_at = timezone.now()
-        self.save(
-            update_fields=[
-                "picture_import_state",
-                "picture_import_state_updated_by",
-                "picture_import_state_updated_at",
-            ]
-        )
+        tokens = self.get_picture_import_state()
+        previous = tokens.get(token)
+        tokens[token] = payload
+        self.picture_import_state = {
+            "tokens": tokens,
+            "updated_by": user.pk,
+            "updated_at": timezone.now().isoformat(),
+        }
+        self.save(update_fields=["picture_import_state"])
         return previous
 
     def finish_picture_import(self, *, token: str, user: User) -> dict[str, Any] | None:
-        state = self.get_picture_import_state()
-        payload = state.pop(token, None)
-        self.picture_import_state = state
-        self.picture_import_state_updated_by = user
-        self.picture_import_state_updated_at = timezone.now()
-        self.save(
-            update_fields=[
-                "picture_import_state",
-                "picture_import_state_updated_by",
-                "picture_import_state_updated_at",
-            ]
-        )
+        tokens = self.get_picture_import_state()
+        payload = tokens.pop(token, None)
+        self.picture_import_state = {
+            "tokens": tokens,
+            "updated_by": user.pk,
+            "updated_at": timezone.now().isoformat(),
+        }
+        self.save(update_fields=["picture_import_state"])
         return payload
