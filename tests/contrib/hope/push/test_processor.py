@@ -372,6 +372,7 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     mocker: MockerFixture,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
@@ -415,6 +416,7 @@ def test_prepare_households_batch_uses_members_queryset_when_not_prefetched(
     mocker: MockerFixture,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     mocker.patch(f"{MOD}.HOUSEHOLD_ROLE_REF_FIELDS", ())
@@ -436,6 +438,7 @@ def test_prepare_individuals_batch_injects_id(
     only_master_detail,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     i1 = beneficiary_stub(id=10, _group={"a": 1})
@@ -454,6 +457,7 @@ def test_prepare_people_batch_plain(
     only_people_only,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     i1 = beneficiary_stub(id=10, _group={"a": 1})

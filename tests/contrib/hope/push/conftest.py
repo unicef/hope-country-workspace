@@ -207,6 +207,16 @@ def serializer_identity(processor: PushProcessor) -> PushProcessor:
 
 
 @pytest.fixture
+def no_blob_sync(mocker: MockerFixture, processor: PushProcessor) -> PushProcessor:
+    """Bypass blob reconciliation for prepare_* tests using beneficiary_stub instances."""
+    mod = "country_workspace.contrib.hope.push.processor"
+    mocker.patch.object(processor, "_image_fields", return_value=[])
+    mocker.patch(f"{mod}.sync_record_blobs", return_value={})
+    mocker.patch(f"{mod}.substitute_row_images", side_effect=lambda record, row, paths: row)
+    return processor
+
+
+@pytest.fixture
 def errs() -> list[str]:
     return []
 

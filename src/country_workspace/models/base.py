@@ -67,6 +67,7 @@ class Validable(Cachable, models.Model):
     flex_fields = models.JSONField(default=dict, blank=True)
     flex_files = models.BinaryField(null=True, blank=True)
     removed = models.BooleanField(_("Removed"), default=False)
+    blob_hashes = models.JSONField(default=dict, blank=True, editable=False)
     checksum = models.CharField(_("checksum"), max_length=300, blank=True, null=True, db_index=True)
     originating_id = models.CharField(_("Originating ID"), blank=True)
 

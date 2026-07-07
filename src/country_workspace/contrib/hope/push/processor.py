@@ -9,11 +9,15 @@ from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.models import Rdp
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
+
+from country_workspace.services.hope_blob import image_field_names, substitute_row_images, sync_record_blobs
 from .config import ERROR_CONFIG, PushWorkflowConfig, RdiDeleteResult, Serializer
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
@@ -130,6 +134,7 @@ class PushProcessor(ProcessorBase):
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
         self.rdi_already_merged: bool = False
+        self._image_fields_cache: dict[int, list[str]] = {}
 
     @cached_property
     def serializer(self) -> Serializer:
@@ -200,11 +205,18 @@ class PushProcessor(ProcessorBase):
         with self._using_qs(qs):
             step()
 
+    def _image_fields(self, record: CountryHousehold | CountryIndividual) -> list[str]:
+        key = record.checker.pk
+        if key not in self._image_fields_cache:
+            self._image_fields_cache[key] = image_field_names(record.checker)
+        return self._image_fields_cache[key]
+
     def _prepare_households_batch(self, batch: Iterable[CountryHousehold]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a households batch: roles mapped, members resolved."""
         ids, rows = [], []
         for hh in batch:
             ids.append(hh.id)
+            paths = sync_record_blobs(hh, self._image_fields(hh))
             flex_fields = hh.apply_grouping()
             for key in HOUSEHOLD_ROLE_REF_FIELDS:
                 flex_fields[key] = map_role_value(self.ind_id_map, self._err, hh.pk, key, flex_fields.get(key))
@@ -214,13 +226,18 @@ class PushProcessor(ProcessorBase):
             )
             flex_fields["members"] = map_members(self.ind_id_map, self._err, hh.pk, member_ids)
             flex_fields["originating_id"] = hh.originating_id
-            rows.append({k: v for k, v in flex_fields.items() if v is not None})
+            row = {k: v for k, v in flex_fields.items() if v is not None}
+            rows.append(substitute_row_images(hh, row, paths))
         return ids, self.serializer(rows)
 
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'country_workspace_id' per row."""
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            substitute_row_images(
+                ind,
+                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
+                sync_record_blobs(ind, self._image_fields(ind)),
+            )
             for ind in batch
         ]
         ids = [row["country_workspace_id"] for row in rows]
@@ -230,7 +247,11 @@ class PushProcessor(ProcessorBase):
         """Return (ids, payload) for a people batch; inject 'country_workspace_id' per row."""
         ids = [ind.id for ind in batch]
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            substitute_row_images(
+                ind,
+                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
+                sync_record_blobs(ind, self._image_fields(ind)),
+            )
             for ind in batch
         ]
         return ids, self.serializer(rows)
@@ -394,13 +415,12 @@ class DedupProcessor(ProcessorBase):
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
-        for pk, photo in (
-            qs_individuals_for_rdp(rdp=self.rdp)
-            .values_list("id", "flex_fields__photo")
-            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE)
-        ):
-            if isinstance(photo, str) and (photo := photo.strip()):
-                yield {"reference_pk": str(pk), "filename": photo}
+        qs = qs_individuals_for_rdp(rdp=self.rdp)
+        image_fields = image_field_names(self.rdp.program.individual_checker)
+        for ind in qs.iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
+            paths = sync_record_blobs(ind, image_fields, only={"photo"})
+            if photo := paths.get("photo"):
+                yield {"reference_pk": str(ind.pk), "filename": photo}
 
     def create_deduplication_set(
         self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None
