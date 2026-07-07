@@ -1,4 +1,5 @@
 import json
+import pickle
 from unittest.mock import Mock, call
 
 import pytest
@@ -192,13 +193,38 @@ def test_encode_flex_files_blob_empty_returns_none() -> None:
     assert encode_flex_files_blob({}) is None
 
 
+@pytest.mark.parametrize("value", [None, b"", bytearray(), memoryview(b"")])
+def test_decode_flex_files_blob_empty_returns_empty(value) -> None:
+    assert decode_flex_files_blob(value) == {}
+
+
+def test_decode_flex_files_blob_accepts_bytearray_and_memoryview() -> None:
+    encoded = encode_flex_files_blob({"photo": "data:image/png;base64,AAA"})
+    assert decode_flex_files_blob(bytearray(encoded)) == {"photo": "data:image/png;base64,AAA"}
+    assert decode_flex_files_blob(memoryview(encoded)) == {"photo": "data:image/png;base64,AAA"}
+
+
 def test_decode_flex_files_blob_invalid_data_returns_empty() -> None:
     assert decode_flex_files_blob(b"not-a-pickle-or-json") == {}
+
+
+def test_decode_flex_files_blob_non_dict_pickle_returns_empty() -> None:
+    assert decode_flex_files_blob(pickle.dumps([1, 2, 3])) == {}
 
 
 def test_decode_flex_files_blob_reads_legacy_json_format() -> None:
     legacy = json.dumps({"photo": "data:image/png;base64,AAA"}).encode("utf-8")
     assert decode_flex_files_blob(legacy) == {"photo": "data:image/png;base64,AAA"}
+
+
+def test_decode_flex_files_blob_legacy_json_non_dict_returns_empty() -> None:
+    legacy_list = json.dumps([1, 2, 3]).encode("utf-8")
+    assert decode_flex_files_blob(legacy_list) == {}
+
+
+def test_merge_flex_payload_skips_empty_stored_values() -> None:
+    blob = encode_flex_files_blob({"photo": ""})
+    assert merge_flex_payload({"name": "John"}, blob) == {"name": "John"}
 
 
 def test_split_flex_payload_ignores_empty_file_values() -> None:
