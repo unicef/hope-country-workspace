@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.contrib.aurora.client import AuroraClient
-from country_workspace.contrib.aurora.crypto import decrypt_record_fields
+from country_workspace.contrib.aurora.crypto import decrypt_payload
 from country_workspace.contrib.aurora.models import Registration
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
@@ -44,23 +44,33 @@ def _load_rsa_private_key(registration_reference_pk: str) -> str:
 
 def prepare_record(record: Mapping[str, Any], private_key: str) -> dict[str, Any]:
     result = dict(record)
-    fields = result.get("fields")
-    if fields is None or isinstance(fields, dict):
+
+    if "payload" in result:
+        payload = result.pop("payload")
+        if not private_key:
+            msg = (
+                f"Record {result.get('pk')}: encrypted Aurora registration requires an RSA private key "
+                "on the CW Registration"
+            )
+            raise ImportError(msg)
+        if not isinstance(payload, Mapping) or "encryption" not in payload:
+            msg = f"Record {result.get('pk')}: Aurora refused to return the encrypted payload ({payload})"
+            raise ImportError(msg)
+        try:
+            result["fields"] = decrypt_payload(payload, private_key)
+        except Exception as exc:
+            msg = f"Record {result.get('pk')}: failed to decrypt payload"
+            raise ImportError(msg) from exc
         return result
-    if not isinstance(fields, str):
-        msg = f"Record {result.get('pk')}: unsupported encrypted fields payload type"
-        raise TypeError(msg)
-    if not private_key:
-        msg = (
-            f"Record {result.get('pk')}: encrypted Aurora registration requires an RSA private key "
-            "on the CW Registration"
-        )
-        raise ImportError(msg)
-    try:
-        result["fields"] = decrypt_record_fields(fields, private_key)
-    except Exception as exc:
-        msg = f"Record {result.get('pk')}: failed to decrypt fields"
-        raise ImportError(msg) from exc
+
+    if "data" in result:
+        data = result.pop("data")
+        if isinstance(data, Mapping) and "Forbidden" in data:
+            msg = f"Record {result.get('pk')}: Aurora refused to return merged data ({data.get('Forbidden')})"
+            raise ImportError(msg)
+        result["fields"] = data
+        return result
+
     return result
 
 
@@ -71,6 +81,7 @@ def import_data(job: AsyncJob) -> ImportResult:
         raise ImportError("registration_reference_pk is required for Aurora import")
 
     private_key = _load_rsa_private_key(str(config["registration_reference_pk"]))
+    ser = "encrypted" if private_key else "full"
 
     batch = Batch.objects.create(
         name=config["batch_name"],
@@ -86,7 +97,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     total_people = 0
     total_households = 0
     client = AuroraClient()
-    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+    for result in client.get(f"registration/{config['registration_reference_pk']}/records/", params={"ser": ser}):
         job.ensure_not_cancelled(refresh=True)
         imported = import_result(batch, result, config, private_key=private_key)
         total_people += imported.people

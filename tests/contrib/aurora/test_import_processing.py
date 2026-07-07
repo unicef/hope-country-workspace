@@ -116,13 +116,35 @@ def test_import_data_calls_client_and_aggregates(
     result = import_data(job)
 
     assert result == expected
-    client_cls.return_value.get.assert_called_once_with(f"registration/{config['registration_reference_pk']}/records/")
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "encrypted"}
+    )
     import_result_mock.assert_any_call(batch, {"pk": "5"}, job.config, private_key=PRIVATE.decode())
     import_result_mock.assert_any_call(batch, {"pk": "6"}, job.config, private_key=PRIVATE.decode())
     postprocessing.assert_called_once_with(
         batch,
         household_transformer_id=None,
         individual_transformer_id=None,
+    )
+
+
+@pytest.mark.django_db
+def test_import_data_requests_full_serializer_without_private_key(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+) -> None:
+    RegistrationFactory(reference_pk=int(config["registration_reference_pk"]), rsa_private_key="")
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client_cls.return_value.get.return_value = []
+    mocker.patch("country_workspace.contrib.aurora.import_processing.run_batch_postprocessing")
+
+    import_data(job)
+
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "full"}
     )
 
 
@@ -216,47 +238,81 @@ def test_import_data_honors_cancellation_before_start(mocker: MockerFixture, con
 # --- prepare_record --------------------------------------------------------------
 
 
+def _encrypt_payload(fields: dict, files: dict | None = None) -> dict:
+    return {
+        "encryption": "rsa",
+        "fields": _encrypt_fields(fields),
+        "files": _encrypt_fields(files) if files is not None else "",
+    }
+
+
 def test_prepare_record_passthrough_plaintext_dict() -> None:
     record = {"pk": 1, "fields": {"first_name": "Alice"}}
     assert prepare_record(record, "") == record
 
 
 def test_prepare_record_raises_when_encrypted_without_key() -> None:
-    encrypted = _encrypt_fields({"first_name": "Alice"})
-    record = {"pk": 1, "fields": encrypted}
+    payload = _encrypt_payload({"first_name": "Alice"})
+    record = {"pk": 1, "payload": payload}
 
     with pytest.raises(ImportError, match="requires an RSA private key"):
         prepare_record(record, "")
 
 
-def test_prepare_record_decrypts_encrypted_fields() -> None:
-    fields = {"first_name": "Alice", "last_name": "Smith"}
-    encrypted = _encrypt_fields(fields)
-    record = {"pk": 1, "fields": encrypted}
+def test_prepare_record_decrypts_and_merges_payload() -> None:
+    fields = {"given_name_i_c": "Alice", "family_name_i_c": "Smith"}
+    files = {"attachment_i_c": "photo.jpg"}
+    record = {"pk": 1, "payload": _encrypt_payload(fields, files)}
+
+    prepared = prepare_record(record, PRIVATE.decode())
+
+    assert prepared["fields"] == {**files, **fields}
+    assert "payload" not in prepared
+
+
+def test_prepare_record_decrypts_payload_without_files() -> None:
+    fields = {"given_name_i_c": "Alice"}
+    record = {"pk": 1, "payload": _encrypt_payload(fields)}
 
     prepared = prepare_record(record, PRIVATE.decode())
 
     assert prepared["fields"] == fields
 
 
-def test_prepare_record_raises_on_unsupported_fields_type() -> None:
-    record = {"pk": 1, "fields": 123}
+def test_prepare_record_raises_when_aurora_forbids_encrypted_payload() -> None:
+    record = {"pk": 1, "payload": {"Forbidden": "Cannot access encrypted data without public key registered"}}
 
-    with pytest.raises(TypeError, match="unsupported encrypted fields payload type"):
+    with pytest.raises(ImportError, match="Aurora refused to return the encrypted payload"):
         prepare_record(record, PRIVATE.decode())
 
 
 def test_prepare_record_raises_when_decryption_fails(mocker: MockerFixture) -> None:
     mocker.patch(
-        "country_workspace.contrib.aurora.import_processing.decrypt_record_fields",
+        "country_workspace.contrib.aurora.import_processing.decrypt_payload",
         side_effect=ValueError("bad data"),
     )
-    record = {"pk": 1, "fields": "encrypted-payload"}
+    record = {"pk": 1, "payload": _encrypt_payload({"first_name": "Alice"})}
 
-    with pytest.raises(ImportError, match="failed to decrypt fields") as exc_info:
+    with pytest.raises(ImportError, match="failed to decrypt payload") as exc_info:
         prepare_record(record, PRIVATE.decode())
 
     assert isinstance(exc_info.value.__cause__, ValueError)
+
+
+def test_prepare_record_uses_pre_merged_data_when_present() -> None:
+    record = {"pk": 1, "data": {"given_name_i_c": "Alice"}}
+
+    prepared = prepare_record(record, "")
+
+    assert prepared["fields"] == {"given_name_i_c": "Alice"}
+    assert "data" not in prepared
+
+
+def test_prepare_record_raises_when_aurora_forbids_merged_data() -> None:
+    record = {"pk": 1, "data": {"Forbidden": "Cannot access encrypted data"}}
+
+    with pytest.raises(ImportError, match="Aurora refused to return merged data"):
+        prepare_record(record, "")
 
 
 # --- import_result ----------------------------------------------------------------
@@ -297,7 +353,7 @@ def test_import_result_decrypts_encrypted_fields_before_create(mocker: MockerFix
     batch.program.id = 42
 
     fields = {"given_name_i_c": "Alice", "family_name_i_c": "Green"}
-    encrypted_record = {"pk": "8", "fields": _encrypt_fields(fields)}
+    encrypted_record = {"pk": "8", "payload": _encrypt_payload(fields)}
 
     _mock_atomic(mocker)
     _mock_sync_log(mocker)

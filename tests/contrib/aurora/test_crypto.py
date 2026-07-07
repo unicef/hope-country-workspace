@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from country_workspace.contrib.aurora.crypto import decrypt_record_fields
+from country_workspace.contrib.aurora.crypto import decrypt_payload, decrypt_record_fields
 
 PUBLIC = b"""-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxPyACSP38j/kB9jR8QPZ
@@ -99,3 +99,46 @@ def test_decrypt_record_fields_roundtrip() -> None:
 def test_decrypt_record_fields_various_payloads(payload: dict) -> None:
     encrypted_fields = _encrypt_fields(payload)
     assert decrypt_record_fields(encrypted_fields, PRIVATE.decode()) == payload
+
+
+# --- decrypt_payload ---------------------------------------------------------------
+
+
+def test_decrypt_payload_merges_decrypted_fields_and_files() -> None:
+    fields = {"given_name_i_c": "Alice", "family_name_i_c": "Green"}
+    files = {"attachment_i_c": "photo.jpg"}
+    payload = {
+        "encryption": "rsa",
+        "fields": _encrypt_fields(fields),
+        "files": _encrypt_fields(files),
+    }
+
+    assert decrypt_payload(payload, PRIVATE.decode()) == {**files, **fields}
+
+
+def test_decrypt_payload_treats_empty_files_as_no_op() -> None:
+    fields = {"given_name_i_c": "Alice"}
+    payload = {
+        "encryption": "rsa",
+        "fields": _encrypt_fields(fields),
+        "files": "",
+    }
+
+    assert decrypt_payload(payload, PRIVATE.decode()) == fields
+
+
+def test_decrypt_payload_treats_missing_files_as_no_op() -> None:
+    fields = {"given_name_i_c": "Alice"}
+    payload = {
+        "encryption": "rsa",
+        "fields": _encrypt_fields(fields),
+    }
+
+    assert decrypt_payload(payload, PRIVATE.decode()) == fields
+
+
+def test_decrypt_payload_rejects_unsupported_encryption_scheme() -> None:
+    payload = {"encryption": "pgp", "fields": "", "files": ""}
+
+    with pytest.raises(ValueError, match="Unsupported Aurora encryption scheme"):
+        decrypt_payload(payload, PRIVATE.decode())
