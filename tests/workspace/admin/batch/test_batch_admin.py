@@ -860,9 +860,7 @@ def test_import_pictures_get_step_two_renders_preview_report(
     request = rf.get("/admin/import-pictures/?step=2&token=tok", data={"step": "2", "token": "tok"})
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {
-        "tokens": {
-            "tok": {"batch_id": batch.pk, "created_by_id": user.pk, "matched_files_count": 1, "assignments": []}
-        }
+        "tokens": {"tok": {"batch_id": batch.pk, "created_by_id": user.pk, "matched_files_count": 1, "assignments": []}}
     }
     batch.save(update_fields=["picture_import_state"])
 
