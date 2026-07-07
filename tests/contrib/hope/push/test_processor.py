@@ -735,25 +735,14 @@ def test_dedup_run_returns_when_can_create_check_failed(
     assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
 
 
-def test_iter_images_filters_empty_and_non_strings(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
-    qs = mocker.MagicMock()
-    values_qs = mocker.MagicMock()
-    values_qs.iterator.return_value = iter(
-        [
-            (1, " a.jpg "),
-            (2, ""),
-            (3, "   "),
-            (4, None),
-            (5, 123),
-            (6, "b.jpg"),
-        ]
-    )
-    qs.values_list.return_value = values_qs
-    mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
+def test_iter_images_filters_empty_and_non_strings(
+    dedup_processor: DedupProcessor,
+    individuals_with_photo: tuple,
+) -> None:
+    with_photo, _ = individuals_with_photo
 
     assert list(dedup_processor._iter_images()) == [
-        {"reference_pk": "1", "filename": "a.jpg"},
-        {"reference_pk": "6", "filename": "b.jpg"},
+        {"reference_pk": str(with_photo.pk), "filename": with_photo.hope_blob_key("photo")},
     ]
 
 

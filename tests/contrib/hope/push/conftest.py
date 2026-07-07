@@ -252,3 +252,21 @@ def dedup_processor(rdp: CountryRdp):
     from country_workspace.contrib.hope.push.processor import DedupProcessor
 
     return DedupProcessor(rdp)
+
+
+@pytest.fixture
+def individuals_with_photo(rdp: CountryRdp, master_detail: bool):
+    """Individual checker already has a top-level `photo` Base64ImageField (see
+    0028_add_individual_fields.py), applied via the `program` fixture's force_migrated_records.
+    """
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    if master_detail:
+        household = CountryHouseholdFactory(rdps=rdp, individuals=True)
+        make = lambda flex_fields: CountryIndividualFactory(household=household, flex_fields=flex_fields)
+    else:
+        make = lambda flex_fields: CountryIndividualFactory(household=None, flex_fields=flex_fields, rdps=rdp)
+
+    png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    photo_uri = f"data:image/png;base64,{png_b64}"
+    return make({"photo": photo_uri}), make({"photo": ""})
