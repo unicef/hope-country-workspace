@@ -193,7 +193,11 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 continue
             cleaned_payloads[token] = payload
         if changed:
-            batch.picture_import_state = cleaned_payloads
+            state = batch.picture_import_state if isinstance(batch.picture_import_state, dict) else {}
+            batch.picture_import_state = {
+                **state,
+                "tokens": cleaned_payloads,
+            }
             batch.save(update_fields=["picture_import_state"])
         return cleaned_payloads
 

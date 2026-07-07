@@ -417,7 +417,7 @@ def test_batch_admin_get_picture_import_payload_is_user_scoped(
     other_user = UserFactory()
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    batch.picture_import_state = {"tok": {"batch_id": batch.pk, "created_by_id": other_user.pk}}
+    batch.picture_import_state = {"tokens": {"tok": {"batch_id": batch.pk, "created_by_id": other_user.pk}}}
     batch.save(update_fields=["picture_import_state"])
 
     assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
@@ -426,7 +426,7 @@ def test_batch_admin_get_picture_import_payload_is_user_scoped(
 def test_batch_admin_get_picture_import_payload_rejects_wrong_batch(batch_admin, batch: CountryBatch, rf, user) -> None:
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    batch.picture_import_state = {"tok": {"batch_id": batch.pk + 1, "created_by_id": user.pk}}
+    batch.picture_import_state = {"tokens": {"tok": {"batch_id": batch.pk + 1, "created_by_id": user.pk}}}
     batch.save(update_fields=["picture_import_state"])
 
     assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
@@ -454,7 +454,7 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(
     _add_middleware_to_request(request, user)
     old_storage_name = default_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
     batch.picture_import_state = {
-        "tok": {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}
+        "tokens": {"tok": {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}}
     }
     batch.save(update_fields=["picture_import_state"])
     batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk, "zip_file_name": "new.zip"})
@@ -472,9 +472,11 @@ def test_batch_admin_picture_import_payloads_prune_expired_entries(
     _add_middleware_to_request(request, user)
     now = 1000
     batch.picture_import_state = {
-        "ok": {"batch_id": 1, "created_at": now},
-        "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_file_name": "old-storage.zip"},
-        "broken": "not-a-dict",
+        "tokens": {
+            "ok": {"batch_id": 1, "created_at": now},
+            "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_file_name": "old-storage.zip"},
+            "broken": "not-a-dict",
+        }
     }
     batch.save(update_fields=["picture_import_state"])
     mocker.patch.object(batch_admin_module, "time", return_value=now)
@@ -485,7 +487,7 @@ def test_batch_admin_picture_import_payloads_prune_expired_entries(
     batch.refresh_from_db()
 
     assert payloads == {"ok": {"batch_id": 1, "created_at": now}}
-    assert batch.picture_import_state == payloads
+    assert batch.get_picture_import_state() == payloads
     delete_uploaded_zip.assert_any_call("old-storage.zip")
 
 
@@ -761,13 +763,15 @@ def test_import_pictures_post_confirm_schedules_background_job(
         archive.writestr("A-1.jpg", b"content")
     storage_name = default_storage.save("batch-picture-import/confirm.zip", ContentFile(payload.getvalue()))
     batch.picture_import_state = {
-        "tok": {
-            "batch_id": batch.pk,
-            "match_field": "beneficiary_id",
-            "target_field": "photo",
-            "zip_file_name": storage_name,
-            "created_by_id": user.pk,
-            "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
+        "tokens": {
+            "tok": {
+                "batch_id": batch.pk,
+                "match_field": "beneficiary_id",
+                "target_field": "photo",
+                "zip_file_name": storage_name,
+                "created_by_id": user.pk,
+                "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
+            }
         }
     }
     batch.save(update_fields=["picture_import_state"])
@@ -799,11 +803,13 @@ def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
     request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {
-        "tok": {
-            "batch_id": batch.pk,
-            "match_field": "beneficiary_id",
-            "target_field": "photo",
-            "created_by_id": user.pk,
+        "tokens": {
+            "tok": {
+                "batch_id": batch.pk,
+                "match_field": "beneficiary_id",
+                "target_field": "photo",
+                "created_by_id": user.pk,
+            }
         }
     }
     batch.save(update_fields=["picture_import_state"])
@@ -854,7 +860,9 @@ def test_import_pictures_get_step_two_renders_preview_report(
     request = rf.get("/admin/import-pictures/?step=2&token=tok", data={"step": "2", "token": "tok"})
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {
-        "tok": {"batch_id": batch.pk, "created_by_id": user.pk, "matched_files_count": 1, "assignments": []}
+        "tokens": {
+            "tok": {"batch_id": batch.pk, "created_by_id": user.pk, "matched_files_count": 1, "assignments": []}
+        }
     }
     batch.save(update_fields=["picture_import_state"])
 
@@ -1299,12 +1307,14 @@ def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: C
         ContentFile(_make_zip_upload({"A-1.jpg": b"x"}).read()),
     )
     batch.picture_import_state = {
-        "tok": {
-            "batch_id": batch.pk,
-            "match_field": "beneficiary_id",
-            "target_field": "photo",
-            "zip_file_name": zip_name,
-            "created_by_id": user.pk,
+        "tokens": {
+            "tok": {
+                "batch_id": batch.pk,
+                "match_field": "beneficiary_id",
+                "target_field": "photo",
+                "zip_file_name": zip_name,
+                "created_by_id": user.pk,
+            }
         }
     }
     batch.save(update_fields=["picture_import_state"])

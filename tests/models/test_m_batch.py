@@ -47,7 +47,7 @@ def test_picture_import_commands_store_and_clear_payload(batch: "CountryBatch") 
 
 
 def test_get_picture_import_state_filters_invalid_items(batch: "CountryBatch") -> None:
-    batch.picture_import_state = {"ok": {"a": 1}, "bad": "x"}
+    batch.picture_import_state = {"tokens": {"ok": {"a": 1}, "bad": "x"}}
     batch.save(update_fields=["picture_import_state"])
 
     assert batch.get_picture_import_state() == {"ok": {"a": 1}}
