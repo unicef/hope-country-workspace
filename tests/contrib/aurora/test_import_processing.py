@@ -12,9 +12,13 @@ from country_workspace.contrib.aurora.import_processing import (
     flatten_top2_prefixed,
     import_data,
     import_result,
+    prepare_record,
     _validation_queryset,
 )
 from country_workspace.models.jobs import GracefulJobCancellationError
+from tests.contrib.aurora.test_crypto import PRIVATE, _encrypt_fields
+from tests.extras.testutils.factories.aurora import RegistrationFactory
+from tests.extras.testutils.factories.program import ProgramFactory
 
 
 @pytest.fixture
@@ -88,6 +92,7 @@ def test_import_data_requires_registration_reference_pk(job) -> None:
         ),
     ],
 )
+@pytest.mark.django_db
 def test_import_data_calls_client_and_aggregates(
     mocker: MockerFixture,
     job,
@@ -97,6 +102,10 @@ def test_import_data_calls_client_and_aggregates(
     expected: ImportResult,
 ) -> None:
     job.config = {**config, "master_detail": master_detail}
+    registration = RegistrationFactory(
+        reference_pk=int(config["registration_reference_pk"]), rsa_private_key=PRIVATE.decode()
+    )
+    job.program = registration.project.program
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
@@ -111,9 +120,11 @@ def test_import_data_calls_client_and_aggregates(
     result = import_data(job)
 
     assert result == expected
-    client_cls.return_value.get.assert_called_once_with(f"registration/{config['registration_reference_pk']}/records/")
-    import_result_mock.assert_any_call(batch, {"pk": "5"}, job.config)
-    import_result_mock.assert_any_call(batch, {"pk": "6"}, job.config)
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "encrypted"}
+    )
+    import_result_mock.assert_any_call(batch, {"pk": "5"}, job.config, private_key=PRIVATE.decode())
+    import_result_mock.assert_any_call(batch, {"pk": "6"}, job.config, private_key=PRIVATE.decode())
     postprocessing.assert_called_once_with(
         batch,
         household_transformer_id=None,
@@ -121,12 +132,59 @@ def test_import_data_calls_client_and_aggregates(
     )
 
 
+@pytest.mark.django_db
+def test_import_data_requests_full_serializer_without_private_key(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+) -> None:
+    registration = RegistrationFactory(reference_pk=int(config["registration_reference_pk"]), rsa_private_key="")
+    job.program = registration.project.program
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client_cls.return_value.get.return_value = []
+    mocker.patch("country_workspace.contrib.aurora.import_processing.run_batch_postprocessing")
+
+    import_data(job)
+
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "full"}
+    )
+
+
+@pytest.mark.django_db
+def test_import_data_ignores_private_key_from_other_program(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+) -> None:
+    registration = RegistrationFactory(
+        reference_pk=int(config["registration_reference_pk"]), rsa_private_key=PRIVATE.decode()
+    )
+    job.program = ProgramFactory()
+    assert job.program != registration.project.program
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client_cls.return_value.get.return_value = []
+    mocker.patch("country_workspace.contrib.aurora.import_processing.run_batch_postprocessing")
+
+    import_data(job)
+
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "full"}
+    )
+
+
+@pytest.mark.django_db
 def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture, job, config: Config) -> None:
     job.config = {
         **config,
         "household_transformer_id": 10,
         "individual_transformer_id": 20,
     }
+    job.program = ProgramFactory()
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
@@ -144,8 +202,10 @@ def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture
     )
 
 
+@pytest.mark.django_db
 def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture, job, config: Config) -> None:
     job.config = {**config, "validate_after_import": True}
+    job.program = ProgramFactory()
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
@@ -206,6 +266,86 @@ def test_import_data_honors_cancellation_before_start(mocker: MockerFixture, con
         import_data(job)
 
 
+# --- prepare_record --------------------------------------------------------------
+
+
+def _encrypt_payload(fields: dict, files: dict | None = None) -> dict:
+    return {
+        "encryption": "rsa",
+        "fields": _encrypt_fields(fields),
+        "files": _encrypt_fields(files) if files is not None else "",
+    }
+
+
+def test_prepare_record_passthrough_plaintext_dict() -> None:
+    record = {"pk": 1, "fields": {"first_name": "Alice"}}
+    assert prepare_record(record, "") == record
+
+
+def test_prepare_record_raises_when_encrypted_without_key() -> None:
+    payload = _encrypt_payload({"first_name": "Alice"})
+    record = {"pk": 1, "payload": payload}
+
+    with pytest.raises(ImportError, match="requires an RSA private key"):
+        prepare_record(record, "")
+
+
+def test_prepare_record_decrypts_and_merges_payload() -> None:
+    fields = {"given_name_i_c": "Alice", "family_name_i_c": "Smith"}
+    files = {"attachment_i_c": "photo.jpg"}
+    record = {"pk": 1, "payload": _encrypt_payload(fields, files)}
+
+    prepared = prepare_record(record, PRIVATE.decode())
+
+    assert prepared["fields"] == {**files, **fields}
+    assert "payload" not in prepared
+
+
+def test_prepare_record_decrypts_payload_without_files() -> None:
+    fields = {"given_name_i_c": "Alice"}
+    record = {"pk": 1, "payload": _encrypt_payload(fields)}
+
+    prepared = prepare_record(record, PRIVATE.decode())
+
+    assert prepared["fields"] == fields
+
+
+def test_prepare_record_raises_when_aurora_forbids_encrypted_payload() -> None:
+    record = {"pk": 1, "payload": {"Forbidden": "Cannot access encrypted data without public key registered"}}
+
+    with pytest.raises(ImportError, match="Aurora refused to return the encrypted payload"):
+        prepare_record(record, PRIVATE.decode())
+
+
+def test_prepare_record_raises_when_decryption_fails(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.decrypt_payload",
+        side_effect=ValueError("bad data"),
+    )
+    record = {"pk": 1, "payload": _encrypt_payload({"first_name": "Alice"})}
+
+    with pytest.raises(ImportError, match="failed to decrypt payload") as exc_info:
+        prepare_record(record, PRIVATE.decode())
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+
+
+def test_prepare_record_uses_pre_merged_data_when_present() -> None:
+    record = {"pk": 1, "data": {"given_name_i_c": "Alice"}}
+
+    prepared = prepare_record(record, "")
+
+    assert prepared["fields"] == {"given_name_i_c": "Alice"}
+    assert "data" not in prepared
+
+
+def test_prepare_record_raises_when_aurora_forbids_merged_data() -> None:
+    record = {"pk": 1, "data": {"Forbidden": "Cannot access encrypted data"}}
+
+    with pytest.raises(ImportError, match="Aurora refused to return merged data"):
+        prepare_record(record, "")
+
+
 # --- import_result ----------------------------------------------------------------
 
 
@@ -237,6 +377,25 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
     assert result == ImportResult(people=1)
     create_individual_mock.assert_called_once_with(batch, {"pk": "7"}, config, "AUR#7")
     update_or_create.assert_called_once()
+
+
+def test_import_result_decrypts_encrypted_fields_before_create(mocker: MockerFixture, config: Config) -> None:
+    batch = mocker.MagicMock()
+    batch.program.id = 42
+
+    fields = {"given_name_i_c": "Alice", "family_name_i_c": "Green"}
+    encrypted_record = {"pk": "8", "payload": _encrypt_payload(fields)}
+
+    _mock_atomic(mocker)
+    _mock_sync_log(mocker)
+    mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_originating_id", return_value="AUR#8")
+    create_individual_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
+
+    import_result(batch, encrypted_record, config, private_key=PRIVATE.decode())
+
+    create_individual_mock.assert_called_once()
+    passed_record = create_individual_mock.call_args.args[1]
+    assert passed_record["fields"] == fields
 
 
 def test_import_result_master_detail_creates_households_and_people(mocker: MockerFixture, config: Config) -> None:

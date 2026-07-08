@@ -10,6 +10,8 @@ from django.utils import timezone
 
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.contrib.aurora.client import AuroraClient
+from country_workspace.contrib.aurora.crypto import decrypt_payload
+from country_workspace.contrib.aurora.models import Registration
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.imports import get_aurora_originating_id
@@ -33,11 +35,56 @@ class ImportResult(NamedTuple):
     households: int = 0
 
 
+def _load_rsa_private_key(registration_reference_pk: str, program: Program) -> str:
+    registration = Registration.objects.filter(
+        reference_pk=int(registration_reference_pk),
+        project__program=program,
+    ).first()
+    if registration is None:
+        return ""
+    return (registration.rsa_private_key or "").strip()
+
+
+def prepare_record(record: Mapping[str, Any], private_key: str) -> dict[str, Any]:
+    result = dict(record)
+
+    if "payload" in result:
+        payload = result.pop("payload")
+        if not private_key:
+            msg = (
+                f"Record {result.get('pk')}: encrypted Aurora registration requires an RSA private key "
+                "on the CW Registration"
+            )
+            raise ImportError(msg)
+        if not isinstance(payload, Mapping) or "encryption" not in payload:
+            msg = f"Record {result.get('pk')}: Aurora refused to return the encrypted payload ({payload})"
+            raise ImportError(msg)
+        try:
+            result["fields"] = decrypt_payload(payload, private_key)
+        except Exception as exc:
+            msg = f"Record {result.get('pk')}: failed to decrypt payload"
+            raise ImportError(msg) from exc
+        return result
+
+    if "data" in result:
+        data = result.pop("data")
+        if isinstance(data, Mapping) and "Forbidden" in data:
+            msg = f"Record {result.get('pk')}: Aurora refused to return merged data ({data.get('Forbidden')})"
+            raise ImportError(msg)
+        result["fields"] = data
+        return result
+
+    return result
+
+
 def import_data(job: AsyncJob) -> ImportResult:
     config: Config = job.config
     job.ensure_not_cancelled(refresh=True)
     if not config.get("registration_reference_pk"):
         raise ImportError("registration_reference_pk is required for Aurora import")
+
+    private_key = _load_rsa_private_key(str(config["registration_reference_pk"]), job.program)
+    ser = "encrypted" if private_key else "full"
 
     batch = Batch.objects.create(
         name=config["batch_name"],
@@ -53,9 +100,9 @@ def import_data(job: AsyncJob) -> ImportResult:
     total_people = 0
     total_households = 0
     client = AuroraClient()
-    for result in client.get(f"registration/{config['registration_reference_pk']}/records/"):
+    for result in client.get(f"registration/{config['registration_reference_pk']}/records/", params={"ser": ser}):
         job.ensure_not_cancelled(refresh=True)
-        imported = import_result(batch, result, config)
+        imported = import_result(batch, result, config, private_key=private_key)
         total_people += imported.people
         total_households += imported.households
 
@@ -81,7 +128,13 @@ def import_data(job: AsyncJob) -> ImportResult:
     return ImportResult(people=total_people, households=total_households)
 
 
-def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> ImportResult:
+def import_result(
+    batch: Batch,
+    result: Mapping[str, Any],
+    config: Config,
+    *,
+    private_key: str = "",
+) -> ImportResult:
     people_counter = 0
     household_counter = 0
     sync_log_name = get_aurora_sync_log_name(f"registration{config['registration_reference_pk']}")
@@ -98,15 +151,16 @@ def import_result(batch: Batch, result: Mapping[str, Any], config: Config) -> Im
         if current_id <= last_id:
             return ImportResult(people=0)
         with transaction.atomic():
-            originating_id = get_aurora_originating_id(result["pk"])
+            record = prepare_record(result, private_key)
+            originating_id = get_aurora_originating_id(record["pk"])
             if config.get("master_detail"):
                 created_households, created_individuals = create_household_and_individuals(
-                    batch, result, config, originating_id
+                    batch, record, config, originating_id
                 )
                 household_counter += created_households
                 people_counter += created_individuals
             else:
-                create_individual(batch, result, config, originating_id)
+                create_individual(batch, record, config, originating_id)
                 people_counter += 1
             last_successful_id = current_id
     except Exception as e:
