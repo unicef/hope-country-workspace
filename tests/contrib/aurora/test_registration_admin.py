@@ -100,12 +100,17 @@ def test_registration_admin_form_rejects_non_rsa_private_key(mocker: MockerFixtu
     assert form.errors["rsa_private_key"] == ["Enter a valid RSA private key in PEM format."]
 
 
-def test_has_change_permission_requires_superuser(registration_admin: RegistrationAdmin) -> None:
-    superuser_request = SimpleNamespace(user=SimpleNamespace(is_superuser=True))
-    staff_request = SimpleNamespace(user=SimpleNamespace(is_superuser=False))
+def test_has_change_permission_checks_registration_permission(
+    mocker: MockerFixture, registration_admin: RegistrationAdmin
+) -> None:
+    allowed_user = mocker.MagicMock(has_perm=mocker.MagicMock(return_value=True))
+    denied_user = mocker.MagicMock(has_perm=mocker.MagicMock(return_value=False))
 
-    assert registration_admin.has_change_permission(superuser_request) is True
-    assert registration_admin.has_change_permission(staff_request) is False
+    assert registration_admin.has_change_permission(SimpleNamespace(user=allowed_user)) is True
+    allowed_user.has_perm.assert_called_once_with("aurora.change_registration")
+
+    assert registration_admin.has_change_permission(SimpleNamespace(user=denied_user)) is False
+    denied_user.has_perm.assert_called_once_with("aurora.change_registration")
 
 
 def test_get_readonly_fields_delegates_to_super_when_adding(registration_admin: RegistrationAdmin) -> None:

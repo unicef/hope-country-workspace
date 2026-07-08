@@ -36,4 +36,4 @@ class RegistrationAdmin(BaseModelAdmin):
         return False
 
     def has_change_permission(self, request: HttpRequest, obj: Registration | None = None) -> bool:
-        return request.user.is_superuser
+        return request.user.has_perm("aurora.change_registration")

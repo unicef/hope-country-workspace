@@ -35,8 +35,11 @@ class ImportResult(NamedTuple):
     households: int = 0
 
 
-def _load_rsa_private_key(registration_reference_pk: str) -> str:
-    registration = Registration.objects.filter(reference_pk=int(registration_reference_pk)).first()
+def _load_rsa_private_key(registration_reference_pk: str, program: Program) -> str:
+    registration = Registration.objects.filter(
+        reference_pk=int(registration_reference_pk),
+        project__program=program,
+    ).first()
     if registration is None:
         return ""
     return (registration.rsa_private_key or "").strip()
@@ -80,7 +83,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     if not config.get("registration_reference_pk"):
         raise ImportError("registration_reference_pk is required for Aurora import")
 
-    private_key = _load_rsa_private_key(str(config["registration_reference_pk"]))
+    private_key = _load_rsa_private_key(str(config["registration_reference_pk"]), job.program)
     ser = "encrypted" if private_key else "full"
 
     batch = Batch.objects.create(

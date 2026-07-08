@@ -18,6 +18,7 @@ from country_workspace.contrib.aurora.import_processing import (
 from country_workspace.models.jobs import GracefulJobCancellationError
 from tests.contrib.aurora.test_crypto import PRIVATE, _encrypt_fields
 from tests.extras.testutils.factories.aurora import RegistrationFactory
+from tests.extras.testutils.factories.program import ProgramFactory
 
 
 @pytest.fixture
@@ -101,7 +102,10 @@ def test_import_data_calls_client_and_aggregates(
     expected: ImportResult,
 ) -> None:
     job.config = {**config, "master_detail": master_detail}
-    RegistrationFactory(reference_pk=int(config["registration_reference_pk"]), rsa_private_key=PRIVATE.decode())
+    registration = RegistrationFactory(
+        reference_pk=int(config["registration_reference_pk"]), rsa_private_key=PRIVATE.decode()
+    )
+    job.program = registration.project.program
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
@@ -134,7 +138,32 @@ def test_import_data_requests_full_serializer_without_private_key(
     job,
     config: Config,
 ) -> None:
-    RegistrationFactory(reference_pk=int(config["registration_reference_pk"]), rsa_private_key="")
+    registration = RegistrationFactory(reference_pk=int(config["registration_reference_pk"]), rsa_private_key="")
+    job.program = registration.project.program
+
+    mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
+    client_cls.return_value.get.return_value = []
+    mocker.patch("country_workspace.contrib.aurora.import_processing.run_batch_postprocessing")
+
+    import_data(job)
+
+    client_cls.return_value.get.assert_called_once_with(
+        f"registration/{config['registration_reference_pk']}/records/", params={"ser": "full"}
+    )
+
+
+@pytest.mark.django_db
+def test_import_data_ignores_private_key_from_other_program(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+) -> None:
+    registration = RegistrationFactory(
+        reference_pk=int(config["registration_reference_pk"]), rsa_private_key=PRIVATE.decode()
+    )
+    job.program = ProgramFactory()
+    assert job.program != registration.project.program
 
     mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     client_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.AuroraClient")
@@ -155,6 +184,7 @@ def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture
         "household_transformer_id": 10,
         "individual_transformer_id": 20,
     }
+    job.program = ProgramFactory()
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
@@ -175,6 +205,7 @@ def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture
 @pytest.mark.django_db
 def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture, job, config: Config) -> None:
     job.config = {**config, "validate_after_import": True}
+    job.program = ProgramFactory()
 
     batch_cls = mocker.patch("country_workspace.contrib.aurora.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
