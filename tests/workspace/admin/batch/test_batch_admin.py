@@ -1,6 +1,5 @@
 import io
 import zipfile
-from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +8,7 @@ from django import forms
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
+from django.core.files.storage import storages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
 from django.test import RequestFactory
@@ -31,6 +30,7 @@ from country_workspace.utils.flex_fields import Base64ImageField
 
 
 pytestmark = pytest.mark.django_db
+media_storage = storages["media"]
 
 
 def _add_middleware_to_request(request, user) -> None:
@@ -390,21 +390,20 @@ def test_batch_admin_picture_payload_helpers(batch_admin, batch: CountryBatch, r
     request = rf.get("/")
     _add_middleware_to_request(request, user)
 
-    assert batch_admin._picture_import_payloads(batch) == {}
+    assert batch.get_picture_import_state() == {}
 
     batch.picture_import_state = "not-a-dict"
     batch.save(update_fields=["picture_import_state"])
-    assert batch_admin._picture_import_payloads(batch) == {}
+    assert batch.get_picture_import_state() == {}
 
-    batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk})
+    batch_admin._save_picture_import_payload(request, batch, {"batch_id": batch.pk})
     batch.refresh_from_db()
-    assert batch.get_picture_import_state()["tok"]["batch_id"] == batch.pk
-    assert batch.get_picture_import_state()["tok"]["created_by_id"] == user.pk
+    assert batch.get_picture_import_state()["batch_id"] == batch.pk
+    assert batch.get_picture_import_state()["created_by_id"] == user.pk
 
-    assert batch_admin._get_picture_import_payload(request, batch, "missing") is None
-    assert batch_admin._get_picture_import_payload(request, batch, "tok")["batch_id"] == batch.pk
+    assert batch_admin._get_picture_import_payload(request, batch)["batch_id"] == batch.pk
 
-    batch_admin._clear_picture_import_payload(request, batch, "tok")
+    batch_admin._clear_picture_import_payload(batch)
     batch.refresh_from_db()
     assert batch.get_picture_import_state() == {}
 
@@ -417,34 +416,34 @@ def test_batch_admin_get_picture_import_payload_is_user_scoped(
     other_user = UserFactory()
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    batch.picture_import_state = {"tokens": {"tok": {"batch_id": batch.pk, "created_by_id": other_user.pk}}}
+    batch.picture_import_state = {"batch_id": batch.pk, "created_by_id": other_user.pk}
     batch.save(update_fields=["picture_import_state"])
 
-    assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
+    assert batch_admin._get_picture_import_payload(request, batch) is None
 
 
 def test_batch_admin_get_picture_import_payload_rejects_wrong_batch(batch_admin, batch: CountryBatch, rf, user) -> None:
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    batch.picture_import_state = {"tokens": {"tok": {"batch_id": batch.pk + 1, "created_by_id": user.pk}}}
+    batch.picture_import_state = {"batch_id": batch.pk + 1, "created_by_id": user.pk}
     batch.save(update_fields=["picture_import_state"])
 
-    assert batch_admin._get_picture_import_payload(request, batch, "tok") is None
+    assert batch_admin._get_picture_import_payload(request, batch) is None
 
 
 def test_batch_admin_delete_uploaded_zip_removes_existing_file(batch_admin) -> None:
-    storage_name = default_storage.save("batch-picture-import/test-delete.zip", ContentFile(b"zip"))
-    assert default_storage.exists(storage_name)
+    storage_name = media_storage.save("batch-picture-import/test-delete.zip", ContentFile(b"zip"))
+    assert media_storage.exists(storage_name)
     batch_admin._delete_uploaded_zip(storage_name)
-    assert not default_storage.exists(storage_name)
+    assert not media_storage.exists(storage_name)
 
 
 def test_batch_admin_store_uploaded_zip_saves_file_and_resets_pointer(batch_admin) -> None:
     upload = _make_zip_upload({"A-1.jpg": b"jpg"})
     storage_name = batch_admin._store_uploaded_zip(upload)
-    assert default_storage.exists(storage_name)
+    assert media_storage.exists(storage_name)
     assert upload.tell() == 0
-    default_storage.delete(storage_name)
+    media_storage.delete(storage_name)
 
 
 def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(
@@ -452,88 +451,16 @@ def test_batch_admin_save_payload_replaces_old_and_deletes_old_file(
 ) -> None:
     request = rf.get("/")
     _add_middleware_to_request(request, user)
-    old_storage_name = default_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
-    batch.picture_import_state = {
-        "tokens": {"tok": {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}}
-    }
+    old_storage_name = media_storage.save("batch-picture-import/old.zip", ContentFile(b"old"))
+    batch.picture_import_state = {"batch_id": batch.pk, "zip_file_name": old_storage_name, "created_by_id": user.pk}
     batch.save(update_fields=["picture_import_state"])
-    batch_admin._save_picture_import_payload(request, batch, "tok", {"batch_id": batch.pk, "zip_file_name": "new.zip"})
+    batch_admin._save_picture_import_payload(request, batch, {"batch_id": batch.pk, "zip_file_name": "new.zip"})
     batch.refresh_from_db()
-    assert not default_storage.exists(old_storage_name)
-    assert batch.get_picture_import_state()["tok"]["zip_file_name"] == "new.zip"
+    assert not media_storage.exists(old_storage_name)
+    assert batch.get_picture_import_state()["zip_file_name"] == "new.zip"
 
 
-def test_batch_admin_picture_import_payloads_prune_expired_entries(
-    batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
-) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
-    request = rf.get("/")
-    _add_middleware_to_request(request, user)
-    now = 1000
-    batch.picture_import_state = {
-        "tokens": {
-            "ok": {"batch_id": 1, "created_at": now},
-            "expired-storage": {"batch_id": 1, "created_at": now - 999, "zip_file_name": "old-storage.zip"},
-            "broken": "not-a-dict",
-        }
-    }
-    batch.save(update_fields=["picture_import_state"])
-    mocker.patch.object(batch_admin_module, "time", return_value=now)
-    mocker.patch.object(batch_admin_module, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 10)
-    delete_uploaded_zip = mocker.patch.object(batch_admin_module.CountryBatchAdmin, "_delete_uploaded_zip")
-
-    payloads = batch_admin._picture_import_payloads(batch)
-    batch.refresh_from_db()
-
-    assert payloads == {"ok": {"batch_id": 1, "created_at": now}}
-    assert batch.get_picture_import_state() == payloads
-    delete_uploaded_zip.assert_any_call("old-storage.zip")
-
-
-def test_batch_admin_picture_import_payloads_handles_non_dict_values(batch_admin, batch: CountryBatch, mocker) -> None:
-    mocker.patch.object(batch, "get_picture_import_state", return_value={"bad": "value", "ok": {"batch_id": 1}})
-
-    payloads = batch_admin._picture_import_payloads(batch)
-
-    assert payloads == {"ok": {"batch_id": 1}}
-
-
-def test_batch_admin_cleanup_stale_stored_zips_ignores_storage_errors(batch_admin, mocker) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
-    mocker.patch.object(batch_admin_module.default_storage, "listdir", side_effect=OSError("storage unavailable"))
-
-    batch_admin._cleanup_stale_stored_zips()
-
-
-def test_batch_admin_cleanup_stale_stored_zips_deletes_expired_files(batch_admin, mocker) -> None:
-    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
-
-    mocker.patch.object(batch_admin_module, "PICTURE_IMPORT_SESSION_TTL_SECONDS", 10)
-    mocker.patch.object(batch_admin_module, "time", return_value=1000)
-    mocker.patch.object(
-        batch_admin_module.default_storage,
-        "listdir",
-        return_value=([], ["old.zip", "new.zip", "broken.zip"]),
-    )
-
-    def _modified_time(path: str) -> datetime:
-        if path.endswith("old.zip"):
-            return datetime.fromtimestamp(980, UTC)
-        if path.endswith("new.zip"):
-            return datetime.fromtimestamp(995, UTC)
-        raise OSError("stat failed")
-
-    mocker.patch.object(batch_admin_module.default_storage, "get_modified_time", side_effect=_modified_time)
-    delete = mocker.patch.object(batch_admin_module.default_storage, "delete")
-
-    batch_admin._cleanup_stale_stored_zips()
-
-    delete.assert_called_once_with("batch-picture-import/old.zip")
-
-
-def test_batch_admin_clear_payload_handles_missing_token(
+def test_batch_admin_clear_payload_handles_empty_state(
     batch_admin, batch: CountryBatch, rf: RequestFactory, user
 ) -> None:
     request = rf.get("/")
@@ -541,7 +468,7 @@ def test_batch_admin_clear_payload_handles_missing_token(
     batch.picture_import_state = {}
     batch.save(update_fields=["picture_import_state"])
 
-    batch_admin._clear_picture_import_payload(request, batch, "missing-token")
+    batch_admin._clear_picture_import_payload(batch)
     batch.refresh_from_db()
 
     assert batch.get_picture_import_state() == {}
@@ -613,7 +540,6 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     service.build_preview.return_value = {"assignments": [], "matched_files_count": 0}
     _mock_picture_import_service(mocker, batch_admin_module, service)
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
-    mocker.patch.object(batch_admin_module.uuid, "uuid4", return_value="token-123")
 
     request = rf.post(
         "/admin/import-pictures/",
@@ -629,15 +555,15 @@ def test_import_pictures_post_preview_saves_payload_and_redirects(
     response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
 
     assert response.status_code == 302
-    assert "step=2&token=token-123" in response.url
+    assert "step=2" in response.url
     batch.refresh_from_db()
-    payload = batch.get_picture_import_state()["token-123"]
+    payload = batch.get_picture_import_state()
     assert payload["batch_id"] == batch.pk
     assert payload["match_field"] == "beneficiary_id"
     assert payload["target_field"] == "photo"
     storage_name = payload["zip_file_name"]
-    assert default_storage.exists(storage_name)
-    default_storage.delete(storage_name)
+    assert media_storage.exists(storage_name)
+    media_storage.delete(storage_name)
 
 
 def test_import_pictures_post_preview_with_invalid_form_renders_form(
@@ -700,7 +626,7 @@ def test_import_pictures_post_preview_handles_limit_error_and_cleans_temp_file(
     assert batch.get_picture_import_state() == {}
 
 
-def test_import_pictures_post_confirm_without_token_redirects_with_error(
+def test_import_pictures_post_confirm_without_payload_redirects_with_error(
     batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
 ) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
@@ -721,7 +647,7 @@ def test_import_pictures_post_confirm_without_token_redirects_with_error(
     assert response.url == "/admin/import-pictures/"
 
 
-def test_import_pictures_post_confirm_with_expired_token_redirects(
+def test_import_pictures_post_confirm_with_expired_payload_redirects(
     batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
 ) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
@@ -733,7 +659,7 @@ def test_import_pictures_post_confirm_with_expired_token_redirects(
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
 
-    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "expired"})
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1"})
     _add_middleware_to_request(request, user)
 
     response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
@@ -756,23 +682,19 @@ def test_import_pictures_post_confirm_schedules_background_job(
     mocker.patch.object(batch, "get_change_url", return_value="/workspace/batch/1/change/")
     queue_spy = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
 
-    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1"})
     _add_middleware_to_request(request, user)
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, mode="w") as archive:
         archive.writestr("A-1.jpg", b"content")
-    storage_name = default_storage.save("batch-picture-import/confirm.zip", ContentFile(payload.getvalue()))
+    storage_name = media_storage.save("batch-picture-import/confirm.zip", ContentFile(payload.getvalue()))
     batch.picture_import_state = {
-        "tokens": {
-            "tok": {
-                "batch_id": batch.pk,
-                "match_field": "beneficiary_id",
-                "target_field": "photo",
-                "zip_file_name": storage_name,
-                "created_by_id": user.pk,
-                "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
-            }
-        }
+        "batch_id": batch.pk,
+        "match_field": "beneficiary_id",
+        "target_field": "photo",
+        "zip_file_name": storage_name,
+        "created_by_id": user.pk,
+        "assignments": [{"record_id": 1, "filename": "A-1.jpg"}],
     }
     batch.save(update_fields=["picture_import_state"])
 
@@ -784,7 +706,7 @@ def test_import_pictures_post_confirm_schedules_background_job(
     assert job.batch == batch
     assert job.program == batch.program
     assert job.action == fqn(import_pictures_for_batch)
-    assert job.config == {"batch_id": batch.pk, "token": "tok"}
+    assert job.config == {"batch_id": batch.pk}
     assert queue_spy.call_count == 1
 
 
@@ -800,17 +722,13 @@ def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     message_user = mocker.patch.object(batch_admin, "message_user")
 
-    request = rf.post("/admin/import-pictures/", data={"confirm": "1", "token": "tok"})
+    request = rf.post("/admin/import-pictures/", data={"confirm": "1"})
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {
-        "tokens": {
-            "tok": {
-                "batch_id": batch.pk,
-                "match_field": "beneficiary_id",
-                "target_field": "photo",
-                "created_by_id": user.pk,
-            }
-        }
+        "batch_id": batch.pk,
+        "match_field": "beneficiary_id",
+        "target_field": "photo",
+        "created_by_id": user.pk,
     }
     batch.save(update_fields=["picture_import_state"])
 
@@ -823,7 +741,7 @@ def test_import_pictures_post_confirm_with_missing_zip_path_clears_payload(
     message_user.assert_called()
 
 
-def test_import_pictures_get_step_two_with_expired_token_redirects(
+def test_import_pictures_get_step_two_with_expired_payload_redirects(
     batch_admin, batch: CountryBatch, rf: RequestFactory, user, mocker
 ) -> None:
     from country_workspace.workspaces.admin.batch import admin as batch_admin_module
@@ -835,7 +753,7 @@ def test_import_pictures_get_step_two_with_expired_token_redirects(
     mocker.patch.object(batch_admin, "get_object", return_value=batch)
     mocker.patch.object(batch_admin, "message_user")
 
-    request = rf.get("/admin/import-pictures/?step=2&token=missing", data={"step": "2", "token": "missing"})
+    request = rf.get("/admin/import-pictures/?step=2", data={"step": "2"})
     _add_middleware_to_request(request, user)
 
     response = batch_admin.import_pictures.func(batch_admin, request, str(batch.pk))
@@ -857,10 +775,13 @@ def test_import_pictures_get_step_two_renders_preview_report(
     mocker.patch.object(batch_admin_module, "render", return_value=HttpResponse("rendered"))
     get_common_context = mocker.patch.object(batch_admin, "get_common_context", return_value={"step": "2"})
 
-    request = rf.get("/admin/import-pictures/?step=2&token=tok", data={"step": "2", "token": "tok"})
+    request = rf.get("/admin/import-pictures/?step=2", data={"step": "2"})
     _add_middleware_to_request(request, user)
     batch.picture_import_state = {
-        "tokens": {"tok": {"batch_id": batch.pk, "created_by_id": user.pk, "matched_files_count": 1, "assignments": []}}
+        "batch_id": batch.pk,
+        "created_by_id": user.pk,
+        "matched_files_count": 1,
+        "assignments": [],
     }
     batch.save(update_fields=["picture_import_state"])
 
@@ -1273,47 +1194,21 @@ def test_picture_import_service_reads_file_count_limit_from_constance(mocker) ->
         BatchPictureImportService.extract_zip_images(upload)
 
 
-def test_enrich_assignments_with_zip_data_skips_missing_items() -> None:
-    upload = _make_zip_upload({"A-1.jpg": b"content"})
-    assignments = [
-        {"record_id": 1, "filename": "A-1.jpg"},
-        {"record_id": 2},
-        {"record_id": 3, "filename": "MISSING.jpg"},
-    ]
-
-    enriched = BatchPictureImportService.enrich_assignments_with_zip_data(assignments, upload)
-
-    assert len(enriched) == 1
-    assert enriched[0]["record_id"] == 1
-    assert enriched[0]["filename"] == "A-1.jpg"
-    assert "data_uri" in enriched[0]
-
-
-def test_enrich_assignments_with_zip_data_returns_empty_for_empty_input() -> None:
-    upload = _make_zip_upload({"A-1.jpg": b"content"})
-
-    assert BatchPictureImportService.enrich_assignments_with_zip_data([], upload) == []
-
-
 def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: CountryBatch, user) -> None:
     from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
 
     hh = CountryHouseholdFactory(batch=batch, individuals=0)
     individual = CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-1"})
-    zip_name = default_storage.save(
+    zip_name = media_storage.save(
         "batch-picture-import/job-import.zip",
         ContentFile(_make_zip_upload({"A-1.jpg": b"x"}).read()),
     )
     batch.picture_import_state = {
-        "tokens": {
-            "tok": {
-                "batch_id": batch.pk,
-                "match_field": "beneficiary_id",
-                "target_field": "photo",
-                "zip_file_name": zip_name,
-                "created_by_id": user.pk,
-            }
-        }
+        "batch_id": batch.pk,
+        "match_field": "beneficiary_id",
+        "target_field": "photo",
+        "zip_file_name": zip_name,
+        "created_by_id": user.pk,
     }
     batch.save(update_fields=["picture_import_state"])
     job = AsyncJob.objects.create(
@@ -1323,7 +1218,7 @@ def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: C
         action=fqn(import_pictures_for_batch),
         program=batch.program,
         batch=batch,
-        config={"batch_id": batch.pk, "token": "tok"},
+        config={"batch_id": batch.pk},
     )
 
     result = import_pictures_for_batch(job)
@@ -1332,5 +1227,5 @@ def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: C
     batch.refresh_from_db()
     individual.refresh_from_db()
     assert batch.get_picture_import_state() == {}
-    assert not default_storage.exists(zip_name)
+    assert not media_storage.exists(zip_name)
     assert individual.flex_fields.get("photo", "").startswith("data:image/")

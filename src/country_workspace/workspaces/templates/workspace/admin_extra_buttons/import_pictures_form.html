@@ -101,17 +101,16 @@
                         {% endif %}
                         <form method="post" class="mt-6">
                             {% csrf_token %}
-                            <input type="hidden" name="token" value="{{ token }}" />
                             <input type="hidden" name="confirm" value="yes" />
                             <input type="submit" class="button default" value="{% translate 'Confirm import' %}" />
                             <a class="button" href="{{ request.path }}">{% translate "Start over" %}</a>
                         </form>
                     {% else %}
                         <p class="mt-2">
-                            {% translate "Step 3: confirmation." %}
+                            {% translate "Step 3: scheduled." %}
                         </p>
                         <p class="mt-2">
-                            {% translate "Import completed." %}
+                            {% translate "Import has been scheduled and will run in the background." %}
                         </p>
                     {% endif %}
                 </div>

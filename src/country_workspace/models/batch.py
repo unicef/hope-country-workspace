@@ -41,34 +41,24 @@ class Batch(BaseModel):
     def __str__(self) -> str:
         return self.name or f"Batch self.pk ({self.country_office})"
 
-    def get_picture_import_state(self) -> dict[str, dict[str, Any]]:
+    def get_picture_import_state(self) -> dict[str, Any]:
         state = self.picture_import_state
         if not isinstance(state, dict):
             return {}
-        tokens = state.get("tokens")
-        if not isinstance(tokens, dict):
-            return {}
-        return {token: payload for token, payload in tokens.items() if isinstance(payload, dict)}
+        return state
 
-    def start_picture_import(self, *, token: str, payload: dict[str, Any], user: User) -> dict[str, Any] | None:
-        tokens = self.get_picture_import_state()
-        previous = tokens.get(token)
-        tokens[token] = payload
+    def start_picture_import(self, *, payload: dict[str, Any], user: User) -> dict[str, Any] | None:
+        previous = self.get_picture_import_state() or None
         self.picture_import_state = {
-            "tokens": tokens,
+            **payload,
             "updated_by": user.pk,
             "updated_at": timezone.now().isoformat(),
         }
         self.save(update_fields=["picture_import_state"])
         return previous
 
-    def finish_picture_import(self, *, token: str, user: User) -> dict[str, Any] | None:
-        tokens = self.get_picture_import_state()
-        payload = tokens.pop(token, None)
-        self.picture_import_state = {
-            "tokens": tokens,
-            "updated_by": user.pk,
-            "updated_at": timezone.now().isoformat(),
-        }
+    def finish_picture_import(self) -> dict[str, Any] | None:
+        payload = self.get_picture_import_state() or None
+        self.picture_import_state = {}
         self.save(update_fields=["picture_import_state"])
         return payload
