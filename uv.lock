@@ -1563,6 +1563,7 @@ source = { editable = "." }
 dependencies = [
     { name = "bitcaster-sdk" },
     { name = "celery" },
+    { name = "cryptography" },
     { name = "deepdiff" },
     { name = "deprecation" },
     { name = "dictdiffer" },
@@ -1660,6 +1661,7 @@ type-check = [
 requires-dist = [
     { name = "bitcaster-sdk", specifier = ">=0.1" },
     { name = "celery", specifier = ">=5.4" },
+    { name = "cryptography", specifier = ">=41" },
     { name = "deepdiff", specifier = ">=8.0.1" },
     { name = "deprecation", specifier = ">=2.1" },
     { name = "dictdiffer", specifier = ">=0.9" },
