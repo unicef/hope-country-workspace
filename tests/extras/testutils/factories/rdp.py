@@ -16,6 +16,10 @@ class RdpFactory(AutoRegisterModelFactory):
     status = Rdp.PushStatus.PENDING
     hope_rdi_id = factory.Sequence(lambda n: f"hope-rdi-{n}")
     program = factory.SubFactory(ProgramFactory)
+    deduplication_set_id = None
+    is_dedup_settings_locked = False
+    is_push_locked = False
+    operation_log = factory.LazyFunction(list)
 
     class Meta:
         model = Rdp

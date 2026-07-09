@@ -3,14 +3,23 @@ from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
 from django.contrib import admin
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
-from ..compat.admin_extra_buttons import confirm_action
-from ..models import Rdp
+from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.models import Rdp
 from .base import BaseModelAdmin
+
+
+def is_latest_successful_rdp(obj: Rdp) -> bool:
+    """Return True if this RDP is the latest successful RDP for its program."""
+    return not Rdp.objects.filter(
+        Q(push_date__gt=obj.push_date) | Q(push_date=obj.push_date, pk__gt=obj.pk),
+        program_id=obj.program_id,
+        status=Rdp.PushStatus.SUCCESS,
+    ).exists()
 
 
 @admin.register(Rdp)
@@ -24,7 +33,6 @@ class RdpAdmin(BaseModelAdmin):
     )
     fields = (
         "name",
-        "parent",
         "country_office",
         "program",
         "pushed_by",
@@ -32,10 +40,10 @@ class RdpAdmin(BaseModelAdmin):
         "status",
         "hope_rdi_id",
         "deduplication_set_id",
-        "deduplication_snapshots",
+        "operation_log",
         "related_job",
     )
-    readonly_fields = ("parent", "country_office", "program", "related_job", "push_date", "hope_rdi_id")
+    readonly_fields = ("country_office", "program", "related_job", "push_date", "hope_rdi_id")
     search_fields = ("name",)
     ordering = ("-push_date",)
 
@@ -58,8 +66,7 @@ class RdpAdmin(BaseModelAdmin):
             obj.households if obj.program.beneficiary_group.master_detail else obj.individuals
         ).model._meta.model_name
         base = reverse(f"admin:country_workspace_{item}_changelist")
-        owner = obj.parent if obj.parent_id else obj
-        button.href = f"{base}?rdp__exact={owner.pk}"
+        button.href = f"{base}?rdp__exact={obj.pk}"
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: LinkButton) -> None:
@@ -74,13 +81,20 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: btn.context["original"].status == Rdp.PushStatus.SUCCESS,
+        enabled=lambda btn: (
+            btn.context["original"].status == Rdp.PushStatus.SUCCESS
+            and is_latest_successful_rdp(btn.context["original"])
+        ),
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
         obj: Rdp = self.get_object(request, str(pk))
 
         if obj.status != Rdp.PushStatus.SUCCESS:
             self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
+            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
+
+        if not is_latest_successful_rdp(obj):
+            self.message_user(request, "Reset is only allowed for the latest successful RDP.", level="error")
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:

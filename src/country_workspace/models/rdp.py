@@ -15,10 +15,8 @@ class Rdp(BaseModel):
         FAILURE = "FAILURE", _("Failure")
         CANCELLED = "CANCELLED", _("Cancelled")
 
-    class DedupTrackingState(models.TextChoices):
-        NOT_RUN = "NOT_RUN", _("Not run yet")
-        IN_PROGRESS = "IN_PROGRESS", _("In progress")
-        FINISHED = "FINISHED", _("Finished")
+    class OperationAction(models.TextChoices):
+        START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
@@ -30,21 +28,19 @@ class Rdp(BaseModel):
     push_date = models.DateTimeField(auto_now=True)
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
     deduplication_set_id = models.UUIDField(blank=True, null=True)
-    parent = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="children",
-        help_text=_("Reference to the parent RDP if this RDP was created as a clone of another."),
-    )
     is_dedup_settings_locked = models.BooleanField(
         default=False,
-        help_text=_(
-            "Locks program-level deduplication settings while this pending RDP has requested a new deduplication run."
-        ),
+        help_text=_("Locks program-level deduplication settings while this RDP deduplication is queued or running."),
     )
-    deduplication_snapshots = models.JSONField(default=dict, blank=True)
+    is_push_locked = models.BooleanField(
+        default=False,
+        help_text=_("Locks this RDP while its push to HOPE is queued or running."),
+    )
+    operation_log = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_("Append-only chronological log of RDP operations."),
+    )
 
     class Meta:
         constraints = [
@@ -54,17 +50,17 @@ class Rdp(BaseModel):
             ),
             models.UniqueConstraint(
                 fields=["program"],
-                condition=Q(status="PENDING"),
-                name="uniq_pending_rdp_per_program",
-                violation_error_message=_("There is already an active (PENDING) RDP for this program."),
+                condition=Q(status__in=["PENDING", "FAILURE"]),
+                name="uniq_open_rdp_per_program",
+                violation_error_message=_("There is already an active RDP for this program."),
             ),
         ]
         permissions = [
-            ("reset_rdp", _("Can reset RDP")),
+            ("cancel_rdp", _("Can cancel RDP")),
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("deduplicate_rdp", _("Can run RDP deduplication")),
-            ("reject_deduplication_set", _("Can reject deduplication set")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
+            ("reset_rdp", _("Can reset RDP")),
         ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")

@@ -1,31 +1,31 @@
 import re
 from collections.abc import Generator
-from unittest.mock import Mock
+from typing import Any
 
 import pytest
 import requests
 import responses
 from constance.test import override_config
+from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.client import HopeClient
+from country_workspace.contrib.hope.client import HopeClient, sanitize_url
 from country_workspace.exceptions import RemoteError
 
+type Signals = tuple[Any, Any]
 
 DUMMY_TOKEN = "dummy_token"
 DUMMY_PATH = "dummy_path"
 HOPE_API_URL = "https://hope-dummy.org/api/rest"
 KEY_VALUE = {"key": "value"}
-PATH = {
-    "people": "test/push/people/",
-    "next": "https://hope-dummy.org/api/rest/next/",
-}
+PEOPLE_PATH = "test/push/people/"
+NEXT_URL = f"{HOPE_API_URL}/next/"
 ERROR = {
-    "not_found": {"error": "Not found"},
-    "forbidden": {"error": "Forbidden"},
     "bad_request": {"error": "Bad request"},
-    "server_error": {"error": "Server error"},
+    "connection": "Connection error",
+    "forbidden": {"error": "Forbidden"},
     "invalid_json": "invalid json",
-    "connection_error": "Connection error",
+    "not_found": {"error": "Not found"},
+    "server": {"error": "Server error"},
 }
 
 
@@ -35,286 +35,261 @@ def client() -> HopeClient:
 
 
 @pytest.fixture
-def signals() -> Generator[tuple[Mock, Mock], None, None]:
+def signals(mocker: MockerFixture) -> Generator[Signals, None, None]:
     from country_workspace.contrib.hope.client import hope_request_end, hope_request_start
 
-    start_mock, end_mock = Mock(), Mock()
-    hope_request_start.connect(start_mock)
-    hope_request_end.connect(end_mock)
-    yield start_mock, end_mock
-    hope_request_start.disconnect(start_mock)
-    hope_request_end.disconnect(end_mock)
+    start, end = mocker.Mock(), mocker.Mock()
+    hope_request_start.connect(start)
+    hope_request_end.connect(end)
+    yield start, end
+    hope_request_start.disconnect(start)
+    hope_request_end.disconnect(end)
+
+
+def test_sanitize_url() -> None:
+    assert sanitize_url("https://hope.org//api///rest/path") == "https://hope.org/api/rest/path"
+
+
+@override_config(HOPE_API_URL=f"{HOPE_API_URL}//", HOPE_API_TOKEN=DUMMY_TOKEN)
+@pytest.mark.parametrize("path", [DUMMY_PATH, f"/{DUMMY_PATH}", f"{DUMMY_PATH}/"])
+def test_get_url(path: str) -> None:
+    client = HopeClient()
+
+    assert client.get_url(path) == f"{HOPE_API_URL}/{DUMMY_PATH}/"
+    assert client.session.headers["Authorization"] == f"Token {DUMMY_TOKEN}"
 
 
 def test_get_lookup_success(
-    mocked_responses: responses.RequestsMock, signals: tuple[Mock, Mock], client: HopeClient
+    mocked_responses: responses.RequestsMock,
+    signals: Signals,
+    client: HopeClient,
 ) -> None:
-    start_mock, end_mock = signals
+    start, end = signals
     mocked_responses.add(responses.GET, client.get_url(DUMMY_PATH), json=KEY_VALUE, status=200)
 
-    result = client.get_lookup(DUMMY_PATH)
-
-    assert result == KEY_VALUE
-    assert start_mock.call_count == end_mock.call_count == 0
+    assert client.get_lookup(DUMMY_PATH) == KEY_VALUE
+    assert start.call_count == end.call_count == 0
 
 
 @pytest.mark.parametrize(
-    ("response_kwargs", "expected_prefix"),
+    ("response_kwargs", "message"),
     [
-        (
-            {"json": ERROR["not_found"], "status": 404},
-            "unexpected status 404. Status: 404.",
-        ),
-        (
-            {"json": ERROR["forbidden"], "status": 403},
-            "unexpected status 403. Status: 403.",
-        ),
-        (
-            {"body": requests.ConnectionError(ERROR["connection_error"])},
-            ERROR["connection_error"],
-        ),
-        (
-            {"body": ERROR["invalid_json"], "status": 200},
-            "invalid JSON response. Status: 200.",
-        ),
+        ({"json": ERROR["not_found"], "status": 404}, "unexpected status 404. Status: 404."),
+        ({"json": ERROR["forbidden"], "status": 403}, "unexpected status 403. Status: 403."),
+        ({"body": requests.ConnectionError(ERROR["connection"])}, ERROR["connection"]),
+        ({"body": ERROR["invalid_json"], "status": 200}, "invalid JSON response. Status: 200."),
     ],
-    ids=["not_found", "forbidden", "request_exception", "invalid_json"],
+    ids=["not_found", "forbidden", "request_error", "invalid_json"],
 )
-def test_get_lookup_failure_paths(
+def test_get_lookup_errors(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
-    response_kwargs: dict,
-    expected_prefix: str,
+    response_kwargs: dict[str, Any],
+    message: str,
 ) -> None:
-    start_mock, end_mock = signals
+    start, end = signals
     url = client.get_url(DUMMY_PATH)
-
     mocked_responses.add(responses.GET, url, **response_kwargs)
 
-    with pytest.raises(RemoteError, match=re.escape(f"HopeClient: GET {url} failed: {expected_prefix}")):
+    with pytest.raises(RemoteError, match=re.escape(f"HopeClient: GET {url} failed: {message}")):
         client.get_lookup(DUMMY_PATH)
 
-    assert start_mock.call_count == end_mock.call_count == 0
-
-
-@override_config(HOPE_API_URL=HOPE_API_URL, HOPE_API_TOKEN=DUMMY_TOKEN)
-def test_get_lookup_uses_config_fallback(
-    mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
-) -> None:
-    start_mock, end_mock = signals
-    client = HopeClient()
-    url = client.get_url(DUMMY_PATH)
-
-    mocked_responses.add(responses.GET, url, json=ERROR["not_found"], status=404)
-
-    expected_prefix = f"HopeClient: GET {url} failed: unexpected status 404. Status: 404."
-    with pytest.raises(RemoteError, match=re.escape(expected_prefix)):
-        client.get_lookup(DUMMY_PATH)
-
-    assert start_mock.call_count == end_mock.call_count == 0
+    assert start.call_count == end.call_count == 0
 
 
 @pytest.mark.parametrize(
-    ("pages", "results", "next_url"),
+    ("payloads", "expected", "pages"),
     [
-        (1, [{"id": 1}], None),
-        (2, [{"id": 2}, {"id": 3}], PATH["next"]),
+        ([{"results": [{"id": 1}], "next": None}], [{"id": 1}], 1),
+        (
+            [
+                {"results": [{"id": 1}], "next": NEXT_URL},
+                {"results": [{"id": 2}], "next": None},
+            ],
+            [{"id": 1}, {"id": 2}],
+            2,
+        ),
+        ([{"results": [], "next": NEXT_URL}], [], 1),
     ],
-    ids=("single_page", "multi_page"),
+    ids=["single_page", "multi_page", "empty_results_break"],
 )
 def test_get_success(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
+    payloads: list[dict[str, Any]],
+    expected: list[dict[str, int]],
     pages: int,
-    results: list[dict],
-    next_url: str | None,
 ) -> None:
-    start_mock, end_mock = signals
-    url = client.get_url(DUMMY_PATH)
+    start, end = signals
+    for url, payload in zip([client.get_url(DUMMY_PATH), NEXT_URL], payloads, strict=False):
+        mocked_responses.add(responses.GET, url, json=payload, status=200)
 
-    mocked_responses.add(responses.GET, url, json={"results": [results[0]], "next": next_url}, status=200)
-    if next_url:
-        mocked_responses.add(responses.GET, next_url, json={"results": [results[1]], "next": None}, status=200)
+    assert list(client.get(DUMMY_PATH, params={"p": "v"})) == expected
+    assert start.call_count == end.call_count == 1
+    assert end.call_args.kwargs["pages"] == pages
 
-    assert list(client.get(DUMMY_PATH, params={"p": "v"})) == results
-    assert start_mock.call_count == end_mock.call_count == 1
-    assert end_mock.call_args[1]["pages"] == pages
-
-    urls = [c.request.url for c in mocked_responses.calls]
+    urls = [call.request.url for call in mocked_responses.calls]
     assert len(urls) == pages
     assert "p=v" in urls[0]
-    assert all("p=" not in u for u in urls[1:])
+    assert all("p=" not in url for url in urls[1:])
 
 
 @pytest.mark.parametrize(
-    ("response_kwargs", "expected_prefix"),
+    ("response_kwargs", "message"),
     [
-        (
-            {"json": ERROR["not_found"], "status": 404},
-            "HopeClient: GET {url} failed: unexpected status 404. Status: 404.",
-        ),
-        (
-            {"body": requests.RequestException(ERROR["connection_error"])},
-            f"HopeClient: GET {{url}} failed: {ERROR['connection_error']}",
-        ),
-        (
-            {"body": ERROR["invalid_json"], "status": 200},
-            "HopeClient: GET {url} failed: invalid JSON response. Status: 200.",
-        ),
-        (
-            {"json": ["not a dict"], "status": 200},
-            "HopeClient: GET {url} failed: malformed JSON response. Status: 200.",
-        ),
+        ({"json": ERROR["not_found"], "status": 404}, "unexpected status 404. Status: 404."),
+        ({"body": requests.RequestException(ERROR["connection"])}, ERROR["connection"]),
+        ({"body": ERROR["invalid_json"], "status": 200}, "invalid JSON response. Status: 200."),
+        ({"json": {}, "status": 200}, "malformed JSON response. Status: 200."),
+        ({"json": ["not a dict"], "status": 200}, "malformed JSON response. Status: 200."),
     ],
-    ids=["http_404", "connection_error", "invalid_json", "wrong_type"],
+    ids=["http_404", "request_error", "invalid_json", "missing_results", "wrong_type"],
 )
-def test_get_failure(
+def test_get_errors(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
-    response_kwargs: dict,
-    expected_prefix: str,
+    response_kwargs: dict[str, Any],
+    message: str,
 ) -> None:
-    start_mock, end_mock = signals
+    start, end = signals
     url = client.get_url(DUMMY_PATH)
-
     mocked_responses.add(responses.GET, url, **response_kwargs)
 
-    with pytest.raises(RemoteError, match=re.escape(expected_prefix.format(url=url))):
+    with pytest.raises(RemoteError, match=re.escape(f"HopeClient: GET {url} failed: {message}")):
         list(client.get(DUMMY_PATH, params={"p": "v"}))
 
-    assert start_mock.call_count == 1
-    assert end_mock.call_count == 0
+    assert start.call_count == 1
+    assert end.call_count == 0
 
 
-def test_post_success(mocked_responses: responses.RequestsMock, signals: tuple[Mock, Mock], client: HopeClient) -> None:
-    start_mock, end_mock = signals
-    url = client.get_url(DUMMY_PATH)
-    expected = {"id": 1}
-    data = KEY_VALUE
+def test_post_success(
+    mocked_responses: responses.RequestsMock,
+    signals: Signals,
+    client: HopeClient,
+) -> None:
+    start, end = signals
+    mocked_responses.add(responses.POST, client.get_url(DUMMY_PATH), json={"id": 1}, status=201)
 
-    mocked_responses.add(responses.POST, url, json=expected, status=201)
-
-    assert client.post(DUMMY_PATH, data=data) == expected
-    assert start_mock.call_count == end_mock.call_count == 1
-    assert end_mock.call_args[1]["data"] == data
+    assert client.post(DUMMY_PATH, data=KEY_VALUE) == {"id": 1}
+    assert start.call_count == end.call_count == 1
+    assert end.call_args.kwargs["data"] == KEY_VALUE
 
 
 @pytest.mark.parametrize(
     ("response_kwargs", "pattern"),
     [
-        (
-            {"json": ERROR["bad_request"], "status": 400},
-            r"HopeClient: POST {url} failed: .*Status: 400\.",
-        ),
-        (
-            {"json": ERROR["server_error"], "status": 500},
-            r"HopeClient: POST {url} failed: .*Status: 500\.",
-        ),
-        (
-            {"body": ERROR["invalid_json"], "status": 200},
-            r"HopeClient: POST {url} failed: invalid JSON response\. Status: 200\.",
-        ),
-        (
-            {"body": requests.ConnectionError(ERROR["connection_error"])},
-            rf"HopeClient: POST {{url}} failed: .*{re.escape(ERROR['connection_error'])}",
-        ),
+        ({"json": ERROR["bad_request"], "status": 400}, r"Status: 400\."),
+        ({"json": ERROR["server"], "status": 500}, r"Status: 500\."),
+        ({"body": ERROR["invalid_json"], "status": 200}, r"invalid JSON response\. Status: 200\."),
+        ({"body": requests.ConnectionError(ERROR["connection"])}, re.escape(ERROR["connection"])),
     ],
-    ids=("http_400", "http_500", "json_decode_error", "request_exception"),
+    ids=["http_400", "http_500", "invalid_json", "request_error"],
 )
-def test_post_failure(
+def test_post_errors(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
-    response_kwargs: dict,
+    response_kwargs: dict[str, Any],
     pattern: str,
 ) -> None:
-    start_mock, end_mock = signals
+    start, end = signals
     url = client.get_url(DUMMY_PATH)
-
     mocked_responses.add(responses.POST, url, **response_kwargs)
 
-    with pytest.raises(RemoteError, match=pattern.format(url=re.escape(url))):
+    with pytest.raises(RemoteError, match=rf"HopeClient: POST {re.escape(url)} failed: .*{pattern}"):
         client.post(DUMMY_PATH, data=KEY_VALUE)
 
-    assert start_mock.call_count == 1
-    assert end_mock.call_count == 0
+    assert start.call_count == end.call_count == 1
 
 
-def test_post_people_success(
+def test_post_people_400_returns_errors(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
 ) -> None:
-    start_mock, end_mock = signals
-    path = PATH["people"]
+    start, end = signals
     errors = [{"name": ["Required"]}]
-    data = {"people": [{"name": "John"}]}
+    mocked_responses.add(responses.POST, client.get_url(PEOPLE_PATH), json=errors, status=400)
 
-    mocked_responses.add(responses.POST, client.get_url(path), json=errors, status=400)
-
-    assert client.post(path, data=data) == {"errors": True, "people": errors}
-    assert start_mock.call_count == 1
-    assert end_mock.call_count == 0
+    assert client.post(PEOPLE_PATH, data={"people": [{"name": "John"}]}) == {"errors": True, "people": errors}
+    assert start.call_count == end.call_count == 1
 
 
 @pytest.mark.parametrize(
     ("path", "status", "body", "pattern"),
     [
-        (PATH["people"], 500, ERROR["server_error"], r"Status: 500\."),
-        (PATH["people"], 400, ERROR["invalid_json"], r"invalid JSON response\. Status: 400\."),
-        (f"{PATH['people']}wrong_ending", 400, ERROR["bad_request"], r"Status: 400\."),
+        (PEOPLE_PATH, 500, ERROR["server"], r"Status: 500\."),
+        (PEOPLE_PATH, 400, ERROR["invalid_json"], r"invalid JSON response\. Status: 400\."),
+        (f"{PEOPLE_PATH}wrong", 400, ERROR["bad_request"], r"Status: 400\."),
     ],
-    ids=["wrong_status", "json_error", "wrong_ending"],
+    ids=["wrong_status", "invalid_json", "wrong_path"],
 )
-def test_post_people_failure(
+def test_post_people_errors(
     mocked_responses: responses.RequestsMock,
-    signals: tuple[Mock, Mock],
+    signals: Signals,
     client: HopeClient,
     path: str,
     status: int,
-    body: dict | str,
+    body: dict[str, str] | str,
     pattern: str,
 ) -> None:
-    start_mock, end_mock = signals
-    data = {"people": [{"name": "John"}]}
+    start, end = signals
     url = client.get_url(path)
+    kwargs = {"json": body} if isinstance(body, dict) else {"body": body}
+    mocked_responses.add(responses.POST, url, status=status, **kwargs)
 
-    mocked_responses.add(
-        responses.POST,
-        url,
-        **({"json": body} if isinstance(body, dict) else {"body": body}),
-        status=status,
-    )
+    with pytest.raises(RemoteError, match=rf"HopeClient: POST {re.escape(url)} failed: .*{pattern}"):
+        client.post(path, data={"people": [{"name": "John"}]})
 
-    # prefix must match URL; rest is case-specific
-    full = rf"HopeClient: POST {re.escape(url)} failed: .*{pattern}"
-    with pytest.raises(RemoteError, match=full):
-        client.post(path, data=data)
-
-    assert start_mock.call_count == 1
-    assert end_mock.call_count == 0
+    assert start.call_count == end.call_count == 1
 
 
-def test_break_with_empty_results(
-    mocked_responses: responses.RequestsMock, signals: tuple[Mock, Mock], client: HopeClient
+@pytest.mark.parametrize(
+    ("response_kwargs", "expected"),
+    [
+        ({"json": {"deleted": True}, "status": 200}, {"deleted": True}),
+        ({"body": "", "status": 204}, {}),
+    ],
+    ids=["json_body", "empty_body"],
+)
+def test_delete_success(
+    mocked_responses: responses.RequestsMock,
+    signals: Signals,
+    client: HopeClient,
+    response_kwargs: dict[str, Any],
+    expected: dict[str, bool],
 ) -> None:
-    start_mock, end_mock = signals
+    start, end = signals
+    mocked_responses.add(responses.DELETE, client.get_url(DUMMY_PATH), **response_kwargs)
+
+    assert client.delete(DUMMY_PATH) == expected
+    assert start.call_count == end.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("response_kwargs", "pattern"),
+    [
+        ({"json": ERROR["server"], "status": 500}, r"Status: 500\."),
+        ({"body": ERROR["invalid_json"], "status": 200}, r"invalid JSON response\. Status: 200\."),
+        ({"body": requests.ConnectionError(ERROR["connection"])}, re.escape(ERROR["connection"])),
+    ],
+    ids=["http_500", "invalid_json", "request_error"],
+)
+def test_delete_errors(
+    mocked_responses: responses.RequestsMock,
+    signals: Signals,
+    client: HopeClient,
+    response_kwargs: dict[str, Any],
+    pattern: str,
+) -> None:
+    start, end = signals
     url = client.get_url(DUMMY_PATH)
+    mocked_responses.add(responses.DELETE, url, **response_kwargs)
 
-    mocked_responses.add(
-        responses.GET, url, json={"next": "https://hope-dummy.org/api/rest/another/", "results": []}, status=200
-    )
+    with pytest.raises(RemoteError, match=rf"HopeClient: DELETE {re.escape(url)} failed: .*{pattern}"):
+        client.delete(DUMMY_PATH)
 
-    results = list(client.get(DUMMY_PATH, params={"p": "v"}))
-
-    assert results == []
-    assert start_mock.call_count == end_mock.call_count == 1
-    assert end_mock.call_args[1]["pages"] == 1
-
-    urls = [c.request.url for c in mocked_responses.calls]
-    assert len(urls) == 1
-    assert "p=v" in urls[0]
+    assert start.call_count == end.call_count == 1

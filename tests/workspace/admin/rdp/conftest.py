@@ -1,5 +1,4 @@
 import pytest
-from django.contrib.auth.models import User
 from django.http import HttpRequest
 from pytest_mock import MockerFixture
 
@@ -17,19 +16,11 @@ def country_office():
     return office
 
 
-@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
-def master_detail(request: pytest.FixtureRequest) -> bool:
-    return request.param
-
-
 @pytest.fixture
-def program(country_office, master_detail):
+def program(country_office):
     from testutils.factories import CountryProgramFactory
 
-    program = CountryProgramFactory(
-        country_office=country_office,
-        beneficiary_group__master_detail=master_detail,
-    )
+    program = CountryProgramFactory(country_office=country_office)
     program.biometric_deduplication_enabled = True
     program.save(update_fields=["biometric_deduplication_enabled"])
     state.program = program
@@ -37,7 +28,7 @@ def program(country_office, master_detail):
 
 
 @pytest.fixture
-def rdp(program):
+def rdp(program) -> CountryRdp:
     from testutils.factories import CountryRdpFactory
 
     return CountryRdpFactory(program=program)
@@ -49,9 +40,9 @@ def admin_instance(mocker: MockerFixture) -> CountryRdpAdmin:
 
 
 @pytest.fixture
-def mock_request(mocker: MockerFixture):
+def mock_request(mocker: MockerFixture) -> HttpRequest:
     request = mocker.MagicMock(spec=HttpRequest)
-    request.user = mocker.MagicMock(spec=User)
+    request.user = mocker.MagicMock()
     request.method = "GET"
     request.POST = {}
     return request
