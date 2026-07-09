@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0054_rdp_deduplication_snapshots_and_more"),
+        ("country_workspace", "0056_update_rdp_lifecycle"),
     ]
 
     operations = [
