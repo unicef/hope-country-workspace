@@ -29,6 +29,28 @@
                 </form>
                 {{ program_form.media.js }}
             </div>
+            {% if active_program %}
+                <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
+                   id="pending-jobs-badge"
+                   class="flex items-center gap-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/20 rounded px-2.5 py-1 transition-colors{% if not pending_jobs_count %} opacity-60{% endif %}"
+                   title="{% trans "View background jobs" %}">
+                    <span class="icon icon-globe text-sm"></span>
+                    {% if pending_jobs_count %}
+                        <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-unicef-gray text-[0.7rem] font-bold">
+                            {{ pending_jobs_count }}
+                        </span>
+                        <span class="hidden lg:inline">
+                            {% if pending_jobs_count == 1 %}
+                                {% trans "job running" %}
+                            {% else %}
+                                {% trans "jobs running" %}
+                            {% endif %}
+                        </span>
+                    {% else %}
+                        <span class="hidden lg:inline">{% trans "No pending jobs" %}</span>
+                    {% endif %}
+                </a>
+            {% endif %}
         {% endif %}
     </div>
 {% endblock header %}
