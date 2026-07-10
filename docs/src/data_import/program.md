@@ -1,62 +1,76 @@
 # Program
 
-A **Program** represents a campaign or intervention targeting a specific group of beneficiaries for a specific operational need, for example `Cash for nutrition`.
+A **Program** represents a campaign or intervention targeting a specific group of beneficiaries for a specific operational need, such as *Cash for Nutrition* or *Emergency Food Assistance*.
 
-## Program context
+Within the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)**, the selected Program becomes the working context for beneficiary management. Imports, beneficiary records, Batches, validation, and related workflows all operate within the currently selected Program.
 
-In Country Workspace, users first select an **Office** and a **Program**.
+## What a Program defines
 
-The selected Program becomes the working context for beneficiary data. It affects how records are imported, reviewed, validated, reprocessed, and later prepared for data push operations.
+A Program defines how beneficiary data is imported, validated, and displayed.
 
-Users can open import from the Program page or from related Household / Individual pages, but the import always runs in the context of the selected Program.
+### Beneficiary structure
 
-## What the Program defines
+A Program inherits its beneficiary structure from the selected **Beneficiary Group**.
 
-The selected Program defines the main setup used for beneficiary import and review:
+Two structures are supported:
 
-* **Beneficiary structure**: whether users work with Households and Individuals, or with people-only Individual records.
-* **Validators**: high-level checks for beneficiary records. For household-based Programs, the default beneficiary validator should usually be **FullHouseholdValidator**. It checks that the Household has a Head, has a Primary Collector, does not use the same person as both Primary and Alternate Collector, and that the Head belongs to the Household.
-* **DataCheckers**: expected Household and Individual fields, grouping, and validation rules. They are based on [DataChecker configuration](../data_validation/datachecker_configuration.md).
-* **Columns**: fields shown when users review imported records. Columns do not change imported data.
-* **Alien Columns to Ignore**: known extra source fields that should not block validation when alien validation is enabled.
-* **Serializer**: prepares already imported beneficiary data for later integrations, such as sending records to HOPE Core.
-* **Deduplication configuration**: displays biometric deduplication settings when they are available. If settings are not available, the section may show `N/A`.
+- **Household-based** — each Household contains one or more Individuals.
+- **People-only** — Individuals are managed without Households.
 
-[Mappings](mapping_transformers.md#mapping-importers) are managed from the Country Workspace interface. [Transformers](mapping_transformers.md#transformers) and serializers are configured in the main Django admin and then used in the [import](import.md) or [Batch reprocessing](batches.md#reprocessing) flow.
+The selected structure determines how beneficiary data is imported, validated, managed, and displayed throughout the workspace.
 
-## Country Workspace interface
+### Validation configuration
 
-In this documentation, **Country Workspace interface** means the analyst / collector workspace where users select an Office and Program and work with beneficiary data.
+Validation is based on:
 
-This is different from the main Django admin, which is used for technical configuration.
+- **[DataCheckers](data_validation/datachecker_configuration.md)** that define the expected beneficiary fields;
+- a beneficiary validator that performs additional validation of the beneficiary structure;
+- the **[Alien validation](data_validation/alien_fields.md)** setting, which controls how unexpected source fields are handled during import.
 
-Open Country Workspace and select the required **Office** and **Program** from the top navigation bar.
+Validation is performed after import, as described in **[Data Import](index.md)**.
 
-The Country Workspace menu provides access to related sections, such as:
+See **[Alien Fields](data_validation/alien_fields.md)** for more information about alien validation.
 
-* **Households** and **Individuals**, or only **Individuals** for people-only Programs;
-* [**Batches**](batches.md);
-* [**Mappings**](mapping_transformers.md#mapping-importers);
-* **Registration Data Pushes**;
-* **Async Jobs**.
+### Default values
 
-## Import from a Program
+Programs can define default values for Households and Individuals.
 
-Use **Import Data** to start a beneficiary import in the selected Program context.
+These values are applied during **[Data Import](index.md)** when the corresponding beneficiary field has no value.
 
-For the full import flow and supported sources, see [Beneficiary import](import.md).
+### Display configuration
 
-## Before importing
+A Program defines which beneficiary fields are displayed in the Analyst / Collector Workspace.
 
-Before starting an import, check that:
+Display settings determine which beneficiary fields are shown in the workspace. They do not affect imported or stored data.
 
-* the correct Office and Program are selected;
-* the Program uses the expected beneficiary structure: Households with Individuals, or people-only Individuals;
-* the required Validators and [DataCheckers](../data_validation/datachecker_configuration.md) are configured;
-* review columns are configured;
-* known Alien Columns are added to ignore lists, if needed;
-* required [Mappings](mapping_transformers.md#mapping-importers) exist in the Country Workspace interface;
-* required [Transformers](mapping_transformers.md#transformers) exist in the main Django admin, if source values need transformation;
-* the correct serializer is selected for the Program, if imported records will later be sent to HOPE Core or another integration.
+### Alien columns to ignore
 
-After import, review the created [Batch](batches.md), imported records, validation results, and related **Async Jobs**.
+Programs can define source columns that should be ignored during import instead of being treated as alien fields.
+
+This is useful when imported files contain additional columns that are not required by the Program.
+
+See **[Alien Fields](data_validation/alien_fields.md)** for more information.
+
+### Deduplication settings
+
+For Programs with **Biometric deduplication enabled**, the Program page displays the current deduplication settings retrieved from DedupEngine in real time.
+
+If DedupEngine is unavailable, the settings may be displayed as `N/A`.
+
+## Start an import
+
+Imports are normally started from the Program page by selecting **Import Data**.
+
+The import always uses the currently selected Program and creates a **[Batch](batches.md)** containing the imported records.
+
+For an overview of the import workflow, see **[Data Import](index.md)**. Source-specific instructions are available in **[Data sources](sources/index.md)**.
+
+## After import
+
+After an import completes:
+
+- imported beneficiary records become available within the selected Program;
+- validation results become available after validation finishes;
+- the created **[Batch](batches.md)** can be reviewed and, if necessary, reprocessed.
+
+See **[Batches](batches.md)** to review import results, monitor validation, and reprocess existing Batches.
