@@ -17,7 +17,7 @@ def test_logout(browser):
     browser.login()
     browser.assert_text("Welcome to HOPE Workspace", "div#content h1")
     browser.click('form[action="/admin/logout/"] button')
-    assert browser.get_current_url() == f"{browser.live_server_url}/login/"
+    browser.assert_url(f"{browser.live_server_url}/login/")
     browser.assert_text("HOPE Workspace", "div.text-5xl")
 
 

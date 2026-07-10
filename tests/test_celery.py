@@ -1,7 +1,6 @@
 import pytest
-from unittest.mock import patch, PropertyMock
-
 from celery.exceptions import Ignore
+from pytest_mock import MockerFixture
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
@@ -22,6 +21,9 @@ from tests.extras.testutils.factories import (
     AsyncJobFactory,
     RdpFactory,
 )
+
+
+pytestmark = pytest.mark.django_db
 
 
 def test_celery_app(**kwargs):
@@ -71,7 +73,7 @@ def rdps(program):
     return [
         RdpFactory.create(program=program, status=Rdp.PushStatus.PENDING),
         RdpFactory.create(program=program, status=Rdp.PushStatus.SUCCESS),
-        RdpFactory.create(program=program, status=Rdp.PushStatus.FAILURE),
+        RdpFactory.create(program=program, status=Rdp.PushStatus.CANCELLED),
     ]
 
 
@@ -85,7 +87,6 @@ def other_jobs(program):
     return AsyncJobFactory.create_batch(4, program=program)
 
 
-@pytest.mark.django_db
 def test_clean_program_data(job, batch, households, individuals):
     program = job.program
 
@@ -108,7 +109,6 @@ def test_clean_program_data(job, batch, households, individuals):
     assert Batch.objects.filter(program=program).count() == 0
 
 
-@pytest.mark.django_db
 def test_clean_program_data_with_rdps_and_rdis(job, batch, households, individuals, rdps, rdis):
     program = job.program
 
@@ -130,7 +130,6 @@ def test_clean_program_data_with_rdps_and_rdis(job, batch, households, individua
     assert Rdi.objects.filter(program=program).count() == 0
 
 
-@pytest.mark.django_db
 def test_clean_program_data_with_jobs(job, batch, households, other_jobs):
     program = job.program
 
@@ -144,7 +143,6 @@ def test_clean_program_data_with_jobs(job, batch, households, other_jobs):
     assert AsyncJob.objects.filter(id=job.pk).exists()
 
 
-@pytest.mark.django_db
 def test_clean_program_data_multiple_batches(job):
     program = job.program
     batch1 = BatchFactory.create(program=program)
@@ -168,13 +166,12 @@ def test_clean_program_data_multiple_batches(job):
     assert Household.objects.filter(batch__program=program).count() == 0
 
 
-@pytest.mark.django_db
 def test_clean_program_data_does_not_affect_other_programs(job, batch, households):
     other_program = ProgramFactory.create()
     other_batch = BatchFactory.create(program=other_program)
     HouseholdFactory.create_batch(5, individuals=[], batch=other_batch, removed=False)
     RdpFactory.create(program=other_program, status=Rdp.PushStatus.SUCCESS)
-    RdpFactory.create(program=other_program, status=Rdp.PushStatus.FAILURE)
+    RdpFactory.create(program=other_program, status=Rdp.PushStatus.CANCELLED)
     Rdi.objects.create(name="Other RDI 1", program=other_program, hhs=[], inds=[])
     Rdi.objects.create(name="Other RDI 2", program=other_program, hhs=[], inds=[])
     AsyncJobFactory.create_batch(3, program=other_program)
@@ -192,22 +189,25 @@ def test_clean_program_data_does_not_affect_other_programs(job, batch, household
     assert AsyncJob.objects.filter(program=other_program).count() == 3
 
 
-@pytest.mark.django_db
-def test_clean_program_data_stops_when_cancellation_requested(job, batch, households):
+def test_clean_program_data_stops_when_cancellation_requested(
+    mocker: MockerFixture,
+    job,
+    batch,
+    households,
+) -> None:
     initial_batches = Batch.objects.filter(program=job.program).count()
-
-    with patch(
+    requested = mocker.patch(
         "country_workspace.models.AsyncJob.is_termination_requested",
-        new_callable=PropertyMock,
-    ) as requested:
-        requested.return_value = True
-        with pytest.raises(GracefulJobCancellationError):
-            clean_program_data(job, batch_size=1)
+        new_callable=mocker.PropertyMock,
+    )
+    requested.return_value = True
+
+    with pytest.raises(GracefulJobCancellationError):
+        clean_program_data(job, batch_size=1)
 
     assert Batch.objects.filter(program=job.program).count() == initial_batches
 
 
-@pytest.mark.django_db
 def test_clean_program_data_bumps_cache_version_exactly_once(job, batch, households, individuals):
     program = job.program
     version_before = cache_manager.get_cache_version(program=program)
@@ -226,7 +226,6 @@ def test_clean_program_data_bumps_cache_version_exactly_once(job, batch, househo
     )
 
 
-@pytest.mark.django_db
 def test_sync_job_task_handles_graceful_cancellation(mocker, job):
     initial_batches = Batch.objects.filter(program=job.program).count()
 
@@ -251,7 +250,6 @@ def test_sync_job_task_handles_graceful_cancellation(mocker, job):
     assert Batch.objects.filter(program=job.program).count() == initial_batches
 
 
-@pytest.mark.django_db
 def test_sync_job_task_cancels_when_ensure_not_cancelled_raises(mocker, job):
     reason = "cancel requested"
     ensure_not_cancelled_mock = mocker.patch.object(
@@ -284,13 +282,11 @@ def batch_cleanup_job(program, batch):
     return AsyncJobFactory.create(program=program, batch=batch)
 
 
-@pytest.mark.django_db
 def test_batch_cleanup_no_batch_raises(job):
     with pytest.raises(ValueError, match="batch is required"):
         batch_cleanup(job)
 
 
-@pytest.mark.django_db
 def test_batch_cleanup_empty_batch(batch_cleanup_job, batch):
     result = batch_cleanup(batch_cleanup_job)
 
@@ -298,7 +294,6 @@ def test_batch_cleanup_empty_batch(batch_cleanup_job, batch):
     assert not Batch.objects.filter(pk=batch.pk).exists()
 
 
-@pytest.mark.django_db
 def test_batch_cleanup_with_records(batch_cleanup_job, batch, households, individuals):
     initial_households = Household.objects.filter(batch=batch).count()
     initial_individuals = Individual.objects.filter(batch=batch).count()
@@ -316,7 +311,6 @@ def test_batch_cleanup_with_records(batch_cleanup_job, batch, households, indivi
     assert Individual.objects.filter(batch_id=batch.pk).count() == 0
 
 
-@pytest.mark.django_db
 def test_batch_cleanup_does_not_affect_other_batches(batch_cleanup_job, batch, households):
     other_program = ProgramFactory.create()
     other_batch = BatchFactory.create(program=other_program)
@@ -330,22 +324,24 @@ def test_batch_cleanup_does_not_affect_other_batches(batch_cleanup_job, batch, h
     assert Household.objects.filter(batch=other_batch).count() == other_household_count
 
 
-@pytest.mark.django_db
-def test_batch_cleanup_stops_when_cancellation_requested(batch_cleanup_job, households):
+def test_batch_cleanup_stops_when_cancellation_requested(
+    mocker: MockerFixture,
+    batch_cleanup_job,
+    households,
+) -> None:
     initial_batches = Batch.objects.count()
-
-    with patch(
+    requested = mocker.patch(
         "country_workspace.models.AsyncJob.is_termination_requested",
-        new_callable=PropertyMock,
-    ) as requested:
-        requested.return_value = True
-        with pytest.raises(GracefulJobCancellationError):
-            batch_cleanup(batch_cleanup_job)
+        new_callable=mocker.PropertyMock,
+    )
+    requested.return_value = True
+
+    with pytest.raises(GracefulJobCancellationError):
+        batch_cleanup(batch_cleanup_job)
 
     assert Batch.objects.count() == initial_batches
 
 
-@pytest.mark.django_db
 def test_batch_cleanup_bumps_cache_version_exactly_once(batch_cleanup_job, batch, households, individuals):
     program = batch_cleanup_job.program
     version_before = cache_manager.get_cache_version(program=program)
@@ -356,7 +352,6 @@ def test_batch_cleanup_bumps_cache_version_exactly_once(batch_cleanup_job, batch
     assert version_after == version_before + 1
 
 
-@pytest.mark.django_db
 def test_sync_hope_data_runs_delta_and_flex_fields(mocker):
     program_details = {"offices": {"add": 1, "upd": 0, "errors": []}}
     geo_details = {"countries": {"add": 0, "upd": 3, "errors": []}}
@@ -377,7 +372,6 @@ def test_sync_hope_data_runs_delta_and_flex_fields(mocker):
     }
 
 
-@pytest.mark.django_db
 def test_sync_hope_data_isolates_failures(mocker):
     mocker.patch("country_workspace.tasks.run_program_sync", side_effect=RuntimeError("boom"))
     geo_runner = mocker.patch(

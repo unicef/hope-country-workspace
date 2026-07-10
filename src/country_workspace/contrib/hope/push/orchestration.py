@@ -1,46 +1,32 @@
 from collections.abc import Callable, Iterator
 from functools import partial
-from typing import Any, NamedTuple
+from typing import Any
 from uuid import UUID, uuid4
 
 from django.db import IntegrityError, transaction
 
-from country_workspace.contrib.dedup_engine import (
-    DedupClientStatus,
-    DedupResponseStatus,
-    DeduplicationSetState,
-    make_dedup_client,
-)
+from country_workspace.contrib.dedup_engine import REJECTABLE_DEDUPLICATION_SET_STATES, make_dedup_client
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 
-from .config import CreateRdpConfig, PushWorkflowConfig
+from .config import CreateRdpConfig, OperationLogResult, PushWorkflowConfig
 from .policy import ActionCheck, get_rdp_policy
 from .processor import DedupProcessor, PushProcessor
 from .repository import (
-    has_other_pending_rdp,
+    append_rdp_operation_log,
     lock_rdp_for_update,
     preflight_errors,
-    preflight_exclude_rdp_ids,
     qs_households,
     qs_individuals_by_household_pks,
     qs_individuals_by_pks,
     rdp_for_dedup,
     rdp_for_push,
-    rdp_selection,
-    selection_owner_for_rdp,
+    release_rdp_dedup_settings_lock,
+    release_rdp_push_lock,
     set_rdp_push_status,
-    set_rdp_deduplication_snapshot,
     workflow_config_for_rdp,
 )
-
-
-class CloneDeduplicationContext(NamedTuple):
-    dedup_source_pk: int
-    dedup_source_set_id: UUID
-    clone_deduplication_set_id: UUID | None
-    snapshot: dict[str, Any]
 
 
 def _require_policy_check(check: Callable[[], ActionCheck]) -> None:
@@ -50,33 +36,10 @@ def _require_policy_check(check: Callable[[], ActionCheck]) -> None:
         raise HopePushError({"errors": [str(e)]}) from e
 
 
-def _deduplication_snapshot(status: DedupClientStatus | None) -> dict[str, Any]:
-    """Return a serializable deduplication snapshot from remote status."""
-    if status is None:
-        return {}
-    return {
-        "deduplication_set_status": status.deduplication_set_status,
-        "findings_count": status.findings_count,
-    }
-
-
-def _save_current_deduplication_snapshot(*, rdp: Rdp, key: str) -> None:
-    status = get_rdp_policy(rdp).deduplication_status(rdp)
-    snapshot = _deduplication_snapshot(status)
-    expected_deduplication_set_id = rdp.deduplication_set_id
-    with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp.pk)
-        if locked.deduplication_set_id != expected_deduplication_set_id:
-            raise HopePushError({"errors": ["RDP: deduplication state changed. Please retry."]})
-        set_rdp_deduplication_snapshot(rdp=locked, key=key, snapshot=snapshot)
-
-
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Create an RDP for the selected beneficiaries after passing preflight checks."""
     if job.program.beneficiary_group is None:
         raise HopePushError({"errors": ["RDP: beneficiary_group is not set"]})
-    if not job.config.get("pks"):
-        raise HopePushError({"errors": ["RDP: no beneficiaries selected"]})
 
     config: CreateRdpConfig = job.config
     errors = preflight_errors(
@@ -108,146 +71,111 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
     except IntegrityError as e:
         message = "RDP: can not create record"
-        if "uniq_pending_rdp_per_program" in str(e):
-            message = "RDP: can not create while another RDP is pending"
+        if "uniq_open_rdp_per_program" in str(e):
+            message = "RDP: can not create while another RDP is open"
         raise HopePushError({"errors": [message]}) from e
 
     return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
 
 
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
-    rdp = lock_rdp_for_update(pk=rdp_id)
+    rdp = rdp_for_dedup(pk=rdp_id)
     policy = get_rdp_policy(rdp)
-    check = policy.claim_deduplication_check()
+    check = policy.deduplicate_check()
     if not check.allowed:
         return check, None
 
-    update_fields = ["is_dedup_settings_locked"]
-    rdp.is_dedup_settings_locked = True
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        if locked.is_dedup_settings_locked:
+            return ActionCheck(False, "RDP: deduplication has already been started for this RDP."), None
 
-    if policy.can_create_deduplication_set and not rdp.deduplication_set_id:
-        rdp.deduplication_set_id = uuid4()
-        update_fields.append("deduplication_set_id")
+        update_fields = ["is_dedup_settings_locked"]
+        locked.is_dedup_settings_locked = True
+        if policy.can_create_deduplication_set and not locked.deduplication_set_id:
+            locked.deduplication_set_id = uuid4()
+            update_fields.append("deduplication_set_id")
 
-    rdp.save(update_fields=update_fields)
-    return ActionCheck(True), rdp
+        locked.save(update_fields=update_fields)
+
+    return ActionCheck(True), locked
+
+
+def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
+    """Claim an RDP push by setting a local push lock."""
+    rdp = rdp_for_push(pk=rdp_id)
+    check = get_rdp_policy(rdp).start_push_check()
+    if not check.allowed:
+        return check, None
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+
+        if locked.is_push_locked:
+            return ActionCheck(False, "RDP: push to HOPE is already queued or running."), None
+        if locked.status not in {locked.PushStatus.PENDING, locked.PushStatus.FAILURE}:
+            return ActionCheck(False, f"RDP: can not push in status={locked.status}"), None
+
+        locked.is_push_locked = True
+        locked.save(update_fields=["is_push_locked"])
+
+    return ActionCheck(True), locked
 
 
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    _require_policy_check(get_rdp_policy(rdp).deduplicate_check)
-    processor = DedupProcessor(rdp)
-    processor.run()
-    if processor.has_errors:
-        raise HopePushError(processor.total)
-    return processor.total
+    rdp_id = job.config["rdp_id"]
+    rdp = rdp_for_dedup(pk=rdp_id)
 
-
-def clone_rdp_core(*, source: Rdp, batch_name: str, pushed_by_id: int) -> Rdp:
-    """Create a child RDP from the current RDP deduplication state."""
-    _require_policy_check(get_rdp_policy(source).clone_check)
-
-    owner = selection_owner_for_rdp(rdp=source)
-    master_detail, pks = rdp_selection(rdp=owner)
-    if errors := preflight_errors(
-        pks=pks,
-        master_detail=master_detail,
-        exclude_rdp_ids=preflight_exclude_rdp_ids(rdp=source),
-    ):
-        raise HopePushError({"errors": errors})
-
-    dedup_source = source if source.deduplication_set_id else owner
-    if not dedup_source.deduplication_set_id:
-        raise HopePushError({"errors": ["DedupEngine: deduplication_set_id is not set for this RDP."]})
-    status = get_rdp_policy(dedup_source).deduplication_status(dedup_source)
-    if status is None or status.response_status != DedupResponseStatus.OK:
-        raise HopePushError({"errors": ["DedupEngine: can not retrieve deduplication set status."]})
-
-    context = CloneDeduplicationContext(
-        dedup_source_pk=dedup_source.pk,
-        dedup_source_set_id=dedup_source.deduplication_set_id,
-        clone_deduplication_set_id=(
-            dedup_source.deduplication_set_id
-            if status.deduplication_set_status == DeduplicationSetState.DEDUPLICATED
-            else None
-        ),
-        snapshot=_deduplication_snapshot(status),
-    )
-    return _clone_rdp_in_transaction(
-        source=source,
-        batch_name=batch_name,
-        pushed_by_id=pushed_by_id,
-        context=context,
-    )
-
-
-def _clone_rdp_in_transaction(
-    *,
-    source: Rdp,
-    batch_name: str,
-    pushed_by_id: int,
-    context: CloneDeduplicationContext,
-) -> Rdp:
     try:
+        _require_policy_check(get_rdp_policy(rdp).deduplicate_check)
+
+        with make_dedup_client(rdp.program.unicef_id) as client:
+            dedup_settings = client.get_deduplication_set_group_config()
+
+        processor = DedupProcessor(rdp)
+        processor.run()
+        result: OperationLogResult = {
+            "images_sent": processor.total["images_sent"],
+            "dedup_settings": dedup_settings,
+            "deduplication_set_id": str(processor.rdp.deduplication_set_id)
+            if processor.rdp.deduplication_set_id
+            else None,
+        }
+
         with transaction.atomic():
-            source = lock_rdp_for_update(pk=source.pk)
-            if source.status == Rdp.PushStatus.SUCCESS:
-                raise HopePushError({"errors": ["RDP: can not clone a successful RDP."]})
-            owner = selection_owner_for_rdp(rdp=source)
-            if owner.pk != source.pk:
-                owner = lock_rdp_for_update(pk=owner.pk)
-
-            exclude_ids = (source.pk,) if source.status == Rdp.PushStatus.PENDING else ()
-            if has_other_pending_rdp(owner=owner, exclude_ids=exclude_ids):
-                raise HopePushError({"errors": ["RDP: can not clone while another RDP is pending"]})
-
-            current_dedup_source = source if source.deduplication_set_id else owner
-            if (
-                current_dedup_source.pk != context.dedup_source_pk
-                or current_dedup_source.deduplication_set_id != context.dedup_source_set_id
-            ):
-                raise HopePushError({"errors": ["RDP: deduplication state changed. Please retry."]})
-
-            set_rdp_deduplication_snapshot(rdp=source, key="before_clone", snapshot=context.snapshot)
-
-            update_fields: list[str] = []
-            if source.status == Rdp.PushStatus.PENDING:
-                source.status = Rdp.PushStatus.CANCELLED
-                update_fields.append("status")
-            if source.is_dedup_settings_locked:
-                source.is_dedup_settings_locked = False
-                update_fields.append("is_dedup_settings_locked")
-            if update_fields:
-                source.save(update_fields=update_fields)
-
-            return Rdp.objects.create(
-                country_office_id=owner.country_office_id,
-                program_id=owner.program_id,
-                pushed_by_id=pushed_by_id,
-                name=batch_name,
-                parent=owner,
-                status=Rdp.PushStatus.PENDING,
-                deduplication_set_id=context.clone_deduplication_set_id,
-                is_dedup_settings_locked=False,
-                hope_rdi_id="",
+            locked = lock_rdp_for_update(pk=rdp.pk)
+            append_rdp_operation_log(
+                rdp=locked,
+                action=Rdp.OperationAction.START_DEDUPLICATION,
+                job_id=job.pk,
+                result=result,
             )
-    except IntegrityError as e:
-        raise HopePushError({"errors": [f"RDP: can not clone record: {e}"]}) from e
+
+        if processor.has_errors:
+            raise HopePushError(processor.total)
+        return processor.total
+
+    finally:
+        release_rdp_dedup_settings_lock(rdp_id=rdp_id)
 
 
-def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject the active DedupEngine deduplication set for an existing RDP."""
+def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Cancel an existing RDP and reject its active DedupEngine set when required."""
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    _require_policy_check(get_rdp_policy(rdp).reject_ds_check)
-    group_reference_id = rdp.program.unicef_id
-    deduplication_set_id = str(rdp.deduplication_set_id)
-    _save_current_deduplication_snapshot(rdp=rdp, key="before_reject")
+    policy = get_rdp_policy(rdp)
+    _require_policy_check(policy.cancel_check)
 
-    try:
-        with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
-            client.reject()
-    except (RemoteError, RemoteUnavailableError) as e:
-        raise HopePushError({"errors": [str(e)]}) from e
+    group_reference_id = rdp.program.unicef_id
+    deduplication_set_id = str(rdp.deduplication_set_id) if rdp.deduplication_set_id else None
+    dedup_engine_rejected = False
+
+    if deduplication_set_id and policy.deduplication_set_state in REJECTABLE_DEDUPLICATION_SET_STATES:
+        try:
+            with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
+                client.reject()
+        except (RemoteError, RemoteUnavailableError) as e:
+            raise HopePushError({"errors": [str(e)]}) from e
+        dedup_engine_rejected = True
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
@@ -256,27 +184,28 @@ def reject_deduplication_set_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             status=Rdp.PushStatus.CANCELLED,
             hope_rdi_id=locked.hope_rdi_id or "N/A",
             is_dedup_settings_locked=False,
+            is_push_locked=False,
         )
 
     return {
         "rdp_id": rdp.pk,
         "program": group_reference_id,
         "deduplication_set_id": deduplication_set_id,
-        "rejected": True,
+        "dedup_engine_rejected": dedup_engine_rejected,
+        "cancelled": True,
     }
 
 
 def _mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
-    """Mark selection-owner beneficiaries as removed."""
-    owner = selection_owner_for_rdp(rdp=rdp)
+    """Mark RDP beneficiaries as removed."""
     if is_master_detail:
-        hh_ids = list(owner.households.values_list("pk", flat=True))
+        hh_ids = list(rdp.households.values_list("pk", flat=True))
         if not hh_ids:
             return
-        owner.households.update(removed=True)
+        rdp.households.update(removed=True)
         qs_individuals_by_household_pks(hh_ids).update(removed=True)
         return
-    owner.individuals.update(removed=True)
+    rdp.individuals.update(removed=True)
 
 
 def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
@@ -297,43 +226,49 @@ def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Cal
 
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Run the push workflow for an existing RDP."""
-    rdp = rdp_for_push(pk=job.config["rdp_id"])
-    _require_policy_check(get_rdp_policy(rdp).push_check)
-    _save_current_deduplication_snapshot(rdp=rdp, key="before_push")
-    imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
-    config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
-    hope_processor = PushProcessor(config)
+    rdp_id = job.config["rdp_id"]
+    rdp = rdp_for_push(pk=rdp_id)
 
-    for step in _steps(hope_processor, config):
-        step()
-        if hope_processor.has_errors:
-            with transaction.atomic():
-                locked = lock_rdp_for_update(pk=rdp.pk)
-                set_rdp_push_status(
-                    rdp=locked,
-                    status=Rdp.PushStatus.FAILURE,
-                    hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
-                )
-            raise HopePushError(hope_processor.total)
+    try:
+        _require_policy_check(get_rdp_policy(rdp).push_check)
+        imported_by_email = getattr(job.owner, "email", "") or getattr(rdp.pushed_by, "email", "")
+        config: PushWorkflowConfig = workflow_config_for_rdp(rdp=rdp, imported_by_email=imported_by_email)
+        hope_processor = PushProcessor(config)
 
-    with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp.pk)
-        _mark_rdp_beneficiaries_removed(locked, config["master_detail"])
-        set_rdp_push_status(
-            rdp=locked,
-            status=Rdp.PushStatus.SUCCESS,
-            hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+        for step in _steps(hope_processor, config):
+            step()
+            if hope_processor.has_errors:
+                with transaction.atomic():
+                    locked = lock_rdp_for_update(pk=rdp.pk)
+                    set_rdp_push_status(
+                        rdp=locked,
+                        status=Rdp.PushStatus.FAILURE,
+                        hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+                        is_push_locked=False,
+                    )
+                raise HopePushError(hope_processor.total)
+
+        with transaction.atomic():
+            locked = lock_rdp_for_update(pk=rdp.pk)
+            _mark_rdp_beneficiaries_removed(locked, config["master_detail"])
+            set_rdp_push_status(
+                rdp=locked,
+                status=Rdp.PushStatus.SUCCESS,
+                hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
+                is_push_locked=False,
+            )
+            group_reference_id = locked.program.unicef_id
+            deduplication_set_id = locked.deduplication_set_id
+
+        _approve_deduplication_set_after_successful_push(
+            group_reference_id=group_reference_id,
+            deduplication_set_id=deduplication_set_id,
+            processor=hope_processor,
         )
-        group_reference_id = locked.program.unicef_id
-        deduplication_set_id = locked.deduplication_set_id
+        return hope_processor.total
 
-    _approve_deduplication_set_after_successful_push(
-        group_reference_id=group_reference_id,
-        deduplication_set_id=deduplication_set_id,
-        processor=hope_processor,
-    )
-
-    return hope_processor.total
+    finally:
+        release_rdp_push_lock(rdp_id=rdp_id)
 
 
 def _approve_deduplication_set_after_successful_push(

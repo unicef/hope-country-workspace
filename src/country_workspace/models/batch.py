@@ -1,4 +1,7 @@
+from typing import Any
+
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from .base import BaseModel
@@ -27,6 +30,7 @@ class Batch(BaseModel):
         default=BatchStatus.LOADING,
         db_index=True,
     )
+    picture_import_state = models.JSONField(default=dict, blank=True)
 
     class Meta:
         unique_together = (("import_date", "name"),)
@@ -36,3 +40,25 @@ class Batch(BaseModel):
 
     def __str__(self) -> str:
         return self.name or f"Batch self.pk ({self.country_office})"
+
+    def get_picture_import_state(self) -> dict[str, Any]:
+        state = self.picture_import_state
+        if not isinstance(state, dict):
+            return {}
+        return state
+
+    def start_picture_import(self, *, payload: dict[str, Any], user: User) -> dict[str, Any] | None:
+        previous = self.get_picture_import_state() or None
+        self.picture_import_state = {
+            **payload,
+            "updated_by": user.pk,
+            "updated_at": timezone.now().isoformat(),
+        }
+        self.save(update_fields=["picture_import_state"])
+        return previous
+
+    def finish_picture_import(self) -> dict[str, Any] | None:
+        payload = self.get_picture_import_state() or None
+        self.picture_import_state = {}
+        self.save(update_fields=["picture_import_state"])
+        return payload

@@ -17,6 +17,11 @@ class Registration(BaseModel):
         related_name="%(class)ss",
         help_text="Associates this registration with a project, as defined in the Aurora system.",
     )
+    rsa_private_key = models.TextField(
+        blank=True,
+        default="",
+        help_text="RSA private key (PEM) used to decrypt records imported from Aurora when encryption is enabled.",
+    )
 
     def __str__(self) -> str:
         return self.name

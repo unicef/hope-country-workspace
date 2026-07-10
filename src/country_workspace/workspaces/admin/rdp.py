@@ -1,37 +1,37 @@
+import json
+from contextlib import suppress
 from typing import Any
-
 import sentry_sdk
+
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
-from django.contrib.admin import register
+from django.contrib.admin import display, register
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
-from django.utils.html import format_html_join
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
+from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html_join, format_html
 from strategy_field.utils import fqn
 
-
-from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.contrib.hope.forms import CreateRDPForm
 from country_workspace.contrib.hope.push import (
     DedupEngineState,
-    PushExistingRdpConfig,
+    cancel_existing_rdp_core,
     claim_rdp_deduplication,
-    clone_rdp_core,
-    get_rdp_policy,
+    claim_rdp_push,
     dedup_existing_rdp_core,
+    get_rdp_policy,
     push_existing_rdp_core,
-    reject_deduplication_set_existing_rdp_core,
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
-from country_workspace.utils.fields import rdi_name_default
+from country_workspace.state import state
 
 
-from ...state import state
 from ..models import CountryRdp
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -67,13 +67,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
         fields = [
             "name",
-            "parent",
             "push_date",
             "status",
         ]
         if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(("dedup_engine_state", "deduplication_set_id", "deduplication_snapshots"))
-        fields.append("related_jobs")
+            fields.extend(("dedup_engine_state", "deduplication_set_id"))
+        fields.extend(("related_jobs", "operation_log_display"))
         return fields
 
     def get_readonly_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
@@ -113,6 +112,35 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 )
                 for job in jobs
             ),
+        )
+
+    @display(description="Operation log")
+    def operation_log_display(self, obj: CountryRdp) -> str:
+        """Return formatted RDP operation log."""
+        if not obj.operation_log:
+            return "—"
+
+        rows = []
+        for entry in obj.operation_log:
+            action = entry.get("action", "—")
+            with suppress(TypeError, ValueError):
+                action = CountryRdp.OperationAction(action).label
+            timestamp = entry.get("timestamp", "—")
+            if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
+                timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
+            result = entry.get("result")
+            rows.append(
+                (
+                    action,
+                    timestamp,
+                    format_html("<pre>{}</pre>", json.dumps(result, indent=2, ensure_ascii=False)) if result else "",
+                )
+            )
+
+        return format_html_join(
+            "",
+            "<div><strong>{}</strong> · {}{}</div>",
+            rows,
         )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
@@ -159,11 +187,11 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         try:
+            check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
+            if not check.allowed or locked is None:
+                messages.error(request, check.reason or "Action is not allowed.")
+                return redirect(self._change_url(obj))
             with transaction.atomic():
-                check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
-                if not check.allowed or locked is None:
-                    messages.error(request, check.reason or "Action is not allowed.")
-                    return redirect(self._change_url(obj))
                 job = AsyncJob.objects.create(
                     description="Run Deduplication process on DedupEngine",
                     type=AsyncJob.JobType.TASK,
@@ -186,85 +214,34 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Reject",
+        label="Cancel",
         change_form=True,
         change_list=False,
-        permission="country_workspace.reject_deduplication_set",
-        visible=lambda btn: _is_visible(btn, "is_reject_ds_visible"),
-        enabled=lambda btn: _is_allowed(btn, "reject_ds_check"),
-        html_attrs={"title": "Reject this RDP by rejecting its active DE deduplication set."},
+        permission="country_workspace.cancel_rdp",
+        visible=lambda btn: _is_visible(btn, "is_cancel_visible"),
+        enabled=lambda btn: _is_allowed(btn, "cancel_check"),
+        html_attrs={"title": "Cancel this RDP."},
     )
-    def reject_ds(self, request: HttpRequest, pk: str) -> HttpResponse:
+    def cancel(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
-        if response := self._deny_if_not_allowed(request, obj, "reject_ds_check"):
+        if response := self._deny_if_not_allowed(request, obj, "cancel_check"):
             return response
 
         job = AsyncJob.objects.create(
-            description="Reject RDP by rejecting its active DE deduplication set",
+            description="Cancel RDP",
             type=AsyncJob.JobType.TASK,
             owner=request.user,
-            action=fqn(reject_deduplication_set_existing_rdp_core),
+            action=fqn(cancel_existing_rdp_core),
             program=obj.program,
             rdp=obj,
             config={"rdp_id": obj.pk},
         )
         job.queue()
 
-        messages.success(request, "Reject task scheduled")
+        messages.success(request, "Cancel task scheduled")
         return redirect(self._change_url(obj))
-
-    @button(
-        label="Clone RDP",
-        change_form=True,
-        change_list=False,
-        permission="country_workspace.create_rdp",
-        visible=lambda btn: _is_visible(btn, "is_clone_visible"),
-        enabled=lambda btn: _is_allowed(btn, "clone_check"),
-        html_attrs={"title": "Create a child RDP that reuses the parent selection."},
-    )
-    def clone_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Create a child RDP without copying beneficiary M2M links."""
-        if (obj := self.get_object(request, pk)) is None:
-            messages.error(request, "RDP not found")
-            return redirect("workspace:workspaces_countryrdp_changelist")
-        if response := self._deny_if_not_allowed(request, obj, "clone_check"):
-            return response
-
-        if request.method == "POST" and "_clone" in request.POST:
-            if (form := CreateRDPForm(request.POST)).is_valid():
-                try:
-                    cloned = clone_rdp_core(
-                        source=obj,
-                        batch_name=form.cleaned_data["batch_name"] or rdi_name_default(),
-                        pushed_by_id=request.user.id,
-                    )
-                except HopePushError as e:
-                    messages.error(request, str(e))
-                else:
-                    messages.success(request, "RDP cloned")
-                    return redirect(self._change_url(cloned))
-        else:
-            form = CreateRDPForm(
-                initial={
-                    "action": "clone_rdp",
-                    "select_across": False,
-                    "_selected_action": [str(obj.pk)],
-                },
-            )
-        ctx = self.get_common_context(
-            request,
-            title="Clone RDP",
-            form=form,
-            original=obj,
-            changelist_url=reverse("workspace:workspaces_countryrdp_changelist"),
-            original_change_url=self._change_url(obj),
-            intro_text="A new RDP will be created using the parent RDP beneficiary selection.",
-            submit_label="Clone RDP",
-            submit_name="_clone",
-        )
-        return render(request, "workspace/actions/create_rdp.html", ctx)
 
     @button(
         label="Push to HOPE",
@@ -272,27 +249,43 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
         visible=lambda btn: _is_visible(btn, "is_push_visible"),
-        enabled=lambda btn: _is_allowed(btn, "push_check"),
+        enabled=lambda btn: _is_allowed(btn, "start_push_check"),
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
-        if response := self._deny_if_not_allowed(request, obj, "push_check"):
-            return response
 
-        config: PushExistingRdpConfig = {"rdp_id": obj.pk}
-        job = AsyncJob.objects.create(
-            description="Push beneficiaries to HOPE",
-            type=AsyncJob.JobType.TASK,
-            owner=request.user,
-            action=fqn(push_existing_rdp_core),
-            program=obj.program,
-            rdp=obj,
-            config=config,
-        )
-        job.queue()
+        locked: CountryRdp | None = None
+        try:
+            check, locked = claim_rdp_push(rdp_id=obj.pk)
+            if not check.allowed or locked is None:
+                messages.error(request, check.reason or "Action is not allowed.")
+                return redirect(self._change_url(obj))
+
+            with transaction.atomic():
+                job = AsyncJob.objects.create(
+                    description="Push beneficiaries to HOPE",
+                    type=AsyncJob.JobType.TASK,
+                    owner=request.user,
+                    action=fqn(push_existing_rdp_core),
+                    program=locked.program,
+                    rdp=locked,
+                    config={"rdp_id": locked.pk},
+                )
+                transaction.on_commit(job.queue)
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            messages.error(request, str(exc))
+            return redirect(self._change_url(obj))
+        except RemoteError as exc:
+            messages.error(request, str(exc))
+            return redirect(self._change_url(obj))
+        except Exception:
+            if locked is not None:
+                CountryRdp.objects.filter(pk=locked.pk, is_push_locked=True).update(is_push_locked=False)
+            raise
 
         messages.success(request, "Push to HOPE task scheduled")
         return redirect(self._change_url(obj))
@@ -305,4 +298,4 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return
         item = "countryhousehold" if obj.program.beneficiary_group.master_detail else "countryindividual"
         base = reverse(f"workspace:workspaces_{item}_changelist")
-        btn.href = f"{base}?rdp__exact={get_rdp_policy(obj).owner.pk}"
+        btn.href = f"{base}?rdp__exact={obj.pk}"

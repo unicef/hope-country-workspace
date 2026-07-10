@@ -6,8 +6,8 @@ nav:
   - docker.md
   - dev_helpers.md
   - flows
-  - Interfaces: interfaces.md
+  - Country Workspace interface: interfaces.md
   - Data cleaning and updates: data_cleaning_updates.md
-  - Data Import: import_data
-  - Data Validation : validation.md
+  - Data Import: data_import
+  - Data Validation: data_validation
   - Push Data to HOPE Core: push_data.md

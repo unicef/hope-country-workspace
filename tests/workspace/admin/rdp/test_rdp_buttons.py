@@ -1,24 +1,15 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.policy import ActionCheck
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.workspaces.admin import rdp as rdp_admin_mod
-
+from country_workspace.workspaces.models import CountryRdp
 
 pytestmark = pytest.mark.django_db
 
 
-def _assert_job(
-    create,
-    job,
-    *,
-    description: str,
-    action: str,
-    owner,
-    rdp,
-) -> None:
+def _assert_job(create, *, description: str, action: str, owner, rdp: CountryRdp) -> None:
     create.assert_called_once_with(
         description=description,
         type=rdp_admin_mod.AsyncJob.JobType.TASK,
@@ -28,20 +19,10 @@ def _assert_job(
         rdp=rdp,
         config={"rdp_id": rdp.pk},
     )
-    job.queue.assert_called_once_with()
 
 
-@pytest.mark.parametrize(
-    "method",
-    ["deduplicate", "reject_ds", "push", "clone_rdp"],
-    ids=["deduplicate", "reject_ds", "push", "clone_rdp"],
-)
-def test_buttons_redirect_when_rdp_not_found(
-    admin_instance,
-    mock_request,
-    mocker: MockerFixture,
-    method: str,
-) -> None:
+@pytest.mark.parametrize("method", ["deduplicate", "cancel", "push"])
+def test_buttons_redirect_when_rdp_not_found(admin_instance, mock_request, mocker: MockerFixture, method: str) -> None:
     admin_instance.get_object = mocker.Mock(return_value=None)
     error = mocker.patch.object(rdp_admin_mod.messages, "error")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
@@ -53,99 +34,113 @@ def test_buttons_redirect_when_rdp_not_found(
     assert response == "response"
 
 
-def test_deduplicate_schedules_job(
+@pytest.mark.parametrize(
+    ("method", "claim_name", "core", "description", "message"),
+    [
+        (
+            "deduplicate",
+            "claim_rdp_deduplication",
+            rdp_admin_mod.dedup_existing_rdp_core,
+            "Run Deduplication process on DedupEngine",
+            "Dedup task scheduled",
+        ),
+        (
+            "push",
+            "claim_rdp_push",
+            rdp_admin_mod.push_existing_rdp_core,
+            "Push beneficiaries to HOPE",
+            "Push to HOPE task scheduled",
+        ),
+    ],
+    ids=["deduplicate", "push"],
+)
+def test_claim_buttons_schedule_jobs(
     admin_instance,
     mock_request,
-    rdp,
+    rdp: CountryRdp,
     mocker: MockerFixture,
+    method: str,
+    claim_name: str,
+    core,
+    description: str,
+    message: str,
 ) -> None:
     admin_instance.get_object = mocker.Mock(return_value=rdp)
     admin_instance._change_url = mocker.Mock(return_value="/change")
-
     job = mocker.MagicMock()
     create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create", return_value=job)
-    claim = mocker.patch.object(
-        rdp_admin_mod,
-        "claim_rdp_deduplication",
-        return_value=(ActionCheck(True), rdp),
-    )
+    claim = mocker.patch.object(rdp_admin_mod, claim_name, return_value=(ActionCheck(True), rdp))
     on_commit = mocker.patch.object(rdp_admin_mod.transaction, "on_commit")
     success = mocker.patch.object(rdp_admin_mod.messages, "success")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
 
-    response = admin_instance.deduplicate.func(admin_instance, mock_request, pk=str(rdp.pk))
+    response = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
 
     claim.assert_called_once_with(rdp_id=rdp.pk)
-    create.assert_called_once_with(
-        description="Run Deduplication process on DedupEngine",
-        type=rdp_admin_mod.AsyncJob.JobType.TASK,
-        owner=mock_request.user,
-        action=rdp_admin_mod.fqn(rdp_admin_mod.dedup_existing_rdp_core),
-        program=rdp.program,
-        rdp=rdp,
-        config={"rdp_id": rdp.pk},
-    )
+    _assert_job(create, description=description, action=rdp_admin_mod.fqn(core), owner=mock_request.user, rdp=rdp)
     on_commit.assert_called_once_with(job.queue)
-    job.queue.assert_not_called()
-    success.assert_called_once_with(mock_request, "Dedup task scheduled")
-    redirect.assert_called_once_with("/change")
-    assert response == "response"
-
-
-def test_deduplicate_denies_when_claim_fails(
-    admin_instance,
-    mock_request,
-    rdp,
-    mocker: MockerFixture,
-) -> None:
-    admin_instance.get_object = mocker.Mock(return_value=rdp)
-    admin_instance._change_url = mocker.Mock(return_value="/change")
-
-    mocker.patch.object(
-        rdp_admin_mod,
-        "claim_rdp_deduplication",
-        return_value=(ActionCheck(False, "blocked"), None),
-    )
-    create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create")
-    on_commit = mocker.patch.object(rdp_admin_mod.transaction, "on_commit")
-    error = mocker.patch.object(rdp_admin_mod.messages, "error")
-    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
-
-    response = admin_instance.deduplicate.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    error.assert_called_once_with(mock_request, "blocked")
-    create.assert_not_called()
-    on_commit.assert_not_called()
+    success.assert_called_once_with(mock_request, message)
     redirect.assert_called_once_with("/change")
     assert response == "response"
 
 
 @pytest.mark.parametrize(
-    ("exc", "captures"),
-    [
-        (RemoteUnavailableError("unavailable"), True),
-        (RemoteError("remote"), False),
-    ],
-    ids=["remote_unavailable", "remote_error"],
+    ("method", "claim_name"),
+    [("deduplicate", "claim_rdp_deduplication"), ("push", "claim_rdp_push")],
+    ids=["deduplicate", "push"],
 )
-def test_deduplicate_handles_remote_errors(
+def test_claim_buttons_deny_when_claim_fails(
     admin_instance,
     mock_request,
-    rdp,
+    rdp: CountryRdp,
     mocker: MockerFixture,
+    method: str,
+    claim_name: str,
+) -> None:
+    admin_instance.get_object = mocker.Mock(return_value=rdp)
+    admin_instance._change_url = mocker.Mock(return_value="/change")
+    mocker.patch.object(rdp_admin_mod, claim_name, return_value=(ActionCheck(False, "blocked"), None))
+    create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create")
+    error = mocker.patch.object(rdp_admin_mod.messages, "error")
+    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
+
+    response = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
+
+    error.assert_called_once_with(mock_request, "blocked")
+    create.assert_not_called()
+    redirect.assert_called_once_with("/change")
+    assert response == "response"
+
+
+@pytest.mark.parametrize(
+    ("method", "claim_name", "exc", "captures"),
+    [
+        ("deduplicate", "claim_rdp_deduplication", RemoteUnavailableError("unavailable"), True),
+        ("deduplicate", "claim_rdp_deduplication", RemoteError("remote"), False),
+        ("push", "claim_rdp_push", RemoteUnavailableError("unavailable"), True),
+        ("push", "claim_rdp_push", RemoteError("remote"), False),
+    ],
+    ids=["dedup_unavailable", "dedup_remote", "push_unavailable", "push_remote"],
+)
+def test_claim_buttons_handle_remote_errors(
+    admin_instance,
+    mock_request,
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+    method: str,
+    claim_name: str,
     exc: Exception,
     captures: bool,
 ) -> None:
     admin_instance.get_object = mocker.Mock(return_value=rdp)
     admin_instance._change_url = mocker.Mock(return_value="/change")
-
-    mocker.patch.object(rdp_admin_mod, "claim_rdp_deduplication", side_effect=exc)
+    mocker.patch.object(rdp_admin_mod, claim_name, side_effect=exc)
     create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create")
     error = mocker.patch.object(rdp_admin_mod.messages, "error")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
     capture = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    response = admin_instance.deduplicate.func(admin_instance, mock_request, pk=str(rdp.pk))
+    response = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
 
     error.assert_called_once_with(mock_request, str(exc))
     redirect.assert_called_once_with("/change")
@@ -154,204 +149,86 @@ def test_deduplicate_handles_remote_errors(
     assert response == "response"
 
 
-@pytest.mark.parametrize(
-    ("method", "check_action", "description", "action", "success_message"),
-    [
-        (
-            "reject_ds",
-            "reject_ds_check",
-            "Reject RDP by rejecting its active DE deduplication set",
-            rdp_admin_mod.fqn(rdp_admin_mod.reject_deduplication_set_existing_rdp_core),
-            "Reject task scheduled",
-        ),
-        (
-            "push",
-            "push_check",
-            "Push beneficiaries to HOPE",
-            rdp_admin_mod.fqn(rdp_admin_mod.push_existing_rdp_core),
-            "Push to HOPE task scheduled",
-        ),
-    ],
-    ids=["reject_ds", "push"],
-)
-def test_workflow_buttons_schedule_jobs(
-    admin_instance,
-    mock_request,
-    rdp,
-    mocker: MockerFixture,
-    method: str,
-    check_action: str,
-    description: str,
-    action: str,
-    success_message: str,
-) -> None:
+def test_cancel_schedules_job(admin_instance, mock_request, rdp: CountryRdp, mocker: MockerFixture) -> None:
     admin_instance.get_object = mocker.Mock(return_value=rdp)
     admin_instance._change_url = mocker.Mock(return_value="/change")
     admin_instance._deny_if_not_allowed = mocker.Mock(return_value=None)
-
     job = mocker.MagicMock()
     create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create", return_value=job)
     success = mocker.patch.object(rdp_admin_mod.messages, "success")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
 
-    response = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
+    response = admin_instance.cancel.func(admin_instance, mock_request, pk=str(rdp.pk))
 
-    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, check_action)
+    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, "cancel_check")
     _assert_job(
         create,
-        job,
-        description=description,
-        action=action,
+        description="Cancel RDP",
+        action=rdp_admin_mod.fqn(rdp_admin_mod.cancel_existing_rdp_core),
         owner=mock_request.user,
         rdp=rdp,
     )
-    success.assert_called_once_with(mock_request, success_message)
+    job.queue.assert_called_once_with()
+    success.assert_called_once_with(mock_request, "Cancel task scheduled")
     redirect.assert_called_once_with("/change")
     assert response == "response"
 
 
-@pytest.mark.parametrize(
-    ("method", "check_action"),
-    [
-        ("reject_ds", "reject_ds_check"),
-        ("push", "push_check"),
-        ("clone_rdp", "clone_check"),
-    ],
-    ids=["reject_ds", "push", "clone_rdp"],
-)
-def test_buttons_return_denial_response(
-    admin_instance,
-    mock_request,
-    rdp,
-    mocker: MockerFixture,
-    method: str,
-    check_action: str,
-) -> None:
+def test_cancel_returns_denial_response(admin_instance, mock_request, rdp: CountryRdp, mocker: MockerFixture) -> None:
     admin_instance.get_object = mocker.Mock(return_value=rdp)
     admin_instance._deny_if_not_allowed = mocker.Mock(return_value="denied")
-
     create = mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create")
-    render = mocker.patch.object(rdp_admin_mod, "render")
-    clone = mocker.patch.object(rdp_admin_mod, "clone_rdp_core")
 
-    response = getattr(admin_instance, method).func(admin_instance, mock_request, pk=str(rdp.pk))
+    assert admin_instance.cancel.func(admin_instance, mock_request, pk=str(rdp.pk)) == "denied"
 
-    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, check_action)
-    assert response == "denied"
     create.assert_not_called()
-    render.assert_not_called()
-    clone.assert_not_called()
 
 
-def test_clone_rdp_get_renders_form(
+def test_push_unlocks_rdp_on_unexpected_error(
     admin_instance,
     mock_request,
-    rdp,
+    rdp: CountryRdp,
     mocker: MockerFixture,
 ) -> None:
+    rdp.is_push_locked = True
+    rdp.save(update_fields=["is_push_locked"])
     admin_instance.get_object = mocker.Mock(return_value=rdp)
-    admin_instance._deny_if_not_allowed = mocker.Mock(return_value=None)
-    admin_instance._change_url = mocker.Mock(return_value="/change")
-    admin_instance.get_common_context = mocker.Mock(return_value={"ctx": True})
+    mocker.patch.object(rdp_admin_mod, "claim_rdp_push", return_value=(ActionCheck(True), rdp))
+    mocker.patch.object(rdp_admin_mod.AsyncJob.objects, "create", side_effect=RuntimeError("boom"))
 
-    form = mocker.MagicMock()
-    form_cls = mocker.patch.object(rdp_admin_mod, "CreateRDPForm", return_value=form)
-    mocker.patch.object(rdp_admin_mod, "reverse", return_value="/list")
-    render = mocker.patch.object(rdp_admin_mod, "render", return_value="response")
+    with pytest.raises(RuntimeError, match="boom"):
+        admin_instance.push.func(admin_instance, mock_request, pk=str(rdp.pk))
 
-    response = admin_instance.clone_rdp.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, "clone_check")
-    form_cls.assert_called_once_with(
-        initial={
-            "action": "clone_rdp",
-            "select_across": False,
-            "_selected_action": [str(rdp.pk)],
-        }
-    )
-    admin_instance.get_common_context.assert_called_once_with(
-        mock_request,
-        title="Clone RDP",
-        form=form,
-        original=rdp,
-        changelist_url="/list",
-        original_change_url="/change",
-        intro_text="A new RDP will be created using the parent RDP beneficiary selection.",
-        submit_label="Clone RDP",
-        submit_name="_clone",
-    )
-    render.assert_called_once_with(mock_request, "workspace/actions/create_rdp.html", {"ctx": True})
-    assert response == "response"
+    rdp.refresh_from_db()
+    assert rdp.is_push_locked is False
 
 
-def test_clone_rdp_post_success(
+@pytest.mark.parametrize(
+    ("status", "master_detail", "expected_url"),
+    [
+        (CountryRdp.PushStatus.SUCCESS, True, None),
+        (CountryRdp.PushStatus.PENDING, True, "workspace:workspaces_countryhousehold_changelist"),
+        (CountryRdp.PushStatus.PENDING, False, "workspace:workspaces_countryindividual_changelist"),
+    ],
+    ids=["success_hidden", "households", "individuals"],
+)
+def test_records_button(
     admin_instance,
-    mock_request,
-    rdp,
+    rdp: CountryRdp,
     mocker: MockerFixture,
+    status: str,
+    master_detail: bool,
+    expected_url: str | None,
 ) -> None:
-    mock_request.method = "POST"
-    mock_request.POST = {"_clone": "1"}
+    rdp.status = status
+    rdp.program.beneficiary_group.master_detail = master_detail
+    reverse = mocker.patch.object(rdp_admin_mod, "reverse", return_value="/records")
 
-    admin_instance.get_object = mocker.Mock(return_value=rdp)
-    admin_instance._deny_if_not_allowed = mocker.Mock(return_value=None)
-    admin_instance._change_url = mocker.Mock(return_value="/cloned")
+    btn = admin_instance.records.get_button({"original": rdp})
 
-    form = mocker.MagicMock()
-    form.is_valid.return_value = True
-    form.cleaned_data = {"batch_name": ""}
-    form_cls = mocker.patch.object(rdp_admin_mod, "CreateRDPForm", return_value=form)
-    mocker.patch.object(rdp_admin_mod, "rdi_name_default", return_value="AUTO")
-
-    cloned = mocker.MagicMock()
-    clone = mocker.patch.object(rdp_admin_mod, "clone_rdp_core", return_value=cloned)
-    success = mocker.patch.object(rdp_admin_mod.messages, "success")
-    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
-
-    response = admin_instance.clone_rdp.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    form_cls.assert_called_once_with(mock_request.POST)
-    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, "clone_check")
-    clone.assert_called_once_with(
-        source=rdp,
-        batch_name="AUTO",
-        pushed_by_id=mock_request.user.id,
-    )
-    success.assert_called_once_with(mock_request, "RDP cloned")
-    redirect.assert_called_once_with("/cloned")
-    admin_instance._change_url.assert_called_once_with(cloned)
-    assert response == "response"
-
-
-def test_clone_rdp_post_error_renders_form(
-    admin_instance,
-    mock_request,
-    rdp,
-    mocker: MockerFixture,
-) -> None:
-    mock_request.method = "POST"
-    mock_request.POST = {"_clone": "1"}
-
-    admin_instance.get_object = mocker.Mock(return_value=rdp)
-    admin_instance._deny_if_not_allowed = mocker.Mock(return_value=None)
-    admin_instance._change_url = mocker.Mock(return_value="/change")
-    admin_instance.get_common_context = mocker.Mock(return_value={"ctx": True})
-
-    form = mocker.MagicMock()
-    form.is_valid.return_value = True
-    form.cleaned_data = {"batch_name": "Batch"}
-    form_cls = mocker.patch.object(rdp_admin_mod, "CreateRDPForm", return_value=form)
-    mocker.patch.object(rdp_admin_mod, "clone_rdp_core", side_effect=HopePushError({"errors": ["boom"]}))
-    mocker.patch.object(rdp_admin_mod, "reverse", return_value="/list")
-
-    error = mocker.patch.object(rdp_admin_mod.messages, "error")
-    render = mocker.patch.object(rdp_admin_mod, "render", return_value="response")
-
-    response = admin_instance.clone_rdp.func(admin_instance, mock_request, pk=str(rdp.pk))
-
-    admin_instance._deny_if_not_allowed.assert_called_once_with(mock_request, rdp, "clone_check")
-    form_cls.assert_called_once_with(mock_request.POST)
-    error.assert_called_once()
-    assert "boom" in error.call_args.args[1]
-    render.assert_called_once_with(mock_request, "workspace/actions/create_rdp.html", {"ctx": True})
-    assert response == "response"
+    assert btn.visible is (expected_url is not None)
+    if expected_url:
+        assert btn.href == f"/records?rdp__exact={rdp.pk}"
+        reverse.assert_called_once_with(expected_url)
+    else:
+        reverse.assert_not_called()

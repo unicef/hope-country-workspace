@@ -1,4 +1,4 @@
-from enum import StrEnum, auto
+from enum import StrEnum
 from typing import Final, NamedTuple
 import sentry_sdk
 
@@ -20,22 +20,21 @@ class DeduplicationSetState(StrEnum):
     REJECTED = "Rejected"
 
 
-CLONEABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
-    DeduplicationSetState.ENCODING_FAILED,
-    DeduplicationSetState.DEDUPLICATION_FAILED,
-    DeduplicationSetState.DEDUPLICATED,
-    DeduplicationSetState.REJECTED,
-)
-
 PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.READY,)
 
 PUSHABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.DEDUPLICATED,)
 
 REJECTABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.DEDUPLICATED,)
 
+RUNNING_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    DeduplicationSetState.UPLOADING_IN_PROGRESS,
+    DeduplicationSetState.ENCODING_IN_PROGRESS,
+    DeduplicationSetState.DEDUPLICATION_IN_PROGRESS,
+)
+
 
 class DedupResponseStatus(StrEnum):
-    OK = auto()
+    OK = "OK"
     STATUS_UNAVAILABLE = "N/A"
 
 
@@ -69,8 +68,7 @@ def get_deduplication_status(
 
     state = payload.get("state")
     findings_count = payload.get("findings_count")
-
-    if not isinstance(state, str) or not isinstance(findings_count, int):
+    if not isinstance(state, str) or type(findings_count) is not int:
         raise RemoteError(f"DedupEngine: malformed deduplication set status response: {payload}")
 
     return DedupClientStatus(

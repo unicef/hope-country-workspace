@@ -3,7 +3,6 @@ from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
 
-
 from .config import ROUTES, Route
 
 
@@ -14,8 +13,12 @@ class HopeApi:
         self.client = HopeClient()
         self.co_slug = co_slug
 
+    def delete_rdi(self, rdi_id: str) -> dict[str, Any]:
+        url = ROUTES[Route.DELETE_RDI].format(co_slug=self.co_slug, rdi_id=rdi_id)
+        return self.client.delete(url)
+
     def create_rdi(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return self._post(Route.CREATE, payload)
+        return self._post(Route.CREATE_RDI, payload)
 
     def post_individuals(self, rdi_id: str, payload: list[dict]) -> dict[str, Any]:
         return self._post(Route.INDIVIDUALS, payload, rdi_id=rdi_id)
@@ -27,7 +30,7 @@ class HopeApi:
         return self._post(Route.PEOPLE, payload, rdi_id=rdi_id)
 
     def complete_rdi(self, rdi_id: str) -> dict[str, Any]:
-        return self._post(Route.COMPLETE, {}, rdi_id=rdi_id)
+        return self._post(Route.COMPLETE_RDI, {}, rdi_id=rdi_id)
 
     def _post(self, route: Route, payload: Any, *, rdi_id: str | None = None) -> dict[str, Any]:
         url = ROUTES[route].format(co_slug=self.co_slug, **({"rdi_id": rdi_id} if rdi_id else {}))

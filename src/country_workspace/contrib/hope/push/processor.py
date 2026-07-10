@@ -9,17 +9,16 @@ from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
+from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from .config import Serializer, ERROR_CONFIG, PushWorkflowConfig
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
+    existing_hope_rdi_id,
     qs_individuals_for_rdp,
     preflight_errors,
-    preflight_exclude_rdp_ids,
     serializer_for_program,
 )
 from .transport import HopeApi
@@ -140,7 +139,7 @@ class PushProcessor(ProcessorBase):
         for msg in preflight_errors(
             pks=self.pks,
             master_detail=self.master_detail,
-            exclude_rdp_ids=preflight_exclude_rdp_ids(rdp_id=self.rdp_id),
+            exclude_rdp_ids=(self.rdp_id,),
         ):
             self.fail("Preflight", msg)
 
@@ -159,10 +158,15 @@ class PushProcessor(ProcessorBase):
         if self.country_workspace_id:
             payload["country_workspace_id"] = self.country_workspace_id
 
+        if (rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id)) and not self.run_remote(
+            "RDI",
+            lambda: self.api.delete_rdi(rdi_id),
+        ):
+            return
+
         resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
         if resp is None:
             return
-
         if "id" not in resp or not resp.get("id"):
             self.fail("RDI", "can't create: no id in response", response=resp)
             return
@@ -311,11 +315,11 @@ class PushProcessor(ProcessorBase):
             ids, payload = prepare(batch)
             if self.has_errors:
                 return
-            if not ids:
+            if not payload:
                 continue
             resp = self.try_remote(name, lambda payload=payload: post(self.hope_rdi_id, payload), ids=ids)
             if resp is None:
-                continue
+                return
             process(resp, ids)
 
     def _resp_err(self, name: str, response: dict, batch_ids: list[int]) -> bool:
