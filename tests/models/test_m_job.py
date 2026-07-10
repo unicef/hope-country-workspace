@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch, PropertyMock
 
-from testutils.factories import AsyncJobFactory, ProgramFactory
+from testutils.factories import AsyncJobFactory, BatchFactory, ProgramFactory
 from country_workspace.models.jobs import GracefulJobCancellationError
 
 
@@ -26,6 +26,29 @@ def test_job_save_existing(program):
     job_1 = AsyncJobFactory(program=program, description=description, action=action)
     job_1.save()
     assert job_1.description == f"{description} #1"
+
+
+@pytest.mark.django_db
+def test_job_save_sets_group_key_for_batch() -> None:
+    batch = BatchFactory()
+    job = AsyncJobFactory(batch=batch, program=batch.program, group_key=None)
+
+    assert job.group_key == f"batch:{batch.pk}"
+
+
+@pytest.mark.django_db
+def test_job_save_keeps_existing_group_key_for_batch() -> None:
+    batch = BatchFactory()
+    job = AsyncJobFactory(batch=batch, program=batch.program, group_key="custom-key")
+
+    assert job.group_key == "custom-key"
+
+
+@pytest.mark.django_db
+def test_job_save_sets_group_key_from_batch_id_in_config(program) -> None:
+    job = AsyncJobFactory(program=program, batch=None, group_key=None, config={"batch_id": 77})
+
+    assert job.group_key == "batch:77"
 
 
 def test_job_info_no_result(program):

@@ -364,7 +364,10 @@ def test_import_data_aurora_failure(
     form_aurora: forms.Form,
     stub_data: dict[str, Any],
 ) -> None:
-    with pytest.raises(ImportError, match=r"Last successful record ID|Missing record pk"):
+    with pytest.raises(
+        ImportError,
+        match=r"Last successful record ID|Missing record pk|registration_reference_pk is required",
+    ):
         form_aurora.submit()
 
     assert program.individuals.count() == 0
