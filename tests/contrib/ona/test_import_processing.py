@@ -4,6 +4,8 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.ona.import_processing import (
     Config,
     ImportResult,
+    create_household,
+    create_individual,
     get_ona_originating_id,
     import_data,
     import_submission,
@@ -258,3 +260,70 @@ def test_validation_queryset_uses_import_mode(mocker: MockerFixture, config: Con
     else:
         assert result == batch.individual_set.filter.return_value
         batch.individual_set.filter.assert_called_once_with(household__isnull=True, removed=False)
+
+
+def test_create_individual_keeps_raw_data_flat(mocker: MockerFixture, config: Config) -> None:
+    batch = mocker.MagicMock()
+    batch.pk = 123
+
+    processor = mocker.MagicMock(return_value={"processed": "value"})
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_individual_processor",
+        return_value=processor,
+    )
+    individual_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Individual")
+
+    create_individual(
+        batch=batch,
+        row={"full_name": "Ahmad Ali", "age": 35},
+        raw_submission={"_uuid": "uuid-123", "name": "Ahmad Ali"},
+        config=config,
+        originating_id="ONA#uuid-123#IND0",
+    )
+
+    individual_cls.objects.create.assert_called_once()
+    created_kwargs = individual_cls.objects.create.call_args.kwargs
+
+    assert created_kwargs["raw_data"] == {
+        "full_name": "Ahmad Ali",
+        "age": 35,
+        "_ona_source_submission": {"_uuid": "uuid-123", "name": "Ahmad Ali"},
+    }
+    assert "fields" not in created_kwargs["raw_data"]
+    assert created_kwargs["flex_fields"] == {"processed": "value"}
+    processor.assert_called_once_with({"full_name": "Ahmad Ali", "age": 35})
+
+
+def test_create_household_keeps_raw_data_flat(mocker: MockerFixture, config: Config) -> None:
+    batch = mocker.MagicMock()
+    batch.pk = 123
+
+    processor = mocker.MagicMock(return_value={"processed": "household"})
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_household_processor",
+        return_value=processor,
+    )
+    household_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Household")
+
+    create_household(
+        batch=batch,
+        row={"household_name": "Ahmad Household"},
+        raw_submission={"_uuid": "uuid-123", "household/name": "Ahmad Household"},
+        config={
+            **config,
+            "household_mapping_id": None,
+        },
+        originating_id="ONA#uuid-123#HH0",
+    )
+
+    household_cls.objects.create.assert_called_once()
+    created_kwargs = household_cls.objects.create.call_args.kwargs
+
+    assert created_kwargs["raw_data"] == {
+        "household_name": "Ahmad Household",
+        "_ona_source_submission": {"_uuid": "uuid-123", "household/name": "Ahmad Household"},
+    }
+    assert "fields" not in created_kwargs["raw_data"]
+    assert created_kwargs["flex_fields"] == {"processed": "household"}
+    processor.assert_called_once_with({"household_name": "Ahmad Household"})
+

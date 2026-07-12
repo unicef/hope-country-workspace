@@ -274,7 +274,6 @@ class ImportDataMixin:
             config: OnaConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
-                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "form_id": form.cleaned_data["form_id"],
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
                 "individuals_key": form.cleaned_data.get("individuals_key") or "individuals",

@@ -207,8 +207,8 @@ def create_individual(
         household=household,
         flex_fields=individual_row_processor(row),
         raw_data={
-            "fields": dict(row),
-            "source_submission": dict(raw_submission),
+            **dict(row),
+            "_ona_source_submission": dict(raw_submission),
         },
     )
 
@@ -232,8 +232,8 @@ def create_household(
         originating_id=originating_id,
         flex_fields=household_row_processor(row),
         raw_data={
-            "fields": dict(row),
-            "source_submission": dict(raw_submission),
+            **dict(row),
+            "_ona_source_submission": dict(raw_submission),
         },
     )
 
