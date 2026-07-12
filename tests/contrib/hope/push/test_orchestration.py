@@ -17,6 +17,7 @@ from country_workspace.contrib.hope.push.orchestration import (
     claim_rdp_deduplication,
     claim_rdp_push,
     create_rdp_core,
+    create_and_push_rdp_core,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
 )
@@ -213,6 +214,27 @@ def test_create_rdp_core_success(
     assert out == {"rdp_id": create_job.rdp_id, "rdp_str": str(create_job.rdp)}
     assert make_client.called is dedup_enabled
     assert client.can_create_deduplication_set.called is dedup_enabled
+
+
+def test_create_and_push_rdp_core_routes_to_dedup_flow(mocker: MockerFixture) -> None:
+    job = mocker.MagicMock()
+    job.program.biometric_deduplication_enabled = True
+    dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core", return_value={"dedup_pending": True})
+
+    assert create_and_push_rdp_core(job) == {"dedup_pending": True}
+
+    dedup_flow.assert_called_once_with(job)
+
+
+def test_create_and_push_rdp_core_requires_biometric(mocker: MockerFixture) -> None:
+    job = mocker.MagicMock()
+    job.program.biometric_deduplication_enabled = False
+    dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core")
+
+    with pytest.raises(HopePushError):
+        create_and_push_rdp_core(job)
+
+    dedup_flow.assert_not_called()
 
 
 @pytest.mark.parametrize(

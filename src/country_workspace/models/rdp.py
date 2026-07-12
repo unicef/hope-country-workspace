@@ -11,6 +11,7 @@ class Rdp(BaseModel):
 
     class PushStatus(models.TextChoices):
         PENDING = "PENDING", _("Pending")
+        DEDUP_PENDING = "DEDUP_PENDING", _("Awaiting deduplication")
         SUCCESS = "SUCCESS", _("Success")
         FAILURE = "FAILURE", _("Failure")
         CANCELLED = "CANCELLED", _("Cancelled")
@@ -21,7 +22,7 @@ class Rdp(BaseModel):
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
     name = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=10, choices=PushStatus.choices, default=PushStatus.PENDING, blank=True)
+    status = models.CharField(max_length=15, choices=PushStatus.choices, default=PushStatus.PENDING, blank=True)
     hope_rdi_id = models.CharField(
         max_length=200, null=True, editable=False, help_text=_("RDI unique ID within the HOPE core.")
     )
@@ -50,7 +51,7 @@ class Rdp(BaseModel):
             ),
             models.UniqueConstraint(
                 fields=["program"],
-                condition=Q(status__in=["PENDING", "FAILURE"]),
+                condition=Q(status__in=["PENDING", "FAILURE", "DEDUP_PENDING"]),
                 name="uniq_open_rdp_per_program",
                 violation_error_message=_("There is already an active RDP for this program."),
             ),

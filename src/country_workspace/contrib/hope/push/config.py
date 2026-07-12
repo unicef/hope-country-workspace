@@ -23,6 +23,7 @@ class CreateRdpConfig(SelectionConfig):
     country_office_id: ReadOnly[int]
     program_id: ReadOnly[int]
     pushed_by_id: ReadOnly[int]
+    max_dedup_findings_percent: NotRequired[int]
 
 
 class PushWorkflowConfig(SelectionConfig):

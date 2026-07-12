@@ -1,11 +1,21 @@
+import logging
 from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
+from constance import config
 from uuid import UUID, uuid4
 
+from django.core import signing
 from django.db import IntegrityError, transaction
+from django.urls import reverse
+from strategy_field.utils import fqn
 
-from country_workspace.contrib.dedup_engine import REJECTABLE_DEDUPLICATION_SET_STATES, make_dedup_client
+from country_workspace.contrib.dedup_engine import (
+    REJECTABLE_DEDUPLICATION_SET_STATES,
+    DedupResponseStatus,
+    DeduplicationSetState,
+    make_dedup_client,
+)
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
@@ -20,6 +30,7 @@ from .repository import (
     qs_households,
     qs_individuals_by_household_pks,
     qs_individuals_by_pks,
+    qs_individuals_for_rdp,
     rdp_for_dedup,
     rdp_for_push,
     release_rdp_dedup_settings_lock,
@@ -27,6 +38,11 @@ from .repository import (
     set_rdp_push_status,
     workflow_config_for_rdp,
 )
+
+_DEDUP_CALLBACK_SIGN_KEY = "dedup_callback"
+_DEDUP_CALLBACK_MAX_AGE = 60 * 60 * 96  # 96 hours
+
+logger = logging.getLogger(__name__)
 
 
 def _require_policy_check(check: Callable[[], ActionCheck]) -> None:
@@ -76,6 +92,210 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
         raise HopePushError({"errors": [message]}) from e
 
     return {"rdp_id": rdp.id, "rdp_str": str(rdp)}
+
+
+def _build_dedup_callback_url(rdp_id: int, job_id: int) -> str:
+    """Build an absolute, signed callback URL for the dedup engine to call when dedup finishes."""
+    token = signing.dumps(
+        {"rdp_id": rdp_id, "job_id": job_id},
+        key=_DEDUP_CALLBACK_SIGN_KEY,
+    )
+    path = reverse("dedup_callback", kwargs={"signed_token": token})
+    base = config.APP_BASE_URL.rstrip("/")
+    return f"{base}{path}"
+
+
+def create_rdp_and_start_dedup_core(job: AsyncJob) -> dict[str, Any]:
+    """Create an RDP, upload images to the dedup engine, and start deduplication.
+
+    The dedup engine will call back the notification URL when deduplication finishes.
+    The push to HOPE is deferred until the callback is received and the findings
+    threshold is evaluated.
+    """
+    create_result = create_rdp_core(job)
+    rdp_id = create_result["rdp_id"]
+
+    with transaction.atomic():
+        _check, rdp = claim_rdp_deduplication(rdp_id)
+        if rdp is None:
+            raise HopePushError({"errors": ["RDP: could not claim deduplication set."], "rdp_id": rdp_id})
+
+    job.refresh_from_db()
+
+    callback_url = _build_dedup_callback_url(rdp_id=rdp_id, job_id=job.pk)
+    processor = DedupProcessor(rdp)
+    processor.run(notification_url=callback_url)
+
+    if processor.has_errors:
+        raise HopePushError({**processor.total, "rdp_id": rdp_id})
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        locked.status = Rdp.PushStatus.DEDUP_PENDING
+        locked.save(update_fields=["status"])
+
+    return {**create_result, "dedup_pending": True}
+
+
+def create_and_push_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Create an RDP and start deduplication; the push to HOPE is deferred.
+
+    Push to HOPE is only available for programs with biometric deduplication
+    enabled. Deduplication is started first and the push is deferred until the
+    dedup engine calls back the notification URL and the findings threshold is
+    evaluated.
+    """
+    rdp_program = job.program
+    if not (rdp_program and rdp_program.biometric_deduplication_enabled):
+        raise HopePushError({"errors": ["RDP: push to HOPE requires biometric deduplication for this program."]})
+    return create_rdp_and_start_dedup_core(job)
+
+
+def _lock_and_fail_rdp(rdp_id: int, *, reason: str) -> None:
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        if locked.status == Rdp.PushStatus.DEDUP_PENDING:
+            set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+            logger.warning(
+                "dedup_callback_handle: rdp_id=%s marked FAILURE (%s)",
+                rdp_id,
+                reason,
+            )
+        else:
+            logger.info(
+                "dedup_callback_handle: rdp_id=%s skip FAILURE (%s); status=%s",
+                rdp_id,
+                reason,
+                locked.status,
+            )
+
+
+def _handle_deduplicated(rdp: Rdp, rdp_id: int, findings_count: int) -> None:
+    origin_job = AsyncJob.objects.filter(rdp_id=rdp_id).order_by("-id").first()
+    max_findings_percent: int = origin_job.config.get("max_dedup_findings_percent", 0) if origin_job else 0
+
+    total_individuals = qs_individuals_for_rdp(rdp=rdp).count()
+    findings_rate = findings_count / total_individuals * 100 if total_individuals > 0 else float(findings_count)
+
+    logger.info(
+        "dedup_callback_handle: rdp_id=%s DEDUPLICATED findings_count=%s total_individuals=%s "
+        "findings_rate=%.2f%% max_dedup_findings_percent=%s",
+        rdp_id,
+        findings_count,
+        total_individuals,
+        findings_rate,
+        max_findings_percent,
+    )
+
+    if findings_rate > max_findings_percent:
+        _lock_and_fail_rdp(
+            rdp_id,
+            reason=f"findings_rate {findings_rate:.2f}% exceeds threshold {max_findings_percent}%",
+        )
+        return
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        if locked.status != Rdp.PushStatus.DEDUP_PENDING:
+            logger.warning(
+                "dedup_callback_handle: rdp_id=%s skip push queue; status changed to %s",
+                rdp_id,
+                locked.status,
+            )
+            return
+        locked.status = Rdp.PushStatus.PENDING
+        locked.save(update_fields=["status"])
+
+    push_job = AsyncJob.objects.create(
+        description=f"Push RDP {rdp_id} to HOPE (post-dedup)",
+        type=AsyncJob.JobType.TASK,
+        owner=rdp.pushed_by,
+        action=fqn(push_existing_rdp_core),
+        program=rdp.program,
+        rdp=rdp,
+        config={"rdp_id": rdp_id},
+    )
+    push_job.queue()
+    logger.info(
+        "dedup_callback_handle: rdp_id=%s status DEDUP_PENDING→PENDING; queued push job_id=%s",
+        rdp_id,
+        push_job.pk,
+    )
+
+
+def dedup_callback_handle(rdp_id: int) -> None:
+    """Handle a dedup engine callback for the given RDP.
+
+    Fetches the current deduplication set state from the engine.  Only acts on
+    terminal states (``DEDUPLICATED``, ``DEDUPLICATION_FAILED``,
+    ``ENCODING_FAILED``).  For intermediate states the function returns
+    immediately so the engine can call again after the next state transition.
+
+    When dedup is successful and findings are within the configured threshold,
+    a ``push_existing_rdp_core`` async job is queued.  Otherwise the RDP is
+    marked as ``FAILURE``.
+    """
+    try:
+        rdp = rdp_for_push(pk=rdp_id)
+    except Rdp.DoesNotExist:
+        logger.warning("dedup_callback_handle: rdp_id=%s not found", rdp_id)
+        return
+
+    if rdp.status != Rdp.PushStatus.DEDUP_PENDING:
+        logger.info(
+            "dedup_callback_handle: rdp_id=%s skip; status=%s (expected DEDUP_PENDING)",
+            rdp_id,
+            rdp.status,
+        )
+        return
+
+    if not rdp.deduplication_set_id:
+        logger.warning("dedup_callback_handle: rdp_id=%s missing deduplication_set_id", rdp_id)
+        _lock_and_fail_rdp(rdp_id, reason="missing deduplication_set_id")
+        return
+
+    logger.info(
+        "dedup_callback_handle: rdp_id=%s deduplication_set_id=%s; fetching remote status",
+        rdp_id,
+        rdp.deduplication_set_id,
+    )
+
+    status = get_rdp_policy(rdp).deduplication_status(rdp)
+    if status is None:
+        logger.warning(
+            "dedup_callback_handle: rdp_id=%s dedup engine returned no status; leaving DEDUP_PENDING",
+            rdp_id,
+        )
+        return
+
+    if status.response_status != DedupResponseStatus.OK:
+        logger.warning(
+            "dedup_callback_handle: rdp_id=%s dedup engine status unavailable (%s); leaving DEDUP_PENDING",
+            rdp_id,
+            status.response_status,
+        )
+        return
+
+    dedup_state = status.deduplication_set_status
+    terminal_failure_states = {DeduplicationSetState.DEDUPLICATION_FAILED, DeduplicationSetState.ENCODING_FAILED}
+
+    logger.info(
+        "dedup_callback_handle: rdp_id=%s remote_state=%s findings_count=%s",
+        rdp_id,
+        dedup_state,
+        status.findings_count,
+    )
+
+    if dedup_state in terminal_failure_states:
+        _lock_and_fail_rdp(rdp_id, reason=f"dedup engine state {dedup_state}")
+    elif dedup_state == DeduplicationSetState.DEDUPLICATED:
+        _handle_deduplicated(rdp, rdp_id, status.findings_count)
+    else:
+        logger.info(
+            "dedup_callback_handle: rdp_id=%s intermediate state %s; waiting for next callback",
+            rdp_id,
+            dedup_state,
+        )
 
 
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
