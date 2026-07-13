@@ -206,7 +206,11 @@ class PushProcessor(ProcessorBase):
             step()
 
     def _image_fields(self, record: CountryHousehold | CountryIndividual) -> list[str]:
-        key = record.checker.pk
+        # Key the cache on the checker FK id: record.checker would fetch the
+        # DataChecker row for every record (N+1), the id comes free with the
+        # select_related program.
+        program = record.program
+        key = program.household_checker_id if isinstance(record, CountryHousehold) else program.individual_checker_id
         if key not in self._image_fields_cache:
             self._image_fields_cache[key] = image_field_names(record.checker)
         return self._image_fields_cache[key]
@@ -337,7 +341,11 @@ class PushProcessor(ProcessorBase):
             return
 
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
-            ids, payload = prepare(batch)
+            try:
+                ids, payload = prepare(batch)
+            except (RemoteError, RemoteUnavailableError) as e:
+                self.fail(name, f"prepare failed. {e}")
+                return
             if self.has_errors:
                 return
             if not payload:
@@ -447,11 +455,15 @@ class DedupProcessor(ProcessorBase):
     def upload_images(self, client: Any) -> tuple[bool, int]:
         images_sent = 0
 
-        for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
-            payload = list(batch)
-            if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
-                return False, images_sent
-            images_sent += len(payload)
+        try:
+            for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
+                payload = list(batch)
+                if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
+                    return False, images_sent
+                images_sent += len(payload)
+        except (RemoteError, RemoteUnavailableError) as e:
+            self.fail("sync_blobs", f"request failed. {e}")
+            return False, images_sent
 
         if not images_sent:
             self.fail("create_images", "no images to deduplicate")

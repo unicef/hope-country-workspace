@@ -7,7 +7,7 @@ from pytest_mock import MockerFixture
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG, ErrorConfig, RdiDeleteResult
 from country_workspace.contrib.hope.push.processor import DedupProcessor, ProcessorBase, PushProcessor
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.exceptions import BlobStorageError, RemoteError, RemoteUnavailableError
 
 MOD = "country_workspace.contrib.hope.push.processor"
 
@@ -305,6 +305,26 @@ def test_push_batched_skips_processing_when_remote_failed(
     processor._push_batched("People", prepare, post, process)
 
     prepare.assert_called_once()
+    post.assert_not_called()
+    process.assert_not_called()
+
+
+def test_push_batched_collects_blob_storage_failure(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    qs: Callable[[list], object],
+    err_contains,
+) -> None:
+    processor.hope_rdi_id = "RID-1"
+    processor.queryset = qs([1])
+
+    prepare = mocker.Mock(side_effect=BlobStorageError("blob sync failed for CountryHousehold #1"))
+    post = mocker.MagicMock()
+    process = mocker.MagicMock()
+
+    processor._push_batched("Households", prepare, post, process)
+
+    assert err_contains(processor.total["errors"], "blob sync failed")
     post.assert_not_called()
     process.assert_not_called()
 

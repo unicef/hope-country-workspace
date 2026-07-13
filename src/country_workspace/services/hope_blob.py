@@ -3,8 +3,10 @@ import hashlib
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from azure.core.exceptions import AzureError
 from django.core.files.base import ContentFile
 
+from country_workspace.exceptions import BlobStorageError
 from country_workspace.storages import HOPE_STORAGE
 from country_workspace.utils.flex_fields import Base64ImageField
 
@@ -37,6 +39,23 @@ def sync_record_blobs(
     record: "Validable | HopeBlobMixin",
     image_fields: Sequence[str],
     only: set[str] | None = None,
+) -> dict[str, str]:
+    """Reconcile record images with the shared HOPE blob storage.
+
+    Raises BlobStorageError when the storage backend is unreachable or fails.
+    """
+    try:
+        return _sync_record_blobs(record, image_fields, only)
+    except (AzureError, OSError) as e:
+        raise BlobStorageError(
+            f"blob sync failed for {type(record).__name__} #{record.pk}: {e.__class__.__name__}: {e}"
+        ) from e
+
+
+def _sync_record_blobs(
+    record: "Validable | HopeBlobMixin",
+    image_fields: Sequence[str],
+    only: set[str] | None,
 ) -> dict[str, str]:
     hashes = dict(record.blob_hashes or {})
     result: dict[str, str] = {}
