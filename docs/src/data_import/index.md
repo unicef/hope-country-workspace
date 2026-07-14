@@ -1,6 +1,6 @@
 # Data Import
 
-Country Workspace supports importing beneficiary data from multiple sources. Every import runs within the selected **[Program](program.md)** and creates a **[Batch](batches.md)** that groups the imported records.
+Country Workspace supports importing beneficiary data from multiple sources. Every import runs within the selected **[Program](../program.md)** and creates a **[Batch](batches.md)** that groups the imported records.
 
 This section explains how to prepare a Program, choose and configure a data source, review imported records, reprocess existing Batches, and resolve common import issues.
 
@@ -17,7 +17,7 @@ flowchart LR
 
 ## Before you import
 
-Before importing beneficiary data, make sure that the selected **[Program](program.md)** is configured for the required beneficiary structure and validation rules.
+Before importing beneficiary data, make sure that the selected **[Program](../program.md)** is configured for the required beneficiary structure and validation rules.
 
 Depending on the selected source, additional preparation may be required. Source-specific requirements and instructions are described in **[Data sources](sources/index.md)**.
 

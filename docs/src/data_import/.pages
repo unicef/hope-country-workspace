@@ -1,6 +1,5 @@
 nav:
     - Overview: index.md
-    - Program: program.md
     - Data sources: sources
     - Mapping and transformation: mapping_transformers.md
     - Batches: batches.md
