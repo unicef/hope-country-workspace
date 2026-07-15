@@ -1,4 +1,5 @@
 import base64
+import binascii
 import hashlib
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -24,7 +25,7 @@ def is_data_uri(value: Any) -> bool:
 
 
 def decode_data_uri(value: str) -> bytes:
-    return base64.b64decode(value.partition(";base64,")[2])
+    return base64.b64decode(value.partition(";base64,")[2], validate=True)
 
 
 def image_field_names(checker: "DataChecker") -> list[str]:
@@ -42,11 +43,12 @@ def sync_record_blobs(
 ) -> dict[str, str]:
     """Reconcile record images with the shared HOPE blob storage.
 
-    Raises BlobStorageError when the storage backend is unreachable or fails.
+    Raises BlobStorageError when the storage backend is unreachable or fails,
+    or when a flex-field contains a malformed base64 payload.
     """
     try:
         return _sync_record_blobs(record, image_fields, only)
-    except (AzureError, OSError) as e:
+    except (AzureError, OSError, binascii.Error) as e:
         raise BlobStorageError(
             f"blob sync failed for {type(record).__name__} #{record.pk}: {e.__class__.__name__}: {e}"
         ) from e
@@ -71,8 +73,8 @@ def _sync_record_blobs(
         key = record.hope_blob_key(name)
         new_hash = hashlib.sha256(value.encode()).hexdigest()
         if hashes.get(name) != new_hash:
-            if HOPE_STORAGE.exists(key):
-                HOPE_STORAGE.delete(key)
+            # HOPE_STORAGE must be configured with overwrite semantics (enforced by
+            # checks.py E004), so save() replaces any existing blob under the same key.
             HOPE_STORAGE.save(key, ContentFile(decode_data_uri(value)))
             hashes[name] = new_hash
         result[name] = key

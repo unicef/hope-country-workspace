@@ -49,7 +49,7 @@ FILE_STORAGE_HOPE="storages.backends.azure_storage.AzureStorage?azure_container=
 ```
 
 - Grant **read + write** IAM permissions on the `hope` container.
-- Set `overwrite_files=True` if the same key may be re-uploaded.
+- `overwrite_files=True` is **required**: blob sync writes deterministic keys and relies on `save()` overwriting in place. The deploy check (`E004`) fails without it.
 - Keep credentials in a vault / K8s secrets. Never commit them and never put them in Constance (they must not be admin-editable).
 
 ### Local development (Azurite)
@@ -62,4 +62,4 @@ FILE_STORAGE_HOPE="storages.backends.azure_storage.AzureStorage?azure_container=
 
 ## Deploy check
 
-A deploy-time system check (`country_workspace/checks.py`, run via `django-admin check --deploy`) validates that the `hope`, `staticfiles`, and `media` storages resolve, and, when backed by Azure, that credentials and the container are reachable.
+A deploy-time system check (`country_workspace/checks.py`, run via `django-admin check --deploy`) validates that the `hope`, `staticfiles`, and `media` storages resolve, and, when backed by Azure, that credentials and the container are reachable, and that the `hope` storage is configured with `overwrite_files=True`.

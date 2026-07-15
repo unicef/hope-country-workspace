@@ -1,7 +1,8 @@
 from typing import Any
 
+from azure.core.exceptions import AzureError, ResourceExistsError
 from django.core.files.storage import storages
-from django.core.management import BaseCommand
+from django.core.management import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
@@ -17,6 +18,9 @@ class Command(BaseCommand):
             return
         try:
             client.create_container()
+        except ResourceExistsError:
+            self.stdout.write("HOPE blob container already exists.")
+        except AzureError as e:
+            raise CommandError(f"Failed to create HOPE blob container: {e.__class__.__name__}: {e}") from e
+        else:
             self.stdout.write(self.style.SUCCESS("Created HOPE blob container."))
-        except Exception as e:  # noqa: BLE001
-            self.stdout.write(f"HOPE blob container not created ({e.__class__.__name__}); assuming it already exists.")

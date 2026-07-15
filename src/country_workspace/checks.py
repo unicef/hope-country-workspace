@@ -47,6 +47,17 @@ def storages_check(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
                         id=f"country_workspace.storages.E003.{alias}",
                     )
                 )
+                continue
+            # blob sync (hope_blob.py) saves images under deterministic keys and relies on
+            # save() overwriting existing blobs instead of renaming them.
+            if alias == "hope" and not getattr(storage, "overwrite_files", False):
+                errors.append(
+                    Error(
+                        "STORAGES['hope'] must be configured with overwrite_files=True.",
+                        hint="Append 'overwrite_files=True' to the FILE_STORAGE_HOPE URL.",
+                        id="country_workspace.storages.E004.hope",
+                    )
+                )
 
     hope = settings.STORAGES.get("hope", {})
     if hope and not import_string(hope["BACKEND"]).__module__.startswith("storages.backends.azure_storage"):

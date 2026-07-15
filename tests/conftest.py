@@ -120,7 +120,7 @@ def pytest_configure(config):
         },
         "hope": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {"location": str(here / "../~tests/storage/hope")},
+            "OPTIONS": {"location": str(here / "../~tests/storage/hope"), "allow_overwrite": True},
         },
     }
     from country_workspace.cache.manager import cache_manager
