@@ -171,11 +171,20 @@ def _lock_and_fail_rdp(rdp_id: int, *, reason: str) -> None:
 
 
 def _handle_deduplicated(rdp: Rdp, rdp_id: int, findings_count: int) -> None:
-    origin_job = AsyncJob.objects.filter(rdp_id=rdp_id).order_by("-id").first()
-    max_findings_percent: int = origin_job.config.get("max_dedup_findings_percent", 0) if origin_job else 0
+    try:
+        origin_job = AsyncJob.objects.filter(rdp_id=rdp_id).latest("id")
+    except AsyncJob.DoesNotExist:
+        _lock_and_fail_rdp(rdp_id, reason="missing origin AsyncJob for threshold config")
+        return
+
+    max_findings_percent: int = origin_job.config.get("max_dedup_findings_percent", 0)
 
     total_individuals = qs_individuals_for_rdp(rdp=rdp).count()
-    findings_rate = findings_count / total_individuals * 100 if total_individuals > 0 else float(findings_count)
+    if total_individuals == 0:
+        _lock_and_fail_rdp(rdp_id, reason="no individuals linked to RDP; cannot compute findings rate")
+        return
+
+    findings_rate = findings_count / total_individuals * 100
 
     logger.info(
         "dedup_callback_handle: rdp_id=%s DEDUPLICATED findings_count=%s total_individuals=%s "
@@ -195,27 +204,28 @@ def _handle_deduplicated(rdp: Rdp, rdp_id: int, findings_count: int) -> None:
         return
 
     with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp_id)
-        if locked.status != Rdp.PushStatus.DEDUP_PENDING:
+        locked_rdp = lock_rdp_for_update(pk=rdp_id)
+        if locked_rdp.status != Rdp.PushStatus.DEDUP_PENDING:
             logger.warning(
                 "dedup_callback_handle: rdp_id=%s skip push queue; status changed to %s",
                 rdp_id,
-                locked.status,
+                locked_rdp.status,
             )
             return
-        locked.status = Rdp.PushStatus.PENDING
-        locked.save(update_fields=["status"])
+        locked_rdp.status = Rdp.PushStatus.PENDING
+        locked_rdp.save(update_fields=["status"])
 
-    push_job = AsyncJob.objects.create(
-        description=f"Push RDP {rdp_id} to HOPE (post-dedup)",
-        type=AsyncJob.JobType.TASK,
-        owner=rdp.pushed_by,
-        action=fqn(push_existing_rdp_core),
-        program=rdp.program,
-        rdp=rdp,
-        config={"rdp_id": rdp_id},
-    )
-    push_job.queue()
+        push_job = AsyncJob.objects.create(
+            description=f"Push RDP {rdp_id} to HOPE (post-dedup)",
+            type=AsyncJob.JobType.TASK,
+            owner=locked_rdp.pushed_by,
+            action=fqn(push_existing_rdp_core),
+            program=locked_rdp.program,
+            rdp=locked_rdp,
+            config={"rdp_id": rdp_id},
+        )
+        transaction.on_commit(push_job.queue)
+
     logger.info(
         "dedup_callback_handle: rdp_id=%s status DEDUP_PENDING→PENDING; queued push job_id=%s",
         rdp_id,

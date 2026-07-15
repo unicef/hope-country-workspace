@@ -206,6 +206,23 @@ def _patch_dedup_status(mocker: MockerFixture, *, state: str, findings_count: in
     return policy
 
 
+def _patch_origin_job(mocker: MockerFixture, config: dict | None = None, *, missing: bool = False):
+    qs = mocker.MagicMock()
+    if missing:
+        qs.latest.side_effect = AsyncJob.DoesNotExist
+    else:
+        qs.latest.return_value = mocker.MagicMock(config=config if config is not None else {})
+    mocker.patch.object(AsyncJob.objects, "filter", return_value=qs)
+    return qs
+
+
+def _patch_individuals_count(mocker: MockerFixture, count: int) -> None:
+    mocker.patch(
+        f"{MOD}.qs_individuals_for_rdp",
+        return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=count)),
+    )
+
+
 def test_dedup_callback_handle_rdp_not_found(mocker: MockerFixture) -> None:
     _patch_rdp_for_push(mocker, not_found=True)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
@@ -320,25 +337,17 @@ def test_dedup_callback_handle_deduplicated_within_threshold_queues_push(mocker:
     locked_pending.status = Rdp.PushStatus.DEDUP_PENDING
     _patch_rdp_for_push(mocker, rdp)
     _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=5)
-    origin_job = mocker.MagicMock(config={"max_dedup_findings_percent": 10})
-    mocker.patch.object(
-        AsyncJob.objects,
-        "filter",
-        return_value=mocker.MagicMock(
-            order_by=mocker.MagicMock(return_value=mocker.MagicMock(first=mocker.MagicMock(return_value=origin_job)))
-        ),
-    )
-    mocker.patch(
-        f"{MOD}.qs_individuals_for_rdp", return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=100))
-    )
+    _patch_origin_job(mocker, {"max_dedup_findings_percent": 10})
+    _patch_individuals_count(mocker, 100)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked_pending)
     push_job = mocker.MagicMock()
     create_job = mocker.patch.object(AsyncJob.objects, "create", return_value=push_job)
+    on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
     dedup_callback_handle(rdp_id=99)
 
     create_job.assert_called_once()
-    push_job.queue.assert_called_once()
+    on_commit.assert_called_once_with(push_job.queue)
     assert locked_pending.status == Rdp.PushStatus.PENDING
 
 
@@ -350,23 +359,16 @@ def test_dedup_callback_handle_deduplicated_skips_push_when_status_changed_under
     locked.status = Rdp.PushStatus.FAILURE
     _patch_rdp_for_push(mocker, rdp)
     _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=5)
-    origin_job = mocker.MagicMock(config={"max_dedup_findings_percent": 10})
-    mocker.patch.object(
-        AsyncJob.objects,
-        "filter",
-        return_value=mocker.MagicMock(
-            order_by=mocker.MagicMock(return_value=mocker.MagicMock(first=mocker.MagicMock(return_value=origin_job)))
-        ),
-    )
-    mocker.patch(
-        f"{MOD}.qs_individuals_for_rdp", return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=100))
-    )
+    _patch_origin_job(mocker, {"max_dedup_findings_percent": 10})
+    _patch_individuals_count(mocker, 100)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     create_job = mocker.patch.object(AsyncJob.objects, "create")
+    on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
     dedup_callback_handle(rdp_id=99)
 
     create_job.assert_not_called()
+    on_commit.assert_not_called()
     locked.save.assert_not_called()
 
 
@@ -376,17 +378,8 @@ def test_dedup_callback_handle_deduplicated_exceeds_threshold_marks_failure(mock
     locked.status = Rdp.PushStatus.DEDUP_PENDING
     _patch_rdp_for_push(mocker, rdp)
     _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=20)
-    origin_job = mocker.MagicMock(config={"max_dedup_findings_percent": 10})
-    mocker.patch.object(
-        AsyncJob.objects,
-        "filter",
-        return_value=mocker.MagicMock(
-            order_by=mocker.MagicMock(return_value=mocker.MagicMock(first=mocker.MagicMock(return_value=origin_job)))
-        ),
-    )
-    mocker.patch(
-        f"{MOD}.qs_individuals_for_rdp", return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=100))
-    )
+    _patch_origin_job(mocker, {"max_dedup_findings_percent": 10})
+    _patch_individuals_count(mocker, 100)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     create_job = mocker.patch.object(AsyncJob.objects, "create")
@@ -404,17 +397,8 @@ def test_dedup_callback_handle_default_threshold_is_zero(mocker: MockerFixture) 
     locked.status = Rdp.PushStatus.DEDUP_PENDING
     _patch_rdp_for_push(mocker, rdp)
     _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=1)
-    origin_job = mocker.MagicMock(config={})  # no max_dedup_findings_percent
-    mocker.patch.object(
-        AsyncJob.objects,
-        "filter",
-        return_value=mocker.MagicMock(
-            order_by=mocker.MagicMock(return_value=mocker.MagicMock(first=mocker.MagicMock(return_value=origin_job)))
-        ),
-    )
-    mocker.patch(
-        f"{MOD}.qs_individuals_for_rdp", return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=100))
-    )
+    _patch_origin_job(mocker, {})
+    _patch_individuals_count(mocker, 100)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
@@ -430,21 +414,48 @@ def test_dedup_callback_handle_zero_findings_within_threshold_queues_push(mocker
     locked_pending.status = Rdp.PushStatus.DEDUP_PENDING
     _patch_rdp_for_push(mocker, rdp)
     _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=0)
-    origin_job = mocker.MagicMock(config={})  # default threshold=0
-    mocker.patch.object(
-        AsyncJob.objects,
-        "filter",
-        return_value=mocker.MagicMock(
-            order_by=mocker.MagicMock(return_value=mocker.MagicMock(first=mocker.MagicMock(return_value=origin_job)))
-        ),
-    )
-    mocker.patch(
-        f"{MOD}.qs_individuals_for_rdp", return_value=mocker.MagicMock(count=mocker.MagicMock(return_value=100))
-    )
+    _patch_origin_job(mocker, {})
+    _patch_individuals_count(mocker, 100)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked_pending)
     push_job = mocker.MagicMock()
     mocker.patch.object(AsyncJob.objects, "create", return_value=push_job)
+    on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
     dedup_callback_handle(rdp_id=99)
 
-    push_job.queue.assert_called_once()
+    on_commit.assert_called_once_with(push_job.queue)
+
+
+def test_dedup_callback_handle_missing_origin_job_marks_failure(mocker: MockerFixture) -> None:
+    rdp = _make_rdp(mocker)
+    locked = mocker.MagicMock()
+    locked.status = Rdp.PushStatus.DEDUP_PENDING
+    _patch_rdp_for_push(mocker, rdp)
+    _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=0)
+    _patch_origin_job(mocker, missing=True)
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+    create_job = mocker.patch.object(AsyncJob.objects, "create")
+
+    dedup_callback_handle(rdp_id=99)
+
+    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    create_job.assert_not_called()
+
+
+def test_dedup_callback_handle_zero_individuals_marks_failure(mocker: MockerFixture) -> None:
+    rdp = _make_rdp(mocker)
+    locked = mocker.MagicMock()
+    locked.status = Rdp.PushStatus.DEDUP_PENDING
+    _patch_rdp_for_push(mocker, rdp)
+    _patch_dedup_status(mocker, state=DeduplicationSetState.DEDUPLICATED, findings_count=0)
+    _patch_origin_job(mocker, {"max_dedup_findings_percent": 10})
+    _patch_individuals_count(mocker, 0)
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+    create_job = mocker.patch.object(AsyncJob.objects, "create")
+
+    dedup_callback_handle(rdp_id=99)
+
+    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    create_job.assert_not_called()
