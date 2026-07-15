@@ -1,3 +1,5 @@
+from unittest.mock import ANY
+
 import pytest
 from pytest_mock import MockerFixture
 
@@ -9,6 +11,7 @@ from country_workspace.contrib.ona.import_processing import (
     get_ona_originating_id,
     import_data,
     import_submission,
+    is_ona_submission_after_last_id,
     _validation_queryset,
 )
 
@@ -44,6 +47,25 @@ def ona_constance_config(mocker: MockerFixture):
     return constance_config
 
 
+@pytest.fixture(autouse=True)
+def ona_sync_log(mocker: MockerFixture):
+    program_ct = mocker.MagicMock(name="program_ct")
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.ContentType.objects.get_for_model",
+        return_value=program_ct,
+    )
+    filter_mock = mocker.patch("country_workspace.contrib.ona.import_processing.SyncLog.objects.filter")
+    filter_mock.return_value.first.return_value = None
+    update_or_create_mock = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.SyncLog.objects.update_or_create",
+    )
+    return {
+        "program_ct": program_ct,
+        "filter": filter_mock,
+        "update_or_create": update_or_create_mock,
+    }
+
+
 def _mock_atomic(mocker: MockerFixture) -> None:
     atomic = mocker.patch("country_workspace.contrib.ona.import_processing.transaction.atomic")
     atomic.return_value.__enter__.return_value = None
@@ -61,6 +83,17 @@ def test_get_ona_originating_id_falls_back_to_id() -> None:
 def test_get_ona_originating_id_raises_when_missing_identifier() -> None:
     with pytest.raises(ImportError, match="ONA submission is missing"):
         get_ona_originating_id({})
+
+
+def test_is_ona_submission_after_last_id_compares_numeric_ids() -> None:
+    assert is_ona_submission_after_last_id("101", "100") is True
+    assert is_ona_submission_after_last_id("100", "100") is False
+    assert is_ona_submission_after_last_id("99", "100") is False
+
+
+def test_is_ona_submission_after_last_id_falls_back_to_string_comparison() -> None:
+    assert is_ona_submission_after_last_id("uuid-b", "uuid-a") is True
+    assert is_ona_submission_after_last_id("uuid-a", "uuid-b") is False
 
 
 def test_import_data_requires_form_id(job, config: Config) -> None:
@@ -128,6 +161,83 @@ def test_import_data_calls_client_and_aggregates(
 
     batch_cls.objects.create.assert_called_once()
     batch.save.assert_called_once_with(update_fields=["status"])
+
+
+def test_import_data_skips_submissions_up_to_synclog_last_id(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+    ona_sync_log,
+) -> None:
+    sync_log = mocker.MagicMock()
+    sync_log.last_id = "100"
+    ona_sync_log["filter"].return_value.first.return_value = sync_log
+
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch = batch_cls.objects.create.return_value
+
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = [
+        {"_id": 99, "_uuid": "old-99"},
+        {"_id": 100, "_uuid": "old-100"},
+        {"_id": 101, "_uuid": "new-101"},
+        {"_id": 102, "_uuid": "new-102"},
+    ]
+
+    mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    import_submission_mock = mocker.patch("country_workspace.contrib.ona.import_processing.import_submission")
+    import_submission_mock.side_effect = [ImportResult(people=1), ImportResult(people=2)]
+
+    result = import_data(job)
+
+    assert result == ImportResult(people=3, households=0)
+    assert import_submission_mock.call_count == 2
+    assert import_submission_mock.call_args_list[0].kwargs["submission"] == {"_id": 101, "_uuid": "new-101"}
+    assert import_submission_mock.call_args_list[1].kwargs["submission"] == {"_id": 102, "_uuid": "new-102"}
+
+    ona_sync_log["filter"].assert_called_once_with(
+        name="ona_9153",
+        content_type=ona_sync_log["program_ct"],
+        object_id=job.program.id,
+    )
+    ona_sync_log["update_or_create"].assert_called_once_with(
+        name="ona_9153",
+        content_type=ona_sync_log["program_ct"],
+        object_id=job.program.id,
+        defaults={"last_id": "102", "last_update_date": ANY},
+    )
+    batch.save.assert_called_once_with(update_fields=["status"])
+
+
+def test_import_data_persists_last_successful_submission_on_error(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+    ona_sync_log,
+) -> None:
+    sync_log = mocker.MagicMock()
+    sync_log.last_id = "100"
+    ona_sync_log["filter"].return_value.first.return_value = sync_log
+
+    mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = [
+        {"_id": 101, "_uuid": "new-101"},
+        {"_id": 102, "_uuid": "new-102"},
+    ]
+
+    import_submission_mock = mocker.patch("country_workspace.contrib.ona.import_processing.import_submission")
+    import_submission_mock.side_effect = [ImportResult(people=1), ValueError("boom")]
+
+    with pytest.raises(ValueError, match="boom"):
+        import_data(job)
+
+    ona_sync_log["update_or_create"].assert_called_once_with(
+        name="ona_9153",
+        content_type=ona_sync_log["program_ct"],
+        object_id=job.program.id,
+        defaults={"last_id": "101", "last_update_date": ANY},
+    )
 
 
 def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture, job, config: Config) -> None:
