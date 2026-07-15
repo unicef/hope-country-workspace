@@ -4,12 +4,14 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple, NotRequired
 
+from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import QuerySet
+from django.utils import timezone
 from constance import config as constance_config
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import transform_submission_to_records
-from country_workspace.models import AsyncJob, Batch, Household, Individual, Program
+from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
@@ -17,6 +19,8 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 logger = logging.getLogger(__name__)
 
 
+def get_ona_sync_log_name(form_id: str | int) -> str:
+    return f"ona_{form_id}"
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -73,9 +77,20 @@ def import_data(job: AsyncJob) -> ImportResult:
     total_people = 0
     total_households = 0
 
+    sync_log_name = get_ona_sync_log_name(config["form_id"])
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=job.program.id).first()
+    last_id = sync_log.last_id if sync_log and sync_log.last_id else None
+    last_successful_id = last_id
+    current_submission_id = None
+
     try:
         for submission in client.iter_submissions(config["form_id"]):
             job.ensure_not_cancelled(refresh=True)
+
+            current_submission_id = get_ona_submission_cursor_id(submission)
+            if last_id and not is_ona_submission_after_last_id(current_submission_id, last_id):
+                continue
 
             imported = import_submission(
                 batch=batch,
@@ -85,6 +100,7 @@ def import_data(job: AsyncJob) -> ImportResult:
 
             total_people += imported.people
             total_households += imported.households
+            last_successful_id = current_submission_id
 
         job.ensure_not_cancelled(refresh=True)
 
@@ -118,9 +134,19 @@ def import_data(job: AsyncJob) -> ImportResult:
             extra={
                 "batch_id": batch.pk,
                 "form_id": config.get("form_id"),
+                "submission_id": current_submission_id,
+                "last_successful_submission_id": last_successful_id,
             },
         )
         raise
+    finally:
+        if last_successful_id and last_successful_id != last_id:
+            SyncLog.objects.update_or_create(
+                name=sync_log_name,
+                content_type=program_ct,
+                object_id=job.program.id,
+                defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
+            )
 
 
 def import_submission(
@@ -238,7 +264,7 @@ def create_household(
     )
 
 
-def get_ona_originating_id(submission: Mapping[str, Any]) -> str:
+def get_ona_submission_id(submission: Mapping[str, Any]) -> str:
     value = (
         submission.get("_uuid")
         or submission.get("_id")
@@ -249,7 +275,32 @@ def get_ona_originating_id(submission: Mapping[str, Any]) -> str:
     if value is None:
         raise ImportError("ONA submission is missing _uuid/_id/id/uuid")
 
-    return f"ONA#{value}"
+    return str(value)
+
+
+def get_ona_submission_cursor_id(submission: Mapping[str, Any]) -> str:
+    value = (
+        submission.get("_id")
+        or submission.get("id")
+        or submission.get("_uuid")
+        or submission.get("uuid")
+    )
+
+    if value is None:
+        raise ImportError("ONA submission is missing _uuid/_id/id/uuid")
+
+    return str(value)
+
+
+def is_ona_submission_after_last_id(submission_id: str, last_id: str) -> bool:
+    try:
+        return int(submission_id) > int(last_id)
+    except ValueError:
+        return submission_id > last_id
+
+
+def get_ona_originating_id(submission: Mapping[str, Any]) -> str:
+    return f"ONA#{get_ona_submission_id(submission)}"
 
 
 def build_individual_processor(
