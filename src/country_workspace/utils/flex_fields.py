@@ -85,9 +85,7 @@ def merge_flex_payload(
     therefore no checker lookup) is needed here.
     """
     merged = dict(flex_fields or {})
-    for field_name, value in decode_flex_files_blob(flex_files).items():
-        if value:
-            merged[field_name] = value
+    merged.update({field_name: value for field_name, value in decode_flex_files_blob(flex_files).items() if value})
     return merged
 
 

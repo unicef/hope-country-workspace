@@ -240,8 +240,9 @@ def create_household(
     )(raw_household_fields)
     file_fields = get_checker_file_fields(batch.program.household_checker)
     text_fields, file_values = split_flex_payload(household_fields, file_fields)
-    household_fields["household_id"] = id_generator()
-    text_fields["household_id"] = household_fields["household_id"]
+    household_id = id_generator()
+    household_fields["household_id"] = household_id
+    text_fields["household_id"] = household_id
     return cast(
         "Household",
         batch.program.households.create(
