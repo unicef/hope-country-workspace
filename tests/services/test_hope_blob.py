@@ -1,6 +1,7 @@
 import base64
 
 import pytest
+from django.utils.functional import empty
 from hope_flex_fields.registry import field_registry
 from pytest_mock import MockerFixture
 
@@ -21,6 +22,15 @@ from testutils.factories import (
     FieldsetFactory,
     FlexFieldFactory,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_hope_storage():
+    """Force HOPE_STORAGE to re-resolve from the current settings.STORAGES."""
+    HOPE_STORAGE._wrapped = empty
+    yield
+    HOPE_STORAGE._wrapped = empty
+
 
 PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 DATA_URI = f"data:image/png;base64,{PNG_B64}"
