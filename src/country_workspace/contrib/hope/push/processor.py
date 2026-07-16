@@ -158,11 +158,11 @@ class PushProcessor(ProcessorBase):
         if self.country_workspace_id:
             payload["country_workspace_id"] = self.country_workspace_id
 
-        if (rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id)) and not self.run_remote(
-            "RDI",
-            lambda: self.api.delete_rdi(rdi_id),
-        ):
-            return
+        if rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id):
+            self.hope_rdi_id = rdi_id
+            if not self.run_remote("RDI", lambda: self.api.delete_rdi(rdi_id)):
+                return
+            self.hope_rdi_id = None
 
         resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
         if resp is None:

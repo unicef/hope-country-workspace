@@ -162,11 +162,26 @@ def test_rdi_create_deletes_existing_rdi_before_create(
     delete.assert_called_once_with("OLD-RDI")
     if delete_error:
         create.assert_not_called()
-        assert processor.hope_rdi_id is None
+        assert processor.hope_rdi_id == "OLD-RDI"
         assert err_contains(processor.total["errors"], "request failed")
     else:
         create.assert_called_once()
         assert processor.hope_rdi_id == "NEW-RDI"
+
+
+def test_rdi_create_clears_deleted_rdi_id_when_create_failed(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    err_contains,
+) -> None:
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value="OLD-RDI")
+    mocker.patch.object(processor.api, "delete_rdi")
+    mocker.patch.object(processor.api, "create_rdi", side_effect=RemoteError("boom"))
+
+    processor.rdi_create()
+
+    assert processor.hope_rdi_id is None
+    assert err_contains(processor.total["errors"], "request failed")
 
 
 @pytest.mark.parametrize("rid", [None, "RID-1"], ids=["no_rdi", "has_rdi"])
