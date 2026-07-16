@@ -2,7 +2,7 @@ import base64
 import binascii
 import hashlib
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from azure.core.exceptions import AzureError
 from django.core.files.base import ContentFile
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
     from country_workspace.models.base import Validable
-    from country_workspace.models.mixins import HopeBlobMixin
+    from country_workspace.models.mixins import GroupedItem, HopeBlobMixin
 
 PREFIX = "data:"
 
@@ -94,13 +94,16 @@ def substitute_row_images(record: "Validable", row: dict, paths: dict[str, str])
     def repl(name: str, value: Any) -> Any:
         return paths.get(name, value) if is_data_uri(value) else value
 
+    def repl_item(raw: dict) -> dict:
+        # dict items inside grouped lists always come from apply_grouping(), which
+        # guarantees the 'type' key (see GroupedItem).
+        it = cast("GroupedItem", raw)
+        return {k: repl(f"{it['type']}_{k}", v) for k, v in it.items()}
+
     out = {}
     for key, value in row.items():
         if isinstance(value, list):
-            out[key] = [
-                {k: repl(f"{(it.get('type') or key)}_{k}", v) for k, v in it.items()} if isinstance(it, dict) else it
-                for it in value
-            ]
+            out[key] = [repl_item(it) if isinstance(it, dict) else it for it in value]
         else:
             out[key] = repl(key, value)
     return out
