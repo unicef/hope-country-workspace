@@ -9,11 +9,12 @@ from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.models import Rdp
-from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from .config import Serializer, ERROR_CONFIG, PushWorkflowConfig
+from country_workspace.models import Rdp
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+
+from .config import ERROR_CONFIG, PushWorkflowConfig, RdiDeleteResult, Serializer
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
     existing_hope_rdi_id,
@@ -128,6 +129,7 @@ class PushProcessor(ProcessorBase):
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
+        self.rdi_already_merged: bool = False
 
     @cached_property
     def serializer(self) -> Serializer:
@@ -150,6 +152,15 @@ class PushProcessor(ProcessorBase):
         self.run_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
 
     def rdi_create(self) -> None:
+        if rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id):
+            self.hope_rdi_id = rdi_id
+            if (result := self.try_remote("RDI", lambda: self.api.delete_rdi(rdi_id))) is None:
+                return
+            if result is RdiDeleteResult.ALREADY_MERGED:
+                self.rdi_already_merged = True
+                return
+            self.hope_rdi_id = None
+
         payload = {
             "name": self.batch_name,
             "program": self.program_hope_id,
@@ -158,19 +169,12 @@ class PushProcessor(ProcessorBase):
         if self.country_workspace_id:
             payload["country_workspace_id"] = self.country_workspace_id
 
-        if rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id):
-            self.hope_rdi_id = rdi_id
-            if not self.run_remote("RDI", lambda: self.api.delete_rdi(rdi_id)):
-                return
-            self.hope_rdi_id = None
-
-        resp = self.try_remote("RDI", lambda: self.api.create_rdi(payload))
-        if resp is None:
+        if (response := self.try_remote("RDI", lambda: self.api.create_rdi(payload))) is None:
             return
-        if "id" not in resp or not resp.get("id"):
-            self.fail("RDI", "can't create: no id in response", response=resp)
+        if not (rdi_id := response.get("id")):
+            self.fail("RDI", "can't create: no id in response", response=response)
             return
-        self.hope_rdi_id = resp["id"]
+        self.hope_rdi_id = rdi_id
 
     def rdi_push_households(self) -> None:
         """Push households in batches."""

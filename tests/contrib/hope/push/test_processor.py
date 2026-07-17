@@ -5,7 +5,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG, ErrorConfig
+from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG, ErrorConfig, RdiDeleteResult
 from country_workspace.contrib.hope.push.processor import DedupProcessor, ProcessorBase, PushProcessor
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
@@ -153,6 +153,7 @@ def test_rdi_create_deletes_existing_rdi_before_create(
     delete = mocker.patch.object(
         processor.api,
         "delete_rdi",
+        return_value=RdiDeleteResult.DELETED,
         side_effect=RemoteError("boom") if delete_error else None,
     )
     create = mocker.patch.object(processor.api, "create_rdi", return_value={"id": "NEW-RDI"})
@@ -169,13 +170,25 @@ def test_rdi_create_deletes_existing_rdi_before_create(
         assert processor.hope_rdi_id == "NEW-RDI"
 
 
+def test_rdi_create_keeps_already_merged_rdi(mocker: MockerFixture, processor: PushProcessor) -> None:
+    mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value="OLD-RDI")
+    mocker.patch.object(processor.api, "delete_rdi", return_value=RdiDeleteResult.ALREADY_MERGED)
+    create = mocker.patch.object(processor.api, "create_rdi")
+
+    processor.rdi_create()
+
+    assert processor.hope_rdi_id == "OLD-RDI"
+    assert processor.rdi_already_merged is True
+    create.assert_not_called()
+
+
 def test_rdi_create_clears_deleted_rdi_id_when_create_failed(
     mocker: MockerFixture,
     processor: PushProcessor,
     err_contains,
 ) -> None:
     mocker.patch(f"{MOD}.existing_hope_rdi_id", return_value="OLD-RDI")
-    mocker.patch.object(processor.api, "delete_rdi")
+    mocker.patch.object(processor.api, "delete_rdi", return_value=RdiDeleteResult.DELETED)
     mocker.patch.object(processor.api, "create_rdi", side_effect=RemoteError("boom"))
 
     processor.rdi_create()
