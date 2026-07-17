@@ -333,6 +333,55 @@ def _handle_confirm_push(
     return render(request, "workspace/actions/create_rdp_push_threshold.html", ctx)
 
 
+class _CreateRdpSubmitContext(NamedTuple):
+    program: Any
+    form: CreateRDPForm
+    show_push_option: bool
+
+
+def _handle_create_rdp_submit(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[Beneficiary]",
+    ctx: _CreateRdpSubmitContext,
+) -> HttpResponse:
+    form = ctx.form
+    push_to_hope = form.cleaned_data.get("push_to_hope", False)
+    if not push_to_hope:
+        _queue_create_rdp_job(
+            model_admin,
+            request,
+            queryset,
+            _CreateRdpJobSpec(
+                program=ctx.program,
+                batch_name=form.cleaned_data["batch_name"],
+                push_to_hope=False,
+            ),
+        )
+        return redirect("workspace:workspaces_countryrdp_changelist")
+
+    if not ctx.show_push_option:
+        model_admin.message_user(
+            request,
+            "You do not have permission to push RDP to HOPE.",
+            messages.ERROR,
+        )
+        page_ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
+        return render(request, "workspace/actions/create_rdp.html", page_ctx)
+
+    threshold_form = CreateRDPushThresholdForm(
+        initial={
+            "action": form.cleaned_data["action"],
+            "select_across": form.cleaned_data["select_across"],
+            "_selected_action": _post_selected_actions(request),
+            "batch_name": form.cleaned_data.get("batch_name", ""),
+            "push_to_hope": "on",
+        },
+    )
+    page_ctx = _create_rdp_push_threshold_context(model_admin, request, form=threshold_form)
+    return render(request, "workspace/actions/create_rdp_push_threshold.html", page_ctx)
+
+
 @admin.action(description="Create RDP", permissions=["create_rdp"])
 def create_rdp(
     model_admin: "BeneficiaryBaseAdmin",
@@ -341,51 +390,24 @@ def create_rdp(
 ) -> HttpResponse:
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
+
     program = model_admin.get_selected_program(request)
     show_push_option = model_admin.has_push_rdp_to_hope_permission(request) and program.biometric_deduplication_enabled
 
-    if (
-        request.method == "POST"
-        and "_confirm_push" in request.POST
-        and (response := _handle_confirm_push(model_admin, request, queryset, program, show_push_option)) is not None
-    ):
-        return response
+    if request.method == "POST" and "_confirm_push" in request.POST:
+        response = _handle_confirm_push(model_admin, request, queryset, program, show_push_option)
+        if response is not None:
+            return response
 
     if request.method == "POST" and "_create" in request.POST:
         form = CreateRDPForm(request.POST, show_push_option=show_push_option)
         if form.is_valid():
-            push_to_hope = form.cleaned_data.get("push_to_hope", False)
-            if push_to_hope and not show_push_option:
-                model_admin.message_user(
-                    request,
-                    "You do not have permission to push RDP to HOPE.",
-                    messages.ERROR,
-                )
-                ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
-                return render(request, "workspace/actions/create_rdp.html", ctx)
-            if push_to_hope:
-                threshold_form = CreateRDPushThresholdForm(
-                    initial={
-                        "action": form.cleaned_data["action"],
-                        "select_across": form.cleaned_data["select_across"],
-                        "_selected_action": _post_selected_actions(request),
-                        "batch_name": form.cleaned_data.get("batch_name", ""),
-                        "push_to_hope": "on",
-                    },
-                )
-                ctx = _create_rdp_push_threshold_context(model_admin, request, form=threshold_form)
-                return render(request, "workspace/actions/create_rdp_push_threshold.html", ctx)
-            _queue_create_rdp_job(
+            return _handle_create_rdp_submit(
                 model_admin,
                 request,
                 queryset,
-                _CreateRdpJobSpec(
-                    program=program,
-                    batch_name=form.cleaned_data["batch_name"],
-                    push_to_hope=False,
-                ),
+                _CreateRdpSubmitContext(program=program, form=form, show_push_option=show_push_option),
             )
-            return redirect("workspace:workspaces_countryrdp_changelist")
 
     form = CreateRDPForm(
         initial={
