@@ -39,8 +39,8 @@ from .repository import (
     workflow_config_for_rdp,
 )
 
-_DEDUP_CALLBACK_SIGN_KEY = "dedup_callback"
-_DEDUP_CALLBACK_MAX_AGE = 60 * 60 * 96  # 96 hours
+DEDUP_CALLBACK_SALT = "dedup_callback"
+DEDUP_CALLBACK_MAX_AGE = 60 * 60 * 96  # 96 hours
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ def _build_dedup_callback_url(rdp_id: int, job_id: int) -> str:
     """Build an absolute, signed callback URL for the dedup engine to call when dedup finishes."""
     token = signing.dumps(
         {"rdp_id": rdp_id, "job_id": job_id},
-        key=_DEDUP_CALLBACK_SIGN_KEY,
+        salt=DEDUP_CALLBACK_SALT,
     )
     path = reverse("dedup_callback", kwargs={"signed_token": token})
     base = config.APP_BASE_URL.rstrip("/")
@@ -120,21 +120,35 @@ def create_rdp_and_start_dedup_core(job: AsyncJob) -> dict[str, Any]:
         if rdp is None:
             raise HopePushError({"errors": ["RDP: could not claim deduplication set."], "rdp_id": rdp_id})
 
-    job.refresh_from_db()
+    awaiting_callback = False
+    try:
+        job.refresh_from_db()
 
-    callback_url = _build_dedup_callback_url(rdp_id=rdp_id, job_id=job.pk)
-    processor = DedupProcessor(rdp)
-    processor.run(notification_url=callback_url)
+        callback_url = _build_dedup_callback_url(rdp_id=rdp_id, job_id=job.pk)
+        processor = DedupProcessor(rdp)
+        processor.run(notification_url=callback_url)
 
-    if processor.has_errors:
-        raise HopePushError({**processor.total, "rdp_id": rdp_id})
+        if processor.has_errors:
+            with transaction.atomic():
+                locked = lock_rdp_for_update(pk=rdp_id)
+                set_rdp_push_status(
+                    rdp=locked,
+                    status=Rdp.PushStatus.FAILURE,
+                    hope_rdi_id="N/A",
+                )
+            raise HopePushError({**processor.total, "rdp_id": rdp_id})
 
-    with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp_id)
-        locked.status = Rdp.PushStatus.DEDUP_PENDING
-        locked.save(update_fields=["status"])
+        with transaction.atomic():
+            locked = lock_rdp_for_update(pk=rdp_id)
+            locked.status = Rdp.PushStatus.DEDUP_PENDING
+            locked.save(update_fields=["status"])
 
-    return {**create_result, "dedup_pending": True}
+        awaiting_callback = True
+        return {**create_result, "dedup_pending": True}
+    finally:
+        # Keep the lock only while waiting for the HDE callback; release on any failure.
+        if not awaiting_callback:
+            release_rdp_dedup_settings_lock(rdp_id=rdp_id)
 
 
 def create_and_push_rdp_core(job: AsyncJob) -> dict[str, Any]:
@@ -170,11 +184,11 @@ def _lock_and_fail_rdp(rdp_id: int, *, reason: str) -> None:
             )
 
 
-def _handle_deduplicated(rdp: Rdp, rdp_id: int, findings_count: int) -> None:
+def _handle_deduplicated(rdp: Rdp, rdp_id: int, job_id: int, findings_count: int) -> None:
     try:
-        origin_job = AsyncJob.objects.filter(rdp_id=rdp_id).latest("id")
+        origin_job = AsyncJob.objects.get(pk=job_id, rdp_id=rdp_id)
     except AsyncJob.DoesNotExist:
-        _lock_and_fail_rdp(rdp_id, reason="missing origin AsyncJob for threshold config")
+        _lock_and_fail_rdp(rdp_id, reason=f"missing origin AsyncJob id={job_id} for threshold config")
         return
 
     max_findings_percent: int = origin_job.config.get("max_dedup_findings_percent", 0)
@@ -233,7 +247,7 @@ def _handle_deduplicated(rdp: Rdp, rdp_id: int, findings_count: int) -> None:
     )
 
 
-def dedup_callback_handle(rdp_id: int) -> None:
+def dedup_callback_handle(rdp_id: int, job_id: int) -> None:
     """Handle a dedup engine callback for the given RDP.
 
     Fetches the current deduplication set state from the engine.  Only acts on
@@ -265,8 +279,9 @@ def dedup_callback_handle(rdp_id: int) -> None:
         return
 
     logger.info(
-        "dedup_callback_handle: rdp_id=%s deduplication_set_id=%s; fetching remote status",
+        "dedup_callback_handle: rdp_id=%s job_id=%s deduplication_set_id=%s; fetching remote status",
         rdp_id,
+        job_id,
         rdp.deduplication_set_id,
     )
 
@@ -299,7 +314,7 @@ def dedup_callback_handle(rdp_id: int) -> None:
     if dedup_state in terminal_failure_states:
         _lock_and_fail_rdp(rdp_id, reason=f"dedup engine state {dedup_state}")
     elif dedup_state == DeduplicationSetState.DEDUPLICATED:
-        _handle_deduplicated(rdp, rdp_id, status.findings_count)
+        _handle_deduplicated(rdp, rdp_id, job_id, status.findings_count)
     else:
         logger.info(
             "dedup_callback_handle: rdp_id=%s intermediate state %s; waiting for next callback",

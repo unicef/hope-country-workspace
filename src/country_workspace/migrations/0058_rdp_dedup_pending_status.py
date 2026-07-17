@@ -1,3 +1,4 @@
+import country_workspace.models.rdp
 from django.db import migrations, models
 
 
@@ -12,13 +13,7 @@ class Migration(migrations.Migration):
             name="status",
             field=models.CharField(
                 blank=True,
-                choices=[
-                    ("PENDING", "Pending"),
-                    ("DEDUP_PENDING", "Awaiting deduplication"),
-                    ("SUCCESS", "Success"),
-                    ("FAILURE", "Failure"),
-                    ("CANCELLED", "Cancelled"),
-                ],
+                choices=country_workspace.models.rdp.get_rdp_status_choices,
                 default="PENDING",
                 max_length=15,
             ),

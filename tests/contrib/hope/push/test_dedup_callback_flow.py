@@ -19,8 +19,8 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.contrib.hope.push.orchestration import (
     _build_dedup_callback_url,
-    _DEDUP_CALLBACK_SIGN_KEY,
-    _DEDUP_CALLBACK_MAX_AGE,
+    DEDUP_CALLBACK_SALT,
+    DEDUP_CALLBACK_MAX_AGE,
     create_and_push_rdp_core,
     create_rdp_and_start_dedup_core,
     dedup_callback_handle,
@@ -47,7 +47,7 @@ def test_build_dedup_callback_url_token_verifiable() -> None:
 
     url = _build_dedup_callback_url(rdp_id=5, job_id=99)
     signed_token = url.rstrip("/").rsplit("/", 1)[-1]
-    data = signing.loads(signed_token, key=_DEDUP_CALLBACK_SIGN_KEY, max_age=_DEDUP_CALLBACK_MAX_AGE)
+    data = signing.loads(signed_token, salt=DEDUP_CALLBACK_SALT, max_age=DEDUP_CALLBACK_MAX_AGE)
     assert data == {"rdp_id": 5, "job_id": 99}
 
 
@@ -75,12 +75,14 @@ def test_create_rdp_and_start_dedup_core_success(mocker: MockerFixture) -> None:
     processor = mocker.MagicMock(has_errors=False)
     mocker.patch(f"{MOD}.DedupProcessor", return_value=processor)
     lock = mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=mocker.MagicMock())
+    release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     result = create_rdp_and_start_dedup_core(job)
 
     assert result == {**create_result, "dedup_pending": True}
     processor.run.assert_called_once_with(notification_url="https://cw/callback/token/")
     lock.assert_called_once_with(pk=42)
+    release.assert_not_called()
 
 
 def test_create_rdp_and_start_dedup_core_claim_fails(mocker: MockerFixture, err_contains) -> None:
@@ -90,6 +92,7 @@ def test_create_rdp_and_start_dedup_core_claim_fails(mocker: MockerFixture, err_
     mocker.patch(f"{MOD}.create_rdp_core", return_value=create_result)
     mocker.patch(f"{MOD}.claim_rdp_deduplication", return_value=(ActionCheck(False, "denied"), None))
     processor = mocker.patch(f"{MOD}.DedupProcessor")
+    release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     with pytest.raises(HopePushError) as exc:
         create_rdp_and_start_dedup_core(job)
@@ -97,24 +100,31 @@ def test_create_rdp_and_start_dedup_core_claim_fails(mocker: MockerFixture, err_
     assert err_contains(exc.value.args[0]["errors"], "could not claim")
     assert exc.value.args[0]["rdp_id"] == 42
     processor.assert_not_called()
+    release.assert_not_called()
 
 
 def test_create_rdp_and_start_dedup_core_processor_errors(mocker: MockerFixture, err_contains) -> None:
     job = _make_job(mocker)
     create_result = {"rdp_id": 42, "rdp_str": "RDP-42"}
     rdp = mocker.MagicMock(pk=42)
+    locked = mocker.MagicMock()
 
     mocker.patch(f"{MOD}.create_rdp_core", return_value=create_result)
     mocker.patch(f"{MOD}.claim_rdp_deduplication", return_value=(ActionCheck(True), rdp))
     mocker.patch(f"{MOD}._build_dedup_callback_url", return_value="https://cw/callback/token/")
     processor = mocker.MagicMock(has_errors=True, total={"errors": ["upload failed"]})
     mocker.patch(f"{MOD}.DedupProcessor", return_value=processor)
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
+    release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     with pytest.raises(HopePushError) as exc:
         create_rdp_and_start_dedup_core(job)
 
     assert err_contains(exc.value.args[0]["errors"], "upload failed")
     assert exc.value.args[0]["rdp_id"] == 42
+    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    release.assert_called_once_with(rdp_id=42)
 
 
 def test_create_rdp_and_start_dedup_core_sets_dedup_pending_status(mocker: MockerFixture) -> None:
@@ -130,11 +140,13 @@ def test_create_rdp_and_start_dedup_core_sets_dedup_pending_status(mocker: Mocke
     processor = mocker.MagicMock(has_errors=False)
     mocker.patch(f"{MOD}.DedupProcessor", return_value=processor)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     create_rdp_and_start_dedup_core(job)
 
     assert locked.status == Rdp.PushStatus.DEDUP_PENDING
     locked.save.assert_called_once_with(update_fields=["status"])
+    release.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -207,13 +219,12 @@ def _patch_dedup_status(mocker: MockerFixture, *, state: str, findings_count: in
 
 
 def _patch_origin_job(mocker: MockerFixture, config: dict | None = None, *, missing: bool = False):
-    qs = mocker.MagicMock()
     if missing:
-        qs.latest.side_effect = AsyncJob.DoesNotExist
-    else:
-        qs.latest.return_value = mocker.MagicMock(config=config if config is not None else {})
-    mocker.patch.object(AsyncJob.objects, "filter", return_value=qs)
-    return qs
+        mocker.patch.object(AsyncJob.objects, "get", side_effect=AsyncJob.DoesNotExist)
+        return None
+    origin_job = mocker.MagicMock(config=config if config is not None else {})
+    mocker.patch.object(AsyncJob.objects, "get", return_value=origin_job)
+    return origin_job
 
 
 def _patch_individuals_count(mocker: MockerFixture, count: int) -> None:
@@ -226,7 +237,7 @@ def _patch_individuals_count(mocker: MockerFixture, count: int) -> None:
 def test_dedup_callback_handle_rdp_not_found(mocker: MockerFixture) -> None:
     _patch_rdp_for_push(mocker, not_found=True)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
     set_status.assert_not_called()
 
 
@@ -234,7 +245,7 @@ def test_dedup_callback_handle_wrong_rdp_status(mocker: MockerFixture) -> None:
     rdp = _make_rdp(mocker, status=Rdp.PushStatus.PENDING)
     _patch_rdp_for_push(mocker, rdp)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
     set_status.assert_not_called()
 
 
@@ -246,7 +257,7 @@ def test_dedup_callback_handle_no_dedup_set_id(mocker: MockerFixture) -> None:
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
 
@@ -263,7 +274,7 @@ def test_dedup_callback_handle_dedup_engine_unavailable(mocker: MockerFixture) -
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_not_called()
 
@@ -276,7 +287,7 @@ def test_dedup_callback_handle_dedup_engine_returns_none_status(mocker: MockerFi
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_not_called()
 
@@ -301,7 +312,7 @@ def test_dedup_callback_handle_terminal_failure_marks_rdp_failed(
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     mocker.patch.object(AsyncJob.objects, "create")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
 
@@ -325,7 +336,7 @@ def test_dedup_callback_handle_intermediate_state_is_noop(
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     lock = mocker.patch(f"{MOD}.lock_rdp_for_update")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_not_called()
     lock.assert_not_called()
@@ -344,8 +355,9 @@ def test_dedup_callback_handle_deduplicated_within_threshold_queues_push(mocker:
     create_job = mocker.patch.object(AsyncJob.objects, "create", return_value=push_job)
     on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
+    AsyncJob.objects.get.assert_called_once_with(pk=10, rdp_id=99)
     create_job.assert_called_once()
     on_commit.assert_called_once_with(push_job.queue)
     assert locked_pending.status == Rdp.PushStatus.PENDING
@@ -365,7 +377,7 @@ def test_dedup_callback_handle_deduplicated_skips_push_when_status_changed_under
     create_job = mocker.patch.object(AsyncJob.objects, "create")
     on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     create_job.assert_not_called()
     on_commit.assert_not_called()
@@ -384,7 +396,7 @@ def test_dedup_callback_handle_deduplicated_exceeds_threshold_marks_failure(mock
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     create_job = mocker.patch.object(AsyncJob.objects, "create")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
     create_job.assert_not_called()
@@ -402,7 +414,7 @@ def test_dedup_callback_handle_default_threshold_is_zero(mocker: MockerFixture) 
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
 
@@ -421,7 +433,7 @@ def test_dedup_callback_handle_zero_findings_within_threshold_queues_push(mocker
     mocker.patch.object(AsyncJob.objects, "create", return_value=push_job)
     on_commit = mocker.patch(f"{MOD}.transaction.on_commit")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     on_commit.assert_called_once_with(push_job.queue)
 
@@ -437,8 +449,9 @@ def test_dedup_callback_handle_missing_origin_job_marks_failure(mocker: MockerFi
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     create_job = mocker.patch.object(AsyncJob.objects, "create")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
+    AsyncJob.objects.get.assert_called_once_with(pk=10, rdp_id=99)
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
     create_job.assert_not_called()
 
@@ -455,7 +468,7 @@ def test_dedup_callback_handle_zero_individuals_marks_failure(mocker: MockerFixt
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     create_job = mocker.patch.object(AsyncJob.objects, "create")
 
-    dedup_callback_handle(rdp_id=99)
+    dedup_callback_handle(rdp_id=99, job_id=10)
 
     set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
     create_job.assert_not_called()
