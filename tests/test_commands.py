@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 import pytest
+from azure.core.exceptions import AzureError, ResourceExistsError
 from constance.test import override_config
-from django.core.management import call_command
+from django.core.files.storage import FileSystemStorage
+from django.core.management import call_command, CommandError
 from pytest_mock import MockerFixture
 from responses import RequestsMock
 
@@ -359,3 +361,57 @@ def test_gen_rdi_validation_errors(cli_args: list[str], err: str) -> None:
 
     with pytest.raises(CommandError, match=re.escape(err)):
         call_command("gen_rdi", *cli_args)
+
+
+class _FakeAzureStorage:
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+
+@pytest.fixture
+def hope_storage(mocker: MockerFixture):
+    def _patch(storage: Any) -> Any:
+        mocker.patch("country_workspace.management.commands.init_hope_storage.storages", {"hope": storage})
+        return storage
+
+    return _patch
+
+
+def test_init_hope_storage_skips_non_azure_backend(hope_storage, tmp_path: Path) -> None:
+    hope_storage(FileSystemStorage(location=str(tmp_path)))
+    out = StringIO()
+
+    call_command("init_hope_storage", stdout=out)
+
+    assert "not an Azure backend" in out.getvalue()
+
+
+def test_init_hope_storage_creates_container(hope_storage, mocker: MockerFixture) -> None:
+    client = mocker.Mock()
+    hope_storage(_FakeAzureStorage(client))
+    out = StringIO()
+
+    call_command("init_hope_storage", stdout=out)
+
+    client.create_container.assert_called_once_with()
+    assert "Created HOPE blob container" in out.getvalue()
+
+
+def test_init_hope_storage_handles_existing_container(hope_storage, mocker: MockerFixture) -> None:
+    client = mocker.Mock()
+    client.create_container.side_effect = ResourceExistsError("already there")
+    hope_storage(_FakeAzureStorage(client))
+    out = StringIO()
+
+    call_command("init_hope_storage", stdout=out)
+
+    assert "already exists" in out.getvalue()
+
+
+def test_init_hope_storage_raises_command_error_on_azure_failure(hope_storage, mocker: MockerFixture) -> None:
+    client = mocker.Mock()
+    client.create_container.side_effect = AzureError("boom")
+    hope_storage(_FakeAzureStorage(client))
+
+    with pytest.raises(CommandError, match="Failed to create HOPE blob container"):
+        call_command("init_hope_storage")

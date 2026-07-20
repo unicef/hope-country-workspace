@@ -13,10 +13,6 @@ from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, PUSH_BATCH_SIZE
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp
-from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-
-
 from country_workspace.services.hope_blob import image_field_names, substitute_row_images, sync_record_blobs
 from .config import ERROR_CONFIG, PushWorkflowConfig, RdiDeleteResult, Serializer
 from .mappings import load_mapping_from_api, map_members, map_role_value
