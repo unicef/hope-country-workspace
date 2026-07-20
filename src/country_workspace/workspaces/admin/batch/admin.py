@@ -8,7 +8,6 @@ from constance import config as constance_config
 from django import forms
 from django.contrib import messages
 from django.contrib.admin import register
-from django.core.files.storage import storages
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -27,8 +26,7 @@ from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoComplete
 from ..hh_ind import SelectedProgramMixin
 from .picture_import import BatchPictureImportService, PictureImportLimitError, import_pictures_for_batch
 from .reprocessing import reprocess_batch as reprocess_batch_task
-
-media_storage = storages["media"]
+from ....storages import MEDIA_STORAGE
 
 
 class ProgramBatchFilter(CWLinkedAutoCompleteFilter):
@@ -173,12 +171,12 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     @staticmethod
     def _delete_uploaded_zip(file_name: str | None) -> None:
         if file_name:
-            media_storage.delete(file_name)
+            MEDIA_STORAGE.delete(file_name)
 
     @staticmethod
     def _store_uploaded_zip(uploaded: UploadedFile) -> str:
         file_name = f"batch-picture-import/{uuid.uuid4()}.zip"
-        stored_name = media_storage.save(file_name, uploaded)
+        stored_name = MEDIA_STORAGE.save(file_name, uploaded)
         uploaded.seek(0)
         return stored_name
 
@@ -255,7 +253,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             if form.is_valid():
                 zip_file_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
                 try:
-                    with media_storage.open(zip_file_name, "rb") as zip_stream:
+                    with MEDIA_STORAGE.open(zip_file_name, "rb") as zip_stream:
                         preview = service.build_preview(form.cleaned_data["match_field"], zip_stream)
                 except PictureImportLimitError as exc:
                     self._delete_uploaded_zip(zip_file_name)
@@ -285,7 +283,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 response = HttpResponseRedirect(request.path)
             else:
                 zip_file_name = payload.get("zip_file_name")
-                if not zip_file_name or not media_storage.exists(zip_file_name):
+                if not zip_file_name or not MEDIA_STORAGE.exists(zip_file_name):
                     self._clear_picture_import_payload(obj)
                     self.message_user(
                         request,

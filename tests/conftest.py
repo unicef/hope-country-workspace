@@ -107,7 +107,6 @@ def pytest_configure(config):
     settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
-    django.setup()
     settings.STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -123,6 +122,7 @@ def pytest_configure(config):
             "OPTIONS": {"location": str(here / "../~tests/storage/hope"), "allow_overwrite": True},
         },
     }
+    django.setup()
     from country_workspace.cache.manager import cache_manager
 
     cache_manager.active = False
