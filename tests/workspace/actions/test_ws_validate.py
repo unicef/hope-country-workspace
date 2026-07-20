@@ -144,7 +144,8 @@ def test_validate_queryset_emits_single_notification_per_validation_run(program,
         batch__country_office=program.country_office,
     )
 
-    cache.delete("validation-run:run-id")
+    for field in ("valid", "invalid", "completed_chunks"):
+        cache.delete(f"validation-run:run-id:{field}")
     send_mock = mocker.patch.object(validation_completed_signal, "send")
     mocker.patch(
         "country_workspace.workspaces.admin.cleaners.validate._validate_and_count",
@@ -153,7 +154,7 @@ def test_validate_queryset_emits_single_notification_per_validation_run(program,
 
     validate_queryset(
         Individual.objects.filter(pk=ind1.pk),
-        context="rdi",
+        validation_scope="batch",
         validation_run_id="run-id",
         validation_total_chunks=2,
     )
@@ -161,14 +162,14 @@ def test_validate_queryset_emits_single_notification_per_validation_run(program,
 
     validate_queryset(
         Individual.objects.filter(pk=ind2.pk),
-        context="rdi",
+        validation_scope="batch",
         validation_run_id="run-id",
         validation_total_chunks=2,
     )
     send_mock.assert_called_once_with(
         sender=Individual,
         program_id=program.id,
-        context="rdi",
+        validation_scope="batch",
         results={"valid": 2, "invalid": 0},
     )
 
@@ -188,32 +189,30 @@ def test_create_validation_jobs_sets_context_and_validation_metadata(program, fo
         return_value=job_mock,
     )
 
-    result = create_validation_jobs(
+    create_validation_jobs(
         description="Validate records",
         owner=mocker.Mock(),
         program=program,
         queryset=Individual.objects.filter(pk=individual.pk),
-        context="total",
+        validation_scope="program",
     )
 
-    assert result is job_mock
-    assert create_mock.call_args.kwargs["config"]["kwargs"]["context"] == "total"
+    assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_scope"] == "program"
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_total_chunks"] == 1
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_run_id"]
     job_mock.queue.assert_called_once()
 
 
 @pytest.mark.django_db
-def test_create_validation_jobs_returns_none_for_empty_queryset(program, force_migrated_records, mocker):
+def test_create_validation_jobs_skips_empty_queryset(program, force_migrated_records, mocker):
     create_mock = mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create")
 
-    result = create_validation_jobs(
+    create_validation_jobs(
         description="Validate records",
         owner=mocker.Mock(),
         program=program,
         queryset=Individual.objects.none(),
-        context="total",
+        validation_scope="program",
     )
 
-    assert result is None
     create_mock.assert_not_called()

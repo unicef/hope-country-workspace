@@ -34,7 +34,7 @@ def test_handle_validation_completed_enqueues_expected_event_and_payload(mocker)
     handle_validation_completed(
         sender=object(),
         program_id=10,
-        context="rdi",
+        validation_scope="batch",
         results={"valid": 3, "invalid": 1},
     )
 
@@ -42,7 +42,7 @@ def test_handle_validation_completed_enqueues_expected_event_and_payload(mocker)
         "validation_completed",
         {
             "program_id": 10,
-            "context": "rdi",
+            "validation_scope": "batch",
             "results": {"valid": 3, "invalid": 1},
         },
     )

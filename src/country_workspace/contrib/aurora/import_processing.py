@@ -122,6 +122,7 @@ def import_data(job: AsyncJob) -> ImportResult:
             owner=job.owner,
             program=job.program,
             queryset=_validation_queryset(batch, config),
+            validation_scope="batch",
         )
 
     batch.status = Batch.BatchStatus.COMPLETE

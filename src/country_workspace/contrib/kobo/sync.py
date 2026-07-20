@@ -469,7 +469,7 @@ def import_data(job: AsyncJob) -> ImportResult:
                 owner=job.owner,
                 program=job.program,
                 queryset=batch.household_set.filter(removed=False).prefetch_related("members"),  # type: ignore[attr-defined]
-                context="rdi",
+                validation_scope="batch",
             )
         job.ensure_not_cancelled(refresh=True)
         # Mark batch complete in a dedicated transaction.
@@ -480,7 +480,7 @@ def import_data(job: AsyncJob) -> ImportResult:
             sender=Batch,
             program_id=batch.program_id,
             batch_id=batch.id,
-            record_count=household_counter + individual_counter,
+            record_count=batch.household_set.count() + batch.individual_set.count(),
             source=Batch.BatchSource.KOBO,
         )
     else:

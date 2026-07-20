@@ -232,6 +232,7 @@ def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture,
         owner=job.owner,
         program=job.program,
         queryset=validation_queryset,
+        validation_scope="batch",
     )
 
 

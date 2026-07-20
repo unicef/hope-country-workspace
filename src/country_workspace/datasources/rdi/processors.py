@@ -241,7 +241,7 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         owner=job.owner,
         program=job.program,
         queryset=queryset,
-        context="rdi",
+        validation_scope="batch",
     )
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])

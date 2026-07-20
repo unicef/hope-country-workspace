@@ -30,7 +30,7 @@ def handle_data_imported(sender: Any, **kwargs: Any) -> None:
 def handle_validation_completed(sender: Any, **kwargs: Any) -> None:
     payload = {
         "program_id": kwargs.get("program_id"),
-        "context": kwargs.get("context"),
+        "validation_scope": kwargs.get("validation_scope"),
         "results": kwargs.get("results", {}),
     }
     send_bitcaster_event_task.delay("validation_completed", payload)

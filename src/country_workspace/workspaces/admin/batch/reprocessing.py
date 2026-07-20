@@ -361,7 +361,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
             owner=job.owner,
             program=batch.program,
             queryset=households.prefetch_related("members"),
-            context="rdi",
+            validation_scope="batch",
         )
     elif individual_count > 0:
         create_validation_jobs(
@@ -369,7 +369,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
             owner=job.owner,
             program=batch.program,
             queryset=individuals,
-            context="rdi",
+            validation_scope="batch",
         )
 
     response = {

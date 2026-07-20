@@ -39,7 +39,7 @@ def validate_records(
         owner=request.user,
         program=state.program,
         queryset=queryset,
-        context="total",
+        validation_scope="program",
     )
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
     return

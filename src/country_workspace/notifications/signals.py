@@ -5,8 +5,8 @@ import django.dispatch
 # Expected kwargs: program_id (int), batch_id (int), record_count (int), source (str)
 data_imported_signal = django.dispatch.Signal()
 
-# Triggered when validation processing is finished (either full database or RDI validation)
-# Expected kwargs: program_id (int), context (str - e.g. "total", "rdi"), results (dict)
+# Triggered when validation processing is finished.
+# Expected kwargs: program_id (int), validation_scope (str - "program" or "batch"), results (dict)
 validation_completed_signal = django.dispatch.Signal()
 
 # Triggered when an RDI push cycle successfully completes.

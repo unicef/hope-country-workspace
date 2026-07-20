@@ -203,7 +203,7 @@ class BeneficiaryBaseAdmin(
             owner=request.user,
             program=program,
             queryset=queryset,
-            context="total",
+            validation_scope="program",
         )
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 

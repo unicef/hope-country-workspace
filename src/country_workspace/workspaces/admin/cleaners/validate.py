@@ -21,13 +21,19 @@ logger = logging.getLogger(__name__)
 VALIDATION_PROGRESS_TTL_SECONDS = 24 * 60 * 60
 
 
-def _emit_validation_completed(program_id: int, context: str, valid: int, invalid: int, sender: type[Model]) -> None:
+def _emit_validation_completed(
+    program_id: int, validation_scope: str, valid: int, invalid: int, sender: type[Model]
+) -> None:
     validation_completed_signal.send(
         sender=sender,
         program_id=program_id,
-        context=context,
+        validation_scope=validation_scope,
         results={"valid": valid, "invalid": invalid},
     )
+
+
+def _cache_key(validation_run_id: str, field: str) -> str:
+    return f"validation-run:{validation_run_id}:{field}"
 
 
 def _aggregate_validation_result(  # noqa: PLR0913
@@ -35,41 +41,40 @@ def _aggregate_validation_result(  # noqa: PLR0913
     validation_run_id: str,
     total_chunks: int,
     program_id: int,
-    context: str,
+    validation_scope: str,
     valid: int,
     invalid: int,
     sender: type[Model],
 ) -> None:
-    cache_key = f"validation-run:{validation_run_id}"
-    progress: dict[str, int | str] = cache.get(cache_key, {})
-    if not progress:
-        progress = {
-            "valid": 0,
-            "invalid": 0,
-            "completed_chunks": 0,
-            "total_chunks": total_chunks,
-            "program_id": program_id,
-            "context": context,
-        }
+    ttl = VALIDATION_PROGRESS_TTL_SECONDS
+    valid_key = _cache_key(validation_run_id, "valid")
+    invalid_key = _cache_key(validation_run_id, "invalid")
+    completed_key = _cache_key(validation_run_id, "completed_chunks")
 
-    progress["valid"] = int(progress.get("valid", 0)) + valid
-    progress["invalid"] = int(progress.get("invalid", 0)) + invalid
-    progress["completed_chunks"] = int(progress.get("completed_chunks", 0)) + 1
-    cache.set(cache_key, progress, timeout=VALIDATION_PROGRESS_TTL_SECONDS)
+    for key in (valid_key, invalid_key, completed_key):
+        cache.add(key, 0, timeout=ttl)
 
-    completed_chunks = int(progress["completed_chunks"])
-    required_chunks = int(progress.get("total_chunks", total_chunks))
-    if completed_chunks < required_chunks:
+    if valid:
+        cache.incr(valid_key, valid)
+    if invalid:
+        cache.incr(invalid_key, invalid)
+
+    completed_chunks = cache.incr(completed_key)
+
+    if completed_chunks < total_chunks:
         return
 
+    total_valid = cache.get(valid_key, 0)
+    total_invalid = cache.get(invalid_key, 0)
+
     _emit_validation_completed(
-        program_id=int(progress["program_id"]),
-        context=str(progress["context"]),
-        valid=int(progress["valid"]),
-        invalid=int(progress["invalid"]),
+        program_id=program_id,
+        validation_scope=validation_scope,
+        valid=total_valid,
+        invalid=total_invalid,
         sender=sender,
     )
-    cache.delete(cache_key)
+    cache.delete_many([valid_key, invalid_key, completed_key])
 
 
 def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwargs: Any) -> dict[str, int]:
@@ -102,7 +107,7 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
                 dv, di = _validate_and_count(queryset.iterator(chunk_size=chunk_size))  # stream rows from DB
                 valid, invalid = valid + dv, invalid + di
 
-            context = kwargs.get("context", "total")
+            validation_scope = kwargs.get("validation_scope", "program")
             validation_run_id = kwargs.get("validation_run_id")
             total_chunks = kwargs.get("validation_total_chunks")
 
@@ -111,7 +116,7 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
                     validation_run_id=validation_run_id,
                     total_chunks=int(total_chunks),
                     program_id=first.program.id,
-                    context=context,
+                    validation_scope=validation_scope,
                     valid=valid,
                     invalid=invalid,
                     sender=queryset.model,
@@ -119,7 +124,7 @@ def validate_queryset(queryset: QuerySet[Model], chunk_size: int = 2000, **kwarg
             else:
                 _emit_validation_completed(
                     program_id=first.program.id,
-                    context=context,
+                    validation_scope=validation_scope,
                     valid=valid,
                     invalid=invalid,
                     sender=queryset.model,
@@ -151,18 +156,17 @@ def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
 
 
 def create_validation_jobs(
-    description: str, owner: str, program: Program, queryset: QuerySet, *, context: str = "total"
-) -> AsyncJob | None:
+    description: str, owner: str, program: Program, queryset: QuerySet, *, validation_scope: str = "program"
+) -> None:
     opts = queryset.model._meta
     queryset = queryset.order_by("pk").values_list("pk", flat=True)
     chunk_size = config.CHUNK_SIZE_FOR_VALIDATION_TASK
     total_records = queryset.count()
     if total_records == 0:
-        return None
+        return
     total_chunks = math.ceil(total_records / chunk_size)
     validation_run_id = uuid.uuid4().hex
 
-    job: AsyncJob | None = None
     for chunk in batched(queryset, chunk_size):
         job = AsyncJob.objects.create(
             description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
@@ -174,11 +178,10 @@ def create_validation_jobs(
                 "pks": chunk,
                 "model_name": opts.label,
                 "kwargs": {
-                    "context": context,
+                    "validation_scope": validation_scope,
                     "validation_run_id": validation_run_id,
                     "validation_total_chunks": total_chunks,
                 },
             },
         )
         job.queue()
-    return job
