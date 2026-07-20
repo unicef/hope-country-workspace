@@ -35,6 +35,7 @@ def proc() -> object:
     class Proc:
         def __init__(self) -> None:
             self.calls: list[object] = []
+            self.rdi_already_merged = False
 
         def preflight(self) -> None:
             self.calls.append("pre")
@@ -580,6 +581,21 @@ def test_steps(master_detail: bool, mocker: MockerFixture, proc: object) -> None
         qs_by_pks.assert_called_once_with([1, 2])
         qs_by_hh.assert_not_called()
         qs_hh.assert_not_called()
+
+
+def test_steps_stop_for_already_merged_rdi(mocker: MockerFixture, proc: object) -> None:
+    proc.rdi_already_merged = True
+    qs_by_hh = mocker.patch(f"{MOD}.qs_individuals_by_household_pks")
+    qs_hh = mocker.patch(f"{MOD}.qs_households")
+    qs_by_pks = mocker.patch(f"{MOD}.qs_individuals_by_pks")
+
+    for step in _steps(proc, {"pks": [1], "master_detail": False}):
+        step()
+
+    assert proc.calls == ["pre", "create"]
+    qs_by_hh.assert_not_called()
+    qs_hh.assert_not_called()
+    qs_by_pks.assert_not_called()
 
 
 @pytest.mark.parametrize(
