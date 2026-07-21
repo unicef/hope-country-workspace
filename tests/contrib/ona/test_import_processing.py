@@ -9,9 +9,9 @@ from country_workspace.contrib.ona.import_processing import (
     create_household,
     create_individual,
     get_ona_originating_id,
+    get_ona_submission_cursor_id,
     import_data,
     import_submission,
-    is_ona_submission_after_last_id,
     _validation_queryset,
 )
 
@@ -34,6 +34,7 @@ def config() -> Config:
 def job(mocker: MockerFixture, config: Config):
     job = mocker.MagicMock()
     job.config = config
+    job.batch_id = None
     job.program.country_office = mocker.MagicMock()
     job.owner = mocker.MagicMock()
     return job
@@ -85,15 +86,19 @@ def test_get_ona_originating_id_raises_when_missing_identifier() -> None:
         get_ona_originating_id({})
 
 
-def test_is_ona_submission_after_last_id_compares_numeric_ids() -> None:
-    assert is_ona_submission_after_last_id("101", "100") is True
-    assert is_ona_submission_after_last_id("100", "100") is False
-    assert is_ona_submission_after_last_id("99", "100") is False
+def test_get_ona_submission_cursor_id_prefers_numeric_id() -> None:
+    assert get_ona_submission_cursor_id({"_id": "101", "_uuid": "uuid-101"}) == 101
+    assert get_ona_submission_cursor_id({"id": 102, "uuid": "uuid-102"}) == 102
 
 
-def test_is_ona_submission_after_last_id_falls_back_to_string_comparison() -> None:
-    assert is_ona_submission_after_last_id("uuid-b", "uuid-a") is True
-    assert is_ona_submission_after_last_id("uuid-a", "uuid-b") is False
+def test_get_ona_submission_cursor_id_rejects_uuid_only_submission() -> None:
+    with pytest.raises(ImportError, match="numeric _id/id"):
+        get_ona_submission_cursor_id({"_uuid": "uuid-only"})
+
+
+def test_get_ona_submission_cursor_id_rejects_non_numeric_id() -> None:
+    with pytest.raises(ImportError, match="must be numeric"):
+        get_ona_submission_cursor_id({"_id": "abc"})
 
 
 def test_import_data_requires_form_id(job, config: Config) -> None:
@@ -128,13 +133,17 @@ def test_import_data_calls_client_and_aggregates(
     imported_results: list[ImportResult],
     expected: ImportResult,
 ) -> None:
+    _mock_atomic(mocker)
     job.config = {**config, "master_detail": master_detail}
 
     batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
     batch = batch_cls.objects.create.return_value
 
     client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
-    client_cls.return_value.iter_submissions.return_value = [{"_uuid": "1"}, {"_uuid": "2"}]
+    client_cls.return_value.iter_submissions.return_value = [
+        {"_id": 1, "_uuid": "uuid-1"},
+        {"_id": 2, "_uuid": "uuid-2"},
+    ]
 
     postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
     import_submission_mock = mocker.patch("country_workspace.contrib.ona.import_processing.import_submission")
@@ -150,8 +159,8 @@ def test_import_data_calls_client_and_aggregates(
     )
     client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"])
 
-    import_submission_mock.assert_any_call(batch=batch, submission={"_uuid": "1"}, config=job.config)
-    import_submission_mock.assert_any_call(batch=batch, submission={"_uuid": "2"}, config=job.config)
+    import_submission_mock.assert_any_call(batch=batch, submission={"_id": 1, "_uuid": "uuid-1"}, config=job.config)
+    import_submission_mock.assert_any_call(batch=batch, submission={"_id": 2, "_uuid": "uuid-2"}, config=job.config)
 
     postprocessing.assert_called_once_with(
         batch,
@@ -169,6 +178,7 @@ def test_import_data_skips_submissions_up_to_synclog_last_id(
     config: Config,
     ona_sync_log,
 ) -> None:
+    _mock_atomic(mocker)
     sync_log = mocker.MagicMock()
     sync_log.last_id = "100"
     ona_sync_log["filter"].return_value.first.return_value = sync_log
@@ -215,6 +225,7 @@ def test_import_data_persists_last_successful_submission_on_error(
     config: Config,
     ona_sync_log,
 ) -> None:
+    _mock_atomic(mocker)
     sync_log = mocker.MagicMock()
     sync_log.last_id = "100"
     ona_sync_log["filter"].return_value.first.return_value = sync_log
@@ -240,7 +251,43 @@ def test_import_data_persists_last_successful_submission_on_error(
     )
 
 
+def test_import_data_reuses_existing_job_batch(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+) -> None:
+    _mock_atomic(mocker)
+    job.batch_id = 777
+
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    existing_batch = batch_cls.objects.select_for_update.return_value.select_related.return_value.get.return_value
+
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = []
+
+    postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+
+    result = import_data(job)
+
+    assert result == ImportResult(people=0, households=0)
+    batch_cls.objects.create.assert_not_called()
+    batch_cls.objects.select_for_update.assert_called_once()
+    batch_cls.objects.select_for_update.return_value.select_related.assert_called_once_with(
+        "program",
+        "program__country_office",
+    )
+    batch_cls.objects.select_for_update.return_value.select_related.return_value.get.assert_called_once_with(pk=777)
+    postprocessing.assert_called_once_with(
+        existing_batch,
+        household_transformer_id=None,
+        individual_transformer_id=None,
+    )
+    job.save.assert_not_called()
+    existing_batch.save.assert_called_once_with(update_fields=["status"])
+
+
 def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture, job, config: Config) -> None:
+    _mock_atomic(mocker)
     job.config = {
         **config,
         "household_transformer_id": 10,
@@ -260,6 +307,7 @@ def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture
 
 
 def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture, job, config: Config) -> None:
+    _mock_atomic(mocker)
     job.config = {**config, "validate_after_import": True}
 
     batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")

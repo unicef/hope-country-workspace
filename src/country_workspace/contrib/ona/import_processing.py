@@ -58,16 +58,23 @@ def import_data(job: AsyncJob) -> ImportResult:
         raise ImportError("form_id is required for ONA import")
 
     
-    batch = Batch.objects.create(
-        name=config["batch_name"],
-        program=job.program,
-        country_office=job.program.country_office,
-        imported_by=job.owner,
-        source=Batch.BatchSource.ONA,
-        status=Batch.BatchStatus.LOADING,
-    )
-    job.batch = batch
-    job.save(update_fields=["batch"])
+    with transaction.atomic():
+        batch_id = getattr(job, "batch_id", None)
+        if batch_id:
+            batch = (
+                Batch.objects.select_for_update().select_related("program", "program__country_office").get(pk=batch_id)
+            )
+        else:
+            batch = Batch.objects.create(
+                name=config["batch_name"],
+                program=job.program,
+                country_office=job.program.country_office,
+                imported_by=job.owner,
+                source=Batch.BatchSource.ONA,
+                status=Batch.BatchStatus.LOADING,
+            )
+            job.batch = batch
+            job.save(update_fields=["batch"])
 
     client = OnaClient(
         base_url=constance_config.ONA_API_URL,
@@ -80,16 +87,16 @@ def import_data(job: AsyncJob) -> ImportResult:
     sync_log_name = get_ona_sync_log_name(config["form_id"])
     program_ct = ContentType.objects.get_for_model(Program)
     sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=job.program.id).first()
-    last_id = sync_log.last_id if sync_log and sync_log.last_id else None
+    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else None
     last_successful_id = last_id
-    current_submission_id = None
+    current_submission_id: int | None = None
 
     try:
         for submission in client.iter_submissions(config["form_id"]):
             job.ensure_not_cancelled(refresh=True)
 
             current_submission_id = get_ona_submission_cursor_id(submission)
-            if last_id and not is_ona_submission_after_last_id(current_submission_id, last_id):
+            if last_id is not None and current_submission_id <= last_id:
                 continue
 
             imported = import_submission(
@@ -278,25 +285,16 @@ def get_ona_submission_id(submission: Mapping[str, Any]) -> str:
     return str(value)
 
 
-def get_ona_submission_cursor_id(submission: Mapping[str, Any]) -> str:
-    value = (
-        submission.get("_id")
-        or submission.get("id")
-        or submission.get("_uuid")
-        or submission.get("uuid")
-    )
+def get_ona_submission_cursor_id(submission: Mapping[str, Any]) -> int:
+    value = submission.get("_id") or submission.get("id")
 
     if value is None:
-        raise ImportError("ONA submission is missing _uuid/_id/id/uuid")
+        raise ImportError("ONA submission is missing numeric _id/id required for resumable import cursor")
 
-    return str(value)
-
-
-def is_ona_submission_after_last_id(submission_id: str, last_id: str) -> bool:
     try:
-        return int(submission_id) > int(last_id)
-    except ValueError:
-        return submission_id > last_id
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ImportError("ONA submission _id/id must be numeric for resumable import cursor") from exc
 
 
 def get_ona_originating_id(submission: Mapping[str, Any]) -> str:
