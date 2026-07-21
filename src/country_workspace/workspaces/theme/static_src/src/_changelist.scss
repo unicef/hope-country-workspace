@@ -139,10 +139,21 @@
       td, th {
         padding: 20px;
 
-        white-space: nowrap;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        vertical-align: top;
         font-size: 0.8125rem;
         overflow: auto;
         cursor: pointer;
+
+        &.nowrap {
+          white-space: nowrap;
+        }
+
+        &.field-info {
+          white-space: pre-line;
+        }
 
         &.action-checkbox {
           width: 1.5em;

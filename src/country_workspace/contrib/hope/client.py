@@ -12,6 +12,7 @@ from requests.exceptions import HTTPError, RequestException
 
 from country_workspace.exceptions import RemoteError
 
+from .exceptions import HopeResponseError
 from .signals import hope_request_end, hope_request_start
 
 if TYPE_CHECKING:
@@ -107,7 +108,10 @@ class HopeClient:
         try:
             yield
         except HTTPError as e:
-            raise RemoteError(self._err(method, url, err=str(e), response=response)) from e
+            raise HopeResponseError(
+                self._err(method, url, err=str(e), response=response),
+                response=response,
+            ) from e
         except ValueError as e:
             raise RemoteError(self._err(method, url, err="invalid JSON response", response=response)) from e
 

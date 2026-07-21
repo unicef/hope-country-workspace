@@ -214,6 +214,9 @@ def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Cal
 
     yield processor.preflight
     yield processor.rdi_create
+    if processor.rdi_already_merged:
+        return
+
     if config["master_detail"]:
         yield from (
             partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),

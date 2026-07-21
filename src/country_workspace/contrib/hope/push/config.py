@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable
-from typing import Any, TypedDict, ReadOnly, Final, NamedTuple, NotRequired
 from enum import StrEnum, auto
+from typing import Any, Final, NamedTuple, NotRequired, ReadOnly, TypedDict
 
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
@@ -32,6 +32,11 @@ class PushWorkflowConfig(SelectionConfig):
     program_hope_id: ReadOnly[str]
     rdp_id: ReadOnly[int]
     country_workspace_id: NotRequired[ReadOnly[str]]
+
+
+class RdiDeleteResult(StrEnum):
+    DELETED = auto()
+    ALREADY_MERGED = auto()
 
 
 class Route(StrEnum):

@@ -9,6 +9,7 @@ from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.client import HopeClient, sanitize_url
+from country_workspace.contrib.hope.exceptions import HopeResponseError
 from country_workspace.exceptions import RemoteError
 
 type Signals = tuple[Any, Any]
@@ -266,6 +267,34 @@ def test_delete_success(
     mocked_responses.add(responses.DELETE, client.get_url(DUMMY_PATH), **response_kwargs)
 
     assert client.delete(DUMMY_PATH) == expected
+    assert start.call_count == end.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("response_kwargs", "error_code"),
+    [
+        ({"json": {"error": "error_code"}, "status": 409}, "error_code"),
+        ({"json": {"error": 1}, "status": 409}, None),
+        ({"json": [], "status": 409}, None),
+        ({"body": ERROR["invalid_json"], "status": 409}, None),
+    ],
+    ids=["string_code", "non_string_code", "non_object", "invalid_json"],
+)
+def test_delete_http_error(
+    mocked_responses: responses.RequestsMock,
+    signals: Signals,
+    client: HopeClient,
+    response_kwargs: dict[str, Any],
+    error_code: str | None,
+) -> None:
+    start, end = signals
+    mocked_responses.add(responses.DELETE, client.get_url(DUMMY_PATH), **response_kwargs)
+
+    with pytest.raises(HopeResponseError) as exc_info:
+        client.delete(DUMMY_PATH)
+
+    assert exc_info.value.response.status_code == 409
+    assert exc_info.value.error_code == error_code
     assert start.call_count == end.call_count == 1
 
 

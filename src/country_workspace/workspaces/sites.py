@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from django.apps import apps
 from django.contrib import admin
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
-from django.db.models import QuerySet
+from django.db.models import OuterRef, Q, QuerySet, Subquery
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -14,8 +14,10 @@ from django.urls import NoReverseMatch, URLPattern, URLResolver, resolve, revers
 from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from django_celery_results.models import TaskResult
 from smart_admin.autocomplete import SmartAutocompleteJsonView
 
+from ..models import AsyncJob
 from ..state import state
 from .config import conf
 from .forms import SelectProgramForm, SelectTenantForm, TenantAuthenticationForm
@@ -24,6 +26,8 @@ from .utils import get_selected_program, get_selected_tenant, is_tenant_valid
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
     from django.db.models import Field
+
+    from ..models import Program
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -338,6 +342,26 @@ class TenantAdminSite(admin.AdminSite):
 
         return items
 
+    def get_pending_jobs_count(self, program: "Program|None") -> int:
+        """Return the number of pending/running AsyncJobs for the given program.
+
+        A job is considered "pending" once it has been queued (has a
+        ``curr_async_result_id``) and its Celery result (tracked via
+        ``django_celery_results``) has not yet reached a terminal status.
+        Jobs queued but not yet picked up by a worker have no ``TaskResult``
+        row and are treated as pending too.
+        """
+        if not program:
+            return 0
+        celery_status_qs = TaskResult.objects.filter(task_id=OuterRef("curr_async_result_id")).values("status")[:1]
+        active_statuses = AsyncJob.ACTIVE_STATUSES - {AsyncJob.QUEUED}
+        return (
+            AsyncJob.objects.filter(program=program, curr_async_result_id__isnull=False)
+            .annotate(celery_status=Subquery(celery_status_qs))
+            .filter(Q(celery_status__in=active_statuses) | Q(celery_status__isnull=True))
+            .count()
+        )
+
     def each_context(self, request: "HttpRequest") -> "dict[str, Any]":
         ret = super().each_context(request)
         selected_tenant = get_selected_tenant()
@@ -348,6 +372,7 @@ class TenantAdminSite(admin.AdminSite):
         ret["active_program"] = selected_program
         ret["namespace"] = self.namespace
         ret["menu_items"] = self.get_menu_items(request)
+        ret["pending_jobs_count"] = self.get_pending_jobs_count(selected_program)
         return ret
 
     def autocomplete_view(self, request: "HttpRequest") -> HttpResponse:
