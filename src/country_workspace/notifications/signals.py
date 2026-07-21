@@ -13,6 +13,6 @@ validation_completed_signal = django.dispatch.Signal()
 # Expected kwargs: program_id (int), pushed_count (int)
 rdi_push_completed_signal = django.dispatch.Signal()
 
-# Triggered when an RDP record status changes.
+# Triggered when an RDP push finishes with SUCCESS or FAILURE.
 # Expected kwargs: program_id (int), rdp_id (int), status (str)
 rdp_push_status_changed_signal = django.dispatch.Signal()

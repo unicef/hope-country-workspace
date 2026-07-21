@@ -534,11 +534,12 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             + hope_processor.total.get("people", 0)
         )
 
-        rdi_push_completed_signal.send(
-            sender=Rdp,
-            program_id=rdp.program_id,
-            pushed_count=pushed_count,
-        )
+        if not hope_processor.rdi_already_merged:
+            rdi_push_completed_signal.send(
+                sender=Rdp,
+                program_id=rdp.program_id,
+                pushed_count=pushed_count,
+            )
 
         rdp_push_status_changed_signal.send(
             sender=Rdp,

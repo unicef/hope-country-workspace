@@ -641,7 +641,7 @@ def test_push_existing_rdp_core_success(
     locked = mocker.MagicMock(deduplication_set_id=(ds_id := uuid4()))
     locked.program.unicef_id = "program-1"
     config = {"master_detail": True, "pks": [1], "rdp_id": 1}
-    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1")
+    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1", rdi_already_merged=False)
     step1 = mocker.Mock()
     step2 = mocker.Mock()
     job = mocker.MagicMock(config={"rdp_id": 1})
@@ -686,6 +686,42 @@ def test_push_existing_rdp_core_success(
         program_id=rdp.program_id,
         pushed_count=0,
     )
+    rdp_pushed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
+        status=Rdp.PushStatus.SUCCESS,
+    )
+
+
+def test_push_existing_rdp_core_already_merged_skips_rdi_push_completed(mocker: MockerFixture) -> None:
+    rdp = mocker.MagicMock(pk=1)
+    rdp.pushed_by.email = "pushed@example.com"
+    policy = mocker.MagicMock()
+    mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
+    locked = mocker.MagicMock(deduplication_set_id=None)
+    locked.program.unicef_id = "program-1"
+    config = {"master_detail": True, "pks": [1], "rdp_id": 1}
+    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1", rdi_already_merged=True)
+    job = mocker.MagicMock(config={"rdp_id": 1})
+    job.owner.email = "owner@example.com"
+
+    mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
+    mocker.patch(f"{MOD}._require_policy_check")
+    mocker.patch(f"{MOD}.workflow_config_for_rdp", return_value=config)
+    mocker.patch(f"{MOD}.PushProcessor", return_value=processor)
+    mocker.patch(f"{MOD}._steps", return_value=[])
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
+    mocker.patch(f"{MOD}.set_rdp_push_status")
+    mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
+    mocker.patch(f"{MOD}.release_rdp_push_lock")
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
+
+    assert push_existing_rdp_core(job) == {"errors": []}
+
+    rdi_pushed.assert_not_called()
     rdp_pushed.assert_called_once_with(
         sender=Rdp,
         program_id=rdp.program_id,
