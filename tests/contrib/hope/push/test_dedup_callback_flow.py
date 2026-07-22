@@ -259,7 +259,12 @@ def test_dedup_callback_handle_no_dedup_set_id(mocker: MockerFixture) -> None:
 
     dedup_callback_handle(rdp_id=99, job_id=10)
 
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
 
 
 def test_dedup_callback_handle_dedup_engine_unavailable(mocker: MockerFixture) -> None:
@@ -314,7 +319,12 @@ def test_dedup_callback_handle_terminal_failure_marks_rdp_failed(
 
     dedup_callback_handle(rdp_id=99, job_id=10)
 
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
 
 
 @pytest.mark.parametrize(
@@ -398,7 +408,12 @@ def test_dedup_callback_handle_deduplicated_exceeds_threshold_marks_failure(mock
 
     dedup_callback_handle(rdp_id=99, job_id=10)
 
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
     create_job.assert_not_called()
 
 
@@ -416,7 +431,12 @@ def test_dedup_callback_handle_default_threshold_is_zero(mocker: MockerFixture) 
 
     dedup_callback_handle(rdp_id=99, job_id=10)
 
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
 
 
 def test_dedup_callback_handle_zero_findings_within_threshold_queues_push(mocker: MockerFixture) -> None:
@@ -452,7 +472,12 @@ def test_dedup_callback_handle_missing_origin_job_marks_failure(mocker: MockerFi
     dedup_callback_handle(rdp_id=99, job_id=10)
 
     AsyncJob.objects.get.assert_called_once_with(pk=10, rdp_id=99)
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
     create_job.assert_not_called()
 
 
@@ -470,5 +495,10 @@ def test_dedup_callback_handle_zero_individuals_marks_failure(mocker: MockerFixt
 
     dedup_callback_handle(rdp_id=99, job_id=10)
 
-    set_status.assert_called_once_with(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+    set_status.assert_called_once_with(
+        rdp=locked,
+        status=Rdp.PushStatus.FAILURE,
+        hope_rdi_id="N/A",
+        is_dedup_settings_locked=False,
+    )
     create_job.assert_not_called()

@@ -169,7 +169,12 @@ def _lock_and_fail_rdp(rdp_id: int, *, reason: str) -> None:
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
         if locked.status == Rdp.PushStatus.DEDUP_PENDING:
-            set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+            set_rdp_push_status(
+                rdp=locked,
+                status=Rdp.PushStatus.FAILURE,
+                hope_rdi_id="N/A",
+                is_dedup_settings_locked=False,
+            )
             logger.warning(
                 "dedup_callback_handle: rdp_id=%s marked FAILURE (%s)",
                 rdp_id,
