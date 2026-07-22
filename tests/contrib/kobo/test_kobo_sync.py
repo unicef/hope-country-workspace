@@ -158,7 +158,6 @@ def test_extract_household_data() -> None:
 def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_individual_processor")
     get_fullname_key_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_fullname_key")
-    get_checker_file_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_checker_file_fields")
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
 
     processor_result = mocker.MagicMock()
@@ -167,8 +166,6 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
     individual_class_mock.return_value.pk = None
-    get_checker_file_fields_mock.return_value = {"photo"}
-
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
             (
@@ -181,6 +178,10 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     asset_uid = "asset-id"
     batch_mock = mocker.MagicMock(name="batch")
     batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    batch_mock.program.individual_checker.split_data.return_value = {
+        "fields": {"full_name": "Full Name"},
+        "files": {"photo": "data:image/png;base64,AAA"},
+    }
     household_mock = mocker.MagicMock(name="household")
     submission_mock = mocker.MagicMock(id=1)
     submission_mock.get.side_effect = data.get
@@ -197,7 +198,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         ImportedIndividual(individual=individual_class_mock.return_value, fields=processor_mock.return_value)
     ]
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
-    get_checker_file_fields_mock.assert_called_once_with(batch_mock.program.individual_checker)
+    batch_mock.program.individual_checker.split_data.assert_called_once_with(processor_mock.return_value)
     processor_mock.assert_called_once_with(individual_data)
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
@@ -380,7 +381,6 @@ def test_create_individuals_keeps_members_and_deduplicates_collectors(mocker: Mo
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
-    get_checker_file_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_checker_file_fields")
     extract_household_data_mock = mocker.patch(
         "country_workspace.contrib.kobo.sync.extract_household_data",
         return_value={"field": "value"},
@@ -390,10 +390,9 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     processor_result.items.return_value = [("field", "value")]
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
-    get_checker_file_fields_mock.return_value = {"photo"}
-
     originating_id = "KOB#1#1"
     batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.program.household_checker.split_data.return_value = {"fields": {"field": "value"}, "files": {}}
     submission_mock = mocker.MagicMock(name="submission")
 
     household = create_household(
@@ -407,7 +406,7 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
-    get_checker_file_fields_mock.assert_called_once_with(batch_mock.program.household_checker)
+    batch_mock.program.household_checker.split_data.assert_called_once_with(processor_mock.return_value)
     processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
     processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
@@ -437,10 +436,8 @@ def test_create_individuals_passes_mapping_id(mocker: MockerFixture, config: Con
 
 def test_create_household_passes_mapping_id(mocker: MockerFixture, config: Config) -> None:
     build_processor_mock = mocker.patch("country_workspace.contrib.kobo.sync.build_household_processor")
-    get_checker_file_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_checker_file_fields")
     mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data", return_value={})
     build_processor_mock.return_value = mocker.MagicMock(return_value={})
-    get_checker_file_fields_mock.return_value = set()
 
     config_with_mapping = {**config, "household_mapping_id": 77}
     batch_mock = mocker.MagicMock()
@@ -454,7 +451,7 @@ def test_create_household_passes_mapping_id(mocker: MockerFixture, config: Confi
     )
 
     build_processor_mock.assert_called_once_with(batch_mock.program, 77)
-    get_checker_file_fields_mock.assert_called_once_with(batch_mock.program.household_checker)
+    batch_mock.program.household_checker.split_data.assert_called_once_with({})
 
 
 @pytest.mark.django_db

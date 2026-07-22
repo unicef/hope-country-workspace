@@ -31,7 +31,7 @@ from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
-from country_workspace.utils.flex_fields import encode_flex_files_blob, get_checker_file_fields, split_flex_payload
+from country_workspace.utils.flex_fields import encode_flex_files_blob, split_flex_payload
 from country_workspace.utils.import_flow import get_or_create_collector
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
@@ -186,7 +186,7 @@ def create_individuals(  # noqa: PLR0913
     individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
     epoch_ms = int(batch.import_date.timestamp() * 1000)
-    file_fields = get_checker_file_fields(batch.program.individual_checker)
+    checker = batch.program.individual_checker
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
@@ -194,7 +194,7 @@ def create_individuals(  # noqa: PLR0913
             batch.program,
             individual_mapping_id,
         )(raw_individual)
-        text_fields, file_values = split_flex_payload(individual_fields, file_fields)
+        text_fields, file_values = split_flex_payload(checker, individual_fields)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
         ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
@@ -238,8 +238,7 @@ def create_household(
         batch.program,
         household_mapping_id,
     )(raw_household_fields)
-    file_fields = get_checker_file_fields(batch.program.household_checker)
-    text_fields, file_values = split_flex_payload(household_fields, file_fields)
+    text_fields, file_values = split_flex_payload(batch.program.household_checker, household_fields)
     household_id = id_generator()
     household_fields["household_id"] = household_id
     text_fields["household_id"] = household_id

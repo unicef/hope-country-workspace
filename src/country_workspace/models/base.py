@@ -11,7 +11,6 @@ from country_workspace.cache.manager import cache_manager
 from country_workspace.utils.flex_fields import (
     decode_flex_files_blob,
     encode_flex_files_blob,
-    get_checker_file_fields,
     get_obj_checksum,
     merge_flex_payload,
     split_flex_payload,
@@ -114,13 +113,6 @@ class Validable(Cachable, models.Model):
             update_fields=update_fields,
         )
 
-    def _checker_file_fields(self) -> set[str]:
-        try:
-            checker = self.checker
-        except (AttributeError, NotImplementedError):
-            return set()
-        return get_checker_file_fields(checker)
-
     def get_flex_files_map(self) -> dict[str, Any]:
         return decode_flex_files_blob(self.flex_files)
 
@@ -143,11 +135,10 @@ class Validable(Cachable, models.Model):
         if update_fields is not None and not (set(update_fields) & {"flex_fields", "flex_files"}):
             return update_fields
 
-        file_fields = self._checker_file_fields()
-        if not file_fields:
+        if self.checker is None:
             return update_fields
 
-        text_fields, new_file_values = split_flex_payload(self.flex_fields or {}, file_fields)
+        text_fields, new_file_values = split_flex_payload(self.checker, self.flex_fields or {})
         existing_file_values = self.get_flex_files_map()
         file_values = dict(existing_file_values)
         file_values.update(new_file_values)

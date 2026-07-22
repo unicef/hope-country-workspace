@@ -1,9 +1,8 @@
 import json
-import pickle
 from unittest.mock import Mock, call
 
+import msgpack
 import pytest
-from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_mock import MockerFixture
 
@@ -19,7 +18,6 @@ from country_workspace.utils.flex_fields import (
     split_flex_payload,
     merge_flex_payload,
     split_options,
-    get_checker_file_fields,
 )
 
 
@@ -172,7 +170,12 @@ def test_encode_and_decode_flex_files_blob_roundtrip() -> None:
 
 def test_split_and_merge_flex_payload_with_file_fields() -> None:
     payload = {"name": "John", "photo": "data:image/png;base64,BBB"}
-    text, files = split_flex_payload(payload, {"photo"})
+    checker = Mock(spec=["split_data"])
+    checker.split_data.return_value = {
+        "fields": {"name": "John"},
+        "files": {"photo": "data:image/png;base64,BBB"},
+    }
+    text, files = split_flex_payload(checker, payload)
 
     assert text == {"name": "John"}
     assert files == {"photo": "data:image/png;base64,BBB"}
@@ -181,7 +184,7 @@ def test_split_and_merge_flex_payload_with_file_fields() -> None:
     assert merged == payload
 
 
-def test_encode_flex_files_blob_uses_pickle_not_json() -> None:
+def test_encode_flex_files_blob_uses_binary_not_json() -> None:
     value = {"photo": b"\x89PNG\r\n", "doc": "data:application/pdf;base64,AAA"}
     encoded = encode_flex_files_blob(value)
     assert decode_flex_files_blob(encoded) == value
@@ -205,11 +208,11 @@ def test_decode_flex_files_blob_accepts_bytearray_and_memoryview() -> None:
 
 
 def test_decode_flex_files_blob_invalid_data_returns_empty() -> None:
-    assert decode_flex_files_blob(b"not-a-pickle-or-json") == {}
+    assert decode_flex_files_blob(b"not-a-msgpack-or-json") == {}
 
 
-def test_decode_flex_files_blob_non_dict_pickle_returns_empty() -> None:
-    assert decode_flex_files_blob(pickle.dumps([1, 2, 3])) == {}
+def test_decode_flex_files_blob_non_dict_msgpack_returns_empty() -> None:
+    assert decode_flex_files_blob(msgpack.packb([1, 2, 3], use_bin_type=True)) == {}
 
 
 def test_decode_flex_files_blob_reads_legacy_json_format() -> None:
@@ -228,27 +231,12 @@ def test_merge_flex_payload_skips_empty_stored_values() -> None:
 
 
 def test_split_flex_payload_ignores_empty_file_values() -> None:
+    checker = Mock(spec=["split_data"])
     payload = {"photo": "   ", "name": "John", "empty": "", "missing": None}
-    text, files = split_flex_payload(payload, {"photo", "empty", "missing"})
+    checker.split_data.return_value = {
+        "fields": {"name": "John"},
+        "files": {"photo": "   ", "empty": "", "missing": None},
+    }
+    text, files = split_flex_payload(checker, payload)
     assert text == {"name": "John"}
     assert files == {}
-
-
-def test_get_checker_file_fields_none_returns_empty() -> None:
-    assert get_checker_file_fields(None) == set()
-
-
-def test_get_checker_file_fields_uses_checker_api() -> None:
-    checker = Mock(spec=["get_file_field_names"])
-    checker.get_file_field_names.return_value = {"photo", "id_card"}
-    assert get_checker_file_fields(checker) == {"photo", "id_card"}
-    checker.get_file_field_names.assert_called_once_with()
-
-
-def test_get_checker_file_fields_fallback_to_form_introspection() -> None:
-    class _Form:
-        fields = {"photo": forms.FileField(), "name": forms.CharField()}
-
-    checker = Mock(spec=["get_form_class"])
-    checker.get_form_class.return_value = _Form
-    assert get_checker_file_fields(checker) == {"photo"}

@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import pickle
 from collections import defaultdict
 from typing import Any
 
 from django.db import migrations, models
 from django.db.migrations.state import StateApps  # noqa: TC002
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
+import msgpack
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +21,8 @@ def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, Any]:
         return {}
     raw = bytes(blob) if isinstance(blob, memoryview | bytearray) else blob
     try:
-        parsed = pickle.loads(raw)  # noqa: S301 - trusted, app-written blob
-    except (
-        pickle.UnpicklingError,
-        EOFError,
-        ValueError,
-        TypeError,
-        AttributeError,
-        ImportError,
-        IndexError,
-        KeyError,
-    ):
+        parsed = msgpack.unpackb(raw, raw=False, strict_map_key=False)
+    except (msgpack.ExtraData, msgpack.FormatError, msgpack.StackError, ValueError, TypeError):
         try:
             parsed = json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -42,7 +33,7 @@ def _decode_blob(blob: bytes | memoryview | bytearray | None) -> dict[str, Any]:
 def _encode_blob(value: dict[str, Any]) -> bytes | None:
     if not value:
         return None
-    return pickle.dumps(dict(sorted(value.items())), protocol=pickle.HIGHEST_PROTOCOL)
+    return msgpack.packb(dict(sorted(value.items())), use_bin_type=True)
 
 
 def _checksum(flex_fields: dict[str, Any], flex_files: bytes | None, removed: bool) -> str:

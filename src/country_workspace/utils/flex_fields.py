@@ -1,11 +1,11 @@
 from base64 import b64encode
 import hashlib
 import json
-import pickle
 from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
+import msgpack
 
 from hope_flex_fields.models import DataChecker
 
@@ -25,54 +25,25 @@ def _decode_legacy_json_blob(raw: bytes) -> dict[str, Any]:
 
 
 def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, Any]:
-    """Decode the ``flex_files`` binary blob into a ``{field_name: content}`` mapping.
+    """Decode ``flex_files`` blob into ``{field_name: content}``.
 
-    Files are stored as a pickled dict so any Python object (image bytes, PDFs,
-    data URIs, ...) can be kept without extra base64/JSON encoding. Blobs written
-    by the earlier JSON format are still read via a fallback.
+    Primary format is msgpack. Legacy json blobs are still readable.
     """
     if not value:
         return {}
     raw = bytes(value) if isinstance(value, memoryview | bytearray) else value
     try:
-        parsed = pickle.loads(raw)  # noqa: S301 - trusted, app-written blob
-    except (
-        pickle.UnpicklingError,
-        EOFError,
-        ValueError,
-        TypeError,
-        AttributeError,
-        ImportError,
-        IndexError,
-        KeyError,
-    ):
+        parsed = msgpack.unpackb(raw, raw=False, strict_map_key=False)
+    except (msgpack.ExtraData, msgpack.FormatError, msgpack.StackError, ValueError, TypeError):
         parsed = _decode_legacy_json_blob(raw)
     return parsed if isinstance(parsed, dict) else {}
 
 
 def encode_flex_files_blob(value: dict[str, Any]) -> bytes | None:
-    """Pickle a ``{field_name: content}`` mapping for storage in ``flex_files``.
-
-    Keys are sorted so the resulting bytes are deterministic (stable checksums).
-    """
+    """Encode a ``{field_name: content}`` mapping to msgpack bytes."""
     if not value:
         return None
-    return pickle.dumps(dict(sorted(value.items())), protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def get_checker_file_fields(checker: DataChecker | None) -> set[str]:
-    """Return the set of file-field names for a checker.
-
-    Detection is delegated to the data checker (single source of truth). A
-    minimal fallback keeps older checkers without the API working.
-    """
-    if checker is None:
-        return set()
-    getter = getattr(checker, "get_file_field_names", None)
-    if callable(getter):
-        return set(getter())
-    form = checker.get_form_class()()
-    return {name for name, field in form.fields.items() if isinstance(field, forms.FileField)}
+    return msgpack.packb(dict(sorted(value.items())), use_bin_type=True)
 
 
 def merge_flex_payload(
@@ -89,15 +60,16 @@ def merge_flex_payload(
     return merged
 
 
-def split_flex_payload(payload: dict[str, Any], file_fields: set[str]) -> tuple[dict[str, Any], dict[str, Any]]:
-    text_fields: dict[str, Any] = {}
-    file_values: dict[str, Any] = {}
-    for key, value in payload.items():
-        if key not in file_fields:
-            text_fields[key] = value
-            continue
-        if value not in (None, "") and not (isinstance(value, str) and not value.strip()):
-            file_values[key] = value
+def split_flex_payload(checker: DataChecker | None, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    if checker is None:
+        return dict(payload), {}
+    split = checker.split_data(payload)
+    text_fields = dict(split.get("fields", {}))
+    file_values = {
+        key: value
+        for key, value in dict(split.get("files", {})).items()
+        if value not in (None, "") and not (isinstance(value, str) and not value.strip())
+    }
     return text_fields, file_values
 
 
