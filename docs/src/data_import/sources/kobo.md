@@ -37,7 +37,7 @@ By default, Country Workspace expects the repeat-group field to be named `indivi
 
 If the configured field is missing or empty, the Household is imported without Individuals.
 
-Kobo metadata fields whose names start with `_` are not imported as beneficiary fields. Kobo-specific system questions whose final field name starts with `kobo_sys__` are also excluded during processing.
+Top-level Kobo metadata fields whose names start with `_` are not imported as beneficiary fields. Kobo-specific system questions whose final field name starts with `kobo_sys__` are also excluded during processing.
 
 ### Questions and values
 
@@ -191,9 +191,9 @@ flowchart LR
 
 **Download attachments and prepare source fields** includes downloading Kobo attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying the selected Mapping Importers, processing supported document questions, applying Program defaults, and removing configured ignored fields.
 
-**Create Households and Individuals** creates one Household for each submission and one Individual for each item in the configured Individual repeat group. The original Household and Individual source data is stored with the created records.
+**Create Households and Individuals** creates one Household for each submission and one Individual for each item in the configured Individual repeat group. Individuals are linked to their Household, and Household roles are assigned from the records in that submission. The source fields used to create each record are stored with it and can be reused during later Batch reprocessing.
 
-**Link and post-process records** assigns Household roles, resolves supported collector references, and applies the selected Transformers.
+**Link and post-process records** resolves supported collector references across the Batch and applies the selected Transformers.
 
 **Finalize Batch** schedules background validation jobs when **Validate after import** is enabled, then marks the Batch as **Complete**.
 
@@ -228,7 +228,7 @@ If a submission fails:
 
 For large projects, processing may be divided between several background jobs. When the configured processing period is reached, Country Workspace schedules another job for the same Batch and continues with the next submission.
 
-The Batch remains in **Loading** status while continuation jobs are running. Relationships, Transformers, validation, and final Batch completion are processed only after all available submissions have been imported.
+The Batch remains in **Loading** status while continuation jobs are running. Household membership and Household roles are created as each submission is imported. Batch-level collector links, Transformers, validation, and final Batch completion are processed only after all available submissions have been imported.
 
 ### Beneficiary relationships
 
@@ -237,6 +237,10 @@ Each Individual from the configured repeat group is linked directly to the House
 Country Workspace then assigns the **Head of Household**, **Primary Collector**, and optional **Alternate Collector** from the processed Individual `relationship` and `role` values.
 
 After all submissions have been imported, supported `collector_id` values are resolved against imported `individual_id` and `index_id` values.
+
+### Duplicate identities
+
+The current Kobo import flow does not perform duplicate identity detection.
 
 ### Validation after import
 
@@ -248,7 +252,7 @@ The Batch is marked as **Complete** after the validation jobs are scheduled. Val
 
 ## Review the import results
 
-Use the related background job to check whether the import completed successfully and to see the number of imported Households and Individuals.
+Use the related background jobs to check whether the import completed successfully and to see how many Households and Individuals each job imported.
 
 A large import may have several consecutive background jobs associated with the same Batch.
 
@@ -268,16 +272,17 @@ See **[Reprocessing](../batches.md#reprocessing)** for details.
 
 ## Troubleshooting
 
-If a Kobo import fails, review the related background job for the error details. Common causes include:
+If a Kobo import cannot be started or fails during processing, check the import form and the related background job for error details. Common causes include:
 
 * the selected Office does not have a Kobo country code configured;
 * the Kobo connection cannot access the project;
 * the project is not deployed or is not available for the selected Office;
-* **Individual records field** does not identify the expected repeat group;
 * a Kobo question or value cannot be processed using the selected Program configuration;
 * a Mapping Importer produces fields that are incompatible with the Program DataChecker;
 * a referenced Kobo attachment cannot be downloaded;
 * the Kobo service is temporarily unavailable.
+
+If Households are imported without their Individuals, verify that **Individual records field** matches the repeat-group field used by the Kobo project.
 
 When processing fails on a submission, the job error identifies the failed submission and the last successfully imported submission. Successfully completed submissions remain stored, and later processing resumes after the recorded successful submission.
 
