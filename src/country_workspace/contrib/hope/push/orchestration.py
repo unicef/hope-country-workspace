@@ -503,11 +503,15 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                         hope_rdi_id=hope_processor.hope_rdi_id or "N/A",
                         is_push_locked=False,
                     )
-                    rdp_push_status_changed_signal.send(
-                        sender=Rdp,
-                        program_id=rdp.program_id,
-                        rdp_id=rdp.pk,
-                        status=Rdp.PushStatus.FAILURE,
+                    transaction.on_commit(
+                        partial(
+                            rdp_push_status_changed_signal.send,
+                            sender=Rdp,
+                            program_id=rdp.program_id,
+                            rdp_id=rdp.pk,
+                            status=Rdp.PushStatus.FAILURE,
+                        ),
+                        robust=True,
                     )
                 raise HopePushError(hope_processor.total)
 

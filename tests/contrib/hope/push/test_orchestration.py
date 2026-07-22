@@ -754,6 +754,10 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
     release = mocker.patch(f"{MOD}.release_rdp_push_lock")
+    mocker.patch(
+        f"{MOD}.transaction.on_commit",
+        side_effect=lambda func, *, robust=False: func(),
+    )
     rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
     rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
