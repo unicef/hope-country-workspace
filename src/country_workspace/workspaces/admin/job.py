@@ -29,11 +29,11 @@ class CountryJobAdmin(
     list_display = (
         "description",
         "info",
+        "status",
         "datetime_queued",
         "completed_time",
         # "type",
         "queue_position",
-        "status",
         "owner",
     )
     list_filter = (("type", ChoiceFilter), WFailedFilter, ("owner", UserAutoCompleteFilter))
