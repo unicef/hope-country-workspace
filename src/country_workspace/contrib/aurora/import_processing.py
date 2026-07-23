@@ -14,6 +14,7 @@ from country_workspace.contrib.aurora.crypto import decrypt_payload
 from country_workspace.contrib.aurora.models import Registration
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
+from country_workspace.utils.flex_fields import encode_flex_files_blob, split_flex_payload
 from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
@@ -204,12 +205,15 @@ def create_individual(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
     )
+    transformed = individual_row_processor(row)
+    text_fields, file_values = split_flex_payload(batch.program.individual_checker, transformed)
     extras.setdefault("household", None)
     return Individual.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=individual_row_processor(row),
+        flex_fields=text_fields,
+        flex_files=encode_flex_files_blob(file_values),
         raw_data=record,
         **extras,
     )
@@ -221,11 +225,14 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
         batch.program,
         mapping_id=config.get("household_mapping_id"),
     )
+    transformed = household_row_processor(row)
+    text_fields, file_values = split_flex_payload(batch.program.household_checker, transformed)
     return Household.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=household_row_processor(row),
+        flex_fields=text_fields,
+        flex_files=encode_flex_files_blob(file_values),
         raw_data=record,
     )
 

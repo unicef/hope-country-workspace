@@ -31,7 +31,7 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import Program, SyncLog
 from country_workspace.models.jobs import GracefulJobCancellationError
-from country_workspace.utils.flex_fields import decode_flex_files_blob
+from country_workspace.utils.flex_fields import decode_flex_files_blob, to_public_flex_file_value
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
@@ -211,7 +211,9 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         name=processor_result.get.return_value,
     )
     kwargs = individual_class_mock.call_args.kwargs
-    assert decode_flex_files_blob(kwargs["flex_files"]) == {"photo": "data:image/png;base64,AAA"}
+    files = decode_flex_files_blob(kwargs["flex_files"])
+    assert set(files) == {"photo"}
+    assert to_public_flex_file_value(files["photo"]) == "data:image/png;base64,AAA"
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
 

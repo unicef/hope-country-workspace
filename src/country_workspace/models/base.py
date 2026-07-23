@@ -14,6 +14,7 @@ from country_workspace.utils.flex_fields import (
     get_obj_checksum,
     merge_flex_payload,
     split_flex_payload,
+    to_public_flex_file_value,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +105,6 @@ class Validable(Cachable, models.Model):
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
-        update_fields = self.normalize_flex_storage(update_fields)
         update_fields = self.update_checksum(update_fields)
         super().save(
             force_insert=force_insert,
@@ -122,7 +122,20 @@ class Validable(Cachable, models.Model):
     def get_flex_value(self, field_name: str, default: object | None = None) -> object | None:
         if field_name in self.flex_fields:
             return self.flex_fields[field_name]
-        return self.get_flex_files_map().get(field_name, default)
+        return to_public_flex_file_value(self.get_flex_files_map().get(field_name, default))
+
+    def apply_flex_payload(self, payload: dict[str, Any], *, preserve_existing_files: bool = True) -> set[str]:
+        """Split payload into text/files and apply both storage fields."""
+        if self.checker is None:
+            self.flex_fields = dict(payload)
+            return {"flex_fields"}
+
+        text_fields, new_file_values = split_flex_payload(self.checker, payload)
+        file_values = self.get_flex_files_map() if preserve_existing_files else {}
+        file_values.update(new_file_values)
+        self.flex_fields = text_fields
+        self.flex_files = encode_flex_files_blob(file_values)
+        return {"flex_fields", "flex_files"}
 
     def normalize_flex_storage(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
         """Guarantee text/file separation at save time.
@@ -183,12 +196,12 @@ class Validable(Cachable, models.Model):
             update_fields.append("errors")
 
         if cleaned != current_data:
-            self.flex_fields = dict(cleaned)
+            cleaned_payload = dict(cleaned)
             # keep invalid values
             for field_name in new_errors:
                 if field_name in current_data:
-                    self.flex_fields[field_name] = current_data[field_name]
-            update_fields.append("flex_fields")
+                    cleaned_payload[field_name] = current_data[field_name]
+            update_fields.extend(self.apply_flex_payload(cleaned_payload))
 
         self.last_checked = timezone.now()
         update_fields.append("last_checked")

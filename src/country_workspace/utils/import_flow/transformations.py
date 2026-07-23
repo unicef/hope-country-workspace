@@ -30,10 +30,10 @@ def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | N
             transformed = enforce_locked_fields(record, current, transformed)
 
         if transformed != current:
-            record.flex_fields = transformed
+            updated = record.apply_flex_payload(transformed, preserve_existing_files=False)
             record.last_checked = None
             record.errors = {}
-            record.save(update_fields=("flex_fields", "last_checked", "errors"))
+            record.save(update_fields=(*updated, "last_checked", "errors"))
             count += 1
 
     return count

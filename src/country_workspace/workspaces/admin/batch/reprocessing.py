@@ -101,10 +101,10 @@ def _apply_import_processor(
         flex_fields |= {
             field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
         }
-    record.flex_fields = flex_fields
+    updated = record.apply_flex_payload(flex_fields, preserve_existing_files=False)
     record.last_checked = None
     record.errors = {}
-    update_fields = ["flex_fields", "last_checked", "errors"]
+    update_fields = [*updated, "last_checked", "errors"]
     if isinstance(record, Individual) and flex_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
         # Keep the dedup key in sync with the rebuilt identity fields.
         record.identity_hash = compute_collector_hash(flex_fields)

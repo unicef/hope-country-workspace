@@ -18,6 +18,7 @@ from country_workspace.utils.flex_fields import (
     split_flex_payload,
     merge_flex_payload,
     split_options,
+    to_public_flex_file_value,
 )
 
 
@@ -178,7 +179,8 @@ def test_split_and_merge_flex_payload_with_file_fields() -> None:
     text, files = split_flex_payload(checker, payload)
 
     assert text == {"name": "John"}
-    assert files == {"photo": "data:image/png;base64,BBB"}
+    assert set(files) == {"photo"}
+    assert to_public_flex_file_value(files["photo"]) == "data:image/png;base64,BBB"
 
     merged = merge_flex_payload(text, encode_flex_files_blob(files))
     assert merged == payload

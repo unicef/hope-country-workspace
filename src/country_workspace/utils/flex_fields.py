@@ -1,6 +1,8 @@
-from base64 import b64encode
+from base64 import b64decode, b64encode
+import binascii
 import hashlib
 import json
+import re
 from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
@@ -13,6 +15,11 @@ from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 
 if TYPE_CHECKING:
     from country_workspace.models.base import Validable
+
+_DATA_URI_PATTERN = re.compile(r"^data:(?P<mimetype>[^;]+);base64,(?P<content>.+)$")
+_BIN_VALUE_KEY = "__bin_value__"
+_BIN_MIMETYPE_KEY = "mimetype"
+_BIN_CONTENT_KEY = "content"
 
 
 def _decode_legacy_json_blob(raw: bytes) -> dict[str, Any]:
@@ -46,6 +53,36 @@ def encode_flex_files_blob(value: dict[str, Any]) -> bytes | None:
     return msgpack.packb(dict(sorted(value.items())), use_bin_type=True)
 
 
+def to_storage_flex_file_value(value: Any) -> Any:
+    """Convert external file value to compact binary storage representation."""
+    if not isinstance(value, str):
+        return value
+    match = _DATA_URI_PATTERN.fullmatch(value.strip())
+    if not match:
+        return value
+    try:
+        binary = b64decode(match.group("content"), validate=True)
+    except (binascii.Error, ValueError):
+        return value
+    return {
+        _BIN_VALUE_KEY: True,
+        _BIN_MIMETYPE_KEY: match.group("mimetype"),
+        _BIN_CONTENT_KEY: binary,
+    }
+
+
+def to_public_flex_file_value(value: Any) -> Any:
+    """Convert internal storage representation to external/public value."""
+    if not isinstance(value, dict) or not value.get(_BIN_VALUE_KEY):
+        return value
+    mimetype = value.get(_BIN_MIMETYPE_KEY)
+    content = value.get(_BIN_CONTENT_KEY)
+    if not isinstance(mimetype, str) or not isinstance(content, (bytes, bytearray, memoryview)):
+        return value
+    encoded = b64encode(bytes(content)).decode()
+    return VALUE_FORMAT.format(mimetype=mimetype, content=encoded)
+
+
 def merge_flex_payload(
     flex_fields: dict[str, Any] | None,
     flex_files: bytes | memoryview | bytearray | None,
@@ -56,7 +93,13 @@ def merge_flex_payload(
     therefore no checker lookup) is needed here.
     """
     merged = dict(flex_fields or {})
-    merged.update({field_name: value for field_name, value in decode_flex_files_blob(flex_files).items() if value})
+    merged.update(
+        {
+            field_name: public_value
+            for field_name, value in decode_flex_files_blob(flex_files).items()
+            if (public_value := to_public_flex_file_value(value))
+        }
+    )
     return merged
 
 
@@ -66,7 +109,7 @@ def split_flex_payload(checker: DataChecker | None, payload: dict[str, Any]) -> 
     split = checker.split_data(payload)
     text_fields = dict(split.get("fields", {}))
     file_values = {
-        key: value
+        key: to_storage_flex_file_value(value)
         for key, value in dict(split.get("files", {})).items()
         if value not in (None, "") and not (isinstance(value, str) and not value.strip())
     }
