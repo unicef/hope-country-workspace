@@ -1,6 +1,12 @@
+import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.datasources.rdi import processors
+
+
+@pytest.fixture(autouse=True)
+def _mock_bitcaster_dispatch(mocker: MockerFixture):
+    return mocker.patch("country_workspace.notifications.handlers.send_bitcaster_event_task.delay")
 
 
 def _base_config() -> dict:

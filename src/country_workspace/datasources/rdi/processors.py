@@ -19,6 +19,7 @@ from country_workspace.utils.imports import get_xlsx_originating_id, normalize_f
 from country_workspace.utils.functional import compose
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
+from country_workspace.notifications.signals import data_imported_signal
 
 from .config import Config, SheetName, Sheet
 from .exceptions import ColumnConfigurationError, SheetProcessingError, SheetNotFoundError
@@ -220,6 +221,13 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
     if not config.get("validate_after_import"):
         batch.status = Batch.BatchStatus.COMPLETE
         batch.save(update_fields=["status"])
+        data_imported_signal.send(
+            sender=Batch,
+            program_id=batch.program_id,
+            batch_id=batch.id,
+            record_count=sum(result.values()),
+            source=Batch.BatchSource.RDI,
+        )
         return result
 
     job.ensure_not_cancelled(refresh=True)
@@ -233,9 +241,17 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
         owner=job.owner,
         program=job.program,
         queryset=queryset,
+        validation_scope="batch",
     )
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])
+    data_imported_signal.send(
+        sender=Batch,
+        program_id=batch.program_id,
+        batch_id=batch.id,
+        record_count=sum(result.values()),
+        source=Batch.BatchSource.RDI,
+    )
     return result
 
 

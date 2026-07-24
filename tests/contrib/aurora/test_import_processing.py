@@ -31,6 +31,11 @@ def config() -> Config:
     }
 
 
+@pytest.fixture(autouse=True)
+def _mock_bitcaster_dispatch(mocker: MockerFixture):
+    return mocker.patch("country_workspace.notifications.handlers.send_bitcaster_event_task.delay")
+
+
 @pytest.fixture
 def job(mocker: MockerFixture, config: Config):
     job = mocker.MagicMock()
@@ -227,6 +232,7 @@ def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture,
         owner=job.owner,
         program=job.program,
         queryset=validation_queryset,
+        validation_scope="batch",
     )
 
 
