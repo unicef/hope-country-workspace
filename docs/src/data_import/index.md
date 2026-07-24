@@ -25,38 +25,57 @@ Optional field mappings and value transformations are described in **[Mapping an
 
 ## What happens during import
 
-Although each data source has its own import process, all imports follow the same high-level workflow.
+Although each data source has its own preparation and processing rules, all imports follow the same general lifecycle.
 
 ```mermaid
 flowchart LR
-    A[Read source data]
-        --> B[Process data]
+    A[Create Batch and read source data]
+        --> B[Prepare beneficiary fields]
         --> C[Create beneficiary records]
-        --> D[Complete import]
+        --> D[Create and resolve relationships]
+        --> E[Apply Transformers and source-specific checks]
+        --> F[Schedule validation if enabled]
+        --> G[Complete Batch]
 ```
 
-Source-specific processing is described in the corresponding pages of the **[Data sources](sources/index.md)** section.
+**Create Batch and read source data** creates a Batch in **Loading** status and reads records from the uploaded workbook or selected external source.
+
+**Prepare beneficiary fields** applies source-specific preparation, normalizes field names, applies selected **[Mapping Importers](mapping_transformers.md#mapping-importers)**, processes supported document fields, applies Program defaults, and removes ignored fields.
+
+**Create beneficiary records** creates Households and Individuals, or People, according to the Program structure. The source data used to create each record is stored for later **[Batch reprocessing](batches.md#reprocessing)**.
+
+**Create and resolve relationships** creates the Household membership, Household roles, and cross-record references supported by the selected source.
+
+**Apply Transformers and source-specific checks** applies selected **[Transformers](mapping_transformers.md#transformers)** after beneficiary records and supported relationships have been created. Additional checks, such as RDI duplicate identity detection, are performed when configured and supported by the source.
+
+**Schedule validation if enabled** creates background validation jobs using the Program's **[validation configuration](../program.md#validation-configuration)**. Unexpected fields are reported as **[Alien Fields](../data_validation/alien_fields.md)** during validation.
+
+**Complete Batch** marks the Batch as **Complete** after source-specific processing has finished and any enabled validation jobs have been scheduled. Validation results may continue to appear after the Batch becomes Complete.
+
+Source-specific preparation, relationships, checks, and failure behavior are described under **[Data sources](sources/index.md)**.
 
 ### Validation after import
 
-By default, imported records are validated after they have been created and processed. Validation results become available when validation finishes. Validation can be disabled when configuring the import.
+**Validate after import** is enabled by default and can be disabled when configuring the import. When enabled, validation is scheduled after all source-specific processing has finished.
 
 ## Import results
 
-After an import completes:
+After source-specific processing finishes, open the created **[Batch](batches.md)** to review the imported records and processing status.
 
-- imported beneficiary records become available for review;
-- a **[Batch](batches.md)** is created to group all imported records and record the import results;
-- if import settings change later, the Batch can be reprocessed without importing the source data again.
+If processing stops before finalization, the Batch can remain **Loading**.
 
-Batch review, validation status, and reprocessing are described in **[Batches](batches.md)**.
+Validation results may continue to appear as background validation jobs finish.
+
+If the Program processing configuration, Mapping Importers, or Transformers change later, the Batch can be reprocessed without requesting or uploading the original source again.
+
+See **[Batches](batches.md)** for Batch review, status, reprocessing, picture import, and cleanup.
 
 ## Supported data sources
 
 Country Workspace currently supports importing beneficiary data from:
 
+- **[RDI (Excel file)](sources/xlsx.md)**;
 - **[Aurora](sources/aurora.md)**;
-- **[Excel files](sources/xlsx.md)**;
 - **[Kobo](sources/kobo.md)**.
 
 An overview of the available sources and their requirements is provided in **[Data sources](sources/index.md)**.

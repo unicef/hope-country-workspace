@@ -95,7 +95,7 @@ Mapping is applied after source-specific preparation and field-name normalizatio
 
 Rules must therefore use the field names produced by the source before mapping:
 
-* RDI rules use the normalized workbook column names;
+* RDI rules use workbook column names after the People prefix has been removed, when applicable, and the names have been normalized;
 * Aurora rules use the prepared Aurora field names;
 * Kobo rules use question names after supported group paths have been removed.
 
@@ -197,7 +197,6 @@ the function returns:
 
 The returned object replaces the current processed fields of the record. Preserve every field that must remain available.
 
-
 ### Verify a Transformer
 
 In **[Staff Administration](../interfaces.md#staff-administration)**, open an existing Transformer and select **Edit & Verify Code**.
@@ -242,7 +241,7 @@ When **[Validate after import](../program.md#validation-configuration)** is enab
 
 A Transformer can also be selected during **[Batch reprocessing](batches.md#reprocessing)**.
 
-Reprocessing first rebuilds the beneficiary fields from the stored source data, applies the selected Mapping Importers and import rules, restores supported relationships, and then applies the selected Transformers.
+Reprocessing first rebuilds the beneficiary fields from the stored source data, applies the selected Mapping Importers and import rules, refreshes supported Household role and collector references, and then applies the selected Transformers.
 
 Validation is scheduled after reprocessing.
 

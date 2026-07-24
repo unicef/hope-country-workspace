@@ -12,8 +12,14 @@ Open **Import Data**, then select the tab for the source where the beneficiary d
 
 Country Workspace currently supports:
 
-- **[RDI (Excel file)](xlsx.md)** — imports data from an Excel workbook;
-- **[Aurora](aurora.md)** — imports beneficiary registrations from Aurora;
-- **[Kobo](kobo.md)** — imports beneficiary registrations from a Kobo project.
+| Source | Input | Program structure | Import behavior |
+| --- | --- | --- | --- |
+| **[RDI (Excel file)](xlsx.md)** | Uploaded workbook | Household-based and people-only | Processes the uploaded workbook |
+| **[Aurora](aurora.md)** | Aurora Registration | Household-based and people-only | Imports records incrementally |
+| **[Kobo](kobo.md)** | Kobo project | Household-based only | Imports submissions incrementally and may continue across several jobs |
 
-Each source has its own requirements and configuration options, described on its source-specific page.
+## Important differences
+
+* RDI performs Batch-level duplicate identity detection during import when an identity field is configured in the relevant DataChecker.
+* Aurora and Kobo do not automatically synchronize changes to previously imported records.
+* Aurora and Kobo can create an empty Batch when no newer records or submissions are available.

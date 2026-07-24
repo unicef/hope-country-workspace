@@ -176,28 +176,13 @@ During processing, the job creates a **[Batch](../batches.md)** and imports the 
 
 ## How Kobo data is processed
 
-Kobo imports the submissions and creates the Batch in the following stages:
+Kobo follows the general **[import lifecycle](../index.md#what-happens-during-import)**.
 
-```mermaid
-flowchart LR
-    A[Read new Kobo submissions]
-        --> B[Download attachments and prepare source fields]
-        --> C[Create Households and Individuals]
-        --> D[Link and post-process records]
-        --> E[Finalize Batch]
-```
+Source preparation includes downloading attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying Mapping Importers, processing supported document questions, applying Program defaults, and removing ignored fields.
 
-**Read new Kobo submissions** requests submissions created after the last successfully imported Kobo submission for the selected Program and project.
+Country Workspace creates one Household for each submission and one Individual for each item in the configured repeat group. The source fields used for each record are stored for later Batch reprocessing.
 
-**Download attachments and prepare source fields** includes downloading Kobo attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying the selected Mapping Importers, processing supported document questions, applying Program defaults, and removing configured ignored fields.
-
-**Create Households and Individuals** creates one Household for each submission and one Individual for each item in the configured Individual repeat group. Individuals are linked to their Household, and Household roles are assigned from the records in that submission. The source fields used to create each record are stored with it and can be reused during later Batch reprocessing.
-
-**Link and post-process records** resolves supported collector references across the Batch and applies the selected Transformers.
-
-**Finalize Batch** schedules background validation jobs when **Validate after import** is enabled, then marks the Batch as **Complete**.
-
-See **[Alien Fields](../../data_validation/alien_fields.md)** for how unexpected source fields are handled when the imported records are validated.
+Household membership and roles are created from each submission. After all submissions have been processed, supported collector references are resolved and the selected Transformers are applied.
 
 ### Incremental import
 
@@ -232,23 +217,19 @@ The Batch remains in **Loading** status while continuation jobs are running. Hou
 
 ### Beneficiary relationships
 
-Each Individual from the configured repeat group is linked directly to the Household created from the same submission.
+Each Individual is linked to the Household created from the same submission.
 
-Country Workspace then assigns the **Head of Household**, **Primary Collector**, and optional **Alternate Collector** from the processed Individual `relationship` and `role` values.
-
-After all submissions have been imported, supported `collector_id` values are resolved against imported `individual_id` and `index_id` values.
+Household roles are assigned as described in **[Household roles](#household-roles)**. Supported cross-record collector references are resolved as described in **[Collector references](#collector-references)**.
 
 ### Duplicate identities
 
 The current Kobo import flow does not perform duplicate identity detection.
 
+Regular validation checks each record separately and does not detect identity collisions between records.
+
 ### Validation after import
 
-When **[Validate after import](#batch-and-validation)** is enabled, Country Workspace schedules background validation jobs after Household roles, collector links, and Transformers have been processed.
-
-Validation starts from the imported Households and includes their related Individuals.
-
-The Batch is marked as **Complete** after the validation jobs are scheduled. Validation results may therefore become available after the Kobo import itself has completed.
+When **[Validate after import](#batch-and-validation)** is enabled, validation is scheduled after Household roles, collector references, and Transformers have been processed.
 
 ## Review the import results
 
@@ -265,8 +246,6 @@ If there were no submissions newer than the last successfully imported Kobo subm
 An existing Kobo Batch can be reprocessed from the source data stored with its active records.
 
 Reprocessing can apply current **[Program defaults](../../program.md#default-values)** and newly selected **[Mapping Importers](../mapping_transformers.md#mapping-importers)** or **[Transformers](../mapping_transformers.md#transformers)** without requesting the submissions from Kobo again.
-
-The generated Kobo `household_id` is preserved during reprocessing.
 
 See **[Reprocessing](../batches.md#reprocessing)** for details.
 

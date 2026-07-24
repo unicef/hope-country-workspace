@@ -20,7 +20,7 @@ Column names, value types, required fields, and validation rules depend on the c
 
 Row 1 must contain the column names. Beneficiary data normally starts on row 2.
 
-Set **First line** to the actual first data row when the workbook contains empty, explanatory, or other non-data rows after the header. For example, if rows 2–4 are empty and the first beneficiary record is on row 5, set **First line** to `5`.
+Set **First line** to the actual first data row when the workbook contains empty, explanatory, or other non-data rows after the header. For example, if rows 2-4 are empty and the first beneficiary record is on row 5, set **First line** to `5`.
 
 ### Record identifiers and Household membership
 
@@ -54,7 +54,7 @@ Images can be embedded directly in the workbook and imported as field values.
 
 Place each image in the row of the corresponding beneficiary and anchor its top-left corner inside the target column. The column must match an image field in the Program's DataChecker, either directly or through a **[Mapping Importer](../mapping_transformers.md#mapping-importers)**. During import, Country Workspace extracts the image and uses it as the value of the corresponding field.
 
-Alternatively, pictures can be added after the workbook has been imported by using the **Import pictures** action on the resulting Batch. See **[Import pictures](../batches.md#import-pictures)**.
+Alternatively, pictures can be added after the workbook has been imported by using the **Import pictures** action on the resulting Batch. See **[Import pictures](../picture_import.md)**.
 
 #### Repeating fieldsets
 
@@ -88,7 +88,6 @@ For household-based Programs, separate Mapping Importers and Transformers can be
 
 Available Mapping Importers are limited to the selected Office and the corresponding Program DataChecker. Available Transformers are limited to the selected Office.
 
-
 ### Workbook settings
 
 [Identifier fields](#record-identifiers-and-household-membership) and **Household label** refer to the original workbook column names, before any Mapping Importer is applied.
@@ -115,26 +114,13 @@ Country Workspace schedules a background import job. During processing, the job 
 
 ## How RDI data is processed
 
-RDI processes the workbook and creates the Batch in the following stages:
+RDI follows the general **[import lifecycle](../index.md#what-happens-during-import)**.
 
-```mermaid
-flowchart LR
-    A[Read workbook]
-        --> B[Prepare source fields]
-        --> C[Create beneficiary records]
-        --> D[Link and post-process records]
-        --> E[Finalize Batch]
-```
+During source preparation, Country Workspace reads the required workbook sheets, normalizes column names, applies the selected Mapping Importers, processes supported document columns, applies Program defaults, and removes ignored fields.
 
-**Prepare source fields** includes normalizing column names, applying the selected Mapping Importer, processing supported document columns, applying Program defaults, and removing ignored fields.
+It creates Households and Individuals, or People, from the workbook rows and stores each original source row for later Batch reprocessing.
 
-**Link and post-process records** includes creating supported links between imported records, applying the selected Transformers, and marking records with duplicate values in the DataChecker identity field.
-
-**Finalize Batch** schedules background validation jobs when **Validate after import** is enabled, then marks the Batch as **Complete**.
-
-The original source row is stored with each created record and can be reused during later **[Batch reprocessing](#reprocess-the-batch)**.
-
-See **[Alien Fields](../../data_validation/alien_fields.md)** for how unexpected source fields are handled during import.
+After supported relationships and Transformers have been processed, RDI performs its source-specific **[duplicate identity check](#duplicate-identities)** before validation is scheduled.
 
 ### Beneficiary relationships
 
@@ -152,13 +138,13 @@ When the same non-empty identity value occurs more than once within the Batch, e
 
 This check covers duplicates within the imported Batch. Duplicate detection against records from other Batches is performed later by HOPE during merge processing.
 
+This Batch-level check is separate from regular record validation.
+
+Batch reprocessing clears existing errors, including duplicate identity errors, but does not run the duplicate identity check again.
+
 ### Validation after import
 
-When **[Validate after import](#batch-and-validation)** is enabled, Country Workspace schedules background validation jobs after relationships, Transformers, and duplicate identity checks have been processed.
-
-For household-based Programs, validation starts from the imported Households and includes their related Individuals. For people-only Programs, the imported People records are validated directly.
-
-The Batch is marked as **Complete** after the validation jobs are scheduled. Validation results may therefore become available after the import itself has completed.
+When **[Validate after import](#batch-and-validation)** is enabled, validation is scheduled after relationships, Transformers, and the duplicate identity check have been processed.
 
 ## Review the import results
 
@@ -171,6 +157,12 @@ When the Batch status becomes **Complete**, open the created **[Batch](../batche
 An existing Batch can be reprocessed from the source data stored with its active records. Reprocessing can apply current **[Program defaults](../../program.md#default-values)** and newly selected **[Mapping Importers](../mapping_transformers.md#mapping-importers)** or **[Transformers](../mapping_transformers.md#transformers)** without uploading the workbook again.
 
 See **[Reprocessing](../batches.md#reprocessing)** for details.
+
+### Failed imports
+
+Workbook reading and record creation run in one transaction. If either step fails, the Batch and its created records are rolled back.
+
+If processing fails later during post-processing or validation scheduling, the created Batch can remain in **Loading** status.
 
 ## Troubleshooting
 

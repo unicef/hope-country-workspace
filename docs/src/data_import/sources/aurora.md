@@ -185,30 +185,13 @@ During processing, the job creates a **[Batch](../batches.md)** and imports the 
 
 ## How Aurora data is processed
 
-Aurora imports records and creates the Batch in the following stages:
+Aurora follows the general **[import lifecycle](../index.md#what-happens-during-import)**.
 
-```mermaid
-flowchart LR
-    A[Read Aurora records]
-        --> B[Decrypt and prepare source fields]
-        --> C[Create beneficiary records]
-        --> D[Link and post-process records]
-        --> E[Finalize Batch]
-```
+Source preparation includes decrypting protected field and file data when required, separating Household and Individual groups, combining them with shared fields, flattening supported nested values, normalizing field names, applying Mapping Importers, processing supported document fields, applying Program defaults, and removing ignored fields.
 
-**Read Aurora records** retrieves the selected Registration records from the Aurora API and skips records that were already imported successfully.
+Country Workspace then creates one Person for each Aurora record in a people-only Program, or one Household and its supported Individuals in a household-based Program.
 
-**Decrypt and prepare source fields** includes decrypting protected field and file data when required, flattening supported nested values, normalizing field names, applying the selected Mapping Importers, processing supported document fields, applying Program defaults, and removing configured ignored fields. For household-based Programs, Country Workspace also separates the Household and Individual groups and combines them with the shared fields.
-
-**Create beneficiary records** creates one Person for each Aurora record in a people-only Program. For a household-based Program, it creates one Household and the Individuals found in the supported Individual group.
-
-**Link and post-process records** resolves supported collector references across the Batch and applies the selected Transformers.
-
-**Finalize Batch** schedules background validation jobs when **Validate after import** is enabled, then marks the Batch as **Complete**.
-
-The prepared source data used to create each beneficiary record is stored with it for later processing.
-
-See **[Alien Fields](../../data_validation/alien_fields.md)** for how unexpected source fields are handled when the imported records are validated.
+The prepared source data is stored with each beneficiary record. After all records have been imported, supported collector references are resolved and the selected Transformers are applied.
 
 ### Incremental import
 
@@ -257,13 +240,11 @@ People-only imports create People records without Household relationships.
 
 The current Aurora import flow does not perform duplicate identity detection.
 
+Regular validation checks each record separately and does not detect identity collisions between records.
+
 ### Validation after import
 
-When **[Validate after import](#batch-and-validation)** is enabled, Country Workspace schedules background validation jobs after collector links and Transformers have been processed.
-
-For household-based Programs, validation starts from the imported Households and includes their related Individuals. For people-only Programs, the imported People records are validated directly.
-
-The Batch is marked as **Complete** after the validation jobs are scheduled. Validation results may therefore become available after the Aurora import itself has completed.
+When **[Validate after import](#batch-and-validation)** is enabled, validation is scheduled after collector references and Transformers have been processed.
 
 ## Review the import results
 
