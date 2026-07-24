@@ -27,8 +27,6 @@ Validation may continue in background jobs after a Batch becomes **Complete**. V
 
 A Batch can remain in **Loading** when an import fails before final processing or while a source-specific continuation job is running. See the corresponding page under **[Data sources](sources/index.md)** for source-specific behavior.
 
-## Batch actions
-
 Available actions depend on the user's permissions.
 
 ## Reprocessing
@@ -115,8 +113,6 @@ ID-987654.jpg
 
 Country Workspace removes the file extension and compares the remaining filename with the selected field value. If exactly one eligible record has that value, the picture is written to the selected **Target image field**, such as `Photo`.
 
-Leading and trailing spaces are ignored, and matching is not case-sensitive. For example, these values are treated as the same key:
-
 Leading and trailing spaces are ignored, and matching is not case-sensitive. Here, `␠` represents a space:
 
 ```text
@@ -134,6 +130,7 @@ Each filename without its extension must correspond to the selected source-data 
 ```text
 1.jpg
 2.png
+300.png
 1042.jpeg
 ```
 
