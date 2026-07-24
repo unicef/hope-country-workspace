@@ -179,6 +179,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     "MAILJET_SECRET_KEY": (str, "", "", False, "Mailjet API secret key"),
     "DEDUP_API_URL": (str, "", "", False, "Dedup Engine API base URL"),
     "DEDUP_API_TOKEN": (str, "", "", False, "Dedup Engine API token"),
+    "APP_BASE_URL": (str, "", "", False, "Base URL of this application (used to build absolute callback URLs)"),
     "EMAIL_BACKEND": (
         str,
         "anymail.backends.mailjet.EmailBackend",

@@ -1,0 +1,18 @@
+{% extends "workspace/actions/base.html" %}
+{% load i18n workspace_urls %}
+{% block action-content %}
+    <p>
+        Configure the maximum acceptable share of duplicate findings before beneficiaries are pushed to HOPE.
+    </p>
+    <div>
+        <form method="post" id="create-rdp-push-threshold-form">
+            <div class="submit-row">
+                <input type="submit" value="{% trans 'Create RDP and push' %}" class="default" name="_confirm_push" />
+            </div>
+            {% csrf_token %}
+            <table>
+                {{ form.as_table }}
+            </table>
+        </form>
+    </div>
+{% endblock action-content %}

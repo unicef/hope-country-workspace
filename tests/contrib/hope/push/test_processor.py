@@ -678,7 +678,7 @@ def test_dedup_run_creates_new_set_when_de_can_create(
 
     make_client.assert_called_once_with(dedup_processor.group_reference_id, deduplication_set_id=str(ds_id))
     client.can_create_deduplication_set.assert_called_once_with()
-    deduplicate.assert_called_once_with(client, ds_id)
+    deduplicate.assert_called_once_with(client, ds_id, notification_url=None)
     client.process.assert_not_called()
     assert dedup_processor.total["images_sent"] == 3
     assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
@@ -919,3 +919,61 @@ def test_deduplicate_process_result(
         assert err_contains(dedup_processor.total["errors"], "request failed. boom")
     else:
         assert dedup_processor.total["errors"] == []
+
+
+def test_dedup_run_passes_notification_url_to_deduplicate(
+    mocker: MockerFixture,
+    dedup_processor: DedupProcessor,
+    dedup_api_cm,
+) -> None:
+    from uuid import uuid4
+
+    ds_id = uuid4()
+    dedup_processor.rdp.deduplication_set_id = ds_id
+
+    client = mocker.MagicMock()
+    client.can_create_deduplication_set.return_value = True
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    deduplicate = mocker.patch.object(dedup_processor, "deduplicate", return_value=0)
+
+    dedup_processor.run(notification_url="https://cw.example.org/callback/token/")
+
+    deduplicate.assert_called_once_with(client, ds_id, notification_url="https://cw.example.org/callback/token/")
+
+
+def test_dedup_run_without_notification_url_passes_none(
+    mocker: MockerFixture,
+    dedup_processor: DedupProcessor,
+    dedup_api_cm,
+) -> None:
+    from uuid import uuid4
+
+    ds_id = uuid4()
+    dedup_processor.rdp.deduplication_set_id = ds_id
+
+    client = mocker.MagicMock()
+    client.can_create_deduplication_set.return_value = True
+    mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
+    deduplicate = mocker.patch.object(dedup_processor, "deduplicate", return_value=0)
+
+    dedup_processor.run()
+
+    deduplicate.assert_called_once_with(client, ds_id, notification_url=None)
+
+
+def test_create_deduplication_set_passes_notification_url_to_client(
+    mocker: MockerFixture,
+    dedup_processor: DedupProcessor,
+) -> None:
+    from uuid import uuid4
+
+    client = mocker.MagicMock()
+    ds_id = uuid4()
+    client.create_deduplication_set.return_value = {"id": str(ds_id)}
+
+    result = dedup_processor.create_deduplication_set(
+        client, ds_id, notification_url="https://cw.example.org/callback/token/"
+    )
+
+    assert result is True
+    client.create_deduplication_set.assert_called_once_with(notification_url="https://cw.example.org/callback/token/")

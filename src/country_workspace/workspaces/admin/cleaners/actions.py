@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponse
@@ -6,8 +6,8 @@ from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.hope.forms import CreateRDPForm
-from country_workspace.contrib.hope.push import CreateRdpConfig, create_rdp_core
+from country_workspace.contrib.hope.forms import CreateRDPForm, CreateRDPushThresholdForm
+from country_workspace.contrib.hope.push import CreateRdpConfig, create_and_push_rdp_core, create_rdp_core
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
@@ -239,6 +239,149 @@ def calculate_checksum(
     return redirect(".")
 
 
+def _post_selected_actions(request: HttpRequest) -> list[str]:
+    post = request.POST
+    if hasattr(post, "getlist"):
+        return post.getlist("_selected_action")
+    value = post.get("_selected_action", [])
+    if isinstance(value, list):
+        return value
+    return [value] if value else []
+
+
+class _CreateRdpJobSpec(NamedTuple):
+    program: Any
+    batch_name: str
+    push_to_hope: bool
+    push_thresholds: "dict[str, Any] | None" = None
+
+
+def _queue_create_rdp_job(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[Beneficiary]",
+    spec: _CreateRdpJobSpec,
+) -> None:
+    config: CreateRdpConfig = {
+        "pks": list(queryset.values_list("pk", flat=True)),
+        "master_detail": spec.program.beneficiary_group.master_detail,
+        "batch_name": spec.batch_name or rdi_name_default(),
+        "country_office_id": spec.program.country_office.id,
+        "program_id": spec.program.id,
+        "pushed_by_id": request.user.id,
+    }
+    if spec.push_to_hope:
+        thresholds = spec.push_thresholds or {}
+        config["max_dedup_findings_percent"] = thresholds.get("max_dedup_findings_percent") or 0
+        description = "Create RDP and push to HOPE"
+        action = fqn(create_and_push_rdp_core)
+        success_message = "RDP creation and push scheduled"
+    else:
+        description = create_rdp.short_description
+        action = fqn(create_rdp_core)
+        success_message = "RDP creation scheduled"
+    job = AsyncJob.objects.create(
+        description=description,
+        type=AsyncJob.JobType.TASK,
+        owner=request.user,
+        action=action,
+        program=spec.program,
+        config=config,
+    )
+    job.queue()
+    model_admin.message_user(request, success_message, messages.SUCCESS)
+
+
+def _create_rdp_push_threshold_context(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: HttpRequest,
+    *,
+    form: CreateRDPushThresholdForm,
+) -> dict[str, Any]:
+    return model_admin.get_common_context(
+        request,
+        title="Create RDP and push to HOPE",
+        form=form,
+    )
+
+
+def _handle_confirm_push(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[Beneficiary]",
+    program: Any,
+    show_push_option: bool,
+) -> "HttpResponse | None":
+    if not show_push_option:
+        model_admin.message_user(request, "You do not have permission to push RDP to HOPE.", messages.ERROR)
+        return None
+    threshold_form = CreateRDPushThresholdForm(request.POST)
+    if threshold_form.is_valid():
+        _queue_create_rdp_job(
+            model_admin,
+            request,
+            queryset,
+            _CreateRdpJobSpec(
+                program=program,
+                batch_name=threshold_form.cleaned_data["batch_name"],
+                push_to_hope=True,
+                push_thresholds=threshold_form.cleaned_data,
+            ),
+        )
+        return redirect("workspace:workspaces_countryrdp_changelist")
+    ctx = _create_rdp_push_threshold_context(model_admin, request, form=threshold_form)
+    return render(request, "workspace/actions/create_rdp_push_threshold.html", ctx)
+
+
+class _CreateRdpSubmitContext(NamedTuple):
+    program: Any
+    form: CreateRDPForm
+    show_push_option: bool
+
+
+def _handle_create_rdp_submit(
+    model_admin: "BeneficiaryBaseAdmin",
+    request: HttpRequest,
+    queryset: "QuerySet[Beneficiary]",
+    ctx: _CreateRdpSubmitContext,
+) -> HttpResponse:
+    form = ctx.form
+    push_to_hope = form.cleaned_data.get("push_to_hope", False)
+    if not push_to_hope:
+        _queue_create_rdp_job(
+            model_admin,
+            request,
+            queryset,
+            _CreateRdpJobSpec(
+                program=ctx.program,
+                batch_name=form.cleaned_data["batch_name"],
+                push_to_hope=False,
+            ),
+        )
+        return redirect("workspace:workspaces_countryrdp_changelist")
+
+    if not ctx.show_push_option:
+        model_admin.message_user(
+            request,
+            "You do not have permission to push RDP to HOPE.",
+            messages.ERROR,
+        )
+        page_ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
+        return render(request, "workspace/actions/create_rdp.html", page_ctx)
+
+    threshold_form = CreateRDPushThresholdForm(
+        initial={
+            "action": form.cleaned_data["action"],
+            "select_across": form.cleaned_data["select_across"],
+            "_selected_action": _post_selected_actions(request),
+            "batch_name": form.cleaned_data.get("batch_name", ""),
+            "push_to_hope": "on",
+        },
+    )
+    page_ctx = _create_rdp_push_threshold_context(model_admin, request, form=threshold_form)
+    return render(request, "workspace/actions/create_rdp_push_threshold.html", page_ctx)
+
+
 @admin.action(description="Create RDP", permissions=["create_rdp"])
 def create_rdp(
     model_admin: "BeneficiaryBaseAdmin",
@@ -247,36 +390,33 @@ def create_rdp(
 ) -> HttpResponse:
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
+
     program = model_admin.get_selected_program(request)
+    show_push_option = model_admin.has_push_rdp_to_hope_permission(request) and program.biometric_deduplication_enabled
+
+    if request.method == "POST" and "_confirm_push" in request.POST:
+        response = _handle_confirm_push(model_admin, request, queryset, program, show_push_option)
+        if response is not None:
+            return response
+
     if request.method == "POST" and "_create" in request.POST:
-        if (form := CreateRDPForm(request.POST)).is_valid():
-            config: CreateRdpConfig = {
-                "pks": list(queryset.values_list("pk", flat=True)),
-                "master_detail": program.beneficiary_group.master_detail,
-                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
-                "country_office_id": program.country_office.id,
-                "program_id": program.id,
-                "pushed_by_id": request.user.id,
-            }
-            job = AsyncJob.objects.create(
-                description=create_rdp.short_description,
-                type=AsyncJob.JobType.TASK,
-                owner=request.user,
-                action=fqn(create_rdp_core),
-                program=program,
-                config=config,
+        form = CreateRDPForm(request.POST, show_push_option=show_push_option)
+        if form.is_valid():
+            return _handle_create_rdp_submit(
+                model_admin,
+                request,
+                queryset,
+                _CreateRdpSubmitContext(program=program, form=form, show_push_option=show_push_option),
             )
-            job.queue()
-            model_admin.message_user(request, "RDP creation scheduled", messages.SUCCESS)
-            return redirect("workspace:workspaces_countryrdp_changelist")
-    else:
-        form = CreateRDPForm(
-            initial={
-                "action": request.POST.get("action", ""),
-                "select_across": request.POST.get("select_across", False),
-                "_selected_action": request.POST.getlist("_selected_action"),
-            },
-        )
+
+    form = CreateRDPForm(
+        initial={
+            "action": request.POST.get("action", ""),
+            "select_across": request.POST.get("select_across", False),
+            "_selected_action": _post_selected_actions(request),
+        },
+        show_push_option=show_push_option,
+    )
     ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
     return render(request, "workspace/actions/create_rdp.html", ctx)
 

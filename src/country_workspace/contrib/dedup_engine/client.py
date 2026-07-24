@@ -69,7 +69,7 @@ class Client:
         except RequestException as exc:
             raise self._err(operation, exc, getattr(exc, "response", None), error_cls=RemoteUnavailableError) from exc
 
-    def create_deduplication_set(self) -> response.CreatedDeduplicationSet:
+    def create_deduplication_set(self, notification_url: str | None = None) -> response.CreatedDeduplicationSet:
         collection = resource.DeduplicationSetCollection(
             self.session,
             self.api_root.deduplication_sets,
@@ -77,6 +77,9 @@ class Client:
         payload: request.CreateDeduplicationSet = {"reference_pk": self.group_reference_id}
         if self.deduplication_set_id:
             payload["id"] = self.deduplication_set_id
+        if notification_url:
+            payload["notification_url"] = notification_url
+            payload["notify"] = True
 
         result = self._request(
             "create_deduplication_set",

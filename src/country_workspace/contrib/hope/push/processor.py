@@ -370,7 +370,7 @@ class DedupProcessor(ProcessorBase):
         self.rdp = rdp
         self.group_reference_id = rdp.program.unicef_id
 
-    def run(self) -> None:
+    def run(self, notification_url: str | None = None) -> None:
         ds_id = self.rdp.deduplication_set_id
         self.total |= {
             "rdp_id": self.rdp.pk,
@@ -388,7 +388,7 @@ class DedupProcessor(ProcessorBase):
             if can_create is None:
                 return
             if can_create:
-                self.total["images_sent"] = self.deduplicate(client, ds_id)
+                self.total["images_sent"] = self.deduplicate(client, ds_id, notification_url=notification_url)
                 return
             self.run_remote("process_existing_deduplication_set", client.process)
 
@@ -402,9 +402,14 @@ class DedupProcessor(ProcessorBase):
             if isinstance(photo, str) and (photo := photo.strip()):
                 yield {"reference_pk": str(pk), "filename": photo}
 
-    def create_deduplication_set(self, client: Any, deduplication_set_id: UUID) -> bool:
+    def create_deduplication_set(
+        self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None
+    ) -> bool:
         """Create a remote deduplication set using the CW-owned UUID."""
-        payload = self.try_remote("create_deduplication_set", client.create_deduplication_set)
+        payload = self.try_remote(
+            "create_deduplication_set",
+            lambda: client.create_deduplication_set(notification_url=notification_url),
+        )
         if payload is None:
             return False
 
@@ -437,9 +442,9 @@ class DedupProcessor(ProcessorBase):
 
         return True, images_sent
 
-    def deduplicate(self, client: Any, deduplication_set_id: UUID) -> int:
+    def deduplicate(self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None) -> int:
         """Create, upload, and process a DedupEngine set; return sent images count."""
-        if not self.create_deduplication_set(client, deduplication_set_id):
+        if not self.create_deduplication_set(client, deduplication_set_id, notification_url=notification_url):
             return 0
 
         uploaded, images_sent = self.upload_images(client)

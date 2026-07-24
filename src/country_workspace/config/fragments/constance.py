@@ -1,5 +1,5 @@
 from .app import AURORA_API_TOKEN, AURORA_API_URL, HOPE_API_TOKEN, HOPE_API_URL, NEW_USER_DEFAULT_GROUP
-from .dedup import DEDUP_API_URL, DEDUP_API_TOKEN
+from .dedup import DEDUP_API_URL, DEDUP_API_TOKEN, APP_BASE_URL
 from .kobo import KOBO_API_TOKEN, KOBO_KF_URL, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID
 from .mail import MAILJET_API_KEY, MAILJET_SECRET_KEY
 
@@ -68,6 +68,7 @@ CONSTANCE_CONFIG = {
     "MAILJET_SECRET_KEY": (MAILJET_SECRET_KEY, "Mailjet secret key", "write_only_text_input"),
     "DEDUP_API_URL": (DEDUP_API_URL, "Dedup Engine server address", str),
     "DEDUP_API_TOKEN": (DEDUP_API_TOKEN, "Dedup Engine API access token", "write_only_text_input"),
+    "APP_BASE_URL": (APP_BASE_URL, "Current server address", str),
     "CHUNK_SIZE_FOR_VALIDATION_TASK": (500, "Number of records to process per chunk in validation tasks", int),
     "PICTURE_IMPORT_MAX_ZIP_UPLOAD_MB": (
         20,
@@ -173,6 +174,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "NEW_USER_IS_STAFF",
         "NEW_USER_DEFAULT_GROUP",
         "CONCURRENCY_GUARD",
+        "APP_BASE_URL",
     ),
 }
 
