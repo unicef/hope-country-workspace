@@ -606,6 +606,10 @@ def test_create_individual_creates_record(
 ) -> None:
     batch = mocker.MagicMock()
     batch.pk = 5
+    batch.program.individual_checker.split_data.return_value = {
+        "fields": {"x": "y"},
+        "files": {},
+    }
     household = mocker.MagicMock() if has_household else None
 
     processor = mocker.MagicMock(return_value={"x": "y"})
@@ -628,6 +632,7 @@ def test_create_individual_creates_record(
         household=household,
         originating_id=originating_id,
         flex_fields={"x": "y"},
+        flex_files=None,
         raw_data=record,
     )
     assert result is create_individual_mock.return_value

@@ -250,6 +250,10 @@ def test_process_households(
     job.file.name = "uploads/rdi.xlsx"
     batch = mocker.MagicMock()
     batch.import_date.timestamp.return_value = 1_234_567_890.123
+    batch.program.household_checker.split_data.return_value = {
+        "fields": {"processed": "value"},
+        "files": {},
+    }
 
     result = process_households(household_sheet, job, batch, config)
 
@@ -268,7 +272,8 @@ def test_process_households(
             mocker.call(
                 batch_id=batch.pk,
                 name=str(row[config["household_label"]]),
-                flex_fields=processor_mock.return_value,
+                flex_fields={"processed": "value"},
+                flex_files=None,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}#1234567890123",
             )
@@ -316,6 +321,10 @@ def test_process_beneficiaries_with_households(
     )
     batch_mock = mocker.MagicMock(name="batch")
     batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    batch_mock.program.individual_checker.split_data.return_value = {
+        "fields": {"processed": "value"},
+        "files": {},
+    }
 
     result = process_beneficiaries(
         individual_sheet,
@@ -340,7 +349,8 @@ def test_process_beneficiaries_with_households(
                 batch_id=batch_mock.pk,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["household_id_column"]]],
-                flex_fields=processor_mock.return_value,
+                flex_fields={"processed": "value"},
+                flex_files=None,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}#1234567890123",
             )

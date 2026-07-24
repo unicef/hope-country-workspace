@@ -453,7 +453,9 @@ def test_create_household_passes_mapping_id(mocker: MockerFixture, config: Confi
     )
 
     build_processor_mock.assert_called_once_with(batch_mock.program, 77)
-    batch_mock.program.household_checker.split_data.assert_called_once_with({})
+    batch_mock.program.household_checker.split_data.assert_called_once()
+    split_arg = batch_mock.program.household_checker.split_data.call_args.args[0]
+    assert split_arg["household_id"] == 1
 
 
 @pytest.mark.django_db
