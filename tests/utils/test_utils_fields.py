@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 import msgpack
@@ -18,7 +19,9 @@ from country_workspace.utils.flex_fields import (
     split_flex_payload,
     merge_flex_payload,
     split_options,
+    to_storage_flex_file_value,
     to_public_flex_file_value,
+    get_obj_checksum,
 )
 
 
@@ -242,3 +245,47 @@ def test_split_flex_payload_ignores_empty_file_values() -> None:
     text, files = split_flex_payload(checker, payload)
     assert text == {"name": "John"}
     assert files == {}
+
+
+def test_split_flex_payload_without_checker_returns_payload_as_text() -> None:
+    payload = {"name": "John", "photo": "data:image/png;base64,AAA"}
+    text, files = split_flex_payload(None, payload)
+    assert text == payload
+    assert files == {}
+
+
+@pytest.mark.parametrize("value", [b"bytes", 123, None, {"k": "v"}])
+def test_to_storage_flex_file_value_non_string_passthrough(value) -> None:
+    assert to_storage_flex_file_value(value) is value
+
+
+def test_to_storage_flex_file_value_invalid_data_uri_passthrough() -> None:
+    value = "not-a-data-uri"
+    assert to_storage_flex_file_value(value) == value
+
+
+def test_to_storage_flex_file_value_invalid_base64_passthrough() -> None:
+    value = "data:image/png;base64,!!invalid!!"
+    assert to_storage_flex_file_value(value) == value
+
+
+def test_to_storage_and_to_public_roundtrip_for_data_uri() -> None:
+    original = "data:image/png;base64,QUJD"
+    stored = to_storage_flex_file_value(original)
+    assert isinstance(stored, dict)
+    assert stored.get("__bin_value__") is True
+    assert stored.get("mimetype") == "image/png"
+    assert stored.get("content") == b"ABC"
+    assert to_public_flex_file_value(stored) == original
+
+
+def test_to_public_flex_file_value_passthrough_for_invalid_shape() -> None:
+    value = {"__bin_value__": True, "mimetype": "image/png", "content": "not-bytes"}
+    assert to_public_flex_file_value(value) == value
+
+
+def test_get_obj_checksum_uses_full_flex_files_content() -> None:
+    common_prefix = b"A" * 10000
+    obj1 = SimpleNamespace(flex_fields={"x": 1}, flex_files=common_prefix + b"1", removed=False)
+    obj2 = SimpleNamespace(flex_fields={"x": 1}, flex_files=common_prefix + b"2", removed=False)
+    assert get_obj_checksum(obj1) != get_obj_checksum(obj2)
