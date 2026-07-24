@@ -377,6 +377,10 @@ def test_process_beneficiaries_people_only(
     job_mock.file.name = "uploads/rdi.xlsx"
     batch_mock = mocker.MagicMock(name="batch")
     batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    batch_mock.program.individual_checker.split_data.return_value = {
+        "fields": {"processed": "value"},
+        "files": {},
+    }
 
     result = process_beneficiaries(
         people_sheet,
@@ -403,7 +407,8 @@ def test_process_beneficiaries_people_only(
                 batch_id=batch_mock.pk,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
-                flex_fields=processor_mock.return_value,
+                flex_fields={"processed": "value"},
+                flex_files=None,
                 raw_data=row,
                 originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}#1234567890123",
             )

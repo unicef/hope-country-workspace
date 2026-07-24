@@ -45,6 +45,7 @@ def test_apply_transformer_updates_changed_records_only(mocker: MockerFixture) -
 
     changed = mocker.MagicMock()
     changed.flex_fields = {"name": "Jane"}
+    changed.apply_flex_payload.return_value = {"flex_fields", "flex_files"}
 
     qs = mocker.MagicMock()
     qs.only.return_value.iterator.return_value = iter([unchanged, changed])
@@ -65,15 +66,21 @@ def test_apply_transformer_updates_changed_records_only(mocker: MockerFixture) -
 
     unchanged.save.assert_not_called()
 
-    assert changed.flex_fields == {"name": "Jane", "role": "PRIMARY"}
+    changed.apply_flex_payload.assert_called_once_with(
+        {"name": "Jane", "role": "PRIMARY"},
+        preserve_existing_files=False,
+    )
     assert changed.last_checked is None
     assert changed.errors == {}
-    changed.save.assert_called_once_with(update_fields=("flex_fields", "last_checked", "errors"))
+    changed.save.assert_called_once()
+    changed_update_fields = changed.save.call_args.kwargs["update_fields"]
+    assert set(changed_update_fields) == {"flex_fields", "flex_files", "last_checked", "errors"}
 
 
 def test_apply_transformer_handles_empty_flex_fields(mocker: MockerFixture) -> None:
     record = mocker.MagicMock()
     record.flex_fields = None
+    record.apply_flex_payload.return_value = {"flex_fields"}
 
     qs = mocker.MagicMock()
     qs.only.return_value.iterator.return_value = iter([record])
@@ -84,8 +91,10 @@ def test_apply_transformer_handles_empty_flex_fields(mocker: MockerFixture) -> N
     assert _apply_transformer(qs, transformer) == 1
 
     transformer.apply.assert_called_once_with({})
-    assert record.flex_fields == {"defaulted": True}
-    record.save.assert_called_once_with(update_fields=("flex_fields", "last_checked", "errors"))
+    record.apply_flex_payload.assert_called_once_with({"defaulted": True}, preserve_existing_files=False)
+    record.save.assert_called_once()
+    record_update_fields = record.save.call_args.kwargs["update_fields"]
+    assert set(record_update_fields) == {"flex_fields", "last_checked", "errors"}
 
 
 def test_apply_batch_transformers_applies_households_and_individuals_for_master_detail(

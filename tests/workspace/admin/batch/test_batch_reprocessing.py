@@ -170,14 +170,20 @@ def test_apply_import_processor_skips_records_without_raw_data(mocker) -> None:
 def test_apply_import_processor_updates_record_and_preserves_generated_fields(mocker) -> None:
     record = mocker.MagicMock(raw_data={"external": "value"})
     record._preserved_flex_field_0 = 123
+    record.apply_flex_payload.return_value = {"flex_fields", "flex_files"}
     processor = mocker.MagicMock(return_value={"mapped": "value"})
 
     assert _apply_import_processor(record, processor, {"household_id": "_preserved_flex_field_0"}) is True
 
-    assert record.flex_fields == {"mapped": "value", "household_id": 123}
+    record.apply_flex_payload.assert_called_once_with(
+        {"mapped": "value", "household_id": 123},
+        preserve_existing_files=False,
+    )
     assert record.last_checked is None
     assert record.errors == {}
-    record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors"])
+    record.save.assert_called_once()
+    update_fields = record.save.call_args.kwargs["update_fields"]
+    assert set(update_fields) == {"flex_fields", "flex_files", "last_checked", "errors"}
 
 
 def test_apply_import_processor_recomputes_collector_identity_hash(mocker) -> None:

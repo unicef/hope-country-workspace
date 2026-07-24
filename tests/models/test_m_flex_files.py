@@ -2,7 +2,7 @@ from django import forms
 
 import pytest
 
-from country_workspace.utils.flex_fields import Base64ImageField, decode_flex_files_blob
+from country_workspace.utils.flex_fields import Base64ImageField
 
 
 @pytest.mark.django_db
@@ -26,10 +26,12 @@ def test_save_moves_file_fields_to_flex_files() -> None:
         household=household,
         flex_fields={"full_name": "Jane Doe", "photo": payload},
     )
+    update_fields = individual.apply_flex_payload(individual.flex_fields)
+    individual.save(update_fields=update_fields)
 
     individual.refresh_from_db()
     assert individual.flex_fields == {"full_name": "Jane Doe"}
-    assert decode_flex_files_blob(individual.flex_files) == {"photo": payload}
+    assert individual.flex_files is not None
     assert individual.get_flex_value("photo") == payload
 
 
@@ -54,6 +56,8 @@ def test_validate_with_checker_reads_file_fields_from_flex_files() -> None:
         household=household,
         flex_fields={"full_name": "Jane Doe", "photo": payload},
     )
+    update_fields = individual.apply_flex_payload(individual.flex_fields)
+    individual.save(update_fields=update_fields)
 
     assert individual.validate_with_checker()
     individual.refresh_from_db()
@@ -83,6 +87,8 @@ def test_save_only_text_field_preserves_existing_file() -> None:
         household=household,
         flex_fields={"full_name": "Jane Doe", "photo": payload},
     )
+    update_fields = individual.apply_flex_payload(individual.flex_fields)
+    individual.save(update_fields=update_fields)
     individual.refresh_from_db()
 
     # Update only a text field; the file value must survive the save.
