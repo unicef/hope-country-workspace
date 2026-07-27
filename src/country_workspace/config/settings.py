@@ -56,6 +56,7 @@ INSTALLED_APPS = (
     "country_workspace.workspaces.apps.Config",
     "country_workspace.versioning",
     "country_workspace.cache",
+    "country_workspace.notifications",
     # these should be optional in the future
     "country_workspace.contrib.hope.apps.Config",
     "country_workspace.contrib.aurora.apps.Config",
@@ -150,6 +151,15 @@ CACHES = {
         },
     },
 }
+
+# Bitcaster Configuration
+BITCASTER_API_URL = env("BITCASTER_API_URL")
+BITCASTER_ENABLED = env("BITCASTER_ENABLED")
+BITCASTER_API_KEY = env("BITCASTER_API_KEY")
+BITCASTER_ORGANIZATION_SLUG = env("BITCASTER_ORGANIZATION_SLUG")
+BITCASTER_PROJECT_SLUG = env("BITCASTER_PROJECT_SLUG")
+BITCASTER_APPLICATION_SLUG = env("BITCASTER_APPLICATION_SLUG")
+
 SELECT2_CACHE_BACKEND = "select2"
 
 X_FRAME_OPTIONS = "SAMEORIGIN"

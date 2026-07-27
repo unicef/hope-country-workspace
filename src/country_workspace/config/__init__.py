@@ -182,6 +182,7 @@ CONFIG: "dict[str, ConfigItem]" = {
     "MAILJET_SECRET_KEY": (str, "", "", False, "Mailjet API secret key"),
     "DEDUP_API_URL": (str, "", "", False, "Dedup Engine API base URL"),
     "DEDUP_API_TOKEN": (str, "", "", False, "Dedup Engine API token"),
+    "APP_BASE_URL": (str, "", "", False, "Base URL of this application (used to build absolute callback URLs)"),
     "EMAIL_BACKEND": (
         str,
         "anymail.backends.mailjet.EmailBackend",
@@ -200,6 +201,12 @@ CONFIG: "dict[str, ConfigItem]" = {
     "IGNORE_UNSUPPORTED_FEATURES": (bool, False, True),
     "REQUESTS_TIMEOUT": (int, 30, 30),
     "DEBUG_API_REQUESTS": (bool, False, False),
+    "BITCASTER_API_URL": (str, "", "", False, "Bitcaster API URL"),
+    "BITCASTER_ENABLED": (bool, False, False, False, "Enable Bitcaster notifications"),
+    "BITCASTER_API_KEY": (str, "", "", False, "Bitcaster API key"),
+    "BITCASTER_ORGANIZATION_SLUG": (str, "unicef", "unicef", False, "Bitcaster organization slug"),
+    "BITCASTER_PROJECT_SLUG": (str, "hope", "hope", False, "Bitcaster project slug"),
+    "BITCASTER_APPLICATION_SLUG": (str, "", "country-workspace", False, "Bitcaster application slug"),
 }
 
 env = SmartEnv(**CONFIG)

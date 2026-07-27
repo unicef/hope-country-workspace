@@ -8,14 +8,16 @@ from django.test import RequestFactory
 from pytest_mock import MockerFixture
 
 from country_workspace.workspaces.admin.cleaners.actions import (
-    mass_update,
-    regex_update,
+    _handle_confirm_push,
+    _post_selected_actions,
     bulk_update_export,
     calculate_checksum,
-    create_rdp,
-    validate_records,
     concatenate_field,
+    create_rdp,
+    mass_update,
     name_parser_action,
+    regex_update,
+    validate_records,
 )
 from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 
@@ -162,6 +164,44 @@ def test_create_rdp_redirects_when_queryset_empty(mock_redirect, mock_admin, moc
 
     mock_redirect.assert_called_once_with(".")
     assert result == mock_redirect.return_value
+
+
+def test_create_rdp_rejects_push_without_permission(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+):
+    mock_request.method = "POST"
+    mock_request.POST = {"_create": True}
+    mock_admin.has_push_rdp_to_hope_permission.return_value = False
+    program = MagicMock()
+    program.beneficiary_group.master_detail = True
+    program.country_office.id = 1
+    program.id = 2
+    mock_admin.get_selected_program.return_value = program
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render",
+        return_value=HttpResponse(),
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = True
+    mock_form.cleaned_data = {"batch_name": "Batch", "push_to_hope": True}
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.CreateRDPForm",
+        return_value=mock_form,
+    )
+    mock_async_job = mocker.patch("country_workspace.workspaces.admin.cleaners.actions.AsyncJob")
+
+    result = create_rdp(mock_admin, mock_request, non_empty_queryset)
+
+    assert result == mock_render.return_value
+    mock_admin.message_user.assert_called_once_with(
+        mock_request,
+        "You do not have permission to push RDP to HOPE.",
+        messages.ERROR,
+    )
+    mock_async_job.objects.create.assert_not_called()
 
 
 def test_validate_records_returns_none_when_queryset_empty(mock_admin, mock_request):
@@ -438,3 +478,124 @@ def test_name_parser_action_renders_initial_form(mock_admin, mock_request):
         assert call_kwargs["initial"]["action"] == "name_parser_action"
         # Should render template
         mock_render.assert_called_once()
+
+
+def test_post_selected_actions_from_plain_dict_list() -> None:
+    request = MagicMock()
+    request.POST = {"_selected_action": ["1", "2"]}
+
+    assert _post_selected_actions(request) == ["1", "2"]
+
+
+def test_post_selected_actions_from_plain_dict_scalar() -> None:
+    request = MagicMock()
+    request.POST = {"_selected_action": "42"}
+
+    assert _post_selected_actions(request) == ["42"]
+
+
+def test_post_selected_actions_from_plain_dict_empty() -> None:
+    request = MagicMock()
+    request.POST = {}
+
+    assert _post_selected_actions(request) == []
+
+
+def test_bulk_update_export_includes_error_columns_when_requested(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+    mock_state,
+    mock_async_job,
+) -> None:
+    mock_request.POST = {"_export": True}
+    mock_request.user.email = "user@example.com"
+    mock_redirect = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.redirect",
+        return_value=HttpResponse(status=302),
+    )
+    mock_form = MagicMock()
+    mock_form.is_valid.return_value = True
+    mock_form.cleaned_data = {"fields": ["given_name"], "include_errors": True}
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.BulkUpdateExportForm",
+        return_value=mock_form,
+    )
+    captured_config: dict = {}
+
+    def capture_create(**kwargs):
+        captured_config.update(kwargs.get("config", {}))
+        return mock_async_job
+
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.AsyncJob.objects.create",
+        side_effect=capture_create,
+    )
+
+    result = bulk_update_export(mock_admin, mock_request, non_empty_queryset)
+
+    assert result == mock_redirect.return_value
+    assert captured_config["columns"] == ["id", "version", "given_name", "is_valid", "errors"]
+
+
+def test_handle_confirm_push_denied_without_permission(
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+) -> None:
+    program = MagicMock()
+
+    result = _handle_confirm_push(
+        mock_admin,
+        mock_request,
+        non_empty_queryset,
+        program,
+        show_push_option=False,
+    )
+
+    assert result is None
+    mock_admin.message_user.assert_called_once_with(
+        mock_request,
+        "You do not have permission to push RDP to HOPE.",
+        messages.ERROR,
+    )
+
+
+def test_handle_confirm_push_invalid_threshold_form_renders_page(
+    mocker: MockerFixture,
+    mock_admin,
+    mock_request,
+    non_empty_queryset,
+) -> None:
+    program = MagicMock()
+    mock_request.POST = QueryDict(mutable=True)
+    mock_request.POST.update(
+        {
+            "action": "create_rdp",
+            "select_across": "0",
+            "batch_name": "Batch",
+            "push_to_hope": "on",
+            "max_dedup_findings_percent": "150",
+        }
+    )
+    mock_request.POST.setlist("_selected_action", ["1"])
+    mock_render = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.actions.render",
+        return_value=HttpResponse(),
+    )
+
+    result = _handle_confirm_push(
+        mock_admin,
+        mock_request,
+        non_empty_queryset,
+        program,
+        show_push_option=True,
+    )
+
+    assert result == mock_render.return_value
+    mock_render.assert_called_once_with(
+        mock_request,
+        "workspace/actions/create_rdp_push_threshold.html",
+        mock_admin.get_common_context.return_value,
+    )

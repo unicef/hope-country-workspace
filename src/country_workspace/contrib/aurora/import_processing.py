@@ -17,6 +17,7 @@ from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
+from country_workspace.notifications.signals import data_imported_signal
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +122,19 @@ def import_data(job: AsyncJob) -> ImportResult:
             owner=job.owner,
             program=job.program,
             queryset=_validation_queryset(batch, config),
+            validation_scope="batch",
         )
 
     batch.status = Batch.BatchStatus.COMPLETE
     batch.save(update_fields=["status"])
+
+    data_imported_signal.send(
+        sender=Batch,
+        program_id=batch.program_id,
+        batch_id=batch.id,
+        record_count=total_people + total_households,
+        source=Batch.BatchSource.AURORA,
+    )
     return ImportResult(people=total_people, households=total_households)
 
 

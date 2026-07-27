@@ -39,6 +39,49 @@ def test_client_create_deduplication_set(
     collection_cls.return_value.create.assert_called_once_with({"reference_pk": "PROGRAM_ID", "id": "SET_ID"})
 
 
+def test_client_create_deduplication_set_with_notification_url(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls.return_value.create.return_value = {
+        "id": "NEW_SET_ID",
+        "reference_pk": "PROGRAM_ID",
+        "state": "Empty",
+    }
+    client, _, _ = client_ctx
+
+    client.create_deduplication_set(notification_url="https://cw.example.org/callback/token/")
+
+    collection_cls.return_value.create.assert_called_once_with(
+        {
+            "reference_pk": "PROGRAM_ID",
+            "id": "SET_ID",
+            "notification_url": "https://cw.example.org/callback/token/",
+            "notify": True,
+        }
+    )
+
+
+def test_client_create_deduplication_set_without_notification_url_omits_fields(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls.return_value.create.return_value = {
+        "id": "NEW_SET_ID",
+        "reference_pk": "PROGRAM_ID",
+        "state": "Empty",
+    }
+    client, _, _ = client_ctx
+
+    client.create_deduplication_set(notification_url=None)
+
+    payload = collection_cls.return_value.create.call_args[0][0]
+    assert "notification_url" not in payload
+    assert "notify" not in payload
+
+
 def test_client_create_deduplication_set_without_deduplication_set_id(mocker: MockerFixture) -> None:
     collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
     collection_cls.return_value.create.return_value = payload = {

@@ -41,6 +41,11 @@ INDIVIDUAL_2_PK = 2
 FULL_NAME_COLUMN = "full_name"
 
 
+@pytest.fixture(autouse=True)
+def _mock_bitcaster_dispatch(mocker: MockerFixture):
+    return mocker.patch("country_workspace.notifications.handlers.send_bitcaster_event_task.delay")
+
+
 @pytest.fixture
 def skip_if_not_master_detail(config: Config) -> None:
     if not config["master_detail"]:

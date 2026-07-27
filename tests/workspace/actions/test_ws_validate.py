@@ -3,12 +3,14 @@ from typing import TYPE_CHECKING
 
 import freezegun
 import pytest
+from django.core.cache import cache
 from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.models import Household, Individual
+from country_workspace.notifications.signals import validation_completed_signal
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.validate import validate_queryset
+from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs, validate_queryset
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -59,6 +61,11 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     django_app.set_user(admin_user)
     django_app._user = admin_user
     return django_app
+
+
+@pytest.fixture(autouse=True)
+def _mock_bitcaster_dispatch(mocker):
+    return mocker.patch("country_workspace.notifications.handlers.send_bitcaster_event_task.delay")
 
 
 def test_ws_validate(
@@ -120,3 +127,92 @@ def test_validate_queryset_individuals(program, force_migrated_records):
     result = validate_queryset(qs)
 
     assert result["valid"] + result["invalid"] == 2
+
+
+@pytest.mark.django_db
+def test_validate_queryset_emits_single_notification_per_validation_run(program, force_migrated_records, mocker):
+    from testutils.factories import IndividualFactory
+
+    ind1 = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+    ind2 = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+
+    for field in ("valid", "invalid", "completed_chunks"):
+        cache.delete(f"validation-run:run-id:{field}")
+    send_mock = mocker.patch.object(validation_completed_signal, "send")
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate._validate_and_count",
+        return_value=(1, 0),
+    )
+
+    validate_queryset(
+        Individual.objects.filter(pk=ind1.pk),
+        validation_scope="batch",
+        validation_run_id="run-id",
+        validation_total_chunks=2,
+    )
+    send_mock.assert_not_called()
+
+    validate_queryset(
+        Individual.objects.filter(pk=ind2.pk),
+        validation_scope="batch",
+        validation_run_id="run-id",
+        validation_total_chunks=2,
+    )
+    send_mock.assert_called_once_with(
+        sender=Individual,
+        program_id=program.id,
+        validation_scope="batch",
+        results={"valid": 2, "invalid": 0},
+    )
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_sets_context_and_validation_metadata(program, force_migrated_records, mocker):
+    from testutils.factories import IndividualFactory
+
+    individual = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+    job_mock = mocker.Mock()
+    create_mock = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create",
+        return_value=job_mock,
+    )
+
+    create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.filter(pk=individual.pk),
+        validation_scope="program",
+    )
+
+    assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_scope"] == "program"
+    assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_total_chunks"] == 1
+    assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_run_id"]
+    job_mock.queue.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_skips_empty_queryset(program, force_migrated_records, mocker):
+    create_mock = mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create")
+
+    create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.none(),
+        validation_scope="program",
+    )
+
+    create_mock.assert_not_called()

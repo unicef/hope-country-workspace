@@ -17,6 +17,7 @@ from country_workspace.contrib.hope.push.orchestration import (
     claim_rdp_deduplication,
     claim_rdp_push,
     create_rdp_core,
+    create_and_push_rdp_core,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
 )
@@ -213,6 +214,27 @@ def test_create_rdp_core_success(
     assert out == {"rdp_id": create_job.rdp_id, "rdp_str": str(create_job.rdp)}
     assert make_client.called is dedup_enabled
     assert client.can_create_deduplication_set.called is dedup_enabled
+
+
+def test_create_and_push_rdp_core_routes_to_dedup_flow(mocker: MockerFixture) -> None:
+    job = mocker.MagicMock()
+    job.program.biometric_deduplication_enabled = True
+    dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core", return_value={"dedup_pending": True})
+
+    assert create_and_push_rdp_core(job) == {"dedup_pending": True}
+
+    dedup_flow.assert_called_once_with(job)
+
+
+def test_create_and_push_rdp_core_requires_biometric(mocker: MockerFixture) -> None:
+    job = mocker.MagicMock()
+    job.program.biometric_deduplication_enabled = False
+    dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core")
+
+    with pytest.raises(HopePushError):
+        create_and_push_rdp_core(job)
+
+    dedup_flow.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -619,7 +641,7 @@ def test_push_existing_rdp_core_success(
     locked = mocker.MagicMock(deduplication_set_id=(ds_id := uuid4()))
     locked.program.unicef_id = "program-1"
     config = {"master_detail": True, "pks": [1], "rdp_id": 1}
-    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1")
+    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1", rdi_already_merged=False)
     step1 = mocker.Mock()
     step2 = mocker.Mock()
     job = mocker.MagicMock(config={"rdp_id": 1})
@@ -635,6 +657,8 @@ def test_push_existing_rdp_core_success(
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     approve = mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
     release = mocker.patch(f"{MOD}.release_rdp_push_lock")
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
     assert push_existing_rdp_core(job) == {"errors": []}
 
@@ -656,6 +680,53 @@ def test_push_existing_rdp_core_success(
         group_reference_id="program-1",
         deduplication_set_id=ds_id,
         processor=processor,
+    )
+    rdi_pushed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        pushed_count=0,
+    )
+    rdp_pushed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
+        status=Rdp.PushStatus.SUCCESS,
+    )
+
+
+def test_push_existing_rdp_core_already_merged_skips_rdi_push_completed(mocker: MockerFixture) -> None:
+    rdp = mocker.MagicMock(pk=1)
+    rdp.pushed_by.email = "pushed@example.com"
+    policy = mocker.MagicMock()
+    mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
+    locked = mocker.MagicMock(deduplication_set_id=None)
+    locked.program.unicef_id = "program-1"
+    config = {"master_detail": True, "pks": [1], "rdp_id": 1}
+    processor = mocker.MagicMock(total={"errors": []}, has_errors=False, hope_rdi_id="RID-1", rdi_already_merged=True)
+    job = mocker.MagicMock(config={"rdp_id": 1})
+    job.owner.email = "owner@example.com"
+
+    mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
+    mocker.patch(f"{MOD}._require_policy_check")
+    mocker.patch(f"{MOD}.workflow_config_for_rdp", return_value=config)
+    mocker.patch(f"{MOD}.PushProcessor", return_value=processor)
+    mocker.patch(f"{MOD}._steps", return_value=[])
+    mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
+    mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
+    mocker.patch(f"{MOD}.set_rdp_push_status")
+    mocker.patch(f"{MOD}._approve_deduplication_set_after_successful_push")
+    mocker.patch(f"{MOD}.release_rdp_push_lock")
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
+
+    assert push_existing_rdp_core(job) == {"errors": []}
+
+    rdi_pushed.assert_not_called()
+    rdp_pushed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
+        status=Rdp.PushStatus.SUCCESS,
     )
 
 
@@ -683,6 +754,12 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     mark_removed = mocker.patch(f"{MOD}._mark_rdp_beneficiaries_removed")
     release = mocker.patch(f"{MOD}.release_rdp_push_lock")
+    mocker.patch(
+        f"{MOD}.transaction.on_commit",
+        side_effect=lambda func, *, robust=False: func(),
+    )
+    rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
+    rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
     with pytest.raises(HopePushError) as exc:
         push_existing_rdp_core(job)
@@ -696,5 +773,12 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
         is_push_locked=False,
     )
     release.assert_called_once_with(rdp_id=1)
+    rdi_pushed.assert_not_called()
+    rdp_pushed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
+        status=Rdp.PushStatus.FAILURE,
+    )
     next_step.assert_not_called()
     require.assert_called_once_with(policy.push_check)

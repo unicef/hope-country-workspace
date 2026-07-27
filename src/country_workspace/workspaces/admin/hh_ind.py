@@ -117,6 +117,9 @@ class BeneficiaryBaseAdmin(
     def has_create_rdp_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.create_rdp")
 
+    def has_push_rdp_to_hope_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("country_workspace.push_rdp_to_hope")
+
     def has_calculate_checksum_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.calculate_checksum")
 
@@ -200,6 +203,7 @@ class BeneficiaryBaseAdmin(
             owner=request.user,
             program=program,
             queryset=queryset,
+            validation_scope="program",
         )
         self.message_user(request, _("Task scheduled"), messages.SUCCESS)
 

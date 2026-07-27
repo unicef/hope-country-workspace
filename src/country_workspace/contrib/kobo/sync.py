@@ -27,6 +27,7 @@ from country_workspace.utils.import_flow import build_import_processor, run_batc
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
+from country_workspace.notifications.signals import data_imported_signal
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -468,11 +469,20 @@ def import_data(job: AsyncJob) -> ImportResult:
                 owner=job.owner,
                 program=job.program,
                 queryset=batch.household_set.filter(removed=False).prefetch_related("members"),  # type: ignore[attr-defined]
+                validation_scope="batch",
             )
         job.ensure_not_cancelled(refresh=True)
         # Mark batch complete in a dedicated transaction.
         with transaction.atomic():
             Batch.objects.select_for_update().filter(pk=batch.pk).update(status=Batch.BatchStatus.COMPLETE)
+
+        data_imported_signal.send(
+            sender=Batch,
+            program_id=batch.program_id,
+            batch_id=batch.id,
+            record_count=batch.household_set.count() + batch.individual_set.count(),
+            source=Batch.BatchSource.KOBO,
+        )
     else:
         job.ensure_not_cancelled(refresh=True)
         AsyncJob.objects.create(
