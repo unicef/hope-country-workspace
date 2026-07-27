@@ -36,6 +36,8 @@ If the issue is caused by the processing configuration, correct it and [reproces
 
 Import processing and validation run separately.
 
+Check whether **[Validate after import](index.md#validation-after-import)** was enabled for the import. If it was disabled, validate the affected records separately.
+
 A Batch can become **Complete** while its validation jobs are still running. Review the background validation jobs and wait for them to finish.
 
 ## Records contain validation errors

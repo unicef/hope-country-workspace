@@ -128,7 +128,7 @@ Records already pushed to HOPE are excluded from reprocessing.
 
 ## Transformers
 
-A Transformer uses JavaScript to change the processed fields of a Household, Individual, or Person.
+A Transformer uses JavaScript to change the processed fields of a Household, Individual, or People record.
 
 Unlike a Mapping Importer, a Transformer can:
 
@@ -235,7 +235,7 @@ For a people-only Program, the Individual Transformer is applied to People recor
 
 Available Transformers are limited to the selected Office.
 
-When **[Validate after import](../program.md#validation-configuration)** is enabled, validation is scheduled after the Transformer has been applied.
+When **[Validate after import](index.md#validation-after-import)** is enabled, validation is scheduled after the Transformer has been applied.
 
 ### Use a Transformer during reprocessing
 

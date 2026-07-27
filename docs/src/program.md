@@ -14,11 +14,10 @@ A Program inherits its beneficiary structure from the selected **Beneficiary Gro
 
 Two structures are supported:
 
-- **Household-based** — each Household contains one or more Individuals.
-- **People-only** — Individuals are managed without Households.
+- **Household-based**: each Household contains one or more Individuals.
+- **People-only**: Individuals are managed without Households.
 
 The selected structure determines how beneficiary data is imported, validated, managed, and displayed throughout the workspace.
-
 
 ### Validation configuration
 
@@ -26,10 +25,10 @@ Validation is based on:
 
 - **[DataCheckers](data_validation/datachecker_configuration.md)** that define the expected beneficiary fields;
 - a beneficiary validator that performs additional validation of the beneficiary structure;
-- the **[Alien validation](data_validation/alien_fields.md)** setting, which controls how unexpected source fields are handled during import;
-- the **[Alien columns to ignore](#alien-columns-to-ignore)** list.
+- the **[Alien validation enabled](data_validation/alien_fields.md)** setting, which controls whether unexpected processed fields are checked during validation;
+- the **[Alien columns to ignore](#alien-columns-to-ignore)** lists.
 
-Validation is performed after import, as described in **[Data Import](data_import/index.md)**.
+After import, validation is scheduled when **[Validate after import](data_import/index.md#validation-after-import)** is enabled.
 
 See **[Alien Fields](data_validation/alien_fields.md)** for more information.
 
@@ -37,7 +36,7 @@ See **[Alien Fields](data_validation/alien_fields.md)** for more information.
 
 Programs can define default values for Households and Individuals.
 
-These values are applied during **[Data Import](data_import/index.md)** when the corresponding beneficiary field has no value. They help ensure that required beneficiary fields are populated consistently.
+These values are applied during **[Data Import](data_import/index.md)** when the corresponding beneficiary field is missing or has a null value. They help ensure that required beneficiary fields are populated consistently.
 
 ### Display configuration
 
@@ -47,11 +46,11 @@ Display settings affect only the user interface and do not influence imported or
 
 ### Alien columns to ignore
 
-Programs can define source columns that should be ignored during import instead of being treated as alien fields.
+Programs can define processed fields that should be excluded from Alien Field validation.
 
-This is useful when imported files contain additional columns that are not required by the Program.
+During import and reprocessing, matching fields are also removed before Transformers are applied.
 
-See **[Alien Fields](data_validation/alien_fields.md)** for more information.
+See **[Alien Fields](data_validation/alien_fields.md)** for configuration and processing details.
 
 ### Deduplication settings
 
@@ -74,7 +73,7 @@ For an overview of the import workflow, see **[Data Import](data_import/index.md
 After an import completes:
 
 - imported beneficiary records become available within the selected Program;
-- validation results become available after validation finishes;
+- validation results become available after any scheduled validation finishes;
 - the created **[Batch](data_import/batches.md)** can be reviewed and, if necessary, reprocessed.
 
 See **[Batches](data_import/batches.md)** to review import results, monitor validation, and reprocess existing Batches.

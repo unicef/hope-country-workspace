@@ -2,7 +2,7 @@
 
 Aurora imports beneficiary registrations from a selected Aurora Registration into the selected **[Program](../../program.md)**.
 
-For a household-based Program, each Aurora record creates one Household and its related Individuals. For a people-only Program, each Aurora record creates one Person.
+For a household-based Program, each Aurora record creates one Household and its related Individuals. For a people-only Program, each Aurora record creates one People record.
 
 The expected field names, value types, required fields, and validation rules depend on the Program's **[DataCheckers](../../data_validation/datachecker_configuration.md)**.
 
@@ -89,7 +89,7 @@ If no supported Household group is present, Country Workspace still creates a Ho
 
 ### People-only record structure
 
-For a people-only Program, each Aurora record creates one Person without a Household relationship.
+For a people-only Program, each Aurora record creates one People record without a Household relationship.
 
 The prepared field data from the Aurora record is processed using the Program's Individual DataChecker, Mapping Importer, and Transformer configuration.
 
@@ -189,7 +189,7 @@ Aurora follows the general **[import lifecycle](../index.md#what-happens-during-
 
 Source preparation includes decrypting protected field and file data when required, separating Household and Individual groups, combining them with shared fields, flattening supported nested values, normalizing field names, applying Mapping Importers, processing supported document fields, applying Program defaults, and removing ignored fields.
 
-Country Workspace then creates one Person for each Aurora record in a people-only Program, or one Household and its supported Individuals in a household-based Program.
+Country Workspace then creates one People record for each Aurora record in a people-only Program, or one Household and its supported Individuals in a household-based Program.
 
 The prepared source data is stored with each beneficiary record. After all records have been imported, supported collector references are resolved and the selected Transformers are applied.
 
