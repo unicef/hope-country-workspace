@@ -59,11 +59,9 @@ Question names must therefore produce the field names expected by the correspond
 
 Use a **[Mapping Importer](../mapping_transformers.md#mapping-importers)** when the resulting Kobo question names differ from the expected DataChecker fields. Use a **[Transformer](../mapping_transformers.md#transformers)** when imported values must be converted or normalized.
 
-### Household identifiers
+### Record identifiers
 
 Country Workspace generates a sequential `household_id` for every imported Household. A Kobo question is not used as the Household identifier.
-
-The generated value is stored with the imported Household and preserved when the Batch is later reprocessed.
 
 Country Workspace also stores a source identifier based on the Kobo project and submission ID. Individual source identifiers are based on the same submission ID together with the Individual's position in the repeat group.
 
@@ -265,6 +263,6 @@ If Households are imported without their Individuals, verify that **Individual r
 
 When processing fails on a submission, the job error identifies the failed submission and the last successfully imported submission. Successfully completed submissions remain stored, and later processing resumes after the recorded successful submission.
 
-Correct the Kobo project data, Office configuration, or import settings, then retry the job or start another import.
+Correct the Kobo project data, Office configuration, or import settings, then retry the import or start another import.
 
 For background job, validation, and Batch-related issues, see **[Troubleshooting](../troubleshooting.md)**.

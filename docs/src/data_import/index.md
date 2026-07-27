@@ -48,7 +48,7 @@ flowchart LR
 
 **Apply Transformers and source-specific checks** applies selected **[Transformers](mapping_transformers.md#transformers)** after beneficiary records and supported relationships have been created. Additional checks, such as RDI duplicate identity detection, are performed when configured and supported by the source.
 
-**Schedule validation if enabled** creates background validation jobs using the Program's **[validation configuration](../program.md#validation-configuration)**. Unexpected fields are reported as **[Alien Fields](../data_validation/alien_fields.md)** during validation.
+**Schedule validation if enabled** creates background validation jobs using the Program's **[validation configuration](../program.md#validation-configuration)**. Validation can report unexpected fields as [Alien Fields](../data_validation/alien_fields.md).
 
 **Complete Batch** marks the Batch as **Complete** after source-specific processing has finished and any enabled validation jobs have been scheduled. Validation results may continue to appear after the Batch becomes Complete.
 

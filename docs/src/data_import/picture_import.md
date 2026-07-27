@@ -105,7 +105,7 @@ Only successful matches are imported. Select **Start over** to upload another ar
 
 Select **Confirm import** after reviewing the matching report.
 
-Country Workspace schedules a background job, rechecks the matches, and writes each successfully matched picture to the selected target field.
+Country Workspace schedules a background job that re-reads the archive, rechecks the matches, and writes each successfully matched picture to the selected target field.
 
 Validation results are cleared for updated records, but validation is not started automatically. Validate the affected records separately when new results are required.
 

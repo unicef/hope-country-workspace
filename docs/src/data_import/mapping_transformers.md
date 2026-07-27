@@ -7,7 +7,7 @@ They perform different tasks:
 | Component            | Purpose                                               | Applied                                     |
 | -------------------- | ----------------------------------------------------- | ------------------------------------------- |
 | **Mapping Importer** | Renames source fields                                 | While each source record is prepared        |
-| **Transformer**      | Changes values, adds fields, or removes fields | After beneficiary records have been created |
+| **Transformer**      | Changes values, adds fields, or removes fields       | After beneficiary records have been created |
 
 Both components are optional. Use them when the source data does not already match the Program's **[DataCheckers](../data_validation/datachecker_configuration.md#datachecker)**.
 
@@ -280,10 +280,10 @@ Review the resulting background job to confirm that processing completed success
 
 Most problems relate to one of these areas:
 
-* **Mapping availability** - the Mapping Importer belongs to another Office or is linked to a DataChecker not used by the selected Program.
-* **Mapping results** - the rule uses the wrong prepared source-field name, the source field is missing, or another rule replaces the same target field.
-* **Transformer code** - the JavaScript does not define a function in a supported format, the function does not return an object, or its conditions do not match the record data.
-* **Existing records** - records already pushed to HOPE are excluded, and standalone Transformer execution does not schedule validation.
+* **Mapping availability**: the Mapping Importer belongs to another Office or is linked to a DataChecker not used by the selected Program.
+* **Mapping results**: the rule uses the wrong prepared source-field name, the source field is missing, or another rule replaces the same target field.
+* **Transformer code**: the JavaScript does not define a function in a supported format, the function does not return an object, or its conditions do not match the record data.
+* **Existing records**: records already pushed to HOPE are excluded, and standalone Transformer execution does not schedule validation.
 
 For source-specific field preparation, see **[Data sources](sources/index.md)**.
 

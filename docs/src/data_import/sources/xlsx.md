@@ -44,7 +44,7 @@ Household IDs must be unique in the `Households` sheet. Individual and People ID
 
 For household-based Programs, the **Head of Household** and **Primary Collector** fields must contain the `individual_id` of a record from the `Individuals` sheet. If provided, the **Alternate Collector** field must also contain the `individual_id` of a record from that sheet. During import, Country Workspace uses these values to link the created Individuals to the corresponding Household roles.
 
-The Head of Household must belong to that Household. Primary and Alternate Collectors may be external Individuals without Household membership. The Primary and Alternate Collector must not reference the same Individual.
+The Head of Household must belong to that Household. Primary and Alternate Collectors may belong to another Household in the same Batch or have no Household membership. The Primary Collector and Alternate Collector fields must not reference the same Individual.
 
 ### Supported workbook content
 
