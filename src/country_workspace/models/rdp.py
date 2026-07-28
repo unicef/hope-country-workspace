@@ -1,3 +1,5 @@
+from typing import Final
+
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext as _
@@ -11,15 +13,27 @@ def get_rdp_status_choices() -> list[tuple[str, str]]:
     return list(Rdp.PushStatus.choices)
 
 
+class RdpPushStatus(models.TextChoices):
+    PENDING = "PENDING", _("Pending")
+    DEDUP_PENDING = "DEDUP_PENDING", _("Awaiting deduplication")
+    PUSH_PENDING = "PUSH_PENDING", _("Push in progress")
+    SUCCESS = "SUCCESS", _("Success")
+    FAILURE = "FAILURE", _("Failure")
+    CANCELLED = "CANCELLED", _("Cancelled")
+
+
+NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
+    RdpPushStatus.PENDING,
+    RdpPushStatus.FAILURE,
+    RdpPushStatus.DEDUP_PENDING,
+    RdpPushStatus.PUSH_PENDING,
+)
+
+
 class Rdp(BaseModel):
     """Represents a Registration Data Push (RDP) object in the system."""
 
-    class PushStatus(models.TextChoices):
-        PENDING = "PENDING", _("Pending")
-        DEDUP_PENDING = "DEDUP_PENDING", _("Awaiting deduplication")
-        SUCCESS = "SUCCESS", _("Success")
-        FAILURE = "FAILURE", _("Failure")
-        CANCELLED = "CANCELLED", _("Cancelled")
+    PushStatus = RdpPushStatus
 
     class OperationAction(models.TextChoices):
         START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
@@ -56,9 +70,9 @@ class Rdp(BaseModel):
             ),
             models.UniqueConstraint(
                 fields=["program"],
-                condition=Q(status__in=["PENDING", "FAILURE", "DEDUP_PENDING"]),
-                name="uniq_open_rdp_per_program",
-                violation_error_message=_("There is already an active RDP for this program."),
+                condition=Q(status__in=NON_TERMINAL_RDP_STATUSES),
+                name="uniq_non_terminal_rdp_per_program",
+                violation_error_message=_("There is already an unfinished RDP for this program."),
             ),
         ]
         permissions = [
