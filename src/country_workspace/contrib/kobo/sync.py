@@ -20,10 +20,15 @@ from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
+from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.import_flow import (
+    build_import_processor,
+    get_or_create_collector,
+    run_batch_postprocessing,
+)
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -175,17 +180,32 @@ def create_individuals(  # noqa: PLR0913
             individual_mapping_id,
         )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
-        individuals.append(
-            Individual(
+        name = individual_fields.get(fullname, "") if fullname else ""
+        ind_originating_id = f"{originating_id}#{idx:04d}"
+        if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
+            # External collectors are deduplicated program-wide: the first
+            # occurrence is reused, linked to households only via role refs.
+            individual, _created = get_or_create_collector(
+                program=batch.program,
                 batch=batch,
-                household=household,
-                name=individual_fields.get(fullname, "") if fullname else "",
-                originating_id=f"{originating_id}#{idx:04d}",
-                flex_fields=individual_fields,
+                individual_fields=individual_fields,
                 raw_data=raw_individual,
-            ),
-        )
-    household.program.individuals.bulk_create(individuals)
+                originating_id=ind_originating_id,
+                name=name,
+            )
+            individuals.append(individual)
+        else:
+            individuals.append(
+                Individual(
+                    batch=batch,
+                    household=household,
+                    name=name,
+                    originating_id=ind_originating_id,
+                    flex_fields=individual_fields,
+                    raw_data=raw_individual,
+                ),
+            )
+    household.program.individuals.bulk_create([individual for individual in individuals if individual.pk is None])
     return individuals
 
 

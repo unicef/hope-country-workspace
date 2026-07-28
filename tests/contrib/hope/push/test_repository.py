@@ -240,6 +240,41 @@ def test_qs_individuals_by_household_pks_orders_by_id(hh_with_members) -> None:
     assert list(repo.qs_individuals_by_household_pks([hh_with_members.pk]).values_list("id", flat=True)) == expected
 
 
+def test_collector_pks_by_household_pks_returns_role_ref_pks() -> None:
+    hh = CountryHouseholdFactory()
+    hh.members.all().delete()
+    primary = CountryIndividualFactory(household=None)
+    alternate = CountryIndividualFactory(household=None)
+    hh.flex_fields = {"primary_collector_id": primary.pk, "alternate_collector_id": alternate.pk}
+    hh.save(update_fields=["flex_fields"])
+
+    assert repo.collector_pks_by_household_pks([hh.pk]) == {primary.pk, alternate.pk}
+
+
+def test_collector_pks_by_household_pks_ignores_missing_and_invalid_refs() -> None:
+    hh = CountryHouseholdFactory()
+    hh.members.all().delete()
+    hh.flex_fields = {"primary_collector_id": None, "alternate_collector_id": "not-a-pk"}
+    hh.save(update_fields=["flex_fields"])
+
+    assert repo.collector_pks_by_household_pks([hh.pk]) == set()
+
+
+def test_qs_individuals_for_push_includes_members_and_referenced_collectors() -> None:
+    hh = CountryHouseholdFactory()
+    hh.members.all().delete()
+    member = CountryIndividualFactory(household=hh)
+    collector = CountryIndividualFactory(household=None, flex_fields={"relationship": "NON_BENEFICIARY"})
+    unreferenced = CountryIndividualFactory(household=None)
+    hh.flex_fields = {"primary_collector_id": collector.pk}
+    hh.save(update_fields=["flex_fields"])
+
+    result = set(repo.qs_individuals_for_push([hh.pk]).values_list("id", flat=True))
+
+    assert result == {member.pk, collector.pk}
+    assert unreferenced.pk not in result
+
+
 def test_qs_individuals_by_pks_orders_by_id() -> None:
     individuals = [CountryIndividualFactory() for _ in range(3)]
     pks = [individuals[2].pk, individuals[0].pk]
@@ -325,6 +360,18 @@ def test_preflight_errors_excludes_rdp_ids() -> None:
         )
         == []
     )
+
+
+def test_preflight_errors_master_detail_covers_referenced_collectors() -> None:
+    hh = CountryHouseholdFactory(last_checked=timezone.now(), errors={})
+    hh.members.all().delete()
+    collector = CountryIndividualFactory(household=None, last_checked=None, errors={})
+    hh.flex_fields = {"primary_collector_id": collector.pk}
+    hh.save(update_fields=["flex_fields"])
+
+    errors = repo.preflight_errors(pks=[hh.pk], master_detail=True)
+
+    assert f"Ind #{collector.pk} invalid" in errors
 
 
 # --------------------------- status / locks / log -----------------------

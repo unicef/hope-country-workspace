@@ -575,7 +575,7 @@ def test_mark_rdp_beneficiaries_removed_empty_master_detail(mocker: MockerFixtur
 @pytest.mark.parametrize("master_detail", [True, False], ids=["master_detail", "flat"])
 def test_steps(master_detail: bool, mocker: MockerFixture, proc: object) -> None:
     config = {"pks": [1, 2], "master_detail": master_detail}
-    qs_by_hh = mocker.patch(f"{MOD}.qs_individuals_by_household_pks", return_value="ind_qs")
+    qs_by_hh = mocker.patch(f"{MOD}.qs_individuals_for_push", return_value="ind_qs")
     qs_hh = mocker.patch(f"{MOD}.qs_households", return_value="hh_qs")
     qs_by_pks = mocker.patch(f"{MOD}.qs_individuals_by_pks", return_value="people_qs")
 

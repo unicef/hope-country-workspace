@@ -34,6 +34,7 @@ from .repository import (
     qs_households,
     qs_individuals_by_household_pks,
     qs_individuals_by_pks,
+    qs_individuals_for_push,
     qs_individuals_for_rdp,
     rdp_for_dedup,
     rdp_for_push,
@@ -473,7 +474,7 @@ def _steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Cal
 
     if config["master_detail"]:
         yield from (
-            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
+            partial(processor.run_with, qs_individuals_for_push(pks), processor.rdi_push_individuals),
             partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
         )
     else:

@@ -21,6 +21,16 @@ INDEX_NAME_PREFIX: Final[str] = "%(app_label)s_%(class)s"
 class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
     household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
+    identity_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=_(
+            "Identity hash used to deduplicate external collectors "
+            "(relationship == NON_BENEFICIARY) program-wide at import time."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Individual")
