@@ -1,2 +1,7 @@
 nav:
-    - program.md
+    - Overview: index.md
+    - Data sources: sources
+    - Batches: batches.md
+    - Import pictures: picture_import.md
+    - Mapping and transformation: mapping_transformers.md
+    - Troubleshooting: troubleshooting.md
