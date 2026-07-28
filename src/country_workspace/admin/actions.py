@@ -77,7 +77,7 @@ def reprocess_records(
                     mapping.apply(data)
                 if transformer:
                     data = transformer.apply(data)
-                updated = record.apply_flex_payload(data, preserve_existing_files=False)
+                updated = record.apply_flex_payload(data, preserve_existing_files=True)
 
                 record.last_checked = None
                 record.errors = {}

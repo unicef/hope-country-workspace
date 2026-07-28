@@ -181,20 +181,26 @@ def create_individuals(  # noqa: PLR0913
     submission: Submission,
     config: Config,
     asset_uid: str,
+    file_field_names: set[str] | None = None,
     job: AsyncJob | None = None,
 ) -> list[ImportedIndividual]:
     individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
     epoch_ms = int(batch.import_date.timestamp() * 1000)
     checker = batch.program.individual_checker
+    processor = build_individual_processor(
+        batch.program,
+        individual_mapping_id,
+    )
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
-        individual_fields = build_individual_processor(
-            batch.program,
-            individual_mapping_id,
-        )(raw_individual)
-        text_fields, file_values = split_flex_payload(checker, individual_fields)
+        individual_fields = processor(raw_individual)
+        text_fields, file_values = split_flex_payload(
+            checker,
+            individual_fields,
+            file_field_names=file_field_names,
+        )
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
         ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
@@ -225,12 +231,13 @@ def create_individuals(  # noqa: PLR0913
     return individuals
 
 
-def create_household(
+def create_household(  # noqa: PLR0913
     batch: Batch,
     submission: Submission,
     config: Config,
     id_generator: Callable[[], int],
     originating_id: str,
+    file_field_names: set[str] | None = None,
 ) -> Household:
     household_mapping_id = config.get("household_mapping_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
@@ -238,7 +245,11 @@ def create_household(
         batch.program,
         household_mapping_id,
     )(raw_household_fields)
-    text_fields, file_values = split_flex_payload(batch.program.household_checker, household_fields)
+    text_fields, file_values = split_flex_payload(
+        batch.program.household_checker,
+        household_fields,
+        file_field_names=file_field_names,
+    )
     household_id = id_generator()
     household_fields["household_id"] = household_id
     text_fields["household_id"] = household_id
@@ -364,6 +375,10 @@ def import_asset(  # noqa: PLR0913
     start_time = timezone.now()
     time_exhausted = False
     epoch_ms = int(batch.import_date.timestamp() * 1000)
+    household_checker = batch.program.household_checker
+    individual_checker = batch.program.individual_checker
+    household_file_field_names = household_checker.get_file_field_names() if household_checker else None
+    individual_file_field_names = individual_checker.get_file_field_names() if individual_checker else None
 
     submissions_iterator = asset.submissions(min_id=last_id)
 
@@ -376,8 +391,23 @@ def import_asset(  # noqa: PLR0913
             # One transaction per submission: if this block fails, only this
             # submission is rolled back; previously committed data stays.
             with transaction.atomic():
-                household = create_household(batch, submission, config, id_generator, originating_id)
-                individuals = create_individuals(batch, household, submission, config, asset.uid, job=job)
+                household = create_household(
+                    batch,
+                    submission,
+                    config,
+                    id_generator,
+                    originating_id,
+                    file_field_names=household_file_field_names,
+                )
+                individuals = create_individuals(
+                    batch,
+                    household,
+                    submission,
+                    config,
+                    asset.uid,
+                    file_field_names=individual_file_field_names,
+                    job=job,
+                )
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1

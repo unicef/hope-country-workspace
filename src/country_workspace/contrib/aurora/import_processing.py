@@ -101,10 +101,21 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     total_people = 0
     total_households = 0
+    household_checker = batch.program.household_checker
+    individual_checker = batch.program.individual_checker
+    household_file_field_names = household_checker.get_file_field_names() if household_checker else None
+    individual_file_field_names = individual_checker.get_file_field_names() if individual_checker else None
     client = AuroraClient()
     for result in client.get(f"registration/{config['registration_reference_pk']}/records/", params={"ser": ser}):
         job.ensure_not_cancelled(refresh=True)
-        imported = import_result(batch, result, config, private_key=private_key)
+        imported = import_result(
+            batch,
+            result,
+            config,
+            private_key=private_key,
+            household_file_field_names=household_file_field_names,
+            individual_file_field_names=individual_file_field_names,
+        )
         total_people += imported.people
         total_households += imported.households
 
@@ -145,6 +156,8 @@ def import_result(
     config: Config,
     *,
     private_key: str = "",
+    household_file_field_names: set[str] | None = None,
+    individual_file_field_names: set[str] | None = None,
 ) -> ImportResult:
     people_counter = 0
     household_counter = 0
@@ -164,14 +177,26 @@ def import_result(
 
         with transaction.atomic():
             record = prepare_record(result, private_key)
+            epoch_ms = int(batch.import_date.timestamp() * 1000)
+            originating_id = get_aurora_originating_id(record["pk"], epoch=epoch_ms)
             if config.get("master_detail"):
-                created_households, created_individuals = create_household_and_individuals(batch, record, config)
+                created_households, created_individuals = create_household_and_individuals(
+                    batch,
+                    record,
+                    config,
+                    household_file_field_names=household_file_field_names,
+                    individual_file_field_names=individual_file_field_names,
+                )
                 household_counter += created_households
                 people_counter += created_individuals
             else:
-                epoch_ms = int(batch.import_date.timestamp() * 1000)
-                originating_id = get_aurora_originating_id(record["pk"], epoch=epoch_ms)
-                create_individual(batch, record, config, originating_id)
+                create_individual(
+                    batch,
+                    record,
+                    config,
+                    originating_id,
+                    file_field_names=individual_file_field_names,
+                )
                 people_counter += 1
             last_successful_id = current_id
     except Exception as e:
@@ -198,6 +223,7 @@ def create_individual(
     record: Mapping[str, Any],
     config: Config,
     originating_id: str,
+    file_field_names: set[str] | None = None,
     **extras: Any,
 ) -> Individual:
     row = record.get("fields", record)
@@ -206,7 +232,11 @@ def create_individual(
         mapping_id=config.get("individual_mapping_id"),
     )
     transformed = individual_row_processor(row)
-    text_fields, file_values = split_flex_payload(batch.program.individual_checker, transformed)
+    text_fields, file_values = split_flex_payload(
+        batch.program.individual_checker,
+        transformed,
+        file_field_names=file_field_names,
+    )
     extras.setdefault("household", None)
     return Individual.objects.create(
         batch_id=batch.pk,
@@ -219,14 +249,24 @@ def create_individual(
     )
 
 
-def create_household(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Household:
+def create_household(
+    batch: Batch,
+    record: Mapping[str, Any],
+    config: Config,
+    originating_id: str,
+    file_field_names: set[str] | None = None,
+) -> Household:
     row = record.get("fields", record)
     household_row_processor = build_household_processor(
         batch.program,
         mapping_id=config.get("household_mapping_id"),
     )
     transformed = household_row_processor(row)
-    text_fields, file_values = split_flex_payload(batch.program.household_checker, transformed)
+    text_fields, file_values = split_flex_payload(
+        batch.program.household_checker,
+        transformed,
+        file_field_names=file_field_names,
+    )
     return Household.objects.create(
         batch_id=batch.pk,
         name="",
@@ -237,10 +277,13 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
     )
 
 
-def create_household_and_individuals(
+def create_household_and_individuals(  # noqa: PLR0913
     batch: Batch,
     record: Mapping[str, Any],
     config: Config,
+    *,
+    household_file_field_names: set[str] | None = None,
+    individual_file_field_names: set[str] | None = None,
 ) -> tuple[int, int]:
     fields = record.get("fields", {})
     household_candidates = ("household", "household-info", "household_info")
@@ -276,6 +319,7 @@ def create_household_and_individuals(
         household_fields,
         config,
         get_aurora_originating_id(record_pk, "HH0", epoch=epoch_ms),
+        file_field_names=household_file_field_names,
     )
     people_counter = 0
     for idx, individual_raw in enumerate(individuals_data):
@@ -286,6 +330,7 @@ def create_household_and_individuals(
                 individual_fields,
                 config,
                 get_aurora_originating_id(record_pk, f"IND{idx}", epoch=epoch_ms),
+                file_field_names=individual_file_field_names,
                 household=household,
             )
             people_counter += 1

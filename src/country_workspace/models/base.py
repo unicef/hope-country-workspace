@@ -105,6 +105,7 @@ class Validable(Cachable, models.Model):
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
+        update_fields = self.normalize_flex_storage(update_fields)
         update_fields = self.update_checksum(update_fields)
         super().save(
             force_insert=force_insert,

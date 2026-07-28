@@ -254,6 +254,14 @@ def test_split_flex_payload_without_checker_returns_payload_as_text() -> None:
     assert files == {}
 
 
+def test_split_flex_payload_with_pre_resolved_file_fields() -> None:
+    payload = {"name": "John", "photo": "data:image/png;base64,QUJD"}
+    text, files = split_flex_payload(None, payload, file_field_names={"photo"})
+    assert text == {"name": "John"}
+    assert set(files) == {"photo"}
+    assert to_public_flex_file_value(files["photo"]) == payload["photo"]
+
+
 @pytest.mark.parametrize("value", [b"bytes", 123, None, {"k": "v"}])
 def test_to_storage_flex_file_value_non_string_passthrough(value) -> None:
     assert to_storage_flex_file_value(value) is value

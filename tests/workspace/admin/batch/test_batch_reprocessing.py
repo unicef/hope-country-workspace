@@ -177,7 +177,7 @@ def test_apply_import_processor_updates_record_and_preserves_generated_fields(mo
 
     record.apply_flex_payload.assert_called_once_with(
         {"mapped": "value", "household_id": 123},
-        preserve_existing_files=False,
+        preserve_existing_files=True,
     )
     assert record.last_checked is None
     assert record.errors == {}

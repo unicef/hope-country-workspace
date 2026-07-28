@@ -254,6 +254,7 @@ def test_process_households(
         "fields": {"processed": "value"},
         "files": {},
     }
+    batch.program.household_checker.get_file_field_names.return_value = set()
 
     result = process_households(household_sheet, job, batch, config)
 
@@ -325,6 +326,7 @@ def test_process_beneficiaries_with_households(
         "fields": {"processed": "value"},
         "files": {},
     }
+    batch_mock.program.individual_checker.get_file_field_names.return_value = set()
 
     result = process_beneficiaries(
         individual_sheet,
@@ -381,6 +383,7 @@ def test_process_beneficiaries_people_only(
         "fields": {"processed": "value"},
         "files": {},
     }
+    batch_mock.program.individual_checker.get_file_field_names.return_value = set()
 
     result = process_beneficiaries(
         people_sheet,

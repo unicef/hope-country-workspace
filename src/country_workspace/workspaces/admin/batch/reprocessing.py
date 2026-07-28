@@ -101,7 +101,7 @@ def _apply_import_processor(
         flex_fields |= {
             field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
         }
-    updated = record.apply_flex_payload(flex_fields, preserve_existing_files=False)
+    updated = record.apply_flex_payload(flex_fields, preserve_existing_files=True)
     record.last_checked = None
     record.errors = {}
     update_fields = [*updated, "last_checked", "errors"]

@@ -768,8 +768,23 @@ def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(
     )
 
     assert result == ImportResult(households=1, individuals=1, completed=False)
-    create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, mocker.ANY)
-    create_individuals_mock.assert_called_once()
+    create_household_mock.assert_called_once_with(
+        batch,
+        submission_1,
+        config,
+        id_generator_mock,
+        mocker.ANY,
+        file_field_names=mocker.ANY,
+    )
+    create_individuals_mock.assert_called_once_with(
+        batch,
+        create_household_mock.return_value,
+        submission_1,
+        config,
+        mocker.ANY,
+        file_field_names=mocker.ANY,
+        job=None,
+    )
     assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"
 
 
@@ -944,7 +959,7 @@ def test_create_individuals_with_job_checks_cancellation_and_continues(
         individual_class_mock.return_value,
     ]
     assert job.ensure_not_cancelled.call_count == 2
-    assert build_processor_mock.call_count == 2
+    build_processor_mock.assert_called_once()
     assert get_fullname_key_mock.call_count == 2
     household_mock.program.individuals.bulk_create.assert_called_once_with(
         [individual_class_mock.return_value, individual_class_mock.return_value]

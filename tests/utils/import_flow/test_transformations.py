@@ -58,7 +58,7 @@ def test_apply_transformer_updates_changed_records_only(mocker: MockerFixture) -
 
     assert _apply_transformer(qs, transformer) == 1
 
-    qs.only.assert_called_once_with("pk", "flex_fields")
+    qs.only.assert_called_once_with("pk", "flex_fields", "flex_files")
     assert transformer.apply.call_args_list == [
         mocker.call({"name": "John"}),
         mocker.call({"name": "Jane"}),
@@ -68,7 +68,7 @@ def test_apply_transformer_updates_changed_records_only(mocker: MockerFixture) -
 
     changed.apply_flex_payload.assert_called_once_with(
         {"name": "Jane", "role": "PRIMARY"},
-        preserve_existing_files=False,
+        preserve_existing_files=True,
     )
     assert changed.last_checked is None
     assert changed.errors == {}
@@ -91,7 +91,7 @@ def test_apply_transformer_handles_empty_flex_fields(mocker: MockerFixture) -> N
     assert _apply_transformer(qs, transformer) == 1
 
     transformer.apply.assert_called_once_with({})
-    record.apply_flex_payload.assert_called_once_with({"defaulted": True}, preserve_existing_files=False)
+    record.apply_flex_payload.assert_called_once_with({"defaulted": True}, preserve_existing_files=True)
     record.save.assert_called_once()
     record_update_fields = record.save.call_args.kwargs["update_fields"]
     assert set(record_update_fields) == {"flex_fields", "last_checked", "errors"}

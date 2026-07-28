@@ -19,7 +19,7 @@ def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | N
         return 0
 
     count = 0
-    for record in qs.only("pk", "flex_fields").iterator():
+    for record in qs.only("pk", "flex_fields", "flex_files").iterator():
         current = record.flex_fields or {}
         transformed = transformer.apply(dict(current))
 
@@ -30,7 +30,7 @@ def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | N
             transformed = enforce_locked_fields(record, current, transformed)
 
         if transformed != current:
-            updated = record.apply_flex_payload(transformed, preserve_existing_files=False)
+            updated = record.apply_flex_payload(transformed, preserve_existing_files=True)
             record.last_checked = None
             record.errors = {}
             record.save(update_fields=(*updated, "last_checked", "errors"))
