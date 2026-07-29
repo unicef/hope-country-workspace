@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from uuid import UUID, uuid4
 
 from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
@@ -6,7 +7,7 @@ from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
-from country_workspace.models import Program, Rdp
+from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .config import OperationLogEntry, OperationLogResult, PushWorkflowConfig, Serializer
@@ -29,12 +30,6 @@ def rdp_for_push(*, pk: int) -> Rdp:
         "program__beneficiary_group",
         "pushed_by",
     ).get(pk=pk)
-
-
-def existing_hope_rdi_id(*, rdp_id: int) -> str | None:
-    """Return a real HOPE RDI id previously stored for this RDP."""
-    rdi_id = Rdp.objects.values_list("hope_rdi_id", flat=True).get(pk=rdp_id)
-    return rdi_id if rdi_id and rdi_id != "N/A" else None
 
 
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
@@ -202,14 +197,61 @@ def set_rdp_push_status(
     rdp.save(update_fields=update_fields)
 
 
-def release_rdp_push_lock(*, rdp_id: int) -> None:
-    """Release the push lock for an RDP."""
-    Rdp.objects.filter(pk=rdp_id, is_push_locked=True).update(is_push_locked=False)
+def start_rdp_push_attempt(*, rdp: Rdp) -> UUID:
+    """Start a new push attempt for an already-locked RDP."""
+    push_attempt_id = uuid4()
+    rdp.status = Rdp.PushStatus.PUSH_PENDING
+    rdp.is_push_locked = True
+    rdp.push_attempt_id = push_attempt_id
+    rdp.save(
+        update_fields=[
+            "status",
+            "is_push_locked",
+            "push_attempt_id",
+        ]
+    )
+    return push_attempt_id
+
+
+def lock_rdp_push_attempt(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
+    """Lock and return the matching active RDP push attempt."""
+    return (
+        Rdp.objects.select_for_update()
+        .select_related("program")
+        .filter(
+            pk=rdp_id,
+            status=Rdp.PushStatus.PUSH_PENDING,
+            is_push_locked=True,
+            push_attempt_id=push_attempt_id,
+        )
+        .first()
+    )
+
+
+def finish_rdp_push_attempt(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -> None:
+    """Finish an already-locked RDP push attempt."""
+    rdp.status = status
+    rdp.hope_rdi_id = hope_rdi_id
+    rdp.is_push_locked = False
+    rdp.push_attempt_id = None
+    rdp.save(
+        update_fields=[
+            "status",
+            "hope_rdi_id",
+            "is_push_locked",
+            "push_attempt_id",
+        ]
+    )
 
 
 def release_rdp_dedup_settings_lock(*, rdp_id: int) -> None:
     """Release the dedup settings lock for an RDP."""
     Rdp.objects.filter(pk=rdp_id, is_dedup_settings_locked=True).update(is_dedup_settings_locked=False)
+
+
+def lock_async_job_for_update(*, pk: int) -> AsyncJob:
+    """Return AsyncJob locked for update."""
+    return AsyncJob.objects.select_for_update().get(pk=pk)
 
 
 def append_rdp_operation_log(

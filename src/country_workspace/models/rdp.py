@@ -56,6 +56,11 @@ class Rdp(BaseModel):
         default=False,
         help_text=_("Locks this RDP while its push to HOPE is queued or running."),
     )
+    push_attempt_id = models.UUIDField(
+        null=True,
+        editable=False,
+        help_text="Unique identifier of the active HOPE push attempt. Cleared when the attempt finishes.",
+    )
     operation_log = models.JSONField(
         default=list,
         blank=True,
@@ -73,6 +78,10 @@ class Rdp(BaseModel):
                 condition=Q(status__in=NON_TERMINAL_RDP_STATUSES),
                 name="uniq_non_terminal_rdp_per_program",
                 violation_error_message=_("There is already an unfinished RDP for this program."),
+            ),
+            models.CheckConstraint(
+                condition=(~Q(status=RdpPushStatus.PUSH_PENDING) | Q(push_attempt_id__isnull=False)),
+                name="rdp_push_pending_requires_attempt_id",
             ),
         ]
         permissions = [

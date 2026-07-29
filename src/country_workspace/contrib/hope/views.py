@@ -1,17 +1,20 @@
 import logging
+from uuid import UUID
 
+import sentry_sdk
 from django.core import signing
-from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, HttpResponseServerError
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.views import View
 
 from country_workspace.contrib.hope.push.orchestration import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
     dedup_callback_handle,
-    PUSH_READY_CALLBACK_MAX_AGE,
-    PUSH_READY_CALLBACK_SALT,
     push_ready_callback_handle,
 )
+
+from .constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
+
 
 logger = logging.getLogger(__name__)
 
@@ -58,46 +61,28 @@ class PushReadyCallbackView(View):
 
     def get(self, request: HttpRequest, signed_token: str) -> HttpResponse:
         try:
-            data = signing.loads(
+            payload = signing.loads(
                 signed_token,
                 salt=PUSH_READY_CALLBACK_SALT,
                 max_age=PUSH_READY_CALLBACK_MAX_AGE,
             )
         except signing.SignatureExpired:
-            logger.warning("push_ready_callback: token expired prefix=%s", signed_token[:12])
             return HttpResponseForbidden("Token expired.")
         except signing.BadSignature:
-            logger.warning("push_ready_callback: invalid token prefix=%s", signed_token[:12])
             return HttpResponseForbidden("Invalid token.")
 
+        data = payload if isinstance(payload, dict) else {}
         rdp_id = data.get("rdp_id")
-        rdi_id = data.get("rdi_id")
-        prepare_job_id = data.get("prepare_job_id")
-        if (
-            not isinstance(rdp_id, int)
-            or not isinstance(rdi_id, str)
-            or not rdi_id
-            or not isinstance(prepare_job_id, int)
-        ):
-            logger.warning(
-                "push_ready_callback: invalid token payload data=%r",
-                data,
-            )
-            return HttpResponseForbidden("Invalid token payload.")
 
         try:
-            push_ready_callback_handle(
-                rdp_id=rdp_id,
-                rdi_id=rdi_id,
-                prepare_job_id=prepare_job_id,
-            )
-        except Exception:
-            logger.exception(
-                "push_ready_callback: unhandled error for rdp_id=%s rdi_id=%s prepare_job_id=%s",
-                rdp_id,
-                rdi_id,
-                prepare_job_id,
-            )
-            return HttpResponseServerError()
+            push_attempt_value = data["push_attempt_id"]
+            push_attempt_id = UUID(push_attempt_value) if isinstance(push_attempt_value, str) else None
+        except (KeyError, ValueError):
+            push_attempt_id = None
 
+        if not isinstance(rdp_id, int) or push_attempt_id is None:
+            sentry_sdk.capture_message(f"Invalid push-ready callback payload: {payload!r}", level="warning")
+            return HttpResponseForbidden("Invalid callback token.")
+
+        push_ready_callback_handle(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
         return HttpResponse(status=200)

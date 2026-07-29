@@ -1,8 +1,8 @@
 import json
 from contextlib import suppress
 from typing import Any
-import sentry_sdk
 
+import sentry_sdk
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
@@ -15,7 +15,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
-from django.utils.html import format_html_join, format_html
+from django.utils.html import format_html, format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.push import (
@@ -30,7 +30,6 @@ from country_workspace.contrib.hope.push import (
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
-
 
 from ..models import CountryRdp
 from ..options import WorkspaceModelAdmin
@@ -187,11 +186,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         try:
-            check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
-            if not check.allowed or locked is None:
-                messages.error(request, check.reason or "Action is not allowed.")
-                return redirect(self._change_url(obj))
             with transaction.atomic():
+                check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
+                if not check.allowed or locked is None:
+                    messages.error(request, check.reason or "Action is not allowed.")
+                    return redirect(self._change_url(obj))
+
                 job = AsyncJob.objects.create(
                     description="Run Deduplication process on DedupEngine",
                     type=AsyncJob.JobType.TASK,
@@ -201,7 +201,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     rdp=locked,
                     config={"rdp_id": locked.pk},
                 )
-                transaction.on_commit(job.queue)
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             messages.error(request, str(exc))
@@ -209,6 +208,15 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except RemoteError as exc:
             messages.error(request, str(exc))
             return redirect(self._change_url(obj))
+
+        try:
+            job.queue()
+        except Exception:
+            CountryRdp.objects.filter(
+                pk=locked.pk,
+                is_dedup_settings_locked=True,
+            ).update(is_dedup_settings_locked=False)
+            raise
 
         messages.success(request, "Dedup task scheduled")
         return redirect(self._change_url(obj))
@@ -257,24 +265,25 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        locked: CountryRdp | None = None
         try:
-            check, locked = claim_rdp_push(rdp_id=obj.pk)
-            if not check.allowed or locked is None:
-                messages.error(request, check.reason or "Action is not allowed.")
-                return redirect(self._change_url(obj))
-
             with transaction.atomic():
+                check, locked = claim_rdp_push(rdp_id=obj.pk)
+                if not check.allowed or locked is None:
+                    messages.error(request, check.reason or "Action is not allowed.")
+                    return redirect(self._change_url(obj))
+
                 job = AsyncJob.objects.create(
-                    description="Push beneficiaries to HOPE",
+                    description="Prepare RDP for HOPE push",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
                     action=fqn(push_existing_rdp_core),
                     program=locked.program,
                     rdp=locked,
-                    config={"rdp_id": locked.pk},
+                    config={
+                        "rdp_id": locked.pk,
+                        "push_attempt_id": str(locked.push_attempt_id),
+                    },
                 )
-                transaction.on_commit(job.queue)
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             messages.error(request, str(exc))
@@ -282,9 +291,18 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except RemoteError as exc:
             messages.error(request, str(exc))
             return redirect(self._change_url(obj))
+
+        try:
+            job.queue()
         except Exception:
-            if locked is not None:
-                CountryRdp.objects.filter(pk=locked.pk, is_push_locked=True).update(is_push_locked=False)
+            CountryRdp.objects.filter(
+                pk=locked.pk,
+                status=CountryRdp.PushStatus.PUSH_PENDING,
+                is_push_locked=True,
+            ).update(
+                status=CountryRdp.PushStatus.FAILURE,
+                is_push_locked=False,
+            )
             raise
 
         messages.success(request, "Push to HOPE task scheduled")

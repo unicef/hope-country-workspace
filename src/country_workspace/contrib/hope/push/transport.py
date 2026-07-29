@@ -4,6 +4,7 @@ from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.contrib.hope.exceptions import HopeResponseError
+from country_workspace.exceptions import RemoteError
 
 from .config import ROUTES, RdiResetResult, Route
 
@@ -45,5 +46,7 @@ class HopeApi:
             if exc.response.status_code == HTTPStatus.NOT_FOUND:
                 return RdiResetResult.NOT_FOUND
             raise
+        except RemoteError:
+            return RdiResetResult.UNKNOWN
 
         return RdiResetResult.ACCEPTED

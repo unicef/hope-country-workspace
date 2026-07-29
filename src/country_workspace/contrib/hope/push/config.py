@@ -35,9 +35,22 @@ class PushWorkflowConfig(SelectionConfig):
     country_workspace_id: NotRequired[ReadOnly[str]]
 
 
+class RdpWorkflowOutcome(StrEnum):
+    AWAITING_DEDUP_CALLBACK = auto()
+    AWAITING_PUSH_READY_CALLBACK = auto()
+    DATA_PUSH_QUEUED = auto()
+    DATA_PUSH_SKIPPED = auto()
+
+
+class PushAttemptJobConfig(TypedDict):
+    rdp_id: ReadOnly[int]
+    push_attempt_id: ReadOnly[str]
+
+
 class RdiResetResult(StrEnum):
     ACCEPTED = auto()
     NOT_FOUND = auto()
+    UNKNOWN = auto()
 
 
 class Route(StrEnum):
@@ -70,7 +83,7 @@ ERROR_CONFIG: Final[ErrorConfig] = ErrorConfig()
 
 
 type OperationLogJSONValue = (
-    str | int | float | bool | None | list[OperationLogJSONValue] | dict[str, OperationLogJSONValue]
+    str | int | float | bool | list[OperationLogJSONValue] | dict[str, OperationLogJSONValue] | None
 )
 type OperationLogResult = dict[str, OperationLogJSONValue]
 

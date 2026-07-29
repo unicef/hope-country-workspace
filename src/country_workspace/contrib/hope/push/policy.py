@@ -201,6 +201,8 @@ class RdpActionPolicy:
     def start_push_check(self) -> ActionCheck:
         if self.rdp.is_push_locked:
             return ActionCheck(False, "RDP: push to HOPE is already queued or running.")
+        if self.rdp.is_dedup_settings_locked:
+            return ActionCheck(False, "RDP: can not push while deduplication is queued or running.")
         return self.push_check()
 
     def push_check(self) -> ActionCheck:

@@ -19,3 +19,7 @@ DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
 DOCUMENT_TYPES = ("national_id", "national_passport")
 MAX_DOCUMENT_COLUMNS = 3
 ACCOUNT_TYPES = ("mobile", "bank")
+
+# HOPE push-ready callback
+PUSH_READY_CALLBACK_SALT: Final[str] = "push_ready_callback"
+PUSH_READY_CALLBACK_MAX_AGE: Final[int] = 60 * 60 * 96  # 96 hours
