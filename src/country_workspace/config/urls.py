@@ -5,7 +5,7 @@ from django.conf.urls import include
 from django.contrib import admin
 from django.urls import path
 
-from country_workspace.contrib.hope.views import DeduplicationCallbackView
+from country_workspace.contrib.hope.views import DeduplicationCallbackView, PushReadyCallbackView
 from country_workspace.workspaces.sites import workspace
 
 urlpatterns = [
@@ -21,6 +21,11 @@ urlpatterns = [
         "api/dedup/callback/<str:signed_token>/",
         DeduplicationCallbackView.as_view(),
         name="dedup_callback",
+    ),
+    path(
+        "api/push/ready/<str:signed_token>/",
+        PushReadyCallbackView.as_view(),
+        name="push_ready_callback",
     ),
 ]
 

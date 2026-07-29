@@ -1,14 +1,11 @@
 from collections.abc import Mapping
 from http import HTTPStatus
-from typing import Any, Final
+from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.contrib.hope.exceptions import HopeResponseError
 
-from .config import ROUTES, RdiDeleteResult, Route
-
-
-RDI_ALREADY_MERGED_ERROR_CODE: Final[str] = "rdi_already_merged"
+from .config import ROUTES, RdiResetResult, Route
 
 
 class HopeApi:
@@ -37,15 +34,16 @@ class HopeApi:
         url = ROUTES[route].format(co_slug=self.co_slug, **({"rdi_id": rdi_id} if rdi_id else {}))
         return self.client.post(url, payload)
 
-    def delete_rdi(self, rdi_id: str) -> RdiDeleteResult:
-        url = ROUTES[Route.DELETE_RDI].format(co_slug=self.co_slug, rdi_id=rdi_id)
+    def reset_rdi(self, rdi_id: str, callback_url: str) -> RdiResetResult:
+        url = ROUTES[Route.RESET_RDI].format(
+            co_slug=self.co_slug,
+            rdi_id=rdi_id,
+        )
         try:
-            self.client.delete(url)
+            self.client.post(url, {"callback_url": callback_url})
         except HopeResponseError as exc:
-            match exc.response.status_code:
-                case HTTPStatus.NOT_FOUND:
-                    return RdiDeleteResult.DELETED
-                case HTTPStatus.CONFLICT if exc.error_code == RDI_ALREADY_MERGED_ERROR_CODE:
-                    return RdiDeleteResult.ALREADY_MERGED
+            if exc.response.status_code == HTTPStatus.NOT_FOUND:
+                return RdiResetResult.NOT_FOUND
             raise
-        return RdiDeleteResult.DELETED
+
+        return RdiResetResult.ACCEPTED

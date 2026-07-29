@@ -14,10 +14,9 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import ERROR_CONFIG, PushWorkflowConfig, RdiDeleteResult, Serializer
+from .config import ERROR_CONFIG, PushWorkflowConfig, Serializer
 from .mappings import load_mapping_from_api, map_members, map_role_value
 from .repository import (
-    existing_hope_rdi_id,
     qs_individuals_for_rdp,
     preflight_errors,
     serializer_for_program,
@@ -129,7 +128,6 @@ class PushProcessor(ProcessorBase):
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
-        self.rdi_already_merged: bool = False
 
     @cached_property
     def serializer(self) -> Serializer:
@@ -152,16 +150,7 @@ class PushProcessor(ProcessorBase):
         self.run_remote("RDI", lambda: self.api.complete_rdi(self.hope_rdi_id))
 
     def rdi_create(self) -> None:
-        if rdi_id := existing_hope_rdi_id(rdp_id=self.rdp_id):
-            self.hope_rdi_id = rdi_id
-            if (result := self.try_remote("RDI", lambda: self.api.delete_rdi(rdi_id))) is None:
-                return
-            if result is RdiDeleteResult.ALREADY_MERGED:
-                self.rdi_already_merged = True
-                return
-            self.hope_rdi_id = None
-
-        payload = {
+        payload: dict[str, str] = {
             "name": self.batch_name,
             "program": self.program_hope_id,
             "imported_by_email": self.imported_by_email,
@@ -171,9 +160,10 @@ class PushProcessor(ProcessorBase):
 
         if (response := self.try_remote("RDI", lambda: self.api.create_rdi(payload))) is None:
             return
-        if not (rdi_id := response.get("id")):
-            self.fail("RDI", "can't create: no id in response", response=response)
+        if not isinstance(rdi_id := response.get("id"), str) or not rdi_id:
+            self.fail("RDI", "can't create: no valid id in response", response=response)
             return
+
         self.hope_rdi_id = rdi_id
 
     def rdi_push_households(self) -> None:
