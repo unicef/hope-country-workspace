@@ -109,6 +109,15 @@ def pytest_configure(config):
     settings.CELERY_TASK_ALWAYS_EAGER = True
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
+    settings.STREAMING = {
+        "BROKER_URL": "console://",
+        "CLIENT_NAME": "country-workspace-test",
+        "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "LISTEN_CALLBACK": "country_workspace.stream.callbacks.handle_event",
+        "QUEUES": {
+            "results": {"binding_keys": ["cw.#"]},
+        },
+    }
     django.setup()
     from country_workspace.cache.manager import cache_manager
 
