@@ -97,6 +97,13 @@ CONFIG: "dict[str, ConfigItem]" = {
         False,
         celery_doc("#broker-transport-options"),
     ),
+    "STREAMING_BROKER_URL": (
+        str,
+        "console://",
+        "rabbit://guest:guest@localhost:5672/?vhost=/",
+        False,
+        "Broker URL for django-streaming. Use rabbit:// (amqp:// is rewritten) or console:// to log events locally.",
+    ),
     "CSRF_COOKIE_SECURE": (bool, True, False, True, setting("csrf-cookie-secure")),
     "CSRF_TRUSTED_ORIGINS": (list, ["http://localhost"], "", True, ""),
     "DATABASE_URL": (
