@@ -123,6 +123,15 @@ def pytest_configure(config):
             "OPTIONS": {"location": str(here / "../~tests/storage/hope"), "allow_overwrite": True},
         },
     }
+    settings.STREAMING = {
+        "BROKER_URL": "console://",
+        "CLIENT_NAME": "country-workspace-test",
+        "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "LISTEN_CALLBACK": "country_workspace.stream.callbacks.handle_event",
+        "QUEUES": {
+            "ocr_results": {"binding_keys": ["hcw.ocr.result"]},
+        },
+    }
     django.setup()
     from country_workspace.cache.manager import cache_manager
 
