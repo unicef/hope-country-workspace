@@ -52,6 +52,10 @@ case "$1" in
       set -- tini -- "$@"
       set -- gosu hope:unicef celery -A country_workspace.config.celery flower
       ;;
+    stream-listener)
+      set -- tini -- "$@"
+      set -- gosu hope:unicef sh -c "stream configure --queues && exec stream listen -q results"
+      ;;
 esac
 
 exec "$@"

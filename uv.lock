@@ -1204,6 +1204,24 @@ wheels = [
 ]
 
 [[package]]
+name = "django-streaming"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "colorama" },
+    { name = "django" },
+    { name = "django-stubs-ext" },
+    { name = "markdown" },
+    { name = "pika" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4a/03/663e6f08b2c6e85a9c7341676f5f02d4ddf35de6c06dc3612c4fc5c09273/django_streaming-0.8.0.tar.gz", hash = "sha256:1260406b73976d7c29f152a8baef55322f0a6a9b70f17b5f0dda0a69f3613325", size = 12663, upload-time = "2025-10-08T07:39:34.562Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/b2/c0298a375b0004111c1756041c21080143da3e50e62643e705e424fba3b4/django_streaming-0.8.0-py3-none-any.whl", hash = "sha256:3a6b3f8274754d1dff4686291d5d2254f4a114a76bec3e78ed6612fc232343c5", size = 18455, upload-time = "2025-10-08T07:39:33.463Z" },
+]
+
+[[package]]
 name = "django-stubs"
 version = "6.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1571,6 +1589,7 @@ dependencies = [
     { name = "django-smart-admin" },
     { name = "django-smart-env" },
     { name = "django-storages", extra = ["azure"] },
+    { name = "django-streaming" },
     { name = "django-stubs-ext" },
     { name = "django-sysinfo" },
     { name = "django-tailwind" },
@@ -1669,6 +1688,7 @@ requires-dist = [
     { name = "django-smart-admin", specifier = ">=2.6" },
     { name = "django-smart-env", specifier = ">=0.1" },
     { name = "django-storages", extras = ["azure"], specifier = ">=1.14.4" },
+    { name = "django-streaming", specifier = ">=0.8.0" },
     { name = "django-stubs-ext" },
     { name = "django-sysinfo", specifier = ">=2.6.2" },
     { name = "django-tailwind", specifier = ">=3.8" },
@@ -3136,6 +3156,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7b/20/51f0eafd5819e923d09c6f508a764b84d00e7e7d96c4087627a1adab8d30/phonenumbers-9.0.31.tar.gz", hash = "sha256:287dbd012b12cf9bcc4803b55a29e0d204db5a0df747d38c9130fee1b1b6b0aa", size = 2306679, upload-time = "2026-05-23T06:09:06.338Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/d3/17268202ea3fa5a597c98ca5dd178ca013f96b42373c54604e59b3bb8d02/phonenumbers-9.0.31-py2.py3-none-any.whl", hash = "sha256:f308c1f425e2637b92ff34a174f0888ddf47aacfa6199531f7097e00ad90f57c", size = 2595455, upload-time = "2026-05-23T06:09:03.35Z" },
+]
+
+[[package]]
+name = "pika"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/06/a5e4589eccb22be5790bf1327e20c5387b64327daa40c4d857cf9265ec3c/pika-1.4.2.tar.gz", hash = "sha256:48d1f50297e76be4fc798fd5232d4d532d7a4758e51f7c0ae6c4004b9808a26b", size = 154365, upload-time = "2026-07-23T02:11:26.003Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/82/3b047c707700e08539cde489475eb5eaca13550599baaa17a8da038003e7/pika-1.4.2-py3-none-any.whl", hash = "sha256:b1df7389cdffaa45856bd01ade4e81bd488e0e199c443faf0c7bea89015f373f", size = 165087, upload-time = "2026-07-23T02:11:24.712Z" },
 ]
 
 [[package]]

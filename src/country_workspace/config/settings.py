@@ -57,6 +57,8 @@ INSTALLED_APPS = (
     "country_workspace.versioning",
     "country_workspace.cache",
     "country_workspace.notifications",
+    "streaming",
+    "country_workspace.stream.apps.StreamConfig",
     # these should be optional in the future
     "country_workspace.contrib.hope.apps.Config",
     "country_workspace.contrib.aurora.apps.Config",
@@ -238,3 +240,4 @@ from .fragments.spectacular import *  # noqa: E402, F403
 from .fragments.tailwind import *  # noqa: E402, F403
 from .fragments.mail import *  # noqa: E402, F403
 from .fragments.dedup import *  # noqa: E402, F403
+from .fragments.streaming import *  # noqa: E402, F403
