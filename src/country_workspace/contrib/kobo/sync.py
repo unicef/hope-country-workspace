@@ -1,5 +1,6 @@
 import re
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from urllib.parse import urlparse
 from constance import config as constance_config
@@ -20,7 +21,12 @@ from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
-from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
+from country_workspace.models.household import (
+    RELATIONSHIP_HEAD,
+    RELATIONSHIP_NON_BENEFICIARY,
+    ROLE_ALTERNATE,
+    ROLE_PRIMARY,
+)
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
@@ -162,6 +168,14 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
     return next((key for key in individual if key.startswith("full_name")), None)
 
 
+@dataclass(frozen=True)
+class ImportedIndividual:
+    """An individual record paired with its occurrence-specific processed fields."""
+
+    individual: Individual
+    fields: dict[str, Any]
+
+
 def create_individuals(  # noqa: PLR0913
     batch: Batch,
     household: Household,
@@ -169,8 +183,8 @@ def create_individuals(  # noqa: PLR0913
     config: Config,
     originating_id: str,
     job: AsyncJob | None = None,
-) -> list[Individual]:
-    individuals = []
+) -> list[ImportedIndividual]:
+    individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
@@ -193,19 +207,18 @@ def create_individuals(  # noqa: PLR0913
                 originating_id=ind_originating_id,
                 name=name,
             )
-            individuals.append(individual)
+            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
         else:
-            individuals.append(
-                Individual(
-                    batch=batch,
-                    household=household,
-                    name=name,
-                    originating_id=ind_originating_id,
-                    flex_fields=individual_fields,
-                    raw_data=raw_individual,
-                ),
+            individual = Individual(
+                batch=batch,
+                household=household,
+                name=name,
+                originating_id=ind_originating_id,
+                flex_fields=individual_fields,
+                raw_data=raw_individual,
             )
-    household.program.individuals.bulk_create([individual for individual in individuals if individual.pk is None])
+            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
+    household.program.individuals.bulk_create([item.individual for item in individuals if item.individual.pk is None])
     return individuals
 
 
@@ -240,25 +253,25 @@ class ImportResult(TypedDict):
     completed: bool
 
 
-def _is_primary_collector(individual: Individual) -> bool:
-    return individual.flex_fields.get("role") == "PRIMARY"
+def _is_primary_collector(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("role") == ROLE_PRIMARY
 
 
-def _is_alternate_collector(individual: Individual) -> bool:
-    return individual.flex_fields.get("role") == "ALTERNATE"
+def _is_alternate_collector(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("role") == ROLE_ALTERNATE
 
 
-def _is_head_of_household(individual: Individual) -> bool:
-    return individual.flex_fields.get("relationship") == "HEAD"
+def _is_head_of_household(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("relationship") == RELATIONSHIP_HEAD
 
 
-def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+def set_roles_and_relationships(household: Household, individuals: list[ImportedIndividual]) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
-    if primary_collector := next(filter(_is_primary_collector, individuals), None):
+    if primary_collector := next((item.individual for item in individuals if _is_primary_collector(item)), None):
         household.flex_fields[fields.primary_collector] = primary_collector.id
-    if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
+    if alternate_collector := next((item.individual for item in individuals if _is_alternate_collector(item)), None):
         household.flex_fields[fields.alternate_collector] = alternate_collector.id
-    if head_of_household := next(filter(_is_head_of_household, individuals), None):
+    if head_of_household := next((item.individual for item in individuals if _is_head_of_household(item)), None):
         household.flex_fields[fields.head_of_household] = head_of_household.id
     household.save(update_fields=["flex_fields"])
 
