@@ -10,8 +10,12 @@
     {% else %}
         {% if master_detail %}
             &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_changelist" %}">{{ title_group_plural }}</a>
-            &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.household.pk %}">{{ original.household }}</a>{% admin_url original.household %}
-            &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ original.household.pk }}">{{ title_member_plural }}</a> {% admin_url modeladmin household__exact=selected_household.pk %}
+            {% if original.household %}
+                &rsaquo; <a href="{% url "workspace:workspaces_countryhousehold_change" original.household.pk %}">{{ original.household }}</a>{% admin_url original.household %}
+                &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}?household__exact={{ original.household.pk }}">{{ title_member_plural }}</a> {% admin_url modeladmin household__exact=original.household.pk %}
+            {% else %}
+                &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}">{{ title_member_plural }}</a>
+            {% endif %}
         {% else %}
             &rsaquo; <a href="{% url "workspace:workspaces_countryindividual_changelist" %}">{{ title_member_plural }}</a>{% admin_url modeladmin %}
         {% endif %}
