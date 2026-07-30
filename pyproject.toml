@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
   "bitcaster-sdk>=0.1",
   "celery>=5.4",
+  "circus>=0.19",
   "cryptography>=41",
   "deepdiff>=8.0.1",
   "deprecation>=2.1",
