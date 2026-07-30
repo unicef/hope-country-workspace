@@ -468,6 +468,20 @@ wheels = [
 ]
 
 [[package]]
+name = "circus"
+version = "0.19.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "psutil" },
+    { name = "pyzmq" },
+    { name = "tornado" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/97/824bfce6949716ea93adcd5ff8aa4c277f40a735d7f644669674ec132ae4/circus-0.19.0.tar.gz", hash = "sha256:fbe6a5029998ac1239b17ebdd38251ac8b22627d30e4ec6f68cb10233911b0f4", size = 94206, upload-time = "2025-02-13T09:39:38.906Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/2c/1b09e40d512b7b9f9e58f2ee6c4648461e3fb40de2201856adaa1d22e96f/circus-0.19.0-py3-none-any.whl", hash = "sha256:15cac59d2bac8d8793f801a3a57e54acb261590c93e29fbfe639eaef8a680d39", size = 118155, upload-time = "2025-02-13T09:39:35.828Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1563,6 +1577,7 @@ source = { editable = "." }
 dependencies = [
     { name = "bitcaster-sdk" },
     { name = "celery" },
+    { name = "circus" },
     { name = "cryptography" },
     { name = "deepdiff" },
     { name = "deprecation" },
@@ -1662,6 +1677,7 @@ type-check = [
 requires-dist = [
     { name = "bitcaster-sdk", specifier = ">=0.1" },
     { name = "celery", specifier = ">=5.4" },
+    { name = "circus", specifier = ">=0.19" },
     { name = "cryptography", specifier = ">=41" },
     { name = "deepdiff", specifier = ">=8.0.1" },
     { name = "deprecation", specifier = ">=2.1" },
@@ -1688,7 +1704,7 @@ requires-dist = [
     { name = "django-smart-admin", specifier = ">=2.6" },
     { name = "django-smart-env", specifier = ">=0.1" },
     { name = "django-storages", extras = ["azure"], specifier = ">=1.14.4" },
-    { name = "django-streaming", specifier = ">=0.8.0" },
+    { name = "django-streaming", specifier = ">=0.8" },
     { name = "django-stubs-ext" },
     { name = "django-sysinfo", specifier = ">=2.6.2" },
     { name = "django-tailwind", specifier = ">=3.8" },
