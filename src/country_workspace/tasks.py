@@ -7,12 +7,15 @@ import sentry_sdk
 from celery.exceptions import Ignore
 from constance import config as constance_config
 from django.core.cache import cache
+from django.db.models import QuerySet
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from redis_lock import Lock
 
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -56,8 +59,8 @@ def cleanup_merged_rdp_data() -> None:
             affected_programs.update(
                 Batch.objects.filter(household__pk__in=batch_h_pks).values_list("program_id", flat=True).distinct()
             )
-            _clear_heavy_fields(Individual, {"household_id__in": batch_h_pks})
-            _clear_heavy_fields(Household, {"pk__in": batch_h_pks})
+            _clear_heavy_fields(Individual.objects.filter(household_id__in=batch_h_pks))
+            _clear_heavy_fields(Household.objects.filter(pk__in=batch_h_pks))
             _, counts = Household.objects.filter(pk__in=batch_h_pks).delete()
             deleted_h += counts.get("country_workspace.Household", 0)
             deleted_i += counts.get("country_workspace.Individual", 0)
@@ -69,7 +72,7 @@ def cleanup_merged_rdp_data() -> None:
             affected_programs.update(
                 Batch.objects.filter(individual__pk__in=batch_i_pks).values_list("program_id", flat=True).distinct()
             )
-            _clear_heavy_fields(Individual, {"pk__in": batch_i_pks})
+            _clear_heavy_fields(Individual.objects.filter(pk__in=batch_i_pks))
             _, counts = Individual.objects.filter(pk__in=batch_i_pks).delete()
             deleted_i += counts.get("country_workspace.Individual", 0)
 
@@ -140,8 +143,8 @@ def removed_expired_jobs(**kwargs: Any) -> None:
     AsyncJob.objects.filter(**kwargs).delete()
 
 
-def _clear_heavy_fields(model: type, filter_kwargs: dict) -> None:
-    model.objects.filter(**filter_kwargs).update(flex_fields={}, raw_data={}, flex_files=None)
+def _clear_heavy_fields(queryset: QuerySet) -> None:
+    queryset.update(flex_fields={}, raw_data={}, flex_files=None)
 
 
 @app.task()
@@ -199,10 +202,48 @@ def sync_hope_data() -> dict[str, dict[str, Any]]:
     return results
 
 
-def _cleanup_batches(batch_ids: list, job: AsyncJob, batch_size: int = 5) -> dict[str, int]:
+def _referenced_collector_reparenting(program_id: int, chunk: list) -> dict[int, int]:
+    """Map collector PK -> a surviving batch id, for collectors still referenced outside this chunk.
+
+    A household-less collector (`Individual.household is None`) is deduplicated program-wide
+    (see `get_or_create_collector`) and can be referenced, via `primary_collector_id` /
+    `alternate_collector_id` in `flex_fields`, by households belonging to batches other than
+    the one that first created it. Those references are plain JSON values, not real FKs, so
+    simply excluding the collector from the individuals about to be deleted is not enough: the
+    `Batch` row it still points to is about to be deleted too, and `Individual.batch` is
+    `on_delete=CASCADE`, which would take the collector down with it regardless. Reparenting the
+    collector onto one of the still-referencing batches keeps it alive through that cascade.
+    """
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    rows = (
+        Household.objects.filter(batch__program_id=program_id)
+        .exclude(batch_id__in=chunk)
+        .annotate(
+            _primary=KeyTextTransform(fields.primary_collector, "flex_fields"),
+            _alternate=KeyTextTransform(fields.alternate_collector, "flex_fields"),
+        )
+        .order_by("batch_id")
+        .values_list("batch_id", "_primary", "_alternate")
+    )
+    reparenting: dict[int, int] = {}
+    for batch_id, primary, alternate in rows.iterator():
+        for value in (primary, alternate):
+            if value:
+                with contextlib.suppress(ValueError, TypeError):
+                    reparenting.setdefault(int(value), batch_id)
+    return reparenting
+
+
+def _cleanup_batches(
+    batch_ids: list, job: AsyncJob, program_id: int | None = None, batch_size: int = 5
+) -> dict[str, int]:
     """Delete the given batches and their related households/individuals in chunks.
 
-    Clears heavy fields before deletion to avoid loading large JSON payloads.
+    Clears heavy fields before deletion to avoid loading large JSON payloads. Shared external
+    collectors still referenced by households outside this cleanup (see
+    `_referenced_collector_reparenting`) are reparented onto one of those surviving batches
+    before anything is deleted, since a collector's owning batch is only the one that first
+    created it, not every batch whose households later reuse it.
     Caller is responsible for `suppress_cache_updates()` wrapping and cache invalidation.
     """
     deleted_counts = {"batches": 0, "households": 0, "individuals": 0}
@@ -211,13 +252,21 @@ def _cleanup_batches(batch_ids: list, job: AsyncJob, batch_size: int = 5) -> dic
         job.ensure_not_cancelled(refresh=True)
         chunk = batch_ids[i : i + batch_size]
 
-        _clear_heavy_fields(Individual, {"batch_id__in": chunk})
-        _clear_heavy_fields(Household, {"batch_id__in": chunk})
+        if program_id:
+            reparenting = _referenced_collector_reparenting(program_id, chunk)
+            for collector_id, target_batch_id in reparenting.items():
+                Individual.objects.filter(pk=collector_id, batch_id__in=chunk).update(batch_id=target_batch_id)
 
-        _, counts = Individual.objects.filter(batch_id__in=chunk).delete()
+        individuals_queryset = Individual.objects.filter(batch_id__in=chunk)
+        households_queryset = Household.objects.filter(batch_id__in=chunk)
+
+        _clear_heavy_fields(individuals_queryset)
+        _clear_heavy_fields(households_queryset)
+
+        _, counts = individuals_queryset.delete()
         deleted_counts["individuals"] += counts.get("country_workspace.Individual", 0)
 
-        _, counts = Household.objects.filter(batch_id__in=chunk).delete()
+        _, counts = households_queryset.delete()
         deleted_counts["households"] += counts.get("country_workspace.Household", 0)
 
         _, counts = Batch.objects.filter(id__in=chunk).delete()
@@ -237,7 +286,7 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
 
     try:
         with suppress_cache_updates():
-            deleted_counts.update(_cleanup_batches(batch_ids, job, batch_size=batch_size))
+            deleted_counts.update(_cleanup_batches(batch_ids, job, program_id=program_id, batch_size=batch_size))
 
             job.ensure_not_cancelled(refresh=True)
             _, counts = Rdp.objects.filter(program_id=program_id).delete()
@@ -267,7 +316,7 @@ def batch_cleanup(job: AsyncJob) -> dict[str, int]:
 
     try:
         with suppress_cache_updates():
-            deleted_counts.update(_cleanup_batches([batch.pk], job))
+            deleted_counts.update(_cleanup_batches([batch.pk], job, program_id=program.pk if program else None))
     finally:
         if program:
             cache_manager.incr_cache_version(program=program)

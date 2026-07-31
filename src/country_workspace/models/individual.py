@@ -5,7 +5,6 @@ from django.db import models
 from django.utils.translation import gettext as _
 
 from .base import BaseModel, Validable
-from .household import Household
 from .mixins import FlexFieldGroupingMixin
 
 if TYPE_CHECKING:
@@ -19,7 +18,7 @@ INDEX_NAME_PREFIX: Final[str] = "%(app_label)s_%(class)s"
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
 class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
-    household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
+    household = models.ForeignKey("Household", on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
     identity_hash = models.CharField(
         max_length=64,

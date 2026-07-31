@@ -4,6 +4,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.tasks import (
@@ -350,6 +351,80 @@ def test_batch_cleanup_bumps_cache_version_exactly_once(batch_cleanup_job, batch
 
     version_after = cache_manager.get_cache_version(program=program)
     assert version_after == version_before + 1
+
+
+def _add_household_role_ref(household: Household, field: str, individual: Individual) -> None:
+    household.flex_fields = {**household.flex_fields, field: individual.pk}
+    household.save(update_fields=["flex_fields"])
+
+
+def test_batch_cleanup_preserves_collector_referenced_by_other_batch(program, batch, batch_cleanup_job):
+    other_batch = BatchFactory.create(program=program)
+    collector = IndividualFactory.create(batch=batch, household=None)
+    other_household = HouseholdFactory.create(batch=other_batch, individuals=[])
+    _add_household_role_ref(other_household, HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, collector)
+
+    result = batch_cleanup(batch_cleanup_job)
+
+    assert not Batch.objects.filter(pk=batch.pk).exists()
+    assert Individual.objects.filter(pk=collector.pk).exists()
+    assert result["individuals"] == 0
+
+    collector.refresh_from_db()
+    assert collector.flex_fields
+    assert Batch.objects.filter(pk=other_batch.pk).exists()
+    assert collector.batch_id == other_batch.pk
+
+
+def test_batch_cleanup_preserves_collector_referenced_via_alternate_collector(program, batch, batch_cleanup_job):
+    other_batch = BatchFactory.create(program=program)
+    collector = IndividualFactory.create(batch=batch, household=None)
+    other_household = HouseholdFactory.create(batch=other_batch, individuals=[])
+    _add_household_role_ref(other_household, HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector, collector)
+
+    batch_cleanup(batch_cleanup_job)
+
+    assert Individual.objects.filter(pk=collector.pk).exists()
+    collector.refresh_from_db()
+    assert collector.batch_id == other_batch.pk
+
+
+def test_batch_cleanup_deletes_unreferenced_collector(batch_cleanup_job, batch):
+    collector = IndividualFactory.create(batch=batch, household=None)
+
+    result = batch_cleanup(batch_cleanup_job)
+
+    assert result["individuals"] == 1
+    assert not Individual.objects.filter(pk=collector.pk).exists()
+
+
+def test_batch_cleanup_ignores_collector_reference_from_other_program(batch, batch_cleanup_job):
+    collector = IndividualFactory.create(batch=batch, household=None)
+
+    other_program = ProgramFactory.create()
+    other_batch = BatchFactory.create(program=other_program)
+    other_household = HouseholdFactory.create(batch=other_batch, individuals=[])
+    _add_household_role_ref(other_household, HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, collector)
+
+    result = batch_cleanup(batch_cleanup_job)
+
+    assert result["individuals"] == 1
+    assert not Individual.objects.filter(pk=collector.pk).exists()
+
+
+def test_clean_program_data_deletes_collector_referenced_within_deleted_program(job):
+    program = job.program
+    batch1 = BatchFactory.create(program=program)
+    batch2 = BatchFactory.create(program=program)
+    collector = IndividualFactory.create(batch=batch1, household=None)
+    household = HouseholdFactory.create(batch=batch2, individuals=[])
+    _add_household_role_ref(household, HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, collector)
+
+    result = clean_program_data(job, batch_size=1)
+
+    assert result is not None
+    assert not Individual.objects.filter(pk=collector.pk).exists()
+    assert Batch.objects.filter(program=program).count() == 0
 
 
 def test_sync_hope_data_runs_delta_and_flex_fields(mocker):
