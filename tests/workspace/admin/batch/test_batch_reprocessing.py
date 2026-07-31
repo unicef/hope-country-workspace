@@ -2,6 +2,7 @@ import pytest
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import Batch, Household, Individual, User
+from country_workspace.utils.import_flow.collector_identity import compute_collector_hash
 from country_workspace.workspaces.admin.batch.reprocessing import (
     _apply_import_processor,
     _build_processor,
@@ -173,6 +174,17 @@ def test_apply_import_processor_updates_record_and_preserves_generated_fields(mo
     assert record.last_checked is None
     assert record.errors == {}
     record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors"])
+
+
+def test_apply_import_processor_recomputes_collector_identity_hash(mocker) -> None:
+    record = mocker.MagicMock(spec=Individual, raw_data={"external": "value"})
+    flex_fields = {"relationship": "NON_BENEFICIARY", "given_name": "John", "birth_date": "1990-01-01"}
+    processor = mocker.MagicMock(return_value=flex_fields)
+
+    assert _apply_import_processor(record, processor) is True
+
+    assert record.identity_hash == compute_collector_hash(flex_fields)
+    record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors", "identity_hash"])
 
 
 def test_process_records_counts_successfully_processed_records(mocker) -> None:

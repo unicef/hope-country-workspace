@@ -1,7 +1,9 @@
 from typing import TYPE_CHECKING
 
-from country_workspace.models import Batch, Transformer
+from country_workspace.models import Batch, Individual, Transformer
+from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 
+from .collector_identity import compute_collector_hash
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -27,7 +29,12 @@ def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | N
             record.flex_fields = transformed
             record.last_checked = None
             record.errors = {}
-            record.save(update_fields=("flex_fields", "last_checked", "errors"))
+            update_fields = ["flex_fields", "last_checked", "errors"]
+            if isinstance(record, Individual) and transformed.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
+                # Keep the dedup key in sync with the stored identity fields,
+                record.identity_hash = compute_collector_hash(transformed)
+                update_fields.append("identity_hash")
+            record.save(update_fields=tuple(update_fields))
             count += 1
 
     return count

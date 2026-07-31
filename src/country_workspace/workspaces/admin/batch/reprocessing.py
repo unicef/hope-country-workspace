@@ -17,8 +17,10 @@ from country_workspace.contrib.kobo.sync import (
     build_individual_processor as build_kobo_individual_processor,
 )
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
+from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
+from country_workspace.utils.import_flow.collector_identity import compute_collector_hash
 from country_workspace.utils.import_flow.transformations import (
     apply_batch_transformers as apply_transformers_to_batch,
 )
@@ -93,7 +95,12 @@ def _apply_import_processor(
     record.flex_fields = flex_fields
     record.last_checked = None
     record.errors = {}
-    record.save(update_fields=["flex_fields", "last_checked", "errors"])
+    update_fields = ["flex_fields", "last_checked", "errors"]
+    if isinstance(record, Individual) and flex_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
+        # Keep the dedup key in sync with the rebuilt identity fields.
+        record.identity_hash = compute_collector_hash(flex_fields)
+        update_fields.append("identity_hash")
+    record.save(update_fields=update_fields)
     return True
 
 
