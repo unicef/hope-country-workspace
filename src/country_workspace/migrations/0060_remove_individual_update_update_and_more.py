@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0060_backfill_individual_identity_hash"),
+        ("country_workspace", "0059_individual_identity_hash"),
     ]
 
     operations = [
