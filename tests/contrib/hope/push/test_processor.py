@@ -7,7 +7,7 @@ from pytest_mock import MockerFixture
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.push.config import Beneficiary, ERROR_CONFIG, ErrorConfig, RdiDeleteResult
 from country_workspace.contrib.hope.push.processor import DedupProcessor, ProcessorBase, PushProcessor
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.exceptions import BlobStorageError, RemoteError, RemoteUnavailableError
 
 MOD = "country_workspace.contrib.hope.push.processor"
 
@@ -309,6 +309,26 @@ def test_push_batched_skips_processing_when_remote_failed(
     process.assert_not_called()
 
 
+def test_push_batched_collects_blob_storage_failure(
+    mocker: MockerFixture,
+    processor: PushProcessor,
+    qs: Callable[[list], object],
+    err_contains,
+) -> None:
+    processor.hope_rdi_id = "RID-1"
+    processor.queryset = qs([1])
+
+    prepare = mocker.Mock(side_effect=BlobStorageError("blob sync failed for CountryHousehold #1"))
+    post = mocker.MagicMock()
+    process = mocker.MagicMock()
+
+    processor._push_batched("Households", prepare, post, process)
+
+    assert err_contains(processor.total["errors"], "blob sync failed")
+    post.assert_not_called()
+    process.assert_not_called()
+
+
 def test_push_batched_stops_when_prepare_added_errors(
     mocker: MockerFixture,
     processor: PushProcessor,
@@ -372,6 +392,7 @@ def test_prepare_households_batch_uses_mapping_and_serializer(
     mocker: MockerFixture,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
@@ -415,6 +436,7 @@ def test_prepare_households_batch_uses_members_queryset_when_not_prefetched(
     mocker: MockerFixture,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     mocker.patch(f"{MOD}.HOUSEHOLD_ROLE_REF_FIELDS", ())
@@ -436,6 +458,7 @@ def test_prepare_individuals_batch_injects_id(
     only_master_detail,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     i1 = beneficiary_stub(id=10, _group={"a": 1})
@@ -454,6 +477,7 @@ def test_prepare_people_batch_plain(
     only_people_only,
     processor: PushProcessor,
     serializer_identity: PushProcessor,
+    no_blob_sync: PushProcessor,
     beneficiary_stub: Callable[..., Beneficiary],
 ) -> None:
     i1 = beneficiary_stub(id=10, _group={"a": 1})
@@ -731,25 +755,14 @@ def test_dedup_run_returns_when_can_create_check_failed(
     assert dedup_processor.total["deduplication_set_id"] == str(ds_id)
 
 
-def test_iter_images_filters_empty_and_non_strings(mocker: MockerFixture, dedup_processor: DedupProcessor) -> None:
-    qs = mocker.MagicMock()
-    values_qs = mocker.MagicMock()
-    values_qs.iterator.return_value = iter(
-        [
-            (1, " a.jpg "),
-            (2, ""),
-            (3, "   "),
-            (4, None),
-            (5, 123),
-            (6, "b.jpg"),
-        ]
-    )
-    qs.values_list.return_value = values_qs
-    mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
+def test_iter_images_filters_empty_and_non_strings(
+    dedup_processor: DedupProcessor,
+    individuals_with_photo: tuple,
+) -> None:
+    with_photo, _ = individuals_with_photo
 
     assert list(dedup_processor._iter_images()) == [
-        {"reference_pk": "1", "filename": "a.jpg"},
-        {"reference_pk": "6", "filename": "b.jpg"},
+        {"reference_pk": str(with_photo.pk), "filename": with_photo.hope_blob_key("photo")},
     ]
 
 

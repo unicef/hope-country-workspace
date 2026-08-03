@@ -72,6 +72,7 @@ def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
     return (
         CountryHousehold.objects.filter(pk__in=pks)
         .order_by("id")
+        .select_related("batch__program__country_office")
         .prefetch_related(
             Prefetch(
                 "members",
@@ -84,12 +85,16 @@ def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
 
 def qs_individuals_by_household_pks(hh_pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     """Return Individuals filtered by household ids; ordered by primary key."""
-    return CountryIndividual.objects.filter(household_id__in=hh_pks).order_by("id")
+    return (
+        CountryIndividual.objects.filter(household_id__in=hh_pks)
+        .order_by("id")
+        .select_related("batch__program__country_office")
+    )
 
 
 def qs_individuals_by_pks(pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     """Return Individuals filtered by primary keys; ordered by primary key."""
-    return CountryIndividual.objects.filter(pk__in=pks).order_by("id")
+    return CountryIndividual.objects.filter(pk__in=pks).order_by("id").select_related("batch__program__country_office")
 
 
 def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:

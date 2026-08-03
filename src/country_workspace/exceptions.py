@@ -7,3 +7,7 @@ class RemoteError(Http404):
 
 class RemoteUnavailableError(Exception):
     pass
+
+
+class BlobStorageError(RemoteUnavailableError):
+    pass

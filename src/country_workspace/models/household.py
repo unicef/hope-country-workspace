@@ -6,7 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from .base import BaseModel, Validable
-from .mixins import FlexFieldGroupingMixin
+from .mixins import FlexFieldGroupingMixin, HopeBlobMixin
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -25,7 +25,9 @@ ROLE_ALTERNATE: Final[str] = "ALTERNATE"
 
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
-class Household(FlexFieldGroupingMixin, Validable, BaseModel):
+class Household(HopeBlobMixin, FlexFieldGroupingMixin, Validable, BaseModel):
+    HOPE_BLOB_ENTITY = "hh"
+
     system_fields = models.JSONField(default=dict, blank=True)
     members: "QuerySet[Individual]"
 

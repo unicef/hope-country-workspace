@@ -6,7 +6,7 @@ from django.utils.translation import gettext as _
 
 from .base import BaseModel, Validable
 from .household import Household
-from .mixins import FlexFieldGroupingMixin
+from .mixins import FlexFieldGroupingMixin, HopeBlobMixin
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -18,7 +18,9 @@ INDEX_NAME_PREFIX: Final[str] = "%(app_label)s_%(class)s"
 
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
-class Individual(FlexFieldGroupingMixin, Validable, BaseModel):
+class Individual(HopeBlobMixin, FlexFieldGroupingMixin, Validable, BaseModel):
+    HOPE_BLOB_ENTITY = "ind"
+
     household = models.ForeignKey(Household, on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
 

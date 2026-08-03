@@ -207,6 +207,16 @@ def serializer_identity(processor: PushProcessor) -> PushProcessor:
 
 
 @pytest.fixture
+def no_blob_sync(mocker: MockerFixture, processor: PushProcessor) -> PushProcessor:
+    """Bypass blob reconciliation for prepare_* tests using beneficiary_stub instances."""
+    mod = "country_workspace.contrib.hope.push.processor"
+    mocker.patch.object(processor, "_image_fields", return_value=[])
+    mocker.patch(f"{mod}.sync_record_blobs", return_value={})
+    mocker.patch(f"{mod}.substitute_row_images", side_effect=lambda record, row, paths: row)
+    return processor
+
+
+@pytest.fixture
 def errs() -> list[str]:
     return []
 
@@ -242,3 +252,21 @@ def dedup_processor(rdp: CountryRdp):
     from country_workspace.contrib.hope.push.processor import DedupProcessor
 
     return DedupProcessor(rdp)
+
+
+@pytest.fixture
+def individuals_with_photo(rdp: CountryRdp, master_detail: bool):
+    """Individual checker already has a top-level `photo` Base64ImageField (see
+    0028_add_individual_fields.py), applied via the `program` fixture's force_migrated_records.
+    """
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    if master_detail:
+        household = CountryHouseholdFactory(rdps=rdp, individuals=True)
+        make = lambda flex_fields: CountryIndividualFactory(household=household, flex_fields=flex_fields)
+    else:
+        make = lambda flex_fields: CountryIndividualFactory(household=None, flex_fields=flex_fields, rdps=rdp)
+
+    png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    photo_uri = f"data:image/png;base64,{png_b64}"
+    return make({"photo": photo_uri}), make({"photo": ""})

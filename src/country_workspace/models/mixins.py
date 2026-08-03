@@ -1,4 +1,29 @@
+import re
 from collections import defaultdict
+from typing import TypedDict, cast
+
+
+class GroupedItem(TypedDict):
+    """Item produced by FlexFieldGroupingMixin.apply_grouping().
+
+    'type' always holds the originating fieldset prefix; the remaining keys are
+    dynamic flex-field names and cannot be declared statically.
+    """
+
+    type: str
+
+
+class HopeBlobMixin:
+    HOPE_BLOB_ENTITY: str = "obj"
+
+    @staticmethod
+    def _sanitize(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9._-]", "_", (value or "").strip())
+
+    def hope_blob_key(self, name: str) -> str:
+        office = self._sanitize(self.country_office.code)
+        program = self._sanitize(self.program.code)
+        return f"{office}/{program}/CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
 
 
 class FlexFieldGroupingMixin:
@@ -19,13 +44,15 @@ class FlexFieldGroupingMixin:
 
         return grouping_info
 
-    def apply_grouping(self) -> dict[str, object | list[object]]:
+    def apply_grouping(self) -> dict[str, object | list[GroupedItem]]:
         def present(x: object | None) -> bool:
             return x is not None and (not isinstance(x, str) or x.strip())
 
-        def build_item(prefix: str, field_map: dict[str, str]) -> dict | None:
+        def build_item(prefix: str, field_map: dict[str, str]) -> GroupedItem | None:
             item = {name: v for name, key in field_map.items() if present(v := ff.pop(key, None))}
-            return item | {"type": prefix.strip("_")} if item else None
+            # cast: GroupedItem cannot declare the dynamic flex-field keys, but 'type'
+            # is guaranteed by the merge below.
+            return cast("GroupedItem", item | {"type": prefix.strip("_")}) if item else None
 
         gi = self.get_grouping_info()
         ff = dict(self.flex_fields)
