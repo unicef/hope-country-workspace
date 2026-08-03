@@ -12,17 +12,11 @@ class HopeResponseError(RemoteError):
 
     def __init__(self, message: str, *, response: Response) -> None:
         super().__init__(message)
-        self.response = response
+        self.response: Response = response
 
-    @property
-    def error_code(self) -> str | None:
-        try:
-            payload = self.response.json()
-        except ValueError:
-            return None
 
-        error = payload.get("error") if isinstance(payload, dict) else None
-        return error if isinstance(error, str) else None
+class HopeRdiResetUnconfirmedError(RemoteError):
+    """Raised when CW cannot confirm whether HOPE accepted an RDI reset."""
 
 
 class HopeSyncError(Exception):

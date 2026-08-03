@@ -22,4 +22,3 @@ ACCOUNT_TYPES = ("mobile", "bank")
 
 # HOPE push-ready callback
 PUSH_READY_CALLBACK_SALT: Final[str] = "push_ready_callback"
-PUSH_READY_CALLBACK_MAX_AGE: Final[int] = 60 * 60 * 96  # 96 hours

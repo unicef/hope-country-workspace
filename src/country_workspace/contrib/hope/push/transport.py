@@ -3,7 +3,7 @@ from http import HTTPStatus
 from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
-from country_workspace.contrib.hope.exceptions import HopeResponseError
+from country_workspace.contrib.hope.exceptions import HopeRdiResetUnconfirmedError, HopeResponseError
 from country_workspace.exceptions import RemoteError
 
 from .config import ROUTES, RdiResetResult, Route
@@ -36,17 +36,17 @@ class HopeApi:
         return self.client.post(url, payload)
 
     def reset_rdi(self, rdi_id: str, callback_url: str) -> RdiResetResult:
-        url = ROUTES[Route.RESET_RDI].format(
-            co_slug=self.co_slug,
-            rdi_id=rdi_id,
-        )
+        url = ROUTES[Route.RESET_RDI].format(co_slug=self.co_slug, rdi_id=rdi_id)
+
         try:
             self.client.post(url, {"callback_url": callback_url})
         except HopeResponseError as exc:
             if exc.response.status_code == HTTPStatus.NOT_FOUND:
                 return RdiResetResult.NOT_FOUND
+            if exc.response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR:
+                raise HopeRdiResetUnconfirmedError(str(exc)) from exc
             raise
-        except RemoteError:
-            return RdiResetResult.UNKNOWN
+        except RemoteError as exc:
+            raise HopeRdiResetUnconfirmedError(str(exc)) from exc
 
         return RdiResetResult.ACCEPTED

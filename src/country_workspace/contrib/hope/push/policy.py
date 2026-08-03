@@ -16,6 +16,7 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.exceptions import HopePushError
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import Program, Rdp
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 
 
 @dataclass(slots=True, frozen=True)
@@ -83,10 +84,7 @@ class ProgramDedupSettingsPolicy:
             Rdp.objects.filter(program=self.program)
             .filter(
                 Q(status=Rdp.PushStatus.SUCCESS)
-                | Q(
-                    status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE],
-                    is_dedup_settings_locked=True,
-                )
+                | Q(status__in=NON_TERMINAL_RDP_STATUSES, is_dedup_settings_locked=True)
             )
             .exists()
         )
@@ -95,7 +93,7 @@ class ProgramDedupSettingsPolicy:
         rdp = (
             Rdp.objects.filter(
                 program=self.program,
-                status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE],
+                status__in=NON_TERMINAL_RDP_STATUSES,
                 deduplication_set_id__isnull=False,
             )
             .select_related("program")

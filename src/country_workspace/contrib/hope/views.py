@@ -10,10 +10,10 @@ from country_workspace.contrib.hope.push.orchestration import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
     dedup_callback_handle,
-    push_ready_callback_handle,
+    handle_push_ready_callback,
 )
 
-from .constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
+from .constants import PUSH_READY_CALLBACK_SALT
 
 
 logger = logging.getLogger(__name__)
@@ -61,13 +61,7 @@ class PushReadyCallbackView(View):
 
     def get(self, request: HttpRequest, signed_token: str) -> HttpResponse:
         try:
-            payload = signing.loads(
-                signed_token,
-                salt=PUSH_READY_CALLBACK_SALT,
-                max_age=PUSH_READY_CALLBACK_MAX_AGE,
-            )
-        except signing.SignatureExpired:
-            return HttpResponseForbidden("Token expired.")
+            payload = signing.loads(signed_token, salt=PUSH_READY_CALLBACK_SALT)
         except signing.BadSignature:
             return HttpResponseForbidden("Invalid token.")
 
@@ -84,5 +78,5 @@ class PushReadyCallbackView(View):
             sentry_sdk.capture_message(f"Invalid push-ready callback payload: {payload!r}", level="warning")
             return HttpResponseForbidden("Invalid callback token.")
 
-        push_ready_callback_handle(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+        handle_push_ready_callback(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
         return HttpResponse(status=200)

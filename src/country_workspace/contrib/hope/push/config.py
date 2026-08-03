@@ -47,10 +47,13 @@ class PushAttemptJobConfig(TypedDict):
     push_attempt_id: ReadOnly[str]
 
 
+class PushPreparationJobConfig(PushAttemptJobConfig):
+    rdi_id_to_reset: ReadOnly[str | None]
+
+
 class RdiResetResult(StrEnum):
     ACCEPTED = auto()
     NOT_FOUND = auto()
-    UNKNOWN = auto()
 
 
 class Route(StrEnum):

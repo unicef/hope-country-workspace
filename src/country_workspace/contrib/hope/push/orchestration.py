@@ -17,7 +17,7 @@ from country_workspace.contrib.dedup_engine import (
     make_dedup_client,
 )
 from country_workspace.contrib.hope.constants import PUSH_READY_CALLBACK_SALT
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.exceptions import HopePushError, HopeRdiResetUnconfirmedError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
@@ -26,6 +26,7 @@ from .config import (
     CreateRdpConfig,
     OperationLogResult,
     PushAttemptJobConfig,
+    PushPreparationJobConfig,
     PushWorkflowConfig,
     RdiResetResult,
     RdpWorkflowOutcome,
@@ -35,7 +36,7 @@ from .processor import DedupProcessor, PushProcessor
 from .repository import (
     append_rdp_operation_log,
     finish_rdp_push_attempt,
-    lock_async_job_for_update,
+    get_or_create_rdp_push_data_job,
     lock_rdp_for_update,
     lock_rdp_push_attempt,
     preflight_errors,
@@ -432,25 +433,16 @@ def _build_push_ready_callback_url(*, rdp_id: int, push_attempt_id: UUID) -> str
     return f"{config.APP_BASE_URL.rstrip('/')}{path}"
 
 
-def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str | None, reason: str) -> None:
+def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str | None) -> None:
     """Fail the matching active push attempt."""
     with transaction.atomic():
-        rdp = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-        if rdp is None:
-            logger.info(
-                "fail_pending_push: rdp_id=%s push_attempt_id=%s skipped; reason=%s",
-                rdp_id,
-                push_attempt_id,
-                reason,
-            )
+        if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return
-
         finish_rdp_push_attempt(
             rdp=rdp,
             status=Rdp.PushStatus.FAILURE,
-            hope_rdi_id=hope_rdi_id or rdp.hope_rdi_id or "N/A",
+            hope_rdi_id=rdp.hope_rdi_id or hope_rdi_id or "N/A",
         )
-
         transaction.on_commit(
             partial(
                 rdp_push_status_changed_signal.send,
@@ -463,34 +455,19 @@ def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str |
         )
 
 
-def _queue_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | None:
-    """Create and queue data push for the active attempt."""
+def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | None:
+    """Schedule data push once for the active attempt."""
     with transaction.atomic():
-        rdp = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-        if rdp is None:
-            logger.info("queue_push_data: rdp_id=%s push_attempt_id=%s skipped", rdp_id, push_attempt_id)
+        if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return None
 
-        job_config: PushAttemptJobConfig = {"rdp_id": rdp_id, "push_attempt_id": str(push_attempt_id)}
-        job, _ = AsyncJob.objects.get_or_create(
-            rdp=rdp,
-            action=fqn(push_rdp_data_core),
-            config=job_config,
-            defaults={
-                "description": f"Push RDP {rdp_id} data to HOPE",
-                "type": AsyncJob.JobType.TASK,
-                "owner_id": rdp.pushed_by_id,
-                "program": rdp.program,
-            },
+        job, created = get_or_create_rdp_push_data_job(
+            rdp=rdp, push_attempt_id=push_attempt_id, action=fqn(push_rdp_data_core)
         )
+        if created:
+            transaction.on_commit(job.queue)
 
-        def queue_locked_job() -> None:
-            with transaction.atomic():
-                lock_async_job_for_update(pk=job.pk).queue()
-
-        transaction.on_commit(queue_locked_job)
-
-    return job
+    return job if created else None
 
 
 def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
@@ -516,61 +493,75 @@ def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
 
 def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Prepare HOPE for the RDP push and wait for readiness when required."""
-    job_config: PushAttemptJobConfig = job.config
-    rdp_id = job_config["rdp_id"]
-    push_attempt_id = UUID(job_config["push_attempt_id"])
+    config: PushPreparationJobConfig = job.config
+    rdp_id = config["rdp_id"]
+    push_attempt_id = UUID(config["push_attempt_id"])
+    rdi_id_to_reset = config["rdi_id_to_reset"]
 
-    with transaction.atomic():
-        rdp = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-        if rdp is None:
-            raise HopePushError({"errors": ["RDP: this push preparation job is no longer current."], "rdp_id": rdp_id})
+    def run() -> dict[str, Any]:
+        with transaction.atomic():
+            rdp = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+            if rdp is None:
+                raise HopePushError(
+                    {"errors": ["RDP: this push preparation job is no longer current."], "rdp_id": rdp_id}
+                )
+            co_slug = rdp.program.country_office.slug
 
-        rdi_id = None if rdp.hope_rdi_id == "N/A" else rdp.hope_rdi_id
-        co_slug = rdp.program.country_office.slug
+        reset_result: RdiResetResult | None = None
+        if rdi_id_to_reset is not None:
+            callback_url = _build_push_ready_callback_url(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+            reset_result = HopeApi(co_slug=co_slug).reset_rdi(
+                rdi_id=rdi_id_to_reset,
+                callback_url=callback_url,
+            )
 
-    reset_result: RdiResetResult | None = None
+            if reset_result == RdiResetResult.ACCEPTED:
+                # TODO(Vitali): Use Bitcaster to recover the push attempt if the HOPE reset or callback delivery fails.
+                return {
+                    "rdp_id": rdp_id,
+                    "reset_result": reset_result.value,
+                    "workflow_outcome": RdpWorkflowOutcome.AWAITING_PUSH_READY_CALLBACK,
+                }
 
-    if rdi_id is not None:
-        callback_url = _build_push_ready_callback_url(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-
-        try:
-            reset_result = HopeApi(co_slug=co_slug).reset_rdi(rdi_id=rdi_id, callback_url=callback_url)
-        except RemoteError as exc:
-            _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=rdi_id, reason=str(exc))
-            raise HopePushError({"errors": [str(exc)], "rdp_id": rdp_id, "hope_rdi_id": rdi_id}) from exc
-
-        if reset_result in {RdiResetResult.ACCEPTED, RdiResetResult.UNKNOWN}:
-            return {
-                "rdp_id": rdp_id,
-                "reset_result": reset_result.value,
-                "workflow_outcome": RdpWorkflowOutcome.AWAITING_PUSH_READY_CALLBACK,
-            }
+        push_job = _schedule_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+        return {
+            "rdp_id": rdp_id,
+            "reset_result": reset_result.value if reset_result else None,
+            "workflow_outcome": (
+                RdpWorkflowOutcome.DATA_PUSH_QUEUED if push_job else RdpWorkflowOutcome.DATA_PUSH_SKIPPED
+            ),
+        }
 
     try:
-        push_job = _queue_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+        result = run()
+    except HopeRdiResetUnconfirmedError:
+        # TODO(Vitali): Use Bitcaster to resolve push attempts with an unconfirmed HOPE reset outcome.
+        return {
+            "rdp_id": rdp_id,
+            "reset_result": None,
+            "workflow_outcome": RdpWorkflowOutcome.AWAITING_PUSH_READY_CALLBACK,
+        }
     except Exception as exc:
-        _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=rdi_id, reason=str(exc))
-        raise HopePushError({"errors": [str(exc)], "rdp_id": rdp_id, "hope_rdi_id": rdi_id}) from exc
+        _fail_pending_push(
+            rdp_id=rdp_id,
+            push_attempt_id=push_attempt_id,
+            hope_rdi_id=rdi_id_to_reset,
+            reason=str(exc),
+        )
+        if isinstance(exc, HopePushError):
+            raise
+        raise HopePushError({"errors": [str(exc)], "rdp_id": rdp_id}) from exc
+    else:
+        return result
 
-    return {
-        "rdp_id": rdp_id,
-        "reset_result": reset_result.value if reset_result else None,
-        "workflow_outcome": RdpWorkflowOutcome.DATA_PUSH_QUEUED if push_job else RdpWorkflowOutcome.DATA_PUSH_SKIPPED,
-    }
 
-
-def push_ready_callback_handle(*, rdp_id: int, push_attempt_id: UUID) -> None:
-    """Queue data push after HOPE confirms readiness."""
-    push_job = _queue_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-    if push_job is None:
-        return
-
-    logger.info(
-        "push_ready_callback: rdp_id=%s push_attempt_id=%s data push job_id=%s ensured",
-        rdp_id,
-        push_attempt_id,
-        push_job.pk,
-    )
+def handle_push_ready_callback(*, rdp_id: int, push_attempt_id: UUID) -> None:
+    """Schedule data push after HOPE confirms readiness."""
+    try:
+        _schedule_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+    except Exception as exc:
+        _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=None, reason=str(exc))
+        raise
 
 
 def _mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:

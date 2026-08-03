@@ -191,7 +191,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 if not check.allowed or locked is None:
                     messages.error(request, check.reason or "Action is not allowed.")
                     return redirect(self._change_url(obj))
-
                 job = AsyncJob.objects.create(
                     description="Run Deduplication process on DedupEngine",
                     type=AsyncJob.JobType.TASK,
@@ -271,7 +270,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 if not check.allowed or locked is None:
                     messages.error(request, check.reason or "Action is not allowed.")
                     return redirect(self._change_url(obj))
-
+                if (push_attempt_id := locked.push_attempt_id) is None:
+                    raise RuntimeError("RDP push attempt was not initialized.")
                 job = AsyncJob.objects.create(
                     description="Prepare RDP for HOPE push",
                     type=AsyncJob.JobType.TASK,
@@ -282,6 +282,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     config={
                         "rdp_id": locked.pk,
                         "push_attempt_id": str(locked.push_attempt_id),
+                        "rdi_id_to_reset": None if locked.hope_rdi_id == "N/A" else locked.hope_rdi_id,
                     },
                 )
         except RemoteUnavailableError as exc:
@@ -299,10 +300,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 pk=locked.pk,
                 status=CountryRdp.PushStatus.PUSH_PENDING,
                 is_push_locked=True,
-            ).update(
-                status=CountryRdp.PushStatus.FAILURE,
-                is_push_locked=False,
-            )
+                push_attempt_id=push_attempt_id,
+            ).update(status=CountryRdp.PushStatus.FAILURE, is_push_locked=False, push_attempt_id=None)
             raise
 
         messages.success(request, "Push to HOPE task scheduled")

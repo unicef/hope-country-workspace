@@ -8,9 +8,10 @@ from django.utils import timezone
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import AsyncJob, Program, Rdp
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import OperationLogEntry, OperationLogResult, PushWorkflowConfig, Serializer
+from .config import OperationLogEntry, OperationLogResult, PushAttemptJobConfig, PushWorkflowConfig, Serializer
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -141,7 +142,7 @@ def preflight_errors(
     if not pks:
         return ["RDP: no beneficiaries selected"]
 
-    rdp_qs = Rdp.objects.filter(status__in=[Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE, Rdp.PushStatus.SUCCESS])
+    rdp_qs = Rdp.objects.filter(status__in=[*NON_TERMINAL_RDP_STATUSES, Rdp.PushStatus.SUCCESS])
     if excluded := tuple(exclude_rdp_ids):
         rdp_qs = rdp_qs.exclude(pk__in=excluded)
 
@@ -174,6 +175,22 @@ def preflight_errors(
         .values_list("pk", "last_checked", "errors", "has_rdp")
     )
     return collect(household_rows, "HH") + errors
+
+
+def get_or_create_rdp_push_data_job(*, rdp: Rdp, push_attempt_id: UUID, action: str) -> tuple[AsyncJob, bool]:
+    """Get or create the data-push job for an already-locked push attempt."""
+    config: PushAttemptJobConfig = {"rdp_id": rdp.pk, "push_attempt_id": str(push_attempt_id)}
+    return AsyncJob.objects.get_or_create(
+        rdp=rdp,
+        action=action,
+        config=config,
+        defaults={
+            "description": f"Push RDP {rdp.pk} data to HOPE",
+            "type": AsyncJob.JobType.TASK,
+            "owner_id": rdp.pushed_by_id,
+            "program_id": rdp.program_id,
+        },
+    )
 
 
 def set_rdp_push_status(
@@ -247,11 +264,6 @@ def finish_rdp_push_attempt(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: st
 def release_rdp_dedup_settings_lock(*, rdp_id: int) -> None:
     """Release the dedup settings lock for an RDP."""
     Rdp.objects.filter(pk=rdp_id, is_dedup_settings_locked=True).update(is_dedup_settings_locked=False)
-
-
-def lock_async_job_for_update(*, pk: int) -> AsyncJob:
-    """Return AsyncJob locked for update."""
-    return AsyncJob.objects.select_for_update().get(pk=pk)
 
 
 def append_rdp_operation_log(
