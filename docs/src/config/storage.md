@@ -31,8 +31,17 @@ storage.delete(key)
 
 Handle missing blobs with `azure.core.exceptions.ResourceNotFoundError` (and `FileNotFoundError` for local filesystem storage in tests).
 
-!!! note "Blob keys, not file bytes"
-    The database stores blob **keys/paths as plain strings**, not the file contents and not a `FileField`. Agree a key-prefix convention with HOPE core (for example `households/{pk}/photo.jpg`) so writes from different services do not collide.
+!!! note "Deterministic blob keys"
+    Image bytes stay in `flex_fields` as base64; the DB only keeps a per-field content hash in `blob_hashes`. Blob paths are recomputed on each transfer via `hope_blob_key()` and substituted into outgoing payloads:
+
+    ```
+    {office.code}/{program.code}/CW_{entity}_{pk}_{name}.png
+    ```
+
+    - `entity`: `ind` (Individual) or `hh` (Household)
+    - `name`: the raw `flex_fields` image field key (e.g. `photo`, `national_id_image`)
+
+    Example: `AFG/CP-2024/CW_ind_12345_photo.png`
 
 ## Environment values
 
