@@ -20,7 +20,7 @@ def run_batch_postprocessing(
         sync_household_refs(batch)
 
     return {
-        "collector_links": sync_collector_links(batch.individual_set.filter(removed=False)),
+        "collector_links": sync_collector_links(batch.individual_set.filter(removed=False), program=batch.program),
         **apply_batch_transformers(
             batch,
             household_transformer_id=household_transformer_id,

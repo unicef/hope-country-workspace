@@ -5,7 +5,7 @@ from django.db.models import F, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform
 
-from country_workspace.models import Individual
+from country_workspace.models import Individual, Program
 from country_workspace.utils.fields import to_reference_key
 
 
@@ -13,27 +13,51 @@ COLLECTOR_ID_FIELD = "collector_id"
 REFERENCE_FIELDS = ("individual_id", "index_id")
 
 
-def sync_collector_links(qs: QuerySet) -> int:
+def _reference_keys_qs(qs: QuerySet) -> QuerySet:
+    return qs.annotate(
+        _ref_individual_id=KeyTextTransform("individual_id", "flex_fields"),
+        _ref_index_id=KeyTextTransform("index_id", "flex_fields"),
+    ).values_list("pk", "_ref_individual_id", "_ref_index_id")
+
+
+def _store_reference_keys(reference_pk_map: dict[str, int], pk: int, individual_id: Any, index_id: Any) -> None:
+    for ref_val in (individual_id, index_id):
+        ref = to_reference_key(ref_val)
+        if ref:
+            reference_pk_map[ref] = pk
+
+
+def sync_collector_links(qs: QuerySet, *, program: Program | None = None) -> int:
     """Resolve collector_id references to actual PKs.
 
-    Extracts only the three needed JSON keys via database-level
-    KeyTextTransform and streams rows with .iterator().
+    References are resolved against the individuals in ``qs`` plus, when
+    ``program`` is given, program-wide external collectors (``household=None``):
+    those are deduplicated program-wide by ``get_or_create_collector``, so a
+    referenced collector may live in a batch earlier than the one being synced.
+    Entries from ``qs`` take precedence over program-wide ones.
+
+    Extracts only the needed JSON keys via database-level KeyTextTransform and
+    streams rows with .iterator().
     Peak memory: ~100 bytes per individual instead of ~1.4 MB.
     """
+    reference_pk_map: dict[str, int] = {}
+    candidates: list[tuple[int, str, Any]] = []
+
+    if program is not None:
+        collectors = _reference_keys_qs(
+            Individual.objects.filter(batch__program=program, household=None, removed=False)
+        )
+        for pk, individual_id, index_id in collectors.iterator():
+            _store_reference_keys(reference_pk_map, pk, individual_id, index_id)
+
     annotated = qs.annotate(
         _ref_individual_id=KeyTextTransform("individual_id", "flex_fields"),
         _ref_index_id=KeyTextTransform("index_id", "flex_fields"),
         _ref_collector_id=KeyTextTransform("collector_id", "flex_fields"),
     ).values_list("pk", "_ref_individual_id", "_ref_index_id", "_ref_collector_id")
 
-    reference_pk_map: dict[str, int] = {}
-    candidates: list[tuple[int, str, Any]] = []
-
     for pk, individual_id, index_id, collector_id in annotated.iterator():
-        for ref_val in (individual_id, index_id):
-            ref = to_reference_key(ref_val)
-            if ref:
-                reference_pk_map[ref] = pk
+        _store_reference_keys(reference_pk_map, pk, individual_id, index_id)
 
         collector_ref = to_reference_key(collector_id)
         if collector_ref:
