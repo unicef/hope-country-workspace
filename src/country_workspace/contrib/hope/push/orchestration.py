@@ -298,7 +298,11 @@ def _handle_deduplicated(rdp: Rdp, rdp_id: int, job_id: int, findings_count: int
                 action=fqn(push_existing_rdp_core),
                 program=locked_rdp.program,
                 rdp=locked_rdp,
-                config={"rdp_id": rdp_id, "push_attempt_id": str(push_attempt_id)},
+                config={
+                    "rdp_id": rdp_id,
+                    "push_attempt_id": str(push_attempt_id),
+                    "rdi_id_to_reset": (None if locked_rdp.hope_rdi_id in {None, "N/A"} else locked_rdp.hope_rdi_id),
+                },
             )
     except Exception as exc:
         _lock_and_fail_rdp(rdp_id, reason=f"could not create push preparation job: {exc}")
@@ -306,12 +310,11 @@ def _handle_deduplicated(rdp: Rdp, rdp_id: int, job_id: int, findings_count: int
 
     try:
         push_job.queue()
-    except Exception as exc:
+    except Exception:
         _fail_pending_push(
             rdp_id=rdp_id,
             push_attempt_id=push_attempt_id,
             hope_rdi_id=locked_rdp.hope_rdi_id,
-            reason=str(exc),
         )
         raise
 
@@ -428,8 +431,17 @@ def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
 def _build_push_ready_callback_url(*, rdp_id: int, push_attempt_id: UUID) -> str:
     """Build the signed HOPE push-ready callback URL."""
-    token = signing.dumps({"rdp_id": rdp_id, "push_attempt_id": str(push_attempt_id)}, salt=PUSH_READY_CALLBACK_SALT)
-    path = reverse("push_ready_callback", kwargs={"signed_token": token})
+    token = signing.dumps(
+        {
+            "rdp_id": rdp_id,
+            "push_attempt_id": str(push_attempt_id),
+        },
+        salt=PUSH_READY_CALLBACK_SALT,
+    )
+    path = reverse(
+        "api:callbacks:hope-rdp-push-ready",
+        kwargs={"signed_token": token},
+    )
     return f"{config.APP_BASE_URL.rstrip('/')}{path}"
 
 
@@ -546,7 +558,6 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             rdp_id=rdp_id,
             push_attempt_id=push_attempt_id,
             hope_rdi_id=rdi_id_to_reset,
-            reason=str(exc),
         )
         if isinstance(exc, HopePushError):
             raise
@@ -555,12 +566,12 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         return result
 
 
-def handle_push_ready_callback(*, rdp_id: int, push_attempt_id: UUID) -> None:
+def handle_push_ready_callback(*, rdp_id: int, push_attempt_id: UUID) -> bool:
     """Schedule data push after HOPE confirms readiness."""
     try:
-        _schedule_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
-    except Exception as exc:
-        _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=None, reason=str(exc))
+        return _schedule_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id) is not None
+    except Exception:
+        _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=None)
         raise
 
 
@@ -690,11 +701,10 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
 
     try:
         return run()
-    except Exception as exc:
+    except Exception:
         _fail_pending_push(
             rdp_id=rdp_id,
             push_attempt_id=push_attempt_id,
             hope_rdi_id=processor.hope_rdi_id if processor else None,
-            reason=str(exc),
         )
         raise

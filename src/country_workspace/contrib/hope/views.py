@@ -1,7 +1,5 @@
 import logging
-from uuid import UUID
 
-import sentry_sdk
 from django.core import signing
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.views import View
@@ -10,10 +8,7 @@ from country_workspace.contrib.hope.push.orchestration import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
     dedup_callback_handle,
-    handle_push_ready_callback,
 )
-
-from .constants import PUSH_READY_CALLBACK_SALT
 
 
 logger = logging.getLogger(__name__)
@@ -53,30 +48,4 @@ class DeduplicationCallbackView(View):
         except Exception:
             logger.exception("dedup_callback: unhandled error while handling rdp_id=%s job_id=%s", rdp_id, job_id)
 
-        return HttpResponse(status=200)
-
-
-class PushReadyCallbackView(View):
-    """Receive a callback from HOPE when it is ready to accept the RDP."""
-
-    def get(self, request: HttpRequest, signed_token: str) -> HttpResponse:
-        try:
-            payload = signing.loads(signed_token, salt=PUSH_READY_CALLBACK_SALT)
-        except signing.BadSignature:
-            return HttpResponseForbidden("Invalid token.")
-
-        data = payload if isinstance(payload, dict) else {}
-        rdp_id = data.get("rdp_id")
-
-        try:
-            push_attempt_value = data["push_attempt_id"]
-            push_attempt_id = UUID(push_attempt_value) if isinstance(push_attempt_value, str) else None
-        except (KeyError, ValueError):
-            push_attempt_id = None
-
-        if not isinstance(rdp_id, int) or push_attempt_id is None:
-            sentry_sdk.capture_message(f"Invalid push-ready callback payload: {payload!r}", level="warning")
-            return HttpResponseForbidden("Invalid callback token.")
-
-        handle_push_ready_callback(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
         return HttpResponse(status=200)
