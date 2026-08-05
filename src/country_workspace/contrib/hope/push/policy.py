@@ -196,6 +196,18 @@ class RdpActionPolicy:
             )
         return ActionCheck(True)
 
+    def reset_check(self) -> ActionCheck:
+        """Check whether this RDP can be reset."""
+        if self.rdp.status != Rdp.PushStatus.SUCCESS:
+            return ActionCheck(False, f"RDP: can not reset in status={self.rdp.status}")
+        if Rdp.objects.filter(
+            Q(push_date__gt=self.rdp.push_date) | Q(push_date=self.rdp.push_date, pk__gt=self.rdp.pk),
+            program_id=self.rdp.program_id,
+            status=Rdp.PushStatus.SUCCESS,
+        ).exists():
+            return ActionCheck(False, "RDP: only the latest successful RDP can be reset.")
+        return ActionCheck(True)
+
     def start_push_check(self) -> ActionCheck:
         if self.rdp.is_push_locked:
             return ActionCheck(False, "RDP: push to HOPE is already queued or running.")

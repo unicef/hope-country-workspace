@@ -9,6 +9,7 @@ from .orchestration import (
     dedup_callback_handle,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
+    reset_rdp,
 )
 from .policy import DedupEngineState, get_program_dedup_settings_policy, get_rdp_policy
 from .processor import PushProcessor
@@ -29,4 +30,5 @@ __all__ = [
     "get_program_dedup_settings_policy",
     "get_rdp_policy",
     "push_existing_rdp_core",
+    "reset_rdp",
 ]

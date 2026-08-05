@@ -48,6 +48,7 @@ from .repository import (
     rdp_for_dedup,
     rdp_for_push,
     release_rdp_dedup_settings_lock,
+    set_rdp_beneficiaries_removed,
     set_rdp_push_status,
     start_rdp_push_attempt,
     workflow_config_for_rdp,
@@ -396,6 +397,16 @@ def dedup_callback_handle(rdp_id: int, job_id: int) -> None:
         )
 
 
+def _mark_rdp_cancelled(*, rdp: Rdp) -> None:
+    """Mark an already-locked RDP as cancelled."""
+    rdp.status = Rdp.PushStatus.CANCELLED
+    rdp.hope_rdi_id = rdp.hope_rdi_id or "N/A"
+    rdp.is_dedup_settings_locked = False
+    rdp.is_push_locked = False
+    rdp.push_attempt_id = None
+    rdp.save(update_fields=["status", "hope_rdi_id", "is_dedup_settings_locked", "is_push_locked", "push_attempt_id"])
+
+
 def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Cancel an existing RDP and reject its active DedupEngine set when required."""
     rdp_id = job.config["rdp_id"]
@@ -418,15 +429,23 @@ def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
             dedup_engine_rejected = True
 
-        set_rdp_push_status(
-            rdp=rdp,
-            status=Rdp.PushStatus.CANCELLED,
-            hope_rdi_id=rdp.hope_rdi_id or "N/A",
-            is_dedup_settings_locked=False,
-            is_push_locked=False,
-        )
+        _mark_rdp_cancelled(rdp=rdp)
 
     return {"rdp_id": rdp_id, "deduplication_set_rejected": dedup_engine_rejected}
+
+
+def reset_rdp(*, rdp_id: int) -> ActionCheck:
+    """Reset the latest successful RDP."""
+    with transaction.atomic():
+        rdp = lock_rdp_for_update(pk=rdp_id)
+        check = get_rdp_policy(rdp).reset_check()
+        if not check.allowed:
+            return check
+
+        set_rdp_beneficiaries_removed(rdp=rdp, removed=False)
+        _mark_rdp_cancelled(rdp=rdp)
+
+    return ActionCheck(True)
 
 
 def _build_push_ready_callback_url(*, rdp_id: int, push_attempt_id: UUID) -> str:
@@ -575,18 +594,6 @@ def handle_push_ready_callback(*, rdp_id: int, push_attempt_id: UUID) -> bool:
         raise
 
 
-def _mark_rdp_beneficiaries_removed(rdp: Rdp, is_master_detail: bool) -> None:
-    """Mark RDP beneficiaries as removed."""
-    if is_master_detail:
-        hh_ids = list(rdp.households.values_list("pk", flat=True))
-        if not hh_ids:
-            return
-        rdp.households.update(removed=True)
-        qs_individuals_by_household_pks(hh_ids).update(removed=True)
-        return
-    rdp.individuals.update(removed=True)
-
-
 def _push_data_steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
     """Yield beneficiary push steps followed by RDI completion."""
     pks = config["pks"]
@@ -679,7 +686,7 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
                     f"RDP: hope_rdi_id changed before completion: {locked.hope_rdi_id!r} != {new_rdi_id!r}"
                 )
 
-            _mark_rdp_beneficiaries_removed(locked, workflow_config["master_detail"])
+            set_rdp_beneficiaries_removed(rdp=locked, removed=True)
             finish_rdp_push_attempt(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=new_rdi_id)
             group_reference_id = locked.program.unicef_id
             deduplication_set_id = locked.deduplication_set_id

@@ -127,6 +127,16 @@ def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     return qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
 
 
+def set_rdp_beneficiaries_removed(*, rdp: Rdp, removed: bool) -> None:
+    """Set the removed flag for all beneficiaries represented by the RDP."""
+    master_detail, pks = rdp_selection(rdp=rdp)
+    if master_detail:
+        rdp.households.update(removed=removed)
+        qs_individuals_by_household_pks(pks).update(removed=removed)
+    else:
+        rdp.individuals.update(removed=removed)
+
+
 def _is_valid_row(*, last_checked: object, errors: object) -> bool | None:
     if last_checked is None:
         return None

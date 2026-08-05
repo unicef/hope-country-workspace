@@ -1,25 +1,16 @@
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
-from django.contrib import admin
-from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.contrib import admin, messages
+from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.contrib.hope.push import get_rdp_policy, reset_rdp
 from country_workspace.models import Rdp
 from .base import BaseModelAdmin
-
-
-def is_latest_successful_rdp(obj: Rdp) -> bool:
-    """Return True if this RDP is the latest successful RDP for its program."""
-    return not Rdp.objects.filter(
-        Q(push_date__gt=obj.push_date) | Q(push_date=obj.push_date, pk__gt=obj.pk),
-        program_id=obj.program_id,
-        status=Rdp.PushStatus.SUCCESS,
-    ).exists()
 
 
 @admin.register(Rdp)
@@ -81,28 +72,25 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: (
-            btn.context["original"].status == Rdp.PushStatus.SUCCESS
-            and is_latest_successful_rdp(btn.context["original"])
-        ),
+        enabled=lambda btn: get_rdp_policy(btn.context["original"]).reset_check().allowed,
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
         obj: Rdp = self.get_object(request, str(pk))
-
-        if obj.status != Rdp.PushStatus.SUCCESS:
-            self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
-            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
-
-        if not is_latest_successful_rdp(obj):
-            self.message_user(request, "Reset is only allowed for the latest successful RDP.", level="error")
+        check = get_rdp_policy(obj).reset_check()
+        if not check.allowed:
+            self.message_user(request, check.reason or "Reset is not allowed.", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:
-            with transaction.atomic():
-                obj.households.all().update(removed=False)
-                obj.individuals.all().update(removed=False)
-                obj.status = Rdp.PushStatus.CANCELLED
-                obj.save()
+            check = reset_rdp(rdp_id=pk)
+            if check.allowed:
+                self.message_user(
+                    request,
+                    "RDP reset successfully. Related beneficiaries marked as not removed.",
+                    level=messages.SUCCESS,
+                )
+            else:
+                self.message_user(request, check.reason or "Reset is not allowed.", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         return confirm_action(
@@ -114,6 +102,6 @@ class RdpAdmin(BaseModelAdmin):
                 "This will set all related households and individuals to removed=False "
                 "and mark the RDP status as CANCELLED. This action cannot be undone."
             ),
-            success_message="RDP reset successfully. Related beneficiaries marked as not removed.",
+            error_message="RDP reset failed.",
             pk=str(pk),
         )
