@@ -1,51 +1,59 @@
-# Country Workspace interface
+# Interfaces
 
-Country Workspace has two main interfaces used for different types of work:
+Country Workspace provides two interfaces for different types of work:
 
-* the **Country Workspace interface**, used by analysts and collectors to work with beneficiary data;
-* the **main Django admin**, used for technical configuration and system administration.
+- **Analyst / Collector Workspace** is used for day-to-day work with beneficiary data.
+- **Staff Administration** is used to prepare operational configuration and maintain system settings.
 
-## Country Workspace interface
+Most workflows involve both interfaces: reusable configuration is prepared and maintained by staff, then selected or used during operational work. The relationship between the two interfaces is illustrated in [How the interfaces work together](#how-the-interfaces-work-together).
 
-The **Country Workspace interface** is the main working area for beneficiary data.
+## Analyst / Collector Workspace
 
-Users select an **Office** and a **Program**, then work in the context of that selected Program.
+The Analyst / Collector Workspace is the primary interface for working with beneficiary data.
 
-This interface is used for operational tasks such as beneficiary review, [import](data_import/import.md), [Batch](data_import/batches.md) review, validation results, mappings, and data push follow-up.
+Users first select an **Office** and a **Program**. The selected Program becomes the working context for most operations.
 
-For import-related work, the selected [Program](data_import/program.md) defines the working context: beneficiary structure, validation setup, review columns, Alien Columns, and later processing options.
+Typical tasks include:
 
-## Main Django admin
+- importing, reviewing, and validating beneficiary data;
+- working with Households, Individuals, and Batches;
+- configuring import-related components;
+- following background jobs and Registration Data Pushes.
 
-The **main Django admin** is used for technical configuration.
+Most operational workflows described in this documentation take place in the Analyst / Collector Workspace. For example, users perform imports, review **Batches**, and work with beneficiary records from this interface.
 
-It is used to configure objects that support Country Workspace processes, such as:
+## Staff Administration
 
-* [DataChecker configuration](data_validation/datachecker_configuration.md);
-* Flex Fields and Fieldsets;
-* [Transformers](data_import/mapping_transformers.md#transformers);
-* serializers;
-* user access and permissions;
-* system-level reference data and synchronization settings.
+Staff Administration is used to prepare operational configuration and maintain system settings.
 
-Most users working with beneficiary data do not need to use the main Django admin directly.
+Typical tasks include:
+
+- configuring [DataCheckers](data_validation/datachecker_configuration.md);
+- configuring components used by operational workflows;
+- maintaining [system settings](config/constance.md).
+
+Configuration prepared here is then available in the **[Analyst / Collector Workspace](#analyst--collector-workspace)**. Some components can also be configured in either interface, depending on the workflow.
 
 ## How the interfaces work together
 
-Some objects are configured in the main Django admin and then used in the Country Workspace interface.
+Staff users prepare the operational configuration and system settings. Analysts and collectors then use this configuration while working with beneficiary data and can maintain some import-related components directly in their workspace.
 
-For example:
+```mermaid
+sequenceDiagram
+    participant Admin as Staff Administration
+    participant Workspace as Analyst / Collector Workspace
 
-* DataCheckers are configured in the main Django admin and assigned to a Program;
-* Mappings are managed in the Country Workspace interface;
-* Transformers and serializers are configured in the main Django admin and selected or used during import, reprocessing, or later integrations.
+    Note over Admin: Prepare operational configuration
+    Note over Admin: Maintain system settings
+    Admin-->>Workspace: Configuration becomes available
 
-This separation keeps operational work focused in the Country Workspace interface while keeping technical setup in the main Django admin.
+    Note over Workspace: Select Office and Program
+    Note over Workspace: Configure Mapping Importers and Transformers
+    Workspace->>Workspace: Import, review, validate, and reprocess beneficiary data
+```
+
+Most reusable configuration is prepared in **[Staff Administration](#staff-administration)** and then used in the **[Analyst / Collector Workspace](#analyst--collector-workspace)**. Mapping Importers and Transformers can be configured in either interface.
 
 ## Unified Classifiers
 
-Unified Classifiers are shared reference data synchronized with the HOPE main system.
-
-They may include offices, programs, registrations, and other reference data required by Country Workspace.
-
-When classifier data is missing or outdated, it should be synchronized from the main Django admin by a user with the required permissions.
+Unified Classifiers are shared objects [synchronized](config/data_sync.md) with the HOPE main system.

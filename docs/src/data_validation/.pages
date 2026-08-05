@@ -1,4 +1,5 @@
 nav:
-  - validation.md
-  - datachecker_configuration.md
+  - Overview: index.md
+  - Datachecker: datachecker_configuration.md
+  - Alien Fields: alien_fields.md
   - How-to guides: howto

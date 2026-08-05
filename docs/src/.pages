@@ -7,6 +7,7 @@ nav:
   - dev_helpers.md
   - flows
   - Country Workspace interface: interfaces.md
+  - Program: program.md
   - Data cleaning and updates: data_cleaning_updates.md
   - Data Import: data_import
   - Data Validation: data_validation
