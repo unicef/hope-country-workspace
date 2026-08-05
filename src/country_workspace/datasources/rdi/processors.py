@@ -1,3 +1,4 @@
+import logging
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
@@ -17,13 +18,22 @@ from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
-from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.import_flow import (
+    build_import_processor,
+    get_or_create_collector,
+    run_batch_postprocessing,
+)
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.notifications.signals import data_imported_signal
 
 from .config import Config, SheetName, Sheet
 from .exceptions import ColumnConfigurationError, SheetProcessingError, SheetNotFoundError
 from .utils import date_to_iso_string, datetime_to_date
+
+logger = logging.getLogger(__name__)
+
+# household_id values meaning "no household": 0 marks an Individual without a Household (e.g. an external Collector)
+NO_HOUSEHOLD_KEYS = (None, "", 0, "0")
 
 
 def image_location(image: RDIImage) -> tuple[int, int]:
@@ -71,20 +81,12 @@ def normalize_row_structure(row: Record, people_prefix: str | None = None) -> tu
     return row, name_column
 
 
-def get_hh_for_ind(
-    cleaned_row: dict, household_id_column: str, household_mapping: Mapping[int, Household] | None
-) -> Household | None:
-    if not household_mapping or not household_id_column:
-        return None
-    household_key = get_value(cleaned_row, household_id_column)
-    return household_mapping.get(household_key)
-
-
 def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     household_id_column = config["household_id_column"]
 
     def has_household_pk(row: Record) -> bool:
-        return bool(get_value(row, household_id_column))
+        # only truly empty cells drop the row; household_id 0 means "no household" and must be kept
+        return get_value(row, household_id_column) not in (None, "")
 
     return filter(has_household_pk, sheet)
 
@@ -162,6 +164,7 @@ def process_beneficiaries(
     )
 
     job.ensure_not_cancelled(refresh=True)
+    invalid_household_refs: list[tuple[Any, Any]] = []
     for row in sheet:
         job.ensure_not_cancelled(refresh=True)
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
@@ -170,22 +173,52 @@ def process_beneficiaries(
         originating_id = get_xlsx_originating_id(file_name, beneficiary_key, epoch=epoch_ms)
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
-        household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
+        household = None
+        is_external_collector = False
+        if household_mapping is not None and household_id_column:
+            household_key = get_value(cleaned_row, household_id_column)
+            if household_key in NO_HOUSEHOLD_KEYS:
+                # household_id 0 marks an external Collector (issue #427)
+                is_external_collector = True
+            elif (household := household_mapping.get(household_key)) is None:
+                invalid_household_refs.append((beneficiary_key, household_key))
+                continue
 
+        individual_fields = transform_row(cleaned_row)
         try:
-            mapping[beneficiary_key] = cast(
-                "Individual",
-                Individual.objects.create(
-                    batch_id=batch.pk,
-                    name=name,
-                    household=household,
-                    originating_id=originating_id,
-                    flex_fields=transform_row(cleaned_row),
+            if is_external_collector:
+                # External collectors are deduplicated program-wide: the first
+                # occurrence is reused, linked to households only via role refs.
+                mapping[beneficiary_key], _created = get_or_create_collector(
+                    program=batch.program,
+                    batch=batch,
+                    individual_fields=individual_fields,
                     raw_data=row,
-                ),
-            )
+                    originating_id=originating_id,
+                    name=name,
+                )
+            else:
+                mapping[beneficiary_key] = cast(
+                    "Individual",
+                    Individual.objects.create(
+                        batch_id=batch.pk,
+                        name=name,
+                        household=household,
+                        originating_id=originating_id,
+                        flex_fields=individual_fields,
+                        raw_data=row,
+                    ),
+                )
         except Exception as e:
             raise SheetProcessingError(sheet_name, beneficiary_key) from e
+
+    if invalid_household_refs:
+        logger.error(
+            "Skipped %d individual(s) with invalid household references in sheet %s: %s",
+            len(invalid_household_refs),
+            sheet_name,
+            ", ".join(f"individual {ind!r} -> household {hh!r}" for ind, hh in invalid_household_refs),
+        )
 
     return mapping
 
