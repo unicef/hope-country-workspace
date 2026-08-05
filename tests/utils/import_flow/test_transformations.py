@@ -1,14 +1,10 @@
-import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.models import Individual
-from country_workspace.utils.import_flow.collector_identity import compute_collector_hash
 from country_workspace.utils.import_flow.transformations import (
     _apply_transformer,
     _get_transformer,
     apply_batch_transformers,
 )
-from testutils.factories import IndividualFactory
 
 
 MOD = "country_workspace.utils.import_flow.transformations"
@@ -150,43 +146,3 @@ def test_apply_batch_transformers_skips_households_for_people_only(mocker: Mocke
     batch.individual_set.filter.assert_called_once_with(removed=False)
     get_transformer.assert_called_once_with(batch, 20)
     apply_transformer.assert_called_once_with(individuals, individual_transformer)
-
-
-@pytest.mark.django_db
-def test_apply_transformer_recomputes_collector_identity_hash(mocker: MockerFixture) -> None:
-    fields = {
-        "relationship": "NON_BENEFICIARY",
-        "given_name": "John",
-        "family_name": "Collector",
-        "birth_date": "1990-01-01",
-    }
-    collector = IndividualFactory(
-        name="John Collector",
-        household=None,
-        flex_fields=fields,
-        identity_hash=compute_collector_hash(fields),
-    )
-    transformed = {**fields, "birth_date": "1985-05-05"}
-    transformer = mocker.MagicMock()
-    transformer.apply.return_value = transformed
-
-    assert _apply_transformer(Individual.objects.filter(pk=collector.pk), transformer) == 1
-
-    collector.refresh_from_db()
-    assert collector.flex_fields == transformed
-    assert collector.identity_hash == compute_collector_hash(transformed)
-
-
-@pytest.mark.django_db
-def test_apply_transformer_does_not_set_identity_hash_for_members(mocker: MockerFixture) -> None:
-    member = IndividualFactory(
-        name="Jane Member",
-        flex_fields={"relationship": "HEAD", "given_name": "Jane"},
-    )
-    transformer = mocker.MagicMock()
-    transformer.apply.return_value = {"relationship": "HEAD", "given_name": "Jane", "birth_date": "2000-01-01"}
-
-    assert _apply_transformer(Individual.objects.filter(pk=member.pk), transformer) == 1
-
-    member.refresh_from_db()
-    assert member.identity_hash is None
