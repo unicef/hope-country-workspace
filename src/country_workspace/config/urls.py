@@ -4,7 +4,6 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 
-from country_workspace.contrib.hope.views import DeduplicationCallbackView
 from country_workspace.workspaces.sites import workspace
 
 urlpatterns = [
@@ -16,11 +15,6 @@ urlpatterns = [
     path("adminactions/", include("adminactions.urls")),
     path("select2/", include(django_select2.urls)),
     path("__debug__/", include(debug_toolbar.urls)),
-    path(
-        "api/dedup/callback/<str:signed_token>/",
-        DeduplicationCallbackView.as_view(),
-        name="dedup_callback",
-    ),
 ]
 
 if settings.DEBUG:  # pragma: no cover

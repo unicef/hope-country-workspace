@@ -14,9 +14,9 @@ from country_workspace.contrib.hope.constants import (
 from country_workspace.contrib.hope.push.orchestration import handle_push_ready_callback
 
 from .serializers import (
+    HopeRdpPushReadyCallbackErrorSerializer,
     HopeRdpPushReadyCallbackResponseSerializer,
     HopeRdpPushReadyCallbackTokenSerializer,
-    ErrorResponseSerializer,
 )
 
 
@@ -30,7 +30,7 @@ PUSH_READY_CALLBACK_RESPONSES = {
         description="The data-push job was scheduled.",
     ),
     status.HTTP_400_BAD_REQUEST: OpenApiResponse(
-        response=ErrorResponseSerializer,
+        response=HopeRdpPushReadyCallbackErrorSerializer,
         description="The callback token is invalid or expired.",
     ),
     status.HTTP_500_INTERNAL_SERVER_ERROR: OpenApiResponse(
@@ -66,15 +66,15 @@ class HopeRdpPushReadyCallbackView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        token_serializer = HopeRdpPushReadyCallbackTokenSerializer(data=payload)
-        if not token_serializer.is_valid():
+        serializer = HopeRdpPushReadyCallbackTokenSerializer(data=payload)
+        if not serializer.is_valid():
             return Response(
                 {"detail": "Invalid callback token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        rdp_id = token_serializer.validated_data["rdp_id"]
-        push_attempt_id = token_serializer.validated_data["push_attempt_id"]
+        rdp_id = serializer.validated_data["rdp_id"]
+        push_attempt_id = serializer.validated_data["push_attempt_id"]
         queued = handle_push_ready_callback(
             rdp_id=rdp_id,
             push_attempt_id=push_attempt_id,
@@ -86,7 +86,7 @@ class HopeRdpPushReadyCallbackView(APIView):
                 "rdp_id": rdp_id,
                 "push_attempt_id": push_attempt_id,
                 "code": code,
-                "detail": ("Data-push job scheduled." if queued else "Callback already handled or no longer current."),
+                "detail": "Data-push job scheduled." if queued else "Callback already handled or no longer current.",
             }
         )
         response = Response(

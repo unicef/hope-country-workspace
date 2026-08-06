@@ -168,7 +168,7 @@ def create_and_push_rdp_core(job: AsyncJob) -> dict[str, Any]:
 def _build_dedup_callback_url(rdp_id: int, job_id: int) -> str:
     """Build an absolute, signed callback URL for the dedup engine to call when dedup finishes."""
     token = signing.dumps({"rdp_id": rdp_id, "job_id": job_id}, salt=DEDUP_CALLBACK_SALT)
-    path = reverse("dedup_callback", kwargs={"signed_token": token})
+    path = reverse("api:callbacks:dedup-engine-rdp-state-changed", kwargs={"signed_token": token})
     base = config.APP_BASE_URL.rstrip("/")
     return f"{base}{path}"
 

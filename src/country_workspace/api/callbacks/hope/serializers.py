@@ -17,7 +17,7 @@ class HopeRdpPushReadyCallbackResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
-class ErrorResponseSerializer(serializers.Serializer):
-    """Serialize an API error response."""
+class HopeRdpPushReadyCallbackErrorSerializer(serializers.Serializer):
+    """Serialize a HOPE push-ready callback error response."""
 
     detail = serializers.CharField()
