@@ -30,6 +30,7 @@ from country_workspace.contrib.hope.push import (
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
+from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.state import state
 
 from ..models import CountryRdp
@@ -124,7 +125,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         for entry in obj.operation_log:
             action = entry.get("action", "—")
             with suppress(TypeError, ValueError):
-                action = CountryRdp.OperationAction(action).label
+                action = RdpOperationAction(action).label
             timestamp = entry.get("timestamp", "—")
             if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
                 timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")

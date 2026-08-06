@@ -20,6 +20,7 @@ from country_workspace.contrib.hope.constants import PUSH_READY_CALLBACK_SALT
 from country_workspace.contrib.hope.exceptions import HopePushError, HopeRdiResetUnconfirmedError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp
+from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 
 from .config import (
@@ -226,7 +227,7 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         with transaction.atomic():
             locked = lock_rdp_for_update(pk=rdp.pk)
             append_rdp_operation_log(
-                rdp=locked, action=Rdp.OperationAction.START_DEDUPLICATION, job_id=job.pk, result=result
+                rdp=locked, action=RdpOperationAction.START_DEDUPLICATION, job_id=job.pk, result=result
             )
 
         if processor.has_errors:
@@ -617,17 +618,34 @@ def _raise_push_errors(processor: PushProcessor) -> None:
 
 
 def _approve_deduplication_set_after_successful_push(
-    group_reference_id: str, deduplication_set_id: UUID | None, processor: PushProcessor
+    *,
+    rdp_id: int,
+    job_id: int,
+    group_reference_id: str,
+    deduplication_set_id: UUID | None,
 ) -> None:
-    """Approve the active DedupEngine deduplication set after a successful push to HOPE Core."""
+    """Approve and record the active DedupEngine set after a successful HOPE push."""
     if not deduplication_set_id:
         return
 
+    ds_id = str(deduplication_set_id)
+    result: OperationLogResult
     try:
-        with make_dedup_client(group_reference_id, deduplication_set_id=str(deduplication_set_id)) as client:
+        with make_dedup_client(group_reference_id, deduplication_set_id=ds_id) as client:
             client.approve()
-    except (RemoteError, RemoteUnavailableError) as e:
-        processor.fail("DedupEngine", f"approve failed. {e}")
+    except (RemoteError, RemoteUnavailableError) as exc:
+        result = {"deduplication_set_id": ds_id, "success": False, "error": str(exc)}
+    else:
+        result = {"deduplication_set_id": ds_id, "success": True}
+
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        append_rdp_operation_log(
+            rdp=locked,
+            action=RdpOperationAction.APPROVE_DEDUPLICATION_SET,
+            job_id=job_id,
+            result=result,
+        )
 
 
 def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
@@ -693,9 +711,10 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
             deduplication_set_id = locked.deduplication_set_id
 
         _approve_deduplication_set_after_successful_push(
+            rdp_id=rdp_id,
+            job_id=job.pk,
             group_reference_id=group_reference_id,
             deduplication_set_id=deduplication_set_id,
-            processor=processor,
         )
 
         pushed_count = sum(processor.total.get(key, 0) for key in ("households", "individuals", "people"))

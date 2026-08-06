@@ -30,13 +30,15 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
 )
 
 
+class RdpOperationAction(models.TextChoices):
+    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
+    APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+
+
 class Rdp(BaseModel):
     """Represents a Registration Data Push (RDP) object in the system."""
 
     PushStatus = RdpPushStatus
-
-    class OperationAction(models.TextChoices):
-        START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")

@@ -8,7 +8,7 @@ from django.utils import timezone
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.constants import PUSH_BATCH_SIZE
 from country_workspace.models import AsyncJob, Program, Rdp
-from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .config import OperationLogEntry, OperationLogResult, PushAttemptJobConfig, PushWorkflowConfig, Serializer
@@ -278,7 +278,7 @@ def release_rdp_dedup_settings_lock(*, rdp_id: int) -> None:
 def append_rdp_operation_log(
     *,
     rdp: Rdp,
-    action: Rdp.OperationAction,
+    action: RdpOperationAction,
     job_id: int | None = None,
     result: OperationLogResult | None = None,
 ) -> None:
