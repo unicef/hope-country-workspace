@@ -34,11 +34,10 @@ def rdp_for_push(*, pk: int) -> Rdp:
 
 
 def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
-    """Return (master_detail, pks) based on this RDP links."""
-    hh_pks = list(rdp.households.order_by("pk").values_list("pk", flat=True))
-    if hh_pks:
-        return True, hh_pks
-    return False, list(rdp.individuals.order_by("pk").values_list("pk", flat=True))
+    """Return the RDP selection mode and beneficiary IDs."""
+    master_detail = rdp.program.beneficiary_group.master_detail
+    beneficiaries = rdp.households if master_detail else rdp.individuals
+    return master_detail, list(beneficiaries.order_by("pk").values_list("pk", flat=True))
 
 
 def serializer_for_program(hope_id: str) -> Serializer:

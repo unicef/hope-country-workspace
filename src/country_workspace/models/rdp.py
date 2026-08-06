@@ -80,8 +80,21 @@ class Rdp(BaseModel):
                 violation_error_message=_("There is already an unfinished RDP for this program."),
             ),
             models.CheckConstraint(
-                condition=(~Q(status=RdpPushStatus.PUSH_PENDING) | Q(push_attempt_id__isnull=False)),
-                name="rdp_push_pending_requires_attempt_id",
+                condition=(
+                    Q(
+                        status=RdpPushStatus.PUSH_PENDING,
+                        is_push_locked=True,
+                        push_attempt_id__isnull=False,
+                    )
+                    | (
+                        ~Q(status=RdpPushStatus.PUSH_PENDING)
+                        & Q(
+                            is_push_locked=False,
+                            push_attempt_id__isnull=True,
+                        )
+                    )
+                ),
+                name="rdp_push_attempt_state_consistent",
             ),
         ]
         permissions = [

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
@@ -9,6 +11,7 @@ from django.utils.html import format_html
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.contrib.hope.push import get_rdp_policy, reset_rdp
+from country_workspace.contrib.hope.push.orchestration import temporary_fail_stuck_rdp_push
 from country_workspace.models import Rdp
 from .base import BaseModelAdmin
 
@@ -103,5 +106,55 @@ class RdpAdmin(BaseModelAdmin):
                 "and mark the RDP status as CANCELLED. This action cannot be undone."
             ),
             error_message="RDP reset failed.",
+            pk=str(pk),
+        )
+
+    # TODO(Vitali): Remove this button and temporary_fail_stuck_rdp_push after Bitcaster recovery is implemented.
+    @button(
+        permission="country_workspace.reset_rdp",
+        change_form=True,
+        change_list=False,
+        label="Temporary: Fail stuck push",
+        html_attrs={"class": "btn-warning"},
+        enabled=lambda btn: (
+            (rdp := btn.context["original"]).status == Rdp.PushStatus.PUSH_PENDING
+            and rdp.is_push_locked
+            and rdp.push_attempt_id is not None
+        ),
+    )
+    def temporary_fail_stuck_push(self, request: HttpRequest, pk: int) -> HttpResponse:  # pragma: no cover
+        change_url = reverse("admin:country_workspace_rdp_change", args=[pk])
+
+        if not (raw_attempt_id := request.GET.get("push_attempt_id")):
+            if not (attempt_id := self.get_object(request, str(pk)).push_attempt_id):
+                self.message_user(request, "RDP: no active push attempt was found.", level=messages.ERROR)
+                return HttpResponseRedirect(change_url)
+            return HttpResponseRedirect(f"{request.path}?push_attempt_id={attempt_id}")
+
+        def _action(_: HttpRequest) -> HttpResponseRedirect:
+            check = temporary_fail_stuck_rdp_push(rdp_id=pk, push_attempt_id=UUID(raw_attempt_id))
+            self.message_user(
+                request,
+                (
+                    "Temporary recovery completed. The RDP can now be retried."
+                    if check.allowed
+                    else check.reason or "Temporary recovery is not allowed."
+                ),
+                level=messages.SUCCESS if check.allowed else messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Temporary recovery: fail this stuck push?",
+            description=(
+                "Use this temporary action only after confirming that the push preparation job "
+                "is not running. For a retry, also confirm that the HOPE callback is no longer "
+                "expected. The selected push attempt will be marked as FAILURE and unlocked for "
+                "retry. This action will be removed after Bitcaster recovery is implemented."
+            ),
+            error_message="Temporary stuck-push recovery failed.",
             pk=str(pk),
         )

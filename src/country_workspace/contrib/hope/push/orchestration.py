@@ -19,7 +19,7 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.hope.constants import PUSH_READY_CALLBACK_SALT
 from country_workspace.contrib.hope.exceptions import HopePushError, HopeRdiResetUnconfirmedError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 
 from .config import (
@@ -89,6 +89,7 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     try:
         with transaction.atomic():
+            Program.objects.select_for_update().get(pk=config["program_id"])
             rdp = Rdp.objects.create(
                 country_office_id=config["country_office_id"],
                 program_id=config["program_id"],
@@ -715,3 +716,31 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
             hope_rdi_id=processor.hope_rdi_id if processor else None,
         )
         raise
+
+
+# TODO(Vitali): Remove after Bitcaster recovers stuck RDP push attempts.
+def temporary_fail_stuck_rdp_push(
+    *,
+    rdp_id: int,
+    push_attempt_id: UUID,
+) -> ActionCheck:  # pragma: no cover
+    """Temporarily fail a stuck RDP push attempt."""
+    with transaction.atomic():
+        if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
+            return ActionCheck(False, "RDP: this push attempt is no longer active.")
+
+        jobs = AsyncJob.objects.filter(rdp=rdp, config__push_attempt_id=str(push_attempt_id))
+
+        if not jobs.filter(action=fqn(push_existing_rdp_core)).exists():
+            return ActionCheck(False, "RDP: matching push preparation job was not found.")
+
+        if jobs.filter(action=fqn(push_rdp_data_core)).exists():
+            return ActionCheck(False, "RDP: data push has already been scheduled.")
+
+        _fail_pending_push(
+            rdp_id=rdp_id,
+            push_attempt_id=push_attempt_id,
+            hope_rdi_id=rdp.hope_rdi_id,
+        )
+
+    return ActionCheck(True)
