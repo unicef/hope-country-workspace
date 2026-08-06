@@ -18,6 +18,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.html import format_html, format_html_join
 from strategy_field.utils import fqn
 
+from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.contrib.hope.push import (
     DedupEngineState,
     cancel_existing_rdp_core,
@@ -236,19 +237,31 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if response := self._deny_if_not_allowed(request, obj, "cancel_check"):
             return response
 
-        job = AsyncJob.objects.create(
-            description="Cancel RDP",
-            type=AsyncJob.JobType.TASK,
-            owner=request.user,
-            action=fqn(cancel_existing_rdp_core),
-            program=obj.program,
-            rdp=obj,
-            config={"rdp_id": obj.pk},
-        )
-        job.queue()
+        def schedule_cancel(_: HttpRequest) -> HttpResponse:
+            AsyncJob.objects.create(
+                description="Cancel RDP",
+                type=AsyncJob.JobType.TASK,
+                owner=request.user,
+                action=fqn(cancel_existing_rdp_core),
+                program=obj.program,
+                rdp=obj,
+                config={"rdp_id": obj.pk},
+            ).queue()
+            messages.success(request, "Cancel task scheduled")
+            return redirect(self._change_url(obj))
 
-        messages.success(request, "Cancel task scheduled")
-        return redirect(self._change_url(obj))
+        if obj.hope_rdi_id not in {None, "N/A"}:
+            return confirm_action(
+                self,
+                request,
+                schedule_cancel,
+                message=(
+                    f"This RDP is linked to HOPE RDI {obj.hope_rdi_id}. "
+                    "Confirm that it has been deleted manually in HOPE before continuing."
+                ),
+            )
+
+        return schedule_cancel(request)
 
     @button(
         label="Push to HOPE",
