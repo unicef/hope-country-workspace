@@ -71,20 +71,21 @@ class ProgramDedupSettingsPolicy:
     def update_dedup_settings_check(self) -> ActionCheck:
         if not self.program.biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self._has_db_locked_dedup_settings() or self._has_running_deduplication_set():
+        if self._has_blocking_rdp() or self._has_running_deduplication_set():
             return ActionCheck(
                 False,
                 "Deduplication settings cannot be updated after a successful RDP "
-                "or while RDP deduplication is queued or running.",
+                "or while deduplication or push to HOPE is queued or running.",
             )
         return ActionCheck(True)
 
-    def _has_db_locked_dedup_settings(self) -> bool:
+    def _has_blocking_rdp(self) -> bool:
         return (
             Rdp.objects.filter(program=self.program)
             .filter(
                 Q(status=Rdp.PushStatus.SUCCESS)
                 | Q(status__in=NON_TERMINAL_RDP_STATUSES, is_dedup_settings_locked=True)
+                | Q(status=Rdp.PushStatus.PUSH_PENDING)
             )
             .exists()
         )
@@ -183,8 +184,6 @@ class RdpActionPolicy:
     def cancel_check(self) -> ActionCheck:
         if not self.is_open:
             return ActionCheck(False, f"RDP: can not cancel in status={self.rdp.status}")
-        if self.rdp.is_push_locked:
-            return ActionCheck(False, "RDP: can not cancel while push to HOPE is queued or running.")
         if self.rdp.is_dedup_settings_locked:
             return ActionCheck(False, "RDP: can not cancel while deduplication is queued or running.")
         if not self.is_biometric_deduplication_enabled or not self.has_deduplication_set_id:
@@ -209,7 +208,7 @@ class RdpActionPolicy:
         return ActionCheck(True)
 
     def start_push_check(self) -> ActionCheck:
-        if self.rdp.is_push_locked:
+        if self.rdp.status == Rdp.PushStatus.PUSH_PENDING:
             return ActionCheck(False, "RDP: push to HOPE is already queued or running.")
         if self.rdp.is_dedup_settings_locked:
             return ActionCheck(False, "RDP: can not push while deduplication is queued or running.")

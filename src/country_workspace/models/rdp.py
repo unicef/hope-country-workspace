@@ -54,10 +54,6 @@ class Rdp(BaseModel):
         default=False,
         help_text=_("Locks program-level deduplication settings while this RDP deduplication is queued or running."),
     )
-    is_push_locked = models.BooleanField(
-        default=False,
-        help_text=_("Locks this RDP while its push to HOPE is queued or running."),
-    )
     push_attempt_id = models.UUIDField(
         null=True,
         editable=False,
@@ -85,16 +81,9 @@ class Rdp(BaseModel):
                 condition=(
                     Q(
                         status=RdpPushStatus.PUSH_PENDING,
-                        is_push_locked=True,
                         push_attempt_id__isnull=False,
                     )
-                    | (
-                        ~Q(status=RdpPushStatus.PUSH_PENDING)
-                        & Q(
-                            is_push_locked=False,
-                            push_attempt_id__isnull=True,
-                        )
-                    )
+                    | (~Q(status=RdpPushStatus.PUSH_PENDING) & Q(push_attempt_id__isnull=True))
                 ),
                 name="rdp_push_attempt_state_consistent",
             ),

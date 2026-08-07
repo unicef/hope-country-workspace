@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
+from django.db import transaction
+
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
@@ -202,13 +204,24 @@ def get_or_create_rdp_push_data_job(*, rdp: Rdp, push_attempt_id: UUID, action: 
     )
 
 
+def claim_rdp_data_push(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
+    """Claim data-push execution for the active attempt."""
+    with transaction.atomic():
+        if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
+            return None
+        if rdp.hope_rdi_id is not None:
+            return None
+        rdp.hope_rdi_id = "N/A"
+        rdp.save(update_fields=["hope_rdi_id"])
+        return rdp
+
+
 def set_rdp_push_status(
     *,
     rdp: Rdp,
     status: Rdp.PushStatus,
     hope_rdi_id: str,
     is_dedup_settings_locked: bool | None = None,
-    is_push_locked: bool | None = None,
 ) -> None:
     """Persist push status fields for an already-locked RDP."""
     rdp.status = status
@@ -217,9 +230,6 @@ def set_rdp_push_status(
     if is_dedup_settings_locked is not None:
         rdp.is_dedup_settings_locked = is_dedup_settings_locked
         update_fields.append("is_dedup_settings_locked")
-    if is_push_locked is not None:
-        rdp.is_push_locked = is_push_locked
-        update_fields.append("is_push_locked")
     rdp.save(update_fields=update_fields)
 
 
@@ -227,15 +237,8 @@ def start_rdp_push_attempt(*, rdp: Rdp) -> UUID:
     """Start a new push attempt for an already-locked RDP."""
     push_attempt_id = uuid4()
     rdp.status = Rdp.PushStatus.PUSH_PENDING
-    rdp.is_push_locked = True
     rdp.push_attempt_id = push_attempt_id
-    rdp.save(
-        update_fields=[
-            "status",
-            "is_push_locked",
-            "push_attempt_id",
-        ]
-    )
+    rdp.save(update_fields=["status", "push_attempt_id"])
     return push_attempt_id
 
 
@@ -247,7 +250,6 @@ def lock_rdp_push_attempt(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
         .filter(
             pk=rdp_id,
             status=Rdp.PushStatus.PUSH_PENDING,
-            is_push_locked=True,
             push_attempt_id=push_attempt_id,
         )
         .first()
@@ -258,16 +260,8 @@ def finish_rdp_push_attempt(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: st
     """Finish an already-locked RDP push attempt."""
     rdp.status = status
     rdp.hope_rdi_id = hope_rdi_id
-    rdp.is_push_locked = False
     rdp.push_attempt_id = None
-    rdp.save(
-        update_fields=[
-            "status",
-            "hope_rdi_id",
-            "is_push_locked",
-            "push_attempt_id",
-        ]
-    )
+    rdp.save(update_fields=["status", "hope_rdi_id", "push_attempt_id"])
 
 
 def release_rdp_dedup_settings_lock(*, rdp_id: int) -> None:

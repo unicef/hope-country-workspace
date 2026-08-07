@@ -202,6 +202,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     rdp=locked,
                     config={"rdp_id": locked.pk},
                 )
+                transaction.on_commit(job.queue)
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             messages.error(request, str(exc))
@@ -209,15 +210,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except RemoteError as exc:
             messages.error(request, str(exc))
             return redirect(self._change_url(obj))
-
-        try:
-            job.queue()
-        except Exception:
-            CountryRdp.objects.filter(
-                pk=locked.pk,
-                is_dedup_settings_locked=True,
-            ).update(is_dedup_settings_locked=False)
-            raise
 
         messages.success(request, "Dedup task scheduled")
         return redirect(self._change_url(obj))
@@ -284,7 +276,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 if not check.allowed or locked is None:
                     messages.error(request, check.reason or "Action is not allowed.")
                     return redirect(self._change_url(obj))
-                if (push_attempt_id := locked.push_attempt_id) is None:
+                if locked.push_attempt_id is None:
                     raise RuntimeError("RDP push attempt was not initialized.")
                 job = AsyncJob.objects.create(
                     description="Prepare RDP for HOPE push",
@@ -299,6 +291,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         "rdi_id_to_reset": None if locked.hope_rdi_id == "N/A" else locked.hope_rdi_id,
                     },
                 )
+                transaction.on_commit(job.queue)
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             messages.error(request, str(exc))
@@ -306,17 +299,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except RemoteError as exc:
             messages.error(request, str(exc))
             return redirect(self._change_url(obj))
-
-        try:
-            job.queue()
-        except Exception:
-            CountryRdp.objects.filter(
-                pk=locked.pk,
-                status=CountryRdp.PushStatus.PUSH_PENDING,
-                is_push_locked=True,
-                push_attempt_id=push_attempt_id,
-            ).update(status=CountryRdp.PushStatus.FAILURE, is_push_locked=False, push_attempt_id=None)
-            raise
 
         messages.success(request, "Push to HOPE task scheduled")
         return redirect(self._change_url(obj))
