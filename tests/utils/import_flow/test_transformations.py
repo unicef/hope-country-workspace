@@ -1,5 +1,7 @@
+import pytest
 from pytest_mock import MockerFixture
 
+from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 from country_workspace.utils.import_flow.transformations import (
     _apply_transformer,
     _get_transformer,
@@ -8,6 +10,7 @@ from country_workspace.utils.import_flow.transformations import (
 
 
 MOD = "country_workspace.utils.import_flow.transformations"
+pytestmark = pytest.mark.django_db
 
 
 def test_get_transformer_returns_none_without_id(mocker: MockerFixture) -> None:
@@ -120,6 +123,57 @@ def test_apply_batch_transformers_applies_households_and_individuals_for_master_
         mocker.call(households, household_transformer),
         mocker.call(individuals, individual_transformer),
     ]
+
+
+def test_apply_transformer_blocks_external_collector_structural_fields(mocker: MockerFixture) -> None:
+    from testutils.factories import IndividualFactory
+
+    collector = IndividualFactory(
+        household=None,
+        flex_fields={
+            "relationship": RELATIONSHIP_NON_BENEFICIARY,
+            "role": "PRIMARY",
+            "given_name": "Ada",
+        },
+    )
+    qs = mocker.MagicMock()
+    qs.only.return_value.iterator.return_value = iter([collector])
+    transformer = mocker.MagicMock()
+    transformer.apply.return_value = {
+        "relationship": "HEAD",
+        "role": "ALTERNATE",
+        "given_name": "Ada",
+        "phone_no": "1",
+    }
+
+    assert _apply_transformer(qs, transformer) == 1
+
+    collector.refresh_from_db()
+    assert collector.flex_fields == {
+        "relationship": RELATIONSHIP_NON_BENEFICIARY,
+        "role": "PRIMARY",
+        "given_name": "Ada",
+        "phone_no": "1",
+    }
+
+
+def test_apply_transformer_blocks_member_to_external_collector(mocker: MockerFixture) -> None:
+    from testutils.factories import IndividualFactory
+
+    member = IndividualFactory(flex_fields={"relationship": "HEAD", "role": "PRIMARY", "given_name": "Bob"})
+    qs = mocker.MagicMock()
+    qs.only.return_value.iterator.return_value = iter([member])
+    transformer = mocker.MagicMock()
+    transformer.apply.return_value = {
+        "relationship": RELATIONSHIP_NON_BENEFICIARY,
+        "role": "PRIMARY",
+        "given_name": "Bob",
+    }
+
+    assert _apply_transformer(qs, transformer) == 0
+
+    member.refresh_from_db()
+    assert member.flex_fields == {"relationship": "HEAD", "role": "PRIMARY", "given_name": "Bob"}
 
 
 def test_apply_batch_transformers_skips_households_for_people_only(mocker: MockerFixture, import_flow_batch) -> None:

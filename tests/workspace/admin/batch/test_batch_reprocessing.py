@@ -115,7 +115,11 @@ def test_build_processor_uses_default_builder(program, batch: CountryBatch, mock
         (
             Batch.BatchSource.KOBO,
             Household,
-            {"household_id": "_preserved_flex_field_0"},
+            {
+                "household_id": "_preserved_flex_field_0",
+                "primary_collector_id": "_preserved_flex_field_1",
+                "alternate_collector_id": "_preserved_flex_field_2",
+            },
         ),
         (Batch.BatchSource.KOBO, Individual, None),
         (Batch.BatchSource.RDI, Household, None),
@@ -177,14 +181,47 @@ def test_apply_import_processor_updates_record_and_preserves_generated_fields(mo
 
 
 def test_apply_import_processor_recomputes_collector_identity_hash(mocker) -> None:
-    record = mocker.MagicMock(spec=Individual, raw_data={"external": "value"})
     flex_fields = {"relationship": "NON_BENEFICIARY", "given_name": "John", "birth_date": "1990-01-01"}
-    processor = mocker.MagicMock(return_value=flex_fields)
+    record = mocker.MagicMock(spec=Individual, raw_data={"external": "value"}, flex_fields=dict(flex_fields))
+    processor = mocker.MagicMock(return_value={**flex_fields, "phone_no": "123"})
 
     assert _apply_import_processor(record, processor) is True
 
-    assert record.identity_hash == compute_collector_hash(flex_fields)
+    assert record.identity_hash == compute_collector_hash({**flex_fields, "phone_no": "123"})
     record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors", "identity_hash"])
+
+
+def test_apply_import_processor_blocks_structural_changes_for_external_collector(mocker) -> None:
+    record = mocker.MagicMock(
+        spec=Individual,
+        raw_data={"external": "value"},
+        flex_fields={"relationship": "NON_BENEFICIARY", "role": "PRIMARY", "given_name": "John"},
+    )
+    processor = mocker.MagicMock(
+        return_value={"relationship": "HEAD", "role": "ALTERNATE", "given_name": "John", "phone_no": "1"}
+    )
+
+    assert _apply_import_processor(record, processor) is True
+
+    assert record.flex_fields == {
+        "relationship": "NON_BENEFICIARY",
+        "role": "PRIMARY",
+        "given_name": "John",
+        "phone_no": "1",
+    }
+
+
+def test_apply_import_processor_blocks_member_to_external_collector(mocker) -> None:
+    record = mocker.MagicMock(
+        spec=Individual,
+        raw_data={"external": "value"},
+        flex_fields={"relationship": "HEAD", "role": "PRIMARY"},
+    )
+    processor = mocker.MagicMock(return_value={"relationship": "NON_BENEFICIARY", "role": "PRIMARY", "given_name": "A"})
+
+    assert _apply_import_processor(record, processor) is True
+
+    assert record.flex_fields == {"relationship": "HEAD", "role": "PRIMARY", "given_name": "A"}
 
 
 def test_process_records_counts_successfully_processed_records(mocker) -> None:
@@ -341,6 +378,33 @@ def test_sync_kobo_household_refs_resolves_first_matching_members(program) -> No
     assert household.flex_fields[fields.head_of_household] == head.pk
     assert household.flex_fields[fields.primary_collector] == primary.pk
     assert household.flex_fields[fields.alternate_collector] == alternate.pk
+
+
+def test_sync_kobo_household_refs_keeps_preserved_external_collector_refs(program) -> None:
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
+
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO)
+    collector = CountryIndividualFactory(
+        batch=batch,
+        household=None,
+        flex_fields={"relationship": "NON_BENEFICIARY", "role": "PRIMARY"},
+    )
+    household = CountryHouseholdFactory(
+        batch=batch,
+        flex_fields={
+            fields.primary_collector: collector.pk,
+            fields.alternate_collector: collector.pk,
+        },
+    )
+    head = CountryIndividualFactory(batch=batch, household=household, flex_fields={"relationship": "HEAD"})
+
+    _sync_kobo_household_refs(batch)
+
+    household.refresh_from_db()
+    assert household.flex_fields[fields.head_of_household] == head.pk
+    assert household.flex_fields[fields.primary_collector] == collector.pk
+    assert household.flex_fields[fields.alternate_collector] == collector.pk
 
 
 # --- reprocess_batch -------------------------------------------------------------

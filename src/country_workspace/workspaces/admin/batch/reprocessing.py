@@ -21,6 +21,7 @@ from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 from country_workspace.utils.fields import to_reference_key
 from country_workspace.utils.import_flow import run_batch_postprocessing, build_import_processor
 from country_workspace.utils.import_flow.collector_identity import compute_collector_hash
+from country_workspace.utils.import_flow.structural_fields import enforce_locked_fields
 from country_workspace.utils.import_flow.transformations import (
     apply_batch_transformers as apply_transformers_to_batch,
 )
@@ -31,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[str, ...]]]] = {
     Batch.BatchSource.KOBO: {
-        Household: ("household_id",),
+        Household: (
+            "household_id",
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+        ),
     },
 }
 
@@ -88,6 +93,10 @@ def _apply_import_processor(
         return False
 
     flex_fields = processor(record.raw_data)
+    if isinstance(record, Individual):
+        # Mapping must not rewrite structural fields of external collectors
+        # (frozen, shared program-wide) nor turn a member into a collector.
+        flex_fields = enforce_locked_fields(record, record.flex_fields or {}, flex_fields)
     if preserved:
         flex_fields |= {
             field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
@@ -346,7 +355,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     processed_individuals = (
         _run_import_processors(
             label="individual",
-            records=individuals.only("pk", "name", "raw_data"),
+            records=individuals.only("pk", "name", "raw_data", "flex_fields"),
             count=individual_count,
             mapping=config.individual_mapping,
             processor=build_processor(model=Individual, mapping_id=config.individual_mapping_id),

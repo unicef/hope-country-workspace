@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from country_workspace.models import Batch, Transformer
+from country_workspace.models import Batch, Individual, Transformer
+from country_workspace.utils.import_flow.structural_fields import enforce_locked_fields
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -21,6 +22,12 @@ def _apply_transformer(qs: "QuerySet[Beneficiary]", transformer: Transformer | N
     for record in qs.only("pk", "flex_fields").iterator():
         current = record.flex_fields or {}
         transformed = transformer.apply(dict(current))
+
+        if isinstance(record, Individual):
+            # Transformers are for data cleanup: they must not rewrite structural
+            # fields of external collectors (frozen, shared program-wide) nor turn
+            # a member into a collector, or household/collector links would go stale.
+            transformed = enforce_locked_fields(record, current, transformed)
 
         if transformed != current:
             record.flex_fields = transformed
