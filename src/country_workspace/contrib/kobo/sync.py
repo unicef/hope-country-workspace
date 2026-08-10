@@ -174,6 +174,7 @@ class ImportedIndividual:
 
     individual: Individual
     fields: dict[str, Any]
+    created: bool = True
 
 
 def create_individuals(  # noqa: PLR0913
@@ -199,7 +200,7 @@ def create_individuals(  # noqa: PLR0913
         if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
             # External collectors are deduplicated program-wide: the first
             # occurrence is reused, linked to households only via role refs.
-            individual, _created = get_or_create_collector(
+            individual, created = get_or_create_collector(
                 program=batch.program,
                 batch=batch,
                 individual_fields=individual_fields,
@@ -207,7 +208,7 @@ def create_individuals(  # noqa: PLR0913
                 originating_id=ind_originating_id,
                 name=name,
             )
-            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
+            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields, created=created))
         else:
             individual = Individual(
                 batch=batch,
@@ -373,7 +374,7 @@ def import_asset(  # noqa: PLR0913
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1
-                individual_counter += len(individuals)
+                individual_counter += sum(1 for item in individuals if item.created)
 
             last_successful_id = submission.id
             if timebox_seconds is not None:

@@ -543,7 +543,7 @@ def test_import_asset_on_error_persists_previous_data(
         return HouseholdFactory(batch=batch, individuals=[])
 
     def create_individuals_real(batch, household, submission, config, originating_id, job=None):
-        return [IndividualFactory(batch=batch, household=household)]
+        return [ImportedIndividual(individual=IndividualFactory(batch=batch, household=household), fields={})]
 
     mocker.patch(
         "country_workspace.contrib.kobo.sync.create_household",
