@@ -8,6 +8,7 @@ from .orchestration import (
     create_rdp_core,
     dedup_callback_handle,
     dedup_existing_rdp_core,
+    fail_stuck_rdp_push,
     push_existing_rdp_core,
     reset_rdp,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "create_rdp_core",
     "dedup_callback_handle",
     "dedup_existing_rdp_core",
+    "fail_stuck_rdp_push",
     "get_program_dedup_settings_policy",
     "get_rdp_policy",
     "push_existing_rdp_core",

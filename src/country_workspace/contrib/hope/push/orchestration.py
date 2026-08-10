@@ -483,15 +483,6 @@ def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str |
         )
 
 
-def queue_rdp_push_preparation(*, job: AsyncJob, rdp_id: int, push_attempt_id: UUID) -> None:
-    """Queue push preparation and fail the attempt if publishing fails."""
-    try:
-        job.queue()
-    except Exception:
-        _fail_pending_push(rdp_id=rdp_id, push_attempt_id=push_attempt_id, hope_rdi_id=None)
-        raise
-
-
 def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | None:
     """Ensure data push is queued for the active attempt."""
     with transaction.atomic():
@@ -739,7 +730,7 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
 
 
 # TODO(Vitali): Remove after Bitcaster recovers stuck RDP push attempts.
-def temporary_fail_stuck_rdp_push(
+def fail_stuck_rdp_push(
     *,
     rdp_id: int,
     push_attempt_id: UUID,
