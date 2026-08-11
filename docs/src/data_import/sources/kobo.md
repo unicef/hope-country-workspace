@@ -2,7 +2,7 @@
 
 Kobo imports household-based beneficiary registrations from a Kobo project into the selected **[Program](../../program.md)**.
 
-Each Kobo submission creates one Household. Individual records are imported from a repeat-group field within that submission and become members of the created Household.
+Each Kobo submission creates one Household. Individual records are read from a repeat-group field within that submission; unless they are **[external collectors](#external-collectors)**, they become members of the created Household.
 
 The expected question names, value types, required fields, and validation rules depend on the Program's **[DataCheckers](../../data_validation/datachecker_configuration.md)**.
 
@@ -77,9 +77,15 @@ After Mapping Importers and field normalization have been applied:
 * the first Individual whose `role` is `PRIMARY` becomes the Primary Collector;
 * the first Individual whose `role` is `ALTERNATE` becomes the Alternate Collector.
 
-The role records must be included in the submission's configured Individual repeat group. Kobo import does not use external Individuals from another submission for these Household roles.
+The role records must be included in the submission's configured Individual repeat group. When the selected record is an external collector, the Household role points to the shared record described in **[External collectors](#external-collectors)**.
 
 If no matching Individual is present, the corresponding Household role is left empty.
+
+### External collectors
+
+An Individual whose `relationship` is `NON_BENEFICIARY` is treated as an external collector: a person who collects on behalf of a Household without being counted as one of its members.
+
+External collectors are not stored as Household members. Country Workspace creates them without a Household. Their direct Household links are the Primary Collector and Alternate Collector role references.
 
 ### Collector references
 
@@ -87,7 +93,7 @@ An Individual can contain a `collector_id` value referencing another imported In
 
 After all submissions have been processed, Country Workspace compares `collector_id` with the imported `individual_id` and `index_id` values. When a matching Individual is found, the source value is replaced with a link to that Individual.
 
-The referenced Individual can belong to another Household in the same Batch.
+The referenced Individual can belong to another Household in the same Batch, or can be a shared external collector stored without a Household in the same Program, even if that collector was imported in an earlier Batch.
 
 ### Attachments
 
@@ -178,7 +184,7 @@ Kobo follows the general **[import lifecycle](../index.md#what-happens-during-im
 
 Source preparation includes downloading attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying Mapping Importers, processing supported document questions, applying Program defaults, and removing ignored fields.
 
-Country Workspace creates one Household for each submission and one Individual for each item in the configured repeat group. The source fields used for each record are stored for later Batch reprocessing.
+Country Workspace creates one Household for each submission and processes one Individual entry for each item in the configured repeat group. Regular Individuals are created as Household members; matching external collectors reuse the existing Program-wide record. The source fields used for each imported record are stored for later Batch reprocessing.
 
 Household membership and roles are created from each submission. After all submissions have been processed, supported collector references are resolved and the selected Transformers are applied.
 
@@ -215,13 +221,13 @@ The Batch remains in **Loading** status while continuation jobs are running. Hou
 
 ### Beneficiary relationships
 
-Each Individual is linked to the Household created from the same submission.
+Each Individual is linked to the Household created from the same submission, except for external collectors, which are kept without a Household as described in **[External collectors](#external-collectors)**.
 
 Household roles are assigned as described in **[Household roles](#household-roles)**. Supported cross-record collector references are resolved as described in **[Collector references](#collector-references)**.
 
 ### Duplicate identities
 
-The current Kobo import flow does not perform duplicate identity detection.
+Apart from external collectors, the current Kobo import flow does not perform duplicate identity detection.
 
 Regular validation checks each record separately and does not detect identity collisions between records.
 

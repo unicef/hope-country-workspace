@@ -29,3 +29,16 @@ Click **[Push]** to start the process. You will be redirected to the **Jobs** pa
 
 ##### Post-Push Status
 After a successful push, all households and their members that were sent will be marked as **removed**. To review removed beneficiaries, use the [Admin Interface](interfaces.md#admin-interface).
+
+---
+
+### External collectors
+
+[External collectors](data_import/sources/kobo.md#external-collectors) are not household members. When a selected Household references one as Primary or Alternate Collector, Country Workspace includes that collector in the push. If several selected Households reference the same collector, the collector is sent only once in that push.
+
+They are also not marked as **removed** after a push, because households that have not been pushed yet may still reference them.
+
+!!! note
+    If the referencing Households are pushed in separate batches, Country Workspace includes the collector in each batch. HOPE-side handling of these repeated submissions depends on HOPE's RDI and deduplication behavior.
+
+    Push all referencing Households in the same batch when Country Workspace should submit only one copy of the shared collector.
