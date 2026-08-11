@@ -1,113 +1,20 @@
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from functools import cached_property
 from itertools import batched
 from typing import Any
-from uuid import UUID
 
 from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.contrib.hope.constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, PUSH_BATCH_SIZE
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp
+from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, map_members, map_role_value
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .config import ERROR_CONFIG, PushWorkflowConfig, Serializer
-from .mappings import load_mapping_from_api, map_members, map_role_value
-from .repository import (
-    qs_individuals_for_rdp,
-    preflight_errors,
-    serializer_for_program,
-)
-from .transport import HopeApi
-
-
-class ProcessorBase:
-    """Shared processor primitives."""
-
-    PREFIX: str = "Processor"
-
-    def __init__(self) -> None:
-        self.total: dict[str, Any] = {"errors": []}
-
-    @property
-    def has_errors(self) -> bool:
-        """Return True when at least one error was collected."""
-        return bool(self.total.get("errors"))
-
-    @staticmethod
-    def _ids_hint(ids: Sequence[int]) -> str:
-        """Return a short ids hint suitable for logs."""
-        limit = ERROR_CONFIG.MAX_IDS_HINT
-        if not ids:
-            return "[]"
-        if len(ids) <= limit:
-            return str(ids)
-        head = ", ".join(map(str, ids[:limit]))
-        return f"[{head}, …]"
-
-    def _err(self, msg: str) -> None:
-        """Append an error into total['errors']; truncate long text; cap the list with a marker."""
-        errors: list[str] = self.total["errors"]
-        if errors and errors[-1] == ERROR_CONFIG.MARKER:
-            return
-        if len(errors) >= ERROR_CONFIG.MAX_ERRORS - 1:
-            errors.append(ERROR_CONFIG.MARKER)
-            return
-        if len(msg) > ERROR_CONFIG.MAX_ERROR_LEN:
-            msg = f"{msg[: ERROR_CONFIG.MAX_ERROR_LEN - 1]}…"
-        errors.append(msg)
-
-    def _fmt_fail(
-        self,
-        subject: str,
-        msg: str,
-        *,
-        ids: Sequence[int] | None = None,
-        response: object | None = None,
-    ) -> str:
-        ids_part = f" ids={self._ids_hint(ids)}" if ids is not None else ""
-        line = f"{self.PREFIX}: {subject}: {msg}{ids_part}"
-        return f"{line}. Response: {response}" if response is not None else line
-
-    def fail(
-        self,
-        subject: str,
-        msg: str,
-        *,
-        ids: Sequence[int] | None = None,
-        response: object | None = None,
-    ) -> None:
-        self._err(self._fmt_fail(subject, msg, ids=ids, response=response))
-
-    def try_remote(
-        self,
-        subject: str,
-        fn: Callable[[], Any],
-        *,
-        ids: Sequence[int] | None = None,
-    ) -> Any | None:
-        try:
-            return fn()
-        except (RemoteError, RemoteUnavailableError) as e:
-            self.fail(subject, f"request failed. {e}", ids=ids)
-            return None
-
-    def run_remote(
-        self,
-        subject: str,
-        fn: Callable[[], object],
-        *,
-        ids: Sequence[int] | None = None,
-    ) -> bool:
-        try:
-            fn()
-        except (RemoteError, RemoteUnavailableError) as e:
-            self.fail(subject, f"request failed. {e}", ids=ids)
-            return False
-        return True
+from country_workspace.rdp.constants import PUSH_BATCH_SIZE
+from country_workspace.rdp.processor import ProcessorBase
+from country_workspace.rdp.validation import preflight_errors
+from .repository import serializer_for_program
+from .types import PushWorkflowConfig, Serializer
 
 
 class PushProcessor(ProcessorBase):
@@ -348,100 +255,3 @@ class PushProcessor(ProcessorBase):
             yield
         finally:
             self.queryset = prev
-
-
-class DedupProcessor(ProcessorBase):
-    """Dedup pipeline: create/upload/process or process an existing DE set."""
-
-    PREFIX = "Dedup"
-
-    def __init__(self, rdp: Rdp) -> None:
-        super().__init__()
-        self.rdp = rdp
-        self.group_reference_id = rdp.program.unicef_id
-
-    def run(self, notification_url: str | None = None) -> None:
-        ds_id = self.rdp.deduplication_set_id
-        self.total |= {
-            "rdp_id": self.rdp.pk,
-            "program": self.group_reference_id,
-            "images_sent": 0,
-            "deduplication_set_id": str(ds_id) if ds_id else None,
-        }
-
-        if ds_id is None:
-            self.fail("deduplication_set_id", "is not set")
-            return
-
-        with make_dedup_client(self.group_reference_id, deduplication_set_id=str(ds_id)) as client:
-            can_create = self.try_remote("can_create_deduplication_set", client.can_create_deduplication_set)
-            if can_create is None:
-                return
-            if can_create:
-                self.total["images_sent"] = self.deduplicate(client, ds_id, notification_url=notification_url)
-                return
-            self.run_remote("process_existing_deduplication_set", client.process)
-
-    def _iter_images(self) -> Iterator[dict[str, str]]:
-        """Yield DedupEngine images payload from RDP individuals."""
-        for pk, photo in (
-            qs_individuals_for_rdp(rdp=self.rdp)
-            .values_list("id", "flex_fields__photo")
-            .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE)
-        ):
-            if isinstance(photo, str) and (photo := photo.strip()):
-                yield {"reference_pk": str(pk), "filename": photo}
-
-    def create_deduplication_set(
-        self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None
-    ) -> bool:
-        """Create a remote deduplication set using the CW-owned UUID."""
-        payload = self.try_remote(
-            "create_deduplication_set",
-            lambda: client.create_deduplication_set(notification_url=notification_url),
-        )
-        if payload is None:
-            return False
-
-        expected_id = str(deduplication_set_id)
-        if payload.get("id") != expected_id:
-            self.fail(
-                "create_deduplication_set",
-                f"response id mismatch expected={expected_id} got={payload.get('id')!r}",
-                response=payload,
-            )
-            return False
-
-        return True
-
-    def upload_images(self, client: Any) -> tuple[bool, int]:
-        images_sent = 0
-
-        for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
-            payload = list(batch)
-            if not self.run_remote("create_images", lambda payload=payload: client.create_images(payload)):
-                return False, images_sent
-            images_sent += len(payload)
-
-        if not images_sent:
-            self.fail("create_images", "no images to deduplicate")
-            return False, images_sent
-
-        if not self.run_remote("ready", client.ready):
-            return False, images_sent
-
-        return True, images_sent
-
-    def deduplicate(self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None) -> int:
-        """Create, upload, and process a DedupEngine set; return sent images count."""
-        if not self.create_deduplication_set(client, deduplication_set_id, notification_url=notification_url):
-            return 0
-
-        uploaded, images_sent = self.upload_images(client)
-        if not uploaded:
-            return images_sent
-
-        if not self.run_remote("process", client.process):
-            return images_sent
-
-        return images_sent

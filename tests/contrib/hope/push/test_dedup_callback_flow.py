@@ -16,7 +16,7 @@ from country_workspace.contrib.dedup_engine import (
     DedupResponseStatus,
     DeduplicationSetState,
 )
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.push.orchestration import (
     _build_dedup_callback_url,
     DEDUP_CALLBACK_SALT,
@@ -94,7 +94,7 @@ def test_create_rdp_and_start_dedup_core_claim_fails(mocker: MockerFixture, err_
     processor = mocker.patch(f"{MOD}.DedupProcessor")
     release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_and_start_dedup_core(job)
 
     assert err_contains(exc.value.args[0]["errors"], "could not claim")
@@ -118,7 +118,7 @@ def test_create_rdp_and_start_dedup_core_processor_errors(mocker: MockerFixture,
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_and_start_dedup_core(job)
 
     assert err_contains(exc.value.args[0]["errors"], "upload failed")
@@ -167,7 +167,7 @@ def test_create_and_push_rdp_core_non_biometric_raises(mocker: MockerFixture) ->
     job = _make_job(mocker, biometric=False)
     dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core")
 
-    with pytest.raises(HopePushError):
+    with pytest.raises(RdpWorkflowError):
         create_and_push_rdp_core(job)
 
     dedup_flow.assert_not_called()
@@ -178,7 +178,7 @@ def test_create_and_push_rdp_core_no_program_raises(mocker: MockerFixture) -> No
     job.program = None
     dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core")
 
-    with pytest.raises(HopePushError):
+    with pytest.raises(RdpWorkflowError):
         create_and_push_rdp_core(job)
 
     dedup_flow.assert_not_called()

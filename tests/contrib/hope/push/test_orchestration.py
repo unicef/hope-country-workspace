@@ -6,7 +6,7 @@ from django.db import IntegrityError
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine import DeduplicationSetState
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.push.config import Beneficiary
 from country_workspace.contrib.hope.push.orchestration import (
     _approve_deduplication_set_after_successful_push,
@@ -75,7 +75,7 @@ def test_require_policy_check_calls_check_require(mocker: MockerFixture) -> None
 def test_require_policy_check_propagates_denial(mocker: MockerFixture, err_contains) -> None:
     check_fn = mocker.Mock(return_value=ActionCheck(False, "blocked"))
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         _require_policy_check(check_fn)
 
     assert err_contains(exc.value.args[0]["errors"], "blocked")
@@ -96,7 +96,7 @@ def test_require_policy_check_wraps_remote_errors(
     check.require.side_effect = exc_cls("boom")
     check_fn = mocker.Mock(return_value=check)
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         _require_policy_check(check_fn)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
@@ -106,7 +106,7 @@ def test_create_rdp_core_requires_beneficiary_group(mocker: MockerFixture, err_c
     job = mocker.MagicMock(
         program=mocker.MagicMock(beneficiary_group=None, biometric_deduplication_enabled=False),
     )
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_core(job)
     assert err_contains(exc.value.args[0]["errors"], "beneficiary_group is not set")
 
@@ -120,7 +120,7 @@ def test_create_rdp_core_preflight_errors(
     make_client = mocker.patch(f"{MOD}.make_dedup_client")
     mocker.patch(f"{MOD}.preflight_errors", return_value=["boom"])
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_core(create_job)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
@@ -139,7 +139,7 @@ def test_create_rdp_core_dedup_guard(
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     mocker.patch(f"{MOD}.preflight_errors", return_value=[])
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_core(create_job)
 
     assert err_contains(exc.value.args[0]["errors"], "can not create deduplication set")
@@ -163,7 +163,7 @@ def test_create_rdp_core_dedup_remote_error(
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     mocker.patch(f"{MOD}.preflight_errors", return_value=[])
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_core(create_job)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
@@ -188,7 +188,7 @@ def test_create_rdp_core_integrity_error(
     mocker.patch(f"{MOD}.preflight_errors", return_value=[])
     mocker.patch.object(Rdp.objects, "create", side_effect=IntegrityError(db_error))
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         create_rdp_core(create_job)
 
     assert err_contains(exc.value.args[0]["errors"], expected)
@@ -231,7 +231,7 @@ def test_create_and_push_rdp_core_requires_biometric(mocker: MockerFixture) -> N
     job.program.biometric_deduplication_enabled = False
     dedup_flow = mocker.patch(f"{MOD}.create_rdp_and_start_dedup_core")
 
-    with pytest.raises(HopePushError):
+    with pytest.raises(RdpWorkflowError):
         create_and_push_rdp_core(job)
 
     dedup_flow.assert_not_called()
@@ -397,7 +397,7 @@ def test_dedup_existing_rdp_core(
     release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     if has_errors:
-        with pytest.raises(HopePushError) as exc:
+        with pytest.raises(RdpWorkflowError) as exc:
             dedup_existing_rdp_core(job)
         assert err_contains(exc.value.args[0]["errors"], "boom")
     else:
@@ -487,7 +487,7 @@ def test_cancel_existing_rdp_core_wraps_reject_errors(
     mocker.patch(f"{MOD}.make_dedup_client", return_value=dedup_api_cm(client))
     set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         cancel_existing_rdp_core(mocker.MagicMock(config={"rdp_id": 1}))
 
     assert err_contains(exc.value.args[0]["errors"], "boom")
@@ -761,7 +761,7 @@ def test_push_existing_rdp_core_failure(mocker: MockerFixture, err_contains) -> 
     rdi_pushed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send")
     rdp_pushed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         push_existing_rdp_core(job)
 
     assert err_contains(exc.value.args[0]["errors"], "boom")

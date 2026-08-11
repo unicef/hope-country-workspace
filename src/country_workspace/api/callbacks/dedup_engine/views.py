@@ -9,7 +9,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from country_workspace.contrib.hope.push.orchestration import (
+from country_workspace.rdp import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
     dedup_callback_handle,

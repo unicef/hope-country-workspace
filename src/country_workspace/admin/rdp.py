@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
-from country_workspace.contrib.hope.push import fail_stuck_rdp_push, get_rdp_policy, reset_rdp
+from country_workspace.rdp import fail_stuck_rdp_push, get_rdp_policy, reset_rdp
 from country_workspace.models import Rdp
 from .base import BaseModelAdmin
 

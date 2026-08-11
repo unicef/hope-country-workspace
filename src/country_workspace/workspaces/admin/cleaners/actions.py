@@ -7,8 +7,8 @@ from django.utils.translation import gettext as _
 from flags.state import flag_enabled
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.hope.forms import CreateRDPForm
-from country_workspace.contrib.hope.push import CreateRdpConfig, create_and_push_rdp_core, create_rdp_core
+from country_workspace.workspaces.admin.forms import CreateRDPForm
+from country_workspace.rdp import CreateRdpConfig, create_and_push_rdp_core, create_rdp_core
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default

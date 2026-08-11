@@ -9,7 +9,7 @@ from country_workspace.contrib.dedup_engine import (
     PUSHABLE_DEDUPLICATION_SET_STATES,
     RUNNING_DEDUPLICATION_SET_STATES,
 )
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.contrib.hope.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.push.policy import (
     ActionCheck,
     DedupEngineState,
@@ -56,7 +56,7 @@ def test_action_check_require_enabled() -> None:
     ids=["custom_reason", "default_reason"],
 )
 def test_action_check_require_disabled(reason: str | None, expected: str, err_contains) -> None:
-    with pytest.raises(HopePushError) as exc:
+    with pytest.raises(RdpWorkflowError) as exc:
         ActionCheck(False, reason).require()
     assert err_contains(exc.value.args[0]["errors"], expected)
 

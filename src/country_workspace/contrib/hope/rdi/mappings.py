@@ -1,7 +1,9 @@
 from typing import Any
+import re
 from collections.abc import Callable, Iterable
 
-from .config import IND_TAG_RE
+# Matches tags like: IND-25-0000.0051
+IND_TAG_RE = re.compile(r"^IND(?:-\d+)+\.\d+$")
 
 
 def load_mapping_from_api(raw: dict[Any, Any], err: Callable[[str], None]) -> dict[int, str]:

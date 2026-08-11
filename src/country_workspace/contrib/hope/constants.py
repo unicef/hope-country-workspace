@@ -1,8 +1,5 @@
 from typing import Final
 
-PUSH_BATCH_SIZE: Final[int] = 10
-IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE: Final[int] = 10
-
 # NEVER CHANGE THIS VALUES
 HOUSEHOLD_CHECKER_NAME: Final[str] = "HOPE Household core"
 INDIVIDUAL_CHECKER_NAME: Final[str] = "HOPE Individual core"
@@ -19,7 +16,3 @@ DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
 DOCUMENT_TYPES = ("national_id", "national_passport")
 MAX_DOCUMENT_COLUMNS = 3
 ACCOUNT_TYPES = ("mobile", "bank")
-
-# HOPE push-ready callback
-PUSH_READY_CALLBACK_SALT: Final[str] = "country_workspace.hope.push_ready_callback"
-PUSH_READY_CALLBACK_MAX_AGE: Final[int] = 60 * 60 * 8  # 8 hours

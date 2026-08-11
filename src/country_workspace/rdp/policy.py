@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from collections.abc import Callable
 from functools import cached_property
 from typing import NamedTuple
 
@@ -13,10 +14,11 @@ from country_workspace.contrib.dedup_engine import (
     get_deduplication_status,
     make_dedup_client,
 )
-from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Program, Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
+
+from .exceptions import RdpWorkflowError
 
 
 @dataclass(slots=True, frozen=True)
@@ -26,7 +28,7 @@ class ActionCheck:
 
     def require(self) -> None:
         if not self.allowed:
-            raise HopePushError({"errors": [self.reason or "Action is not allowed."]})
+            raise RdpWorkflowError({"errors": [self.reason or "Action is not allowed."]})
 
 
 class DedupEngineState(NamedTuple):
@@ -251,3 +253,10 @@ def get_rdp_policy(rdp: Rdp) -> RdpActionPolicy:
         policy = RdpActionPolicy(rdp)
         rdp._rdp_policy = policy
     return policy
+
+
+def require_policy_check(check: Callable[[], ActionCheck]) -> None:
+    try:
+        check().require()
+    except (RemoteError, RemoteUnavailableError) as exc:
+        raise RdpWorkflowError({"errors": [str(exc)]}) from exc

@@ -1,12 +1,37 @@
+from enum import StrEnum, auto
 from collections.abc import Mapping
+from typing import Any, Final
 from http import HTTPStatus
-from typing import Any
 
 from country_workspace.contrib.hope.client import HopeClient
-from country_workspace.contrib.hope.exceptions import HopeRdiResetUnconfirmedError, HopeResponseError
+from country_workspace.contrib.hope.exceptions import HopeResponseError
 from country_workspace.exceptions import RemoteError
 
-from .config import ROUTES, RdiResetResult, Route
+from .exceptions import HopeRdiResetUnconfirmedError
+
+
+class RdiResetResult(StrEnum):
+    ACCEPTED = auto()
+    NOT_FOUND = auto()
+
+
+class Route(StrEnum):
+    CREATE_RDI = auto()
+    COMPLETE_RDI = auto()
+    INDIVIDUALS = auto()
+    HOUSEHOLDS = auto()
+    PEOPLE = auto()
+    RESET_RDI = auto()
+
+
+ROUTES: Final[dict[Route, str]] = {
+    Route.CREATE_RDI: "{co_slug}/rdi/create/",
+    Route.COMPLETE_RDI: "{co_slug}/rdi/{rdi_id}/completed/",
+    Route.INDIVIDUALS: "{co_slug}/rdi/{rdi_id}/push/lax/individuals/",
+    Route.HOUSEHOLDS: "{co_slug}/rdi/{rdi_id}/push/lax/households/",
+    Route.PEOPLE: "{co_slug}/rdi/{rdi_id}/push/people/",
+    Route.RESET_RDI: "{co_slug}/rdi/{rdi_id}/reset/",
+}
 
 
 class HopeApi:

@@ -19,7 +19,7 @@ from django.utils.html import format_html, format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
-from country_workspace.contrib.hope.push import (
+from country_workspace.rdp import (
     DedupEngineState,
     cancel_existing_rdp_core,
     claim_rdp_deduplication,

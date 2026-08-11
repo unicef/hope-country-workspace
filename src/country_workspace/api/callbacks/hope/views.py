@@ -7,11 +7,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from country_workspace.contrib.hope.constants import (
-    PUSH_READY_CALLBACK_MAX_AGE,
-    PUSH_READY_CALLBACK_SALT,
-)
-from country_workspace.contrib.hope.push.orchestration import handle_push_ready_callback
+from country_workspace.rdp import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT, handle_push_ready_callback
 
 from .serializers import (
     HopeRdpPushReadyCallbackErrorSerializer,
