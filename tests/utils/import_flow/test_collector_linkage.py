@@ -2,6 +2,7 @@ import pytest
 
 from country_workspace.models import Individual
 from country_workspace.utils.import_flow.collector_linkage import sync_collector_links
+from testutils.factories import BatchFactory, IndividualFactory
 
 
 @pytest.mark.django_db
@@ -75,3 +76,42 @@ def test_sync_collector_links_skips_when_collector_id_already_equals_pk(
     assert synced == 0
     beneficiary_with_resolved_collector.refresh_from_db()
     assert beneficiary_with_resolved_collector.flex_fields["collector_id"] == str(collector.pk)
+
+
+@pytest.mark.django_db
+def test_sync_collector_links_resolves_collector_from_earlier_batch() -> None:
+    earlier_batch = BatchFactory()
+    collector = IndividualFactory(batch=earlier_batch, household=None, flex_fields={"individual_id": "C-1"})
+    current_batch = BatchFactory(program=earlier_batch.program)
+    beneficiary = IndividualFactory(
+        batch=current_batch,
+        household=None,
+        flex_fields={"individual_id": "B-1", "collector_id": "C-1"},
+    )
+    qs = Individual.objects.filter(pk=beneficiary.pk)
+
+    synced = sync_collector_links(qs, program=current_batch.program)
+
+    assert synced == 1
+    beneficiary.refresh_from_db()
+    assert beneficiary.flex_fields["collector_id"] == collector.pk
+
+
+@pytest.mark.django_db
+def test_sync_collector_links_current_batch_reference_takes_precedence_over_program_wide() -> None:
+    earlier_batch = BatchFactory()
+    IndividualFactory(batch=earlier_batch, household=None, flex_fields={"individual_id": "C-1"})
+    current_batch = BatchFactory(program=earlier_batch.program)
+    local_collector = IndividualFactory(batch=current_batch, household=None, flex_fields={"individual_id": "C-1"})
+    beneficiary = IndividualFactory(
+        batch=current_batch,
+        household=None,
+        flex_fields={"individual_id": "B-1", "collector_id": "C-1"},
+    )
+    qs = Individual.objects.filter(batch=current_batch)
+
+    synced = sync_collector_links(qs, program=current_batch.program)
+
+    assert synced == 1
+    beneficiary.refresh_from_db()
+    assert beneficiary.flex_fields["collector_id"] == local_collector.pk

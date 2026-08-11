@@ -35,3 +35,19 @@ def test_validate_with_checker(individual: "CountryHousehold"):
     with mock.patch.object(household.program.beneficiary_validator, "validate", Mock(return_value=["Error"])):
         assert not household.validate_with_checker()
         assert household.errors == {"dct": ["Error"]}
+
+
+def test_validate_with_checker_validates_external_collectors(household: "CountryHousehold"):
+    from testutils.factories import CountryIndividualFactory
+
+    from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+
+    household.members.all().delete()
+    collector = CountryIndividualFactory(household=None, batch=household.batch, last_checked=None, errors={})
+    household.flex_fields = {HOUSEHOLD_ROLE_REF_FIELDS.primary_collector: collector.pk}
+    household.save(update_fields=["flex_fields"])
+
+    household.validate_with_checker()
+
+    collector.refresh_from_db()
+    assert collector.last_checked is not None

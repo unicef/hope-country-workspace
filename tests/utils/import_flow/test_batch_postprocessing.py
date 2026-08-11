@@ -29,7 +29,7 @@ def test_run_batch_postprocessing_runs_all_steps_for_master_detail(mocker: Mocke
     }
     sync_household_refs.assert_called_once_with(batch)
     batch.individual_set.filter.assert_called_once_with(removed=False)
-    sync_collector_links.assert_called_once_with(batch.individuals_qs)
+    sync_collector_links.assert_called_once_with(batch.individuals_qs, program=batch.program)
     apply_batch_transformers.assert_called_once_with(
         batch,
         household_transformer_id=10,
@@ -45,7 +45,7 @@ def test_run_batch_postprocessing_skips_household_refs_without_syncer(mocker: Mo
     result = run_batch_postprocessing(batch)
 
     assert result == {"collector_links": 0}
-    sync_collector_links.assert_called_once_with(batch.individuals_qs)
+    sync_collector_links.assert_called_once_with(batch.individuals_qs, program=batch.program)
     apply_batch_transformers.assert_called_once_with(
         batch,
         household_transformer_id=None,
@@ -77,7 +77,7 @@ def test_run_batch_postprocessing_runs_household_refs_before_links_and_transform
     def sync_household_refs(_batch) -> None:
         calls.append("household_refs")
 
-    def sync_collector_links(_qs) -> int:
+    def sync_collector_links(_qs, **_kwargs) -> int:
         calls.append("collector_links")
         return 1
 
