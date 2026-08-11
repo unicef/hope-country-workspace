@@ -254,9 +254,14 @@ def test_split_flex_payload_without_checker_returns_payload_as_text() -> None:
     assert files == {}
 
 
-def test_split_flex_payload_with_pre_resolved_file_fields() -> None:
+def test_split_flex_payload_with_checker_split() -> None:
     payload = {"name": "John", "photo": "data:image/png;base64,QUJD"}
-    text, files = split_flex_payload(None, payload, file_field_names={"photo"})
+    checker = Mock(spec=["split_data"])
+    checker.split_data.return_value = {
+        "fields": {"name": "John"},
+        "files": {"photo": payload["photo"]},
+    }
+    text, files = split_flex_payload(checker, payload)
     assert text == {"name": "John"}
     assert set(files) == {"photo"}
     assert to_public_flex_file_value(files["photo"]) == payload["photo"]

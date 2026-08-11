@@ -181,7 +181,6 @@ def create_individuals(  # noqa: PLR0913
     submission: Submission,
     config: Config,
     asset_uid: str,
-    file_field_names: set[str] | None = None,
     job: AsyncJob | None = None,
 ) -> list[ImportedIndividual]:
     individuals: list[ImportedIndividual] = []
@@ -199,7 +198,6 @@ def create_individuals(  # noqa: PLR0913
         text_fields, file_values = split_flex_payload(
             checker,
             individual_fields,
-            file_field_names=file_field_names,
         )
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
@@ -231,13 +229,12 @@ def create_individuals(  # noqa: PLR0913
     return individuals
 
 
-def create_household(  # noqa: PLR0913
+def create_household(
     batch: Batch,
     submission: Submission,
     config: Config,
     id_generator: Callable[[], int],
     originating_id: str,
-    file_field_names: set[str] | None = None,
 ) -> Household:
     household_mapping_id = config.get("household_mapping_id")
     raw_household_fields = extract_household_data(submission, config["individual_records_field"])
@@ -248,7 +245,6 @@ def create_household(  # noqa: PLR0913
     text_fields, file_values = split_flex_payload(
         batch.program.household_checker,
         household_fields,
-        file_field_names=file_field_names,
     )
     household_id = id_generator()
     household_fields["household_id"] = household_id
@@ -375,10 +371,6 @@ def import_asset(  # noqa: PLR0913
     start_time = timezone.now()
     time_exhausted = False
     epoch_ms = int(batch.import_date.timestamp() * 1000)
-    household_checker = batch.program.household_checker
-    individual_checker = batch.program.individual_checker
-    household_file_field_names = household_checker.get_file_field_names() if household_checker else None
-    individual_file_field_names = individual_checker.get_file_field_names() if individual_checker else None
 
     submissions_iterator = asset.submissions(min_id=last_id)
 
@@ -397,7 +389,6 @@ def import_asset(  # noqa: PLR0913
                     config,
                     id_generator,
                     originating_id,
-                    file_field_names=household_file_field_names,
                 )
                 individuals = create_individuals(
                     batch,
@@ -405,7 +396,6 @@ def import_asset(  # noqa: PLR0913
                     submission,
                     config,
                     asset.uid,
-                    file_field_names=individual_file_field_names,
                     job=job,
                 )
                 set_roles_and_relationships(household, individuals)

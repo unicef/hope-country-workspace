@@ -3,7 +3,6 @@ import binascii
 import hashlib
 import json
 import re
-from collections.abc import Collection
 from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
@@ -107,19 +106,12 @@ def merge_flex_payload(
 def split_flex_payload(
     checker: DataChecker | None,
     payload: dict[str, Any],
-    *,
-    file_field_names: Collection[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if file_field_names is None:
-        if checker is None:
-            return dict(payload), {}
-        split = checker.split_data(payload)
-        text_fields = dict(split.get("fields", {}))
-        raw_file_values = dict(split.get("files", {}))
-    else:
-        file_field_names_set = set(file_field_names)
-        text_fields = {key: value for key, value in payload.items() if key not in file_field_names_set}
-        raw_file_values = {key: value for key, value in payload.items() if key in file_field_names_set}
+    if checker is None:
+        return dict(payload), {}
+    split = checker.split_data(payload)
+    text_fields = dict(split.get("fields", {}))
+    raw_file_values = dict(split.get("files", {}))
 
     file_values = {
         key: to_storage_flex_file_value(value)

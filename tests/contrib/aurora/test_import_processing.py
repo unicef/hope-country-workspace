@@ -133,16 +133,12 @@ def test_import_data_calls_client_and_aggregates(
         {"pk": "5"},
         job.config,
         private_key=PRIVATE.decode(),
-        household_file_field_names=mocker.ANY,
-        individual_file_field_names=mocker.ANY,
     )
     import_result_mock.assert_any_call(
         batch,
         {"pk": "6"},
         job.config,
         private_key=PRIVATE.decode(),
-        household_file_field_names=mocker.ANY,
-        individual_file_field_names=mocker.ANY,
     )
     postprocessing.assert_called_once_with(
         batch,
@@ -399,7 +395,7 @@ def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Co
 
     assert result == ImportResult(people=1)
     get_originating_id.assert_called_once_with("7", epoch=1_234_567_890_123)
-    create_individual_mock.assert_called_once_with(batch, {"pk": "7"}, config, "AUR#7", file_field_names=None)
+    create_individual_mock.assert_called_once_with(batch, {"pk": "7"}, config, "AUR#7")
     update_or_create.assert_called_once()
 
 
@@ -451,8 +447,6 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
         batch,
         result_payload,
         config,
-        household_file_field_names=None,
-        individual_file_field_names=None,
     )
     update_or_create.assert_called_once()
 
@@ -568,7 +562,6 @@ def test_create_household_and_individuals_success_cases(
             individual_fields,
             config,
             f"AUR#1#IND{idx}#1234567890123",
-            file_field_names=None,
             household=household,
         )
         for idx, individual_fields in enumerate(expected_individual_fields)

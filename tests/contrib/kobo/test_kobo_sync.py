@@ -774,7 +774,6 @@ def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(
         config,
         id_generator_mock,
         mocker.ANY,
-        file_field_names=mocker.ANY,
     )
     create_individuals_mock.assert_called_once_with(
         batch,
@@ -782,7 +781,6 @@ def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(
         submission_1,
         config,
         mocker.ANY,
-        file_field_names=mocker.ANY,
         job=None,
     )
     assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"

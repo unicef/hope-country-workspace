@@ -116,7 +116,6 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     epoch_ms = int(batch.import_date.timestamp() * 1000)
     household_mapping_id = config.get("household_mapping_id")
     checker = batch.program.household_checker
-    file_field_names = checker.get_file_field_names() if checker else None
     transform_row = build_import_processor(
         program=job.program,
         model=Household,
@@ -132,7 +131,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         originating_id = get_xlsx_originating_id(file_name, household_key, epoch=epoch_ms)
         try:
             transformed = transform_row(row)
-            text_fields, file_values = split_flex_payload(checker, transformed, file_field_names=file_field_names)
+            text_fields, file_values = split_flex_payload(checker, transformed)
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
@@ -157,7 +156,6 @@ def process_beneficiaries(
     file_name = normalize_file_name(job.file.name)
     epoch_ms = int(batch.import_date.timestamp() * 1000)
     checker = batch.program.individual_checker
-    file_field_names = checker.get_file_field_names() if checker else None
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
@@ -182,7 +180,7 @@ def process_beneficiaries(
 
         try:
             transformed = transform_row(cleaned_row)
-            text_fields, file_values = split_flex_payload(checker, transformed, file_field_names=file_field_names)
+            text_fields, file_values = split_flex_payload(checker, transformed)
             mapping[beneficiary_key] = cast(
                 "Individual",
                 Individual.objects.create(
