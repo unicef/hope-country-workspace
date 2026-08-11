@@ -2,13 +2,22 @@ import pytest
 from django.urls import NoReverseMatch
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.push.policy import ActionCheck
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.state import state
 from country_workspace.workspaces.admin import rdp as rdp_admin_mod
 from country_workspace.workspaces.models import CountryRdp
 
+
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def async_job_factory():
+    from testutils.factories import AsyncJobFactory
+
+    return AsyncJobFactory
 
 
 @pytest.mark.parametrize(
@@ -31,7 +40,13 @@ pytestmark = pytest.mark.django_db
     ],
     ids=["no_obj", "dedup_off", "dedup_on"],
 )
-def test_get_fields_and_readonly_fields(admin_instance, mock_request, rdp: CountryRdp, obj_attr, expected) -> None:
+def test_get_fields_and_readonly_fields(
+    admin_instance,
+    mock_request,
+    rdp: CountryRdp,
+    obj_attr,
+    expected,
+) -> None:
     obj = None if obj_attr is None else rdp
     if obj:
         obj.program.biometric_deduplication_enabled = obj_attr
@@ -46,6 +61,25 @@ def test_permissions(admin_instance, mock_request, rdp: CountryRdp) -> None:
     assert admin_instance.has_delete_permission(mock_request, rdp) is False
 
 
+def test_get_common_context(admin_instance, mock_request, mocker: MockerFixture) -> None:
+    parent = mocker.patch.object(
+        rdp_admin_mod.WorkspaceModelAdmin,
+        "get_common_context",
+        return_value={"result": True},
+    )
+
+    result = admin_instance.get_common_context(mock_request, pk="1", extra="value")
+
+    assert result == {"result": True}
+    parent.assert_called_once_with(
+        mock_request,
+        "1",
+        extra="value",
+        modeladmin=admin_instance,
+        modeladmin_name="CountryRdpAdmin",
+    )
+
+
 def test_get_queryset(admin_instance, mock_request, mocker: MockerFixture) -> None:
     qs = mocker.MagicMock()
     base = mocker.patch.object(rdp_admin_mod.WorkspaceModelAdmin, "get_queryset", return_value=qs)
@@ -57,12 +91,15 @@ def test_get_queryset(admin_instance, mock_request, mocker: MockerFixture) -> No
     qs.select_related.return_value.filter.assert_called_once_with(program=state.program)
 
 
-def test_related_jobs(admin_instance, rdp: CountryRdp, mocker: MockerFixture) -> None:
-    from testutils.factories import AsyncJobFactory
-
+def test_related_jobs(
+    admin_instance,
+    rdp: CountryRdp,
+    async_job_factory,
+    mocker: MockerFixture,
+) -> None:
     assert admin_instance.related_jobs(rdp) == "-"
 
-    job = AsyncJobFactory(rdp=rdp, program=rdp.program)
+    job = async_job_factory(rdp=rdp, program=rdp.program)
     mocker.patch.object(rdp_admin_mod, "reverse", return_value="/job-url")
 
     result = str(admin_instance.related_jobs(rdp))
@@ -73,6 +110,7 @@ def test_related_jobs(admin_instance, rdp: CountryRdp, mocker: MockerFixture) ->
 
 def test_operation_log_display_empty(admin_instance, rdp: CountryRdp) -> None:
     rdp.operation_log = []
+
     assert admin_instance.operation_log_display(rdp) == "—"
 
 
@@ -86,7 +124,7 @@ def test_operation_log_display_formats_entries(
 
     rdp.operation_log = [
         {
-            "action": CountryRdp.OperationAction.START_DEDUPLICATION.value,
+            "action": RdpOperationAction.START_DEDUPLICATION.value,
             "timestamp": "2026-01-02T03:04:05+00:00",
             "result": {"ok": True},
         },
@@ -97,7 +135,7 @@ def test_operation_log_display_formats_entries(
     assert admin_instance.operation_log_display(rdp) == "rendered"
 
     rows = list(format_join.call_args.args[2])
-    assert rows[0] == (CountryRdp.OperationAction.START_DEDUPLICATION.label, "formatted", rows[0][2])
+    assert rows[0] == (RdpOperationAction.START_DEDUPLICATION.label, "formatted", rows[0][2])
     assert rows[0][2]
     assert rows[1] == ("UNKNOWN", "bad", "")
     assert rows[2] == ("—", "—", "")
@@ -114,6 +152,14 @@ def test_is_visible(mocker: MockerFixture) -> None:
     assert rdp_admin_mod._is_visible(mocker.MagicMock(original=None), "is_push_visible") is False
 
 
+def test_is_allowed_without_object(mocker: MockerFixture) -> None:
+    get_policy = mocker.patch.object(rdp_admin_mod, "get_rdp_policy")
+
+    assert rdp_admin_mod._is_allowed(mocker.MagicMock(original=None), "start_push_check") is False
+
+    get_policy.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("exc", "captures"),
     [
@@ -125,12 +171,14 @@ def test_is_visible(mocker: MockerFixture) -> None:
 )
 def test_is_allowed(mocker: MockerFixture, exc: Exception | None, captures: bool) -> None:
     policy = mocker.MagicMock()
-    policy.push_check.return_value = ActionCheck(True)
-    policy.push_check.side_effect = exc
+    policy.start_push_check.return_value = ActionCheck(True)
+    policy.start_push_check.side_effect = exc
     mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
     capture = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    assert rdp_admin_mod._is_allowed(mocker.MagicMock(original=mocker.MagicMock()), "push_check") is (exc is None)
+    result = rdp_admin_mod._is_allowed(mocker.MagicMock(original=mocker.MagicMock()), "start_push_check")
+
+    assert result is (exc is None)
     assert capture.called is captures
 
 
@@ -143,7 +191,13 @@ def test_is_allowed(mocker: MockerFixture, exc: Exception | None, captures: bool
     ],
     ids=["ok", "remote_unavailable", "remote_error"],
 )
-def test_dedup_engine_state(admin_instance, rdp: CountryRdp, mocker: MockerFixture, state_check, expected) -> None:
+def test_dedup_engine_state(
+    admin_instance,
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+    state_check,
+    expected,
+) -> None:
     policy = mocker.MagicMock()
     if isinstance(state_check, Exception):
         policy.dedup_engine_state.side_effect = state_check
@@ -167,7 +221,7 @@ def test_change_url(admin_instance, rdp: CountryRdp, mocker: MockerFixture) -> N
 
 
 @pytest.mark.parametrize(
-    ("check", "message", "captures"),
+    "case",
     [
         (ActionCheck(True), None, False),
         (ActionCheck(False, "blocked"), "blocked", False),
@@ -177,30 +231,24 @@ def test_change_url(admin_instance, rdp: CountryRdp, mocker: MockerFixture) -> N
     ],
     ids=["allowed", "blocked", "default_reason", "remote_unavailable", "remote_error"],
 )
-def test_deny_if_not_allowed(
-    admin_instance,
-    mock_request,
-    rdp: CountryRdp,
-    mocker: MockerFixture,
-    check,
-    message: str | None,
-    captures: bool,
-) -> None:
+def test_deny_if_not_allowed(admin_instance, mock_request, rdp: CountryRdp, mocker: MockerFixture, case) -> None:
+    check, message, captures = case
     policy = mocker.MagicMock()
     if isinstance(check, Exception):
-        policy.push_check.side_effect = check
+        policy.cancel_check.side_effect = check
     else:
-        policy.push_check.return_value = check
+        policy.cancel_check.return_value = check
     mocker.patch.object(rdp_admin_mod, "get_rdp_policy", return_value=policy)
     admin_instance._change_url = mocker.MagicMock(return_value="/change")
     error = mocker.patch.object(rdp_admin_mod.messages, "error")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
     capture = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
 
-    result = admin_instance._deny_if_not_allowed(mock_request, rdp, "push_check")
+    result = admin_instance._deny_if_not_allowed(mock_request, rdp, "cancel_check")
 
     assert result == (None if message is None else "response")
     assert capture.called is captures
+
     if message is None:
         error.assert_not_called()
         redirect.assert_not_called()

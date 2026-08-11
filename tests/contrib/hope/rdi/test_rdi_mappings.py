@@ -1,13 +1,22 @@
+from collections.abc import Callable
+
 import pytest
 
-from country_workspace.contrib.hope.push.mappings import (
-    load_mapping_from_api,
-    map_members,
-    map_role_value,
-)
+from country_workspace.contrib.hope.rdi import load_mapping_from_api, map_members, map_role_value
 
 
-def test_load_mapping_from_api_filters_invalid_keys_and_values(err, errs) -> None:
+@pytest.fixture
+def errs() -> list[str]:
+    return []
+
+
+@pytest.fixture
+def err(errs: list[str]) -> Callable[[str], None]:
+    return errs.append
+
+
+def test_load_mapping_from_api_filters_invalid_keys_and_values() -> None:
+    errs: list[str] = []
     raw = {
         "1": "IND-25-0000.0051",
         "2": "IND-7.1",
@@ -17,7 +26,7 @@ def test_load_mapping_from_api_filters_invalid_keys_and_values(err, errs) -> Non
         None: "IND-8-9.1",
     }
 
-    assert load_mapping_from_api(raw, err) == {
+    assert load_mapping_from_api(raw, errs.append) == {
         1: "IND-25-0000.0051",
         2: "IND-7.1",
     }
@@ -42,8 +51,10 @@ def test_load_mapping_from_api_filters_invalid_keys_and_values(err, errs) -> Non
     ],
     ids=["none", "int_hit", "int_miss", "tag_ok", "tag_almost", "str_bad", "float_bad"],
 )
-def test_map_role_value(err, errs, value, mapping, expected, expected_error) -> None:
-    assert map_role_value(mapping, err, 100, "role", value) == expected
+def test_map_role_value(value, mapping: dict[int, str], expected: str | None, expected_error: str | None) -> None:
+    errs: list[str] = []
+
+    assert map_role_value(mapping, errs.append, 100, "role", value) == expected
     assert errs == ([] if expected_error is None else [expected_error])
 
 
@@ -64,16 +75,18 @@ def test_map_role_value(err, errs, value, mapping, expected, expected_error) -> 
             ["IND-1.1", "IND-2.1"],
             [],
         ),
-        (
-            {},
-            [],
-            9,
-            [],
-            [],
-        ),
+        ({}, [], 9, [], []),
     ],
     ids=["missing", "all_mapped", "empty"],
 )
-def test_map_members(err, errs, mapping, member_ids, hh_pk, expected, expected_errors) -> None:
-    assert map_members(mapping, err, hh_pk, member_ids) == expected
+def test_map_members(
+    mapping: dict[int, str],
+    member_ids: list[int],
+    hh_pk: int,
+    expected: list[str],
+    expected_errors: list[str],
+) -> None:
+    errs: list[str] = []
+
+    assert map_members(mapping, errs.append, hh_pk, member_ids) == expected
     assert errs == expected_errors

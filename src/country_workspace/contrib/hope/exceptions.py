@@ -10,6 +10,15 @@ class HopeResponseError(RemoteError):
         super().__init__(message)
         self.response: Response = response
 
+    @property
+    def error_code(self) -> str | None:
+        try:
+            payload = self.response.json()
+        except ValueError:
+            return None
+        error = payload.get("error") if isinstance(payload, dict) else None
+        return error if isinstance(error, str) else None
+
 
 class HopeSyncError(Exception):
     """Exception raised for errors during the synchronization process."""

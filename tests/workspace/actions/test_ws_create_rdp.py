@@ -5,8 +5,8 @@ from django_webtest.pytest_plugin import MixinWithInstanceVariables
 from hope_flex_fields.models import DataChecker
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.hope.push import create_and_push_rdp_core, create_rdp_core
 from country_workspace.models import AsyncJob, Office
+from country_workspace.rdp import create_rdp_core
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 from testutils.factories import CountryHouseholdFactory, CountryProgramFactory, OfficeFactory, SuperUserFactory
@@ -65,84 +65,30 @@ def app(django_app_factory: MixinWithInstanceVariables) -> DjangoTestApp:
 
 
 def test_create_rdp_action(app: DjangoTestApp, program: CountryProgram, beneficiary_instance, mocker) -> None:
-    spy = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
-
+    queue = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
     beneficiary, url_name = beneficiary_instance
-    batch_name = "Test Batch"
 
     with select_office(app, program.country_office, program):
-        res = app.get(reverse(url_name))
-        form = res.forms["changelist-form"]
+        form = app.get(reverse(url_name)).forms["changelist-form"]
         form.set("_selected_action", [str(beneficiary.pk)])
         form["action"].select("create_rdp")
 
-        res2 = form.submit()
-        create_form = res2.forms["create-rdp-form"]
-        create_form["batch_name"] = batch_name
-        res3 = create_form.submit("_create")
-        assert res3.status_code == 302
+        create_form = form.submit().forms["create-rdp-form"]
+        create_form["batch_name"] = "Test Batch"
 
-    job = program.jobs.order_by("-id").first()
-    assert job is not None
+        assert create_form.submit("_create").status_code == 302
 
-    assert spy.call_count == 1
-    assert spy.call_args.args[0].pk == job.pk
+    job = program.jobs.latest("pk")
 
+    queue.assert_called_once()
+    assert queue.call_args.args[0].pk == job.pk
     assert job.type == AsyncJob.JobType.TASK
     assert job.action == fqn(create_rdp_core)
-
-    cfg = job.config
-    assert cfg["batch_name"] == batch_name
-    assert cfg["master_detail"] == program.beneficiary_group.master_detail
-    assert cfg["pks"] == [beneficiary.pk]
-    assert cfg["country_office_id"] == program.country_office.id
-    assert cfg["program_id"] == program.id
-    assert cfg["pushed_by_id"] == app._user.id
-
-
-def test_create_and_push_rdp_action(app: DjangoTestApp, program: CountryProgram, beneficiary_instance, mocker) -> None:
-    spy = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
-
-    # Push to HOPE is only offered for programs with biometric deduplication enabled.
-    program.biometric_deduplication_enabled = True
-    program.save(update_fields=["biometric_deduplication_enabled"])
-
-    beneficiary, url_name = beneficiary_instance
-    batch_name = "Test Batch Push"
-
-    with select_office(app, program.country_office, program):
-        res = app.get(reverse(url_name))
-        form = res.forms["changelist-form"]
-        form.set("_selected_action", [str(beneficiary.pk)])
-        form["action"].select("create_rdp")
-
-        res2 = form.submit()
-        create_form = res2.forms["create-rdp-form"]
-        create_form["batch_name"] = batch_name
-        create_form["push_to_hope"] = True
-        res3 = create_form.submit("_create")
-        assert res3.status_code == 200
-
-        threshold_form = res3.forms["create-rdp-push-threshold-form"]
-        threshold_form["max_dedup_findings_percent"] = "0"
-        res4 = threshold_form.submit("_confirm_push")
-        assert res4.status_code == 302
-
-    job = program.jobs.order_by("-id").first()
-    assert job is not None
-
-    assert spy.call_count == 1
-    assert spy.call_args.args[0].pk == job.pk
-
-    assert job.type == AsyncJob.JobType.TASK
-    assert job.action == fqn(create_and_push_rdp_core)
-    assert job.description == "Create RDP and push to HOPE #1"
-
-    cfg = job.config
-    assert cfg["batch_name"] == batch_name
-    assert cfg["master_detail"] == program.beneficiary_group.master_detail
-    assert cfg["pks"] == [beneficiary.pk]
-    assert cfg["country_office_id"] == program.country_office.id
-    assert cfg["program_id"] == program.id
-    assert cfg["pushed_by_id"] == app._user.id
-    assert cfg["max_dedup_findings_percent"] == 0
+    assert job.config == {
+        "batch_name": "Test Batch",
+        "master_detail": program.beneficiary_group.master_detail,
+        "pks": [beneficiary.pk],
+        "country_office_id": program.country_office.id,
+        "program_id": program.id,
+        "pushed_by_id": app._user.id,
+    }
