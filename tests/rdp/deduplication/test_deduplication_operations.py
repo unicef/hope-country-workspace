@@ -21,7 +21,6 @@ def test_approve_deduplication_set_without_set(mocker: MockerFixture) -> None:
 
     approve_deduplication_set_after_successful_push(
         rdp_id=1,
-        job_id=2,
         group_reference_id="PROGRAM",
         deduplication_set_id=None,
     )
@@ -51,7 +50,6 @@ def test_approve_deduplication_set(mocker: MockerFixture, error: Exception | Non
 
     approve_deduplication_set_after_successful_push(
         rdp_id=1,
-        job_id=2,
         group_reference_id="PROGRAM",
         deduplication_set_id=deduplication_set_id,
     )
@@ -61,7 +59,6 @@ def test_approve_deduplication_set(mocker: MockerFixture, error: Exception | Non
     append_log.assert_called_once_with(
         rdp=rdp,
         action=RdpOperationAction.APPROVE_DEDUPLICATION_SET,
-        job_id=2,
         result={
             "deduplication_set_id": str(deduplication_set_id),
             "success": error is None,

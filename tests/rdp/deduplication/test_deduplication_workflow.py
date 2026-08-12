@@ -218,7 +218,6 @@ def test_dedup_existing_rdp(job, rdp, mocker: MockerFixture, has_errors: bool) -
     append_log.assert_called_once_with(
         rdp=locked,
         action=RdpOperationAction.START_DEDUPLICATION,
-        job_id=11,
         result={
             "images_sent": 3,
             "dedup_settings": {"threshold": 10},

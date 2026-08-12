@@ -31,5 +31,4 @@ type OperationLogResult = dict[str, OperationLogJSONValue]
 class OperationLogEntry(TypedDict):
     timestamp: ReadOnly[str]
     action: ReadOnly[str]
-    job_id: NotRequired[int]
     result: NotRequired[OperationLogResult]

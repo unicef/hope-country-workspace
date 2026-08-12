@@ -15,9 +15,9 @@ from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
 from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
 from country_workspace.rdp.repository import (
     lock_rdp_for_update,
-    qs_individuals_by_household_pks,
     qs_households,
     qs_individuals_by_pks,
+    qs_individuals_for_push,
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
@@ -214,7 +214,7 @@ def _push_data_steps(processor: PushProcessor, config: PushWorkflowConfig) -> It
 
     if config["master_detail"]:
         yield from (
-            partial(processor.run_with, qs_individuals_by_household_pks(pks), processor.rdi_push_individuals),
+            partial(processor.run_with, qs_individuals_for_push(pks), processor.rdi_push_individuals),
             partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
         )
     else:
@@ -286,7 +286,6 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
 
         approve_deduplication_set_after_successful_push(
             rdp_id=rdp_id,
-            job_id=job.pk,
             group_reference_id=group_reference_id,
             deduplication_set_id=deduplication_set_id,
         )

@@ -128,9 +128,7 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
         with transaction.atomic():
             locked = lock_rdp_for_update(pk=rdp.pk)
-            append_rdp_operation_log(
-                rdp=locked, action=RdpOperationAction.START_DEDUPLICATION, job_id=job.pk, result=result
-            )
+            append_rdp_operation_log(rdp=locked, action=RdpOperationAction.START_DEDUPLICATION, result=result)
 
         if processor.has_errors:
             raise RdpWorkflowError(processor.total)

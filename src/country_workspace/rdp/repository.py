@@ -1,8 +1,10 @@
 from collections.abc import Iterable
 
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Prefetch, Q, QuerySet
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import Rdp
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
@@ -53,6 +55,37 @@ def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     return qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
 
 
+def collector_pks_by_household_pks(hh_pks: Iterable[int]) -> set[int]:
+    """Return PKs of external collectors referenced by the given households' role ref fields."""
+    rows = (
+        CountryHousehold.objects.filter(pk__in=hh_pks)
+        .annotate(
+            _primary=KeyTextTransform(HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, "flex_fields"),
+            _alternate=KeyTextTransform(HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector, "flex_fields"),
+        )
+        .values_list("_primary", "_alternate")
+    )
+    pks: set[int] = set()
+    for primary, alternate in rows:
+        for ref in (primary, alternate):
+            if ref and str(ref).isdigit():
+                pks.add(int(ref))
+    return pks
+
+
+def qs_individuals_for_push(hh_pks: Iterable[int]) -> QuerySet[CountryIndividual]:
+    """Return household members plus external collectors referenced by role ref fields.
+
+    External collectors (relationship == NON_BENEFICIARY) have household=None and
+    are linked to households only through the primary/alternate collector role
+    reference fields, so they must be included explicitly to be pushed to HOPE.
+    """
+    hh_pks = list(hh_pks)
+    return CountryIndividual.objects.filter(
+        Q(household_id__in=hh_pks) | Q(pk__in=collector_pks_by_household_pks(hh_pks))
+    ).order_by("id")
+
+
 def set_rdp_beneficiaries_removed(*, rdp: Rdp, removed: bool) -> None:
     """Set the removed flag for all beneficiaries represented by the RDP."""
     master_detail, pks = rdp_selection(rdp=rdp)
@@ -84,7 +117,6 @@ def append_rdp_operation_log(
     *,
     rdp: Rdp,
     action: RdpOperationAction,
-    job_id: int | None = None,
     result: OperationLogResult | None = None,
 ) -> None:
     """Append an operation log entry to the RDP."""
@@ -92,8 +124,6 @@ def append_rdp_operation_log(
         "timestamp": timezone.now().isoformat(),
         "action": action.value,
     }
-    if job_id is not None:
-        entry["job_id"] = job_id
     if result is not None:
         entry["result"] = result
 

@@ -1,10 +1,11 @@
 from collections.abc import Iterable
 from django.db.models import Exists, OuterRef, QuerySet
 
+from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.models import Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-from country_workspace.rdp.constants import PUSH_BATCH_SIZE
+from country_workspace.rdp.repository import qs_individuals_for_push
 
 
 def _is_valid_row(*, last_checked: object, errors: object) -> bool | None:
@@ -37,11 +38,7 @@ def preflight_errors(
         return errors
 
     def individual_rows() -> QuerySet:
-        qs = (
-            CountryIndividual.objects.filter(household_id__in=pks)
-            if master_detail
-            else CountryIndividual.objects.filter(pk__in=pks)
-        )
+        qs = qs_individuals_for_push(pks) if master_detail else CountryIndividual.objects.filter(pk__in=pks)
         return (
             qs.order_by("id")
             .annotate(has_rdp=Exists(rdp_qs.filter(individuals=OuterRef("pk"))))

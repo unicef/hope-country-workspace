@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 def approve_deduplication_set_after_successful_push(
     *,
     rdp_id: int,
-    job_id: int,
     group_reference_id: str,
     deduplication_set_id: UUID | None,
 ) -> None:
@@ -39,7 +38,6 @@ def approve_deduplication_set_after_successful_push(
         append_rdp_operation_log(
             rdp=locked,
             action=RdpOperationAction.APPROVE_DEDUPLICATION_SET,
-            job_id=job_id,
             result=result,
         )
 

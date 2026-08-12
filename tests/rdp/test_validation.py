@@ -4,6 +4,7 @@ from django.utils import timezone
 from country_workspace.models import Rdp
 from country_workspace.rdp.validation import _is_valid_row, preflight_errors
 
+
 pytestmark = pytest.mark.django_db
 
 
@@ -101,3 +102,17 @@ def test_preflight_errors_rdp_filter(linked_individual, case) -> None:
     )
 
     assert bool(errors) is expected
+
+
+def test_preflight_errors_master_detail_covers_referenced_collectors() -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(last_checked=timezone.now(), errors={})
+    hh.members.all().delete()
+    collector = CountryIndividualFactory(household=None, last_checked=None, errors={})
+    hh.flex_fields = {"primary_collector_id": collector.pk}
+    hh.save(update_fields=["flex_fields"])
+
+    errors = preflight_errors(pks=[hh.pk], master_detail=True)
+
+    assert f"Ind #{collector.pk} invalid" in errors

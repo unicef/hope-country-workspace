@@ -394,7 +394,7 @@ def test_handle_push_ready_callback_fails_attempt_on_error(push_attempt_id: UUID
 @pytest.mark.parametrize("master_detail", [True, False], ids=["households", "people"])
 def test_push_data_steps(mocker: MockerFixture, master_detail: bool) -> None:
     processor = mocker.MagicMock()
-    individuals = mocker.patch(f"{MOD}.qs_individuals_by_household_pks")
+    individuals_for_push = mocker.patch(f"{MOD}.qs_individuals_for_push")
     households = mocker.patch(f"{MOD}.qs_households")
     people = mocker.patch(f"{MOD}.qs_individuals_by_pks")
     config = {
@@ -413,13 +413,13 @@ def test_push_data_steps(mocker: MockerFixture, master_detail: bool) -> None:
     processor.rdi_complete.assert_called_once_with()
 
     if master_detail:
-        individuals.assert_called_once_with([1, 2])
+        individuals_for_push.assert_called_once_with([1, 2])
         households.assert_called_once_with(pks=[1, 2])
         people.assert_not_called()
         assert processor.run_with.call_count == 2
     else:
         people.assert_called_once_with([1, 2])
-        individuals.assert_not_called()
+        individuals_for_push.assert_not_called()
         households.assert_not_called()
         processor.run_with.assert_called_once()
 
@@ -457,7 +457,11 @@ def test_push_data_success(push_data_setup, mocker: MockerFixture, owner_email: 
     processor.rdi_complete.assert_called_once_with()
     mark_removed.assert_called_once_with(rdp=rdp, removed=True)
     finish.assert_called_once_with(rdp=rdp, status=Rdp.PushStatus.SUCCESS, hope_rdi_id="NEW-RDI")
-    approve.assert_called_once()
+    approve.assert_called_once_with(
+        rdp_id=rdp.pk,
+        group_reference_id=rdp.program.unicef_id,
+        deduplication_set_id=rdp.deduplication_set_id,
+    )
     completed.assert_called_once_with(sender=Rdp, program_id=rdp.program_id, pushed_count=2)
     status_changed.assert_called_once()
 
