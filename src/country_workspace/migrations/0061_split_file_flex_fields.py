@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from django import forms
 from django.db import migrations, models
 from django.db.migrations.state import StateApps  # noqa: TC002
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor  # noqa: TC002
@@ -45,24 +46,70 @@ def _checksum(flex_fields: dict[str, Any], flex_files: bytes | None, removed: bo
     return hasher.hexdigest()
 
 
-def _checker_file_field_names(apps: StateApps) -> dict[int, set[str]]:
+def _is_file_field_type(field_type: Any) -> bool:
+    if isinstance(field_type, type):
+        try:
+            return issubclass(field_type, forms.FileField)
+        except TypeError:
+            return False
+    if isinstance(field_type, str):
+        return "FileField" in field_type
+    return False
+
+
+def _fieldset_file_field_names(apps: StateApps) -> dict[int, set[str]]:
+    Fieldset = apps.get_model("hope_flex_fields", "Fieldset")
     FieldDefinition = apps.get_model("hope_flex_fields", "FieldDefinition")
     FlexField = apps.get_model("hope_flex_fields", "FlexField")
-    DataCheckerFieldset = apps.get_model("hope_flex_fields", "DataCheckerFieldset")
 
-    file_definition_ids = {
-        definition.id
+    definition_is_file = {
+        definition.id: _is_file_field_type(definition.field_type)
         for definition in FieldDefinition.objects.only("id", "field_type").iterator()
-        if "Base64ImageField" in str(definition.field_type)
     }
-    if not file_definition_ids:
+    if not any(definition_is_file.values()):
         return {}
 
-    fields_by_fieldset: dict[int, set[str]] = defaultdict(set)
-    for flex_field in (
-        FlexField.objects.filter(definition_id__in=file_definition_ids).only("fieldset_id", "name").iterator()
-    ):
-        fields_by_fieldset[flex_field.fieldset_id].add(flex_field.name)
+    fields_by_fieldset: dict[int, list[tuple[str, bool]]] = defaultdict(list)
+    for flex_field in FlexField.objects.only("fieldset_id", "name", "definition_id").iterator():
+        fields_by_fieldset[flex_field.fieldset_id].append(
+            (flex_field.name, definition_is_file.get(flex_field.definition_id, False))
+        )
+
+    extends_by_fieldset = {
+        fieldset.id: fieldset.extends_id for fieldset in Fieldset.objects.only("id", "extends_id").iterator()
+    }
+    all_fieldset_ids = set(extends_by_fieldset) | set(fields_by_fieldset)
+    resolved: dict[int, dict[str, bool]] = {}
+
+    def _resolve_effective_fields(fieldset_id: int, trail: set[int]) -> dict[str, bool]:
+        if fieldset_id in resolved:
+            return resolved[fieldset_id]
+        if fieldset_id in trail:
+            return {}
+
+        effective: dict[str, bool] = {}
+        parent_id = extends_by_fieldset.get(fieldset_id)
+        if parent_id:
+            effective.update(_resolve_effective_fields(parent_id, trail | {fieldset_id}))
+        for name, is_file in fields_by_fieldset.get(fieldset_id, []):
+            effective[name] = is_file
+
+        resolved[fieldset_id] = effective
+        return effective
+
+    by_fieldset: dict[int, set[str]] = {}
+    for fieldset_id in all_fieldset_ids:
+        names = {name for name, is_file in _resolve_effective_fields(fieldset_id, set()).items() if is_file}
+        if names:
+            by_fieldset[fieldset_id] = names
+    return by_fieldset
+
+
+def _checker_file_field_names(apps: StateApps) -> dict[int, set[str]]:
+    DataCheckerFieldset = apps.get_model("hope_flex_fields", "DataCheckerFieldset")
+    fields_by_fieldset = _fieldset_file_field_names(apps)
+    if not fields_by_fieldset:
+        return {}
 
     checker_fields: dict[int, set[str]] = defaultdict(set)
     for member in DataCheckerFieldset.objects.only("checker_id", "fieldset_id", "prefix").iterator():
@@ -70,7 +117,10 @@ def _checker_file_field_names(apps: StateApps) -> dict[int, set[str]]:
         if not names:
             continue
         prefix = member.prefix or ""
-        checker_fields[member.checker_id].update(f"{prefix}{name}" for name in names)
+        if "%s" in prefix:
+            checker_fields[member.checker_id].update(prefix % name for name in names)
+        else:
+            checker_fields[member.checker_id].update(f"{prefix}{name}" for name in names)
     return checker_fields
 
 
@@ -149,7 +199,7 @@ def split_file_flex_fields(apps: StateApps, schema_editor: BaseDatabaseSchemaEdi
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0054_rdp_deduplication_snapshots_and_more"),
+        ("country_workspace", "0060_remove_individual_update_update_and_more"),
     ]
     atomic = False
     operations = [
