@@ -120,19 +120,26 @@ sequenceDiagram
             App->>DB: Queue data-push AsyncJob
         else Previous RDI not found
             App->>DB: Queue data-push AsyncJob
+        else RDI merge in progress
+            App->>DB: Set FAILURE
+        else Previous RDI already merged
+            App->>DB: Mark records removed and set SUCCESS
+            App->>DE: Try approve DS if present
         end
     end
 
-    App->>HOPE: Create new RDI
-    App->>HOPE: Push beneficiaries
-    App->>HOPE: Complete RDI
+    opt Data-push AsyncJob queued
+        App->>HOPE: Create new RDI
+        App->>HOPE: Push beneficiaries
+        App->>HOPE: Complete RDI
 
-    alt Push failed
-        App->>DB: Set FAILURE
-    else Push succeeded
-        App->>DB: Mark records removed and set SUCCESS
-        App->>DE: Try approve DS if present
-        Note over DB,DE: DE approval does not change local SUCCESS
+        alt Push failed
+            App->>DB: Set FAILURE
+        else Push succeeded
+            App->>DB: Mark records removed and set SUCCESS
+            App->>DE: Try approve DS if present
+            Note over DB,DE: DE approval does not change local SUCCESS
+        end
     end
 
     opt Temporary recovery for stuck PUSH_PENDING
@@ -188,7 +195,7 @@ flowchart TB
         P1["ALLOW: RDP is PENDING or FAILURE"]
         P2["SET: PUSH_PENDING for the active attempt"]
         P3["REQUIRE: Deduplicated DS for biometric push"]
-        P4["RESET: existing HOPE RDI before replacement"]
+        P4["RESET: existing HOPE RDI; already merged means SUCCESS"]
         P5["QUEUE: separate data-push AsyncJob"]
         P6["SET: SUCCESS or FAILURE"]
     end
@@ -228,7 +235,7 @@ flowchart TB
 * `PENDING` and `FAILURE` are the manual working statuses.
 * Manual deduplication does not change the RDP status.
 * Push sets `PUSH_PENDING`; only the active push attempt can continue.
-* An existing HOPE RDI is reset before replacement; otherwise data push starts immediately.
+* Existing HOPE RDI reset may wait for a callback, fail on merge in progress, or finish as `SUCCESS` if already merged.
 * HOPE readiness callback queues a separate data-push AsyncJob.
 * Successful push sets `SUCCESS`; failures set `FAILURE`.
 * DedupEngine approve runs after successful push and does not change `SUCCESS`.

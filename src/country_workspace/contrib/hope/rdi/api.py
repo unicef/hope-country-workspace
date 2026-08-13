@@ -1,7 +1,7 @@
-from enum import StrEnum, auto
 from collections.abc import Mapping
-from typing import Any, Final
+from enum import StrEnum, auto
 from http import HTTPStatus
+from typing import Any, Final
 
 from country_workspace.contrib.hope.client import HopeClient
 from country_workspace.contrib.hope.exceptions import HopeResponseError
@@ -13,6 +13,8 @@ from .exceptions import HopeRdiResetUnconfirmedError
 class RdiResetResult(StrEnum):
     ACCEPTED = auto()
     NOT_FOUND = auto()
+    MERGE_IN_PROGRESS = auto()
+    ALREADY_MERGED = auto()
 
 
 class Route(StrEnum):
@@ -68,6 +70,12 @@ class HopeApi:
         except HopeResponseError as exc:
             if exc.response.status_code == HTTPStatus.NOT_FOUND:
                 return RdiResetResult.NOT_FOUND
+            if exc.response.status_code == HTTPStatus.CONFLICT:
+                match exc.error_code:
+                    case "rdi_merge_in_progress":
+                        return RdiResetResult.MERGE_IN_PROGRESS
+                    case "rdi_already_merged":
+                        return RdiResetResult.ALREADY_MERGED
             if exc.response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR:
                 raise HopeRdiResetUnconfirmedError(str(exc)) from exc
             raise

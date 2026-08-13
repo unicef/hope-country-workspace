@@ -374,6 +374,35 @@ def test_push_preparation_fails_on_unexpected_error(rdp: Rdp, preparation_job: A
     fail.assert_called_once()
 
 
+def test_push_preparation_fails_when_merge_is_in_progress(
+    rdp: Rdp,
+    preparation_job: AsyncJob,
+    push_attempt_id: UUID,
+    mocker: MockerFixture,
+) -> None:
+    preparation_job.config["rdi_id_to_reset"] = "OLD-RDI"
+    mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
+    mocker.patch(f"{MOD}._build_push_ready_callback_url", return_value="callback")
+
+    api = mocker.MagicMock()
+    api.reset_rdi.return_value = RdiResetResult.MERGE_IN_PROGRESS
+    mocker.patch(f"{MOD}.HopeApi", return_value=api)
+
+    fail = mocker.patch(f"{MOD}._fail_pending_push")
+    schedule = mocker.patch(f"{MOD}._schedule_push_data")
+
+    with pytest.raises(RdpWorkflowError) as exc_info:
+        push_existing_rdp_core(preparation_job)
+
+    assert "merge is in progress" in str(exc_info.value)
+    fail.assert_called_once_with(
+        rdp_id=rdp.pk,
+        push_attempt_id=push_attempt_id,
+        hope_rdi_id="OLD-RDI",
+    )
+    schedule.assert_not_called()
+
+
 @pytest.mark.parametrize("scheduled", [True, False], ids=["scheduled", "stale"])
 def test_handle_push_ready_callback(push_attempt_id: UUID, mocker: MockerFixture, scheduled: bool) -> None:
     mocker.patch(f"{MOD}._schedule_push_data", return_value=mocker.MagicMock() if scheduled else None)
@@ -524,3 +553,54 @@ def test_push_data_failure_before_processor(rdp: Rdp, data_job: AsyncJob, mocker
         push_attempt_id=UUID(data_job.config["push_attempt_id"]),
         hope_rdi_id=None,
     )
+
+
+def test_push_preparation_finishes_success_when_rdi_is_already_merged(
+    rdp: Rdp,
+    preparation_job: AsyncJob,
+    push_attempt_id: UUID,
+    mocker: MockerFixture,
+) -> None:
+    preparation_job.config["rdi_id_to_reset"] = "OLD-RDI"
+    mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
+    mocker.patch(f"{MOD}._build_push_ready_callback_url", return_value="callback")
+
+    api = mocker.MagicMock()
+    api.reset_rdi.return_value = RdiResetResult.ALREADY_MERGED
+    mocker.patch(f"{MOD}.HopeApi", return_value=api)
+
+    mark_removed = mocker.patch(f"{MOD}.set_rdp_beneficiaries_removed")
+    finish = mocker.patch(f"{MOD}.finish_rdp_push_attempt")
+    approve = mocker.patch(f"{MOD}.approve_deduplication_set_after_successful_push")
+    schedule = mocker.patch(f"{MOD}._schedule_push_data")
+    completed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send_robust")
+    status_changed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send_robust")
+
+    result = push_existing_rdp_core(preparation_job)
+
+    assert result == {
+        "rdp_id": rdp.pk,
+        "reset_result": RdiResetResult.ALREADY_MERGED.value,
+        "workflow_outcome": RdpWorkflowOutcome.DATA_PUSH_SKIPPED,
+    }
+
+    mark_removed.assert_called_once_with(rdp=rdp, removed=True)
+    finish.assert_called_once_with(
+        rdp=rdp,
+        status=Rdp.PushStatus.SUCCESS,
+        hope_rdi_id="OLD-RDI",
+    )
+    approve.assert_called_once_with(
+        rdp_id=rdp.pk,
+        group_reference_id=rdp.program.unicef_id,
+        deduplication_set_id=rdp.deduplication_set_id,
+    )
+    status_changed.assert_called_once_with(
+        sender=Rdp,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
+        status=Rdp.PushStatus.SUCCESS,
+    )
+
+    schedule.assert_not_called()
+    completed.assert_not_called()

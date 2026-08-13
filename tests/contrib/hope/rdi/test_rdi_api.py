@@ -112,6 +112,7 @@ def test_reset_rdi_client_error_propagates(
     mocker: MockerFixture,
 ) -> None:
     response = mocker.Mock(status_code=HTTPStatus.CONFLICT)
+    response.json.return_value = {"error": "unknown_conflict"}
     error = HopeResponseError("conflict", response=response)
     hope_client.post.side_effect = error
 
@@ -119,3 +120,24 @@ def test_reset_rdi_client_error_propagates(
         hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
 
     assert exc_info.value is error
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected"),
+    [
+        ("rdi_merge_in_progress", RdiResetResult.MERGE_IN_PROGRESS),
+        ("rdi_already_merged", RdiResetResult.ALREADY_MERGED),
+    ],
+)
+def test_reset_rdi_conflict(
+    hope_api: HopeApi,
+    hope_client: HopeClient,
+    mocker: MockerFixture,
+    error_code: str,
+    expected: RdiResetResult,
+) -> None:
+    response = mocker.Mock(status_code=HTTPStatus.CONFLICT)
+    response.json.return_value = {"error": error_code}
+    hope_client.post.side_effect = HopeResponseError("conflict", response=response)
+
+    assert hope_api.reset_rdi(RDI_ID, CALLBACK_URL) is expected

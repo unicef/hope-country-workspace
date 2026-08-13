@@ -1,8 +1,9 @@
-from uuid import UUID
-from constance import config
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
 from functools import partial
+from typing import Any
+from uuid import UUID
 
+from constance import config
 from django.core import signing
 from django.db import transaction
 from django.urls import reverse
@@ -10,7 +11,9 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedError, RdiResetResult
 from country_workspace.models import AsyncJob, Rdp
+from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
 from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
 from country_workspace.rdp.repository import (
@@ -21,9 +24,7 @@ from country_workspace.rdp.repository import (
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
-from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.types import RdpWorkflowOutcome
-from country_workspace.rdp.exceptions import RdpWorkflowError
 
 from .processor import PushProcessor
 from .repository import (
@@ -161,13 +162,31 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                 rdi_id=rdi_id_to_reset,
                 callback_url=callback_url,
             )
-
             if reset_result == RdiResetResult.ACCEPTED:
                 # TODO(Vitali): Use Bitcaster to recover the push attempt if the HOPE reset or callback delivery fails.
                 return {
                     "rdp_id": rdp_id,
                     "reset_result": reset_result.value,
                     "workflow_outcome": RdpWorkflowOutcome.AWAITING_PUSH_READY_CALLBACK,
+                }
+            if reset_result == RdiResetResult.MERGE_IN_PROGRESS:
+                raise RdpWorkflowError(
+                    {
+                        "errors": ["HOPE RDI merge is in progress."],
+                        "rdp_id": rdp_id,
+                        "hope_rdi_id": rdi_id_to_reset,
+                    }
+                )
+            if reset_result == RdiResetResult.ALREADY_MERGED:
+                _finish_already_merged_push(
+                    rdp_id=rdp_id,
+                    push_attempt_id=push_attempt_id,
+                    hope_rdi_id=rdi_id_to_reset,
+                )
+                return {
+                    "rdp_id": rdp_id,
+                    "reset_result": reset_result.value,
+                    "workflow_outcome": RdpWorkflowOutcome.DATA_PUSH_SKIPPED,
                 }
 
         push_job = _schedule_push_data(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
@@ -227,6 +246,27 @@ def _raise_push_errors(processor: PushProcessor) -> None:
     """Raise collected push errors."""
     if processor.has_errors:
         raise RdpWorkflowError(processor.total)
+
+
+def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str) -> None:
+    """Finish the active push when HOPE reports that the existing RDI is already merged."""
+    with transaction.atomic():
+        if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
+            return
+        set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
+        finish_rdp_push_attempt(rdp=rdp, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
+        group_reference_id = rdp.program.unicef_id
+        deduplication_set_id = rdp.deduplication_set_id
+        program_id = rdp.program_id
+
+    approve_deduplication_set_after_successful_push(
+        rdp_id=rdp_id,
+        group_reference_id=group_reference_id,
+        deduplication_set_id=deduplication_set_id,
+    )
+    rdp_push_status_changed_signal.send_robust(
+        sender=Rdp, program_id=program_id, rdp_id=rdp_id, status=Rdp.PushStatus.SUCCESS
+    )
 
 
 def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
