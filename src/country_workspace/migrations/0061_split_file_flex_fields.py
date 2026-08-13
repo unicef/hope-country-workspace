@@ -87,12 +87,10 @@ def _fieldset_file_field_names(apps: StateApps) -> dict[int, set[str]]:
         if fieldset_id in trail:
             return {}
 
-        effective: dict[str, bool] = {}
+        effective: dict[str, bool] = dict(fields_by_fieldset.get(fieldset_id, []))
         parent_id = extends_by_fieldset.get(fieldset_id)
         if parent_id:
             effective.update(_resolve_effective_fields(parent_id, trail | {fieldset_id}))
-        for name, is_file in fields_by_fieldset.get(fieldset_id, []):
-            effective[name] = is_file
 
         resolved[fieldset_id] = effective
         return effective
