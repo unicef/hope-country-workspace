@@ -372,15 +372,19 @@ def test_import_result_skips_when_id_not_greater_than_last(mocker: MockerFixture
 def test_import_result_success_updates_synclog(mocker: MockerFixture, config: Config) -> None:
     batch = mocker.MagicMock()
     batch.program.id = 42
+    batch.import_date.timestamp.return_value = 1_234_567_890.123
 
     _mock_atomic(mocker)
     update_or_create = _mock_sync_log(mocker)
-    mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_originating_id", return_value="AUR#7")
+    get_originating_id = mocker.patch(
+        "country_workspace.contrib.aurora.import_processing.get_aurora_originating_id", return_value="AUR#7"
+    )
     create_individual_mock = mocker.patch("country_workspace.contrib.aurora.import_processing.create_individual")
 
     result = import_result(batch, {"pk": "7"}, config)
 
     assert result == ImportResult(people=1)
+    get_originating_id.assert_called_once_with("7", epoch=1_234_567_890_123)
     create_individual_mock.assert_called_once_with(batch, {"pk": "7"}, config, "AUR#7")
     update_or_create.assert_called_once()
 
@@ -421,7 +425,6 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
 
     _mock_atomic(mocker)
     update_or_create = _mock_sync_log(mocker)
-    mocker.patch("country_workspace.contrib.aurora.import_processing.get_aurora_originating_id", return_value="AUR#9")
     create_household_and_individuals = mocker.patch(
         "country_workspace.contrib.aurora.import_processing.create_household_and_individuals",
         return_value=(1, 1),
@@ -430,7 +433,7 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
     result = import_result(batch, result_payload, config)
 
     assert result == ImportResult(people=1, households=1)
-    create_household_and_individuals.assert_called_once_with(batch, result_payload, config, "AUR#9")
+    create_household_and_individuals.assert_called_once_with(batch, result_payload, config)
     update_or_create.assert_called_once()
 
 
@@ -514,9 +517,10 @@ def test_create_household_and_individuals_success_cases(
 ) -> None:
     batch = mocker.MagicMock()
     batch.pk = 1
+    batch.import_date.timestamp.return_value = 1_234_567_890.123
 
     config = {**config, "master_detail": True}
-    record = {"fields": fields}
+    record = {"pk": "1", "fields": fields}
     household = mocker.MagicMock()
 
     create_household = mocker.patch(
@@ -528,11 +532,11 @@ def test_create_household_and_individuals_success_cases(
         return_value=mocker.MagicMock(),
     )
 
-    assert import_processing.create_household_and_individuals(batch, record, config, "AUR#1") == (
+    assert import_processing.create_household_and_individuals(batch, record, config) == (
         1,
         len(expected_individual_fields),
     )
-    create_household.assert_called_once_with(batch, expected_household_fields, config, "AUR#1#HH0")
+    create_household.assert_called_once_with(batch, expected_household_fields, config, "AUR#1#HH0#1234567890123")
 
     if not expected_individual_fields:
         create_individual_mock.assert_not_called()
@@ -543,7 +547,7 @@ def test_create_household_and_individuals_success_cases(
             batch,
             individual_fields,
             config,
-            f"AUR#1#IND{idx}",
+            f"AUR#1#IND{idx}#1234567890123",
             household=household,
         )
         for idx, individual_fields in enumerate(expected_individual_fields)
@@ -556,13 +560,15 @@ def test_create_household_and_individuals_raises_on_individual_error(
 ) -> None:
     batch = mocker.MagicMock()
     batch.pk = 1
+    batch.import_date.timestamp.return_value = 1_234_567_890.123
 
     config = {**config, "master_detail": True}
     record = {
+        "pk": "2",
         "fields": {
             "household": [{"hh_field": "hhv"}],
             "individuals": [{"ind_field": "x"}],
-        }
+        },
     }
 
     mocker.patch(
@@ -574,8 +580,8 @@ def test_create_household_and_individuals_raises_on_individual_error(
         side_effect=ValueError("boom"),
     )
 
-    with pytest.raises(ImportError, match="Failed to create Aurora individual #0 for record AUR#2") as exc_info:
-        import_processing.create_household_and_individuals(batch, record, config, "AUR#2")
+    with pytest.raises(ImportError, match="Failed to create Aurora individual #0 for record 2") as exc_info:
+        import_processing.create_household_and_individuals(batch, record, config)
 
     assert isinstance(exc_info.value.__cause__, ValueError)
 

@@ -1,9 +1,9 @@
-from country_workspace.models import Household
-from country_workspace.models import Individual
 from functools import partial
 from pathlib import Path
 
 from django.utils.text import slugify
+
+from country_workspace.models import Household, Individual
 
 
 def _find_alien_fields(instance: Household | Individual) -> set[str]:
@@ -56,8 +56,8 @@ def validate_alien_fields(instance: Household | Individual) -> None:
             raise ValueError(f"Alien values found - Individual: {', '.join(sorted(ind_aliens))}")
 
 
-def get_originating_id(*args: str) -> str:
-    return "#".join([str(arg) for arg in args])
+def get_originating_id(prefix: str, *parts: object, epoch: int) -> str:
+    return "#".join(map(str, (prefix, *parts, epoch)))
 
 
 get_kobo_originating_id = partial(get_originating_id, "KOB")
