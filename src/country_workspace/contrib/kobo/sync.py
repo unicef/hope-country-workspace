@@ -182,11 +182,12 @@ def create_individuals(  # noqa: PLR0913
     household: Household,
     submission: Submission,
     config: Config,
-    originating_id: str,
+    asset_uid: str,
     job: AsyncJob | None = None,
 ) -> list[ImportedIndividual]:
     individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
@@ -196,7 +197,7 @@ def create_individuals(  # noqa: PLR0913
         )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
-        ind_originating_id = f"{originating_id}#{idx:04d}"
+        ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
         if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
             # External collectors are deduplicated program-wide: the first
             # occurrence is reused, linked to households only via role refs.
@@ -357,6 +358,7 @@ def import_asset(  # noqa: PLR0913
 
     start_time = timezone.now()
     time_exhausted = False
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
 
     submissions_iterator = asset.submissions(min_id=last_id)
 
@@ -365,12 +367,12 @@ def import_asset(  # noqa: PLR0913
             if job:
                 job.ensure_not_cancelled(refresh=True)
             current_submission = submission
-            originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
+            originating_id = get_kobo_originating_id(asset.uid, submission.id, epoch=epoch_ms)
             # One transaction per submission: if this block fails, only this
             # submission is rolled back; previously committed data stays.
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
-                individuals = create_individuals(batch, household, submission, config, originating_id, job=job)
+                individuals = create_individuals(batch, household, submission, config, asset.uid, job=job)
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1

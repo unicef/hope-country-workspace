@@ -249,6 +249,7 @@ def test_process_households(
     job = mocker.MagicMock()
     job.file.name = "uploads/rdi.xlsx"
     batch = mocker.MagicMock()
+    batch.import_date.timestamp.return_value = 1_234_567_890.123
 
     result = process_households(household_sheet, job, batch, config)
 
@@ -269,7 +270,7 @@ def test_process_households(
                 name=str(row[config["household_label"]]),
                 flex_fields=processor_mock.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['household_id_column']]}#1234567890123",
             )
             for row in household_sheet
         ]
@@ -314,6 +315,7 @@ def test_process_beneficiaries_with_households(
         return_value=processor_mock,
     )
     batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
 
     result = process_beneficiaries(
         individual_sheet,
@@ -340,7 +342,7 @@ def test_process_beneficiaries_with_households(
                 household=household_mapping[row[config["household_id_column"]]],
                 flex_fields=processor_mock.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}#1234567890123",
             )
             for row in individual_sheet
         ]
@@ -364,6 +366,7 @@ def test_process_beneficiaries_people_only(
     job_mock = mocker.MagicMock(name="job")
     job_mock.file.name = "uploads/rdi.xlsx"
     batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
 
     result = process_beneficiaries(
         people_sheet,
@@ -392,7 +395,7 @@ def test_process_beneficiaries_people_only(
                 household=None,
                 flex_fields=processor_mock.return_value,
                 raw_data=row,
-                originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}",
+                originating_id=f"XLS#rdi.xlsx#{row[config['beneficiary_id_column']]}#1234567890123",
             )
         )
 
