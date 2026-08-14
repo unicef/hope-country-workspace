@@ -153,7 +153,7 @@ def test_workflow_config_uses_rdp_string_when_name_is_empty(rdp: Rdp, mocker: Mo
 
 def test_fail_pending_push_ignores_stale_attempt(rdp: Rdp, push_attempt_id: UUID, mocker: MockerFixture) -> None:
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=None)
-    finish = mocker.patch(f"{MOD}.finish_rdp_push_attempt")
+    finish = mocker.patch.object(rdp, "finish_push_attempt")
 
     _fail_pending_push(rdp_id=rdp.pk, push_attempt_id=push_attempt_id, hope_rdi_id=None)
 
@@ -174,13 +174,12 @@ def test_fail_pending_push(rdp: Rdp, push_attempt_id: UUID, mocker: MockerFixtur
     rdp.hope_rdi_id = current_rdi_id
 
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
-    finish = mocker.patch(f"{MOD}.finish_rdp_push_attempt")
+    finish = mocker.patch.object(rdp, "finish_push_attempt")
     status_changed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send")
 
     _fail_pending_push(rdp_id=rdp.pk, push_attempt_id=push_attempt_id, hope_rdi_id=fallback_rdi_id)
 
     finish.assert_called_once_with(
-        rdp=rdp,
         status=Rdp.PushStatus.FAILURE,
         hope_rdi_id=expected_rdi_id,
     )
@@ -275,7 +274,7 @@ def test_claim_rdp_push_rechecks_locked_rdp(rdp: Rdp, mocker: MockerFixture, cas
     mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
-    start = mocker.patch(f"{MOD}.start_rdp_push_attempt")
+    start = mocker.patch.object(rdp, "start_push_attempt")
 
     check, claimed = claim_rdp_push(rdp_id=rdp.pk)
 
@@ -464,7 +463,7 @@ def test_push_data_skips_non_current_attempt(data_job: AsyncJob, mocker: MockerF
 
 
 @pytest.mark.parametrize("owner_email", ["owner@example.org", ""], ids=["owner_email", "rdp_email"])
-def test_push_data_success(push_data_setup, mocker: MockerFixture, owner_email: str) -> None:
+def test_push_data_success(push_data_setup, mocker: MockerFixture, run_on_commit, owner_email: str) -> None:
     rdp, job, processor, build_config = push_data_setup
     rdp.pushed_by.email = "rdp@example.org"
     rdp.deduplication_set_id = uuid4()
@@ -473,7 +472,7 @@ def test_push_data_success(push_data_setup, mocker: MockerFixture, owner_email: 
 
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
     mark_removed = mocker.patch(f"{MOD}.set_rdp_beneficiaries_removed")
-    finish = mocker.patch(f"{MOD}.finish_rdp_push_attempt")
+    finish = mocker.patch.object(rdp, "finish_push_attempt")
     approve = mocker.patch(f"{MOD}.approve_deduplication_set_after_successful_push")
     completed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send_robust")
     status_changed = mocker.patch(f"{MOD}.rdp_push_status_changed_signal.send_robust")
@@ -485,7 +484,7 @@ def test_push_data_success(push_data_setup, mocker: MockerFixture, owner_email: 
     processor.rdi_create.assert_called_once_with()
     processor.rdi_complete.assert_called_once_with()
     mark_removed.assert_called_once_with(rdp=rdp, removed=True)
-    finish.assert_called_once_with(rdp=rdp, status=Rdp.PushStatus.SUCCESS, hope_rdi_id="NEW-RDI")
+    finish.assert_called_once_with(status=Rdp.PushStatus.SUCCESS, hope_rdi_id="NEW-RDI")
     approve.assert_called_once_with(
         rdp_id=rdp.pk,
         group_reference_id=rdp.program.unicef_id,
@@ -560,6 +559,7 @@ def test_push_preparation_finishes_success_when_rdi_is_already_merged(
     preparation_job: AsyncJob,
     push_attempt_id: UUID,
     mocker: MockerFixture,
+    run_on_commit,
 ) -> None:
     preparation_job.config["rdi_id_to_reset"] = "OLD-RDI"
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
@@ -570,7 +570,7 @@ def test_push_preparation_finishes_success_when_rdi_is_already_merged(
     mocker.patch(f"{MOD}.HopeApi", return_value=api)
 
     mark_removed = mocker.patch(f"{MOD}.set_rdp_beneficiaries_removed")
-    finish = mocker.patch(f"{MOD}.finish_rdp_push_attempt")
+    finish = mocker.patch.object(rdp, "finish_push_attempt")
     approve = mocker.patch(f"{MOD}.approve_deduplication_set_after_successful_push")
     schedule = mocker.patch(f"{MOD}._schedule_push_data")
     completed = mocker.patch(f"{MOD}.rdi_push_completed_signal.send_robust")
@@ -586,7 +586,6 @@ def test_push_preparation_finishes_success_when_rdi_is_already_merged(
 
     mark_removed.assert_called_once_with(rdp=rdp, removed=True)
     finish.assert_called_once_with(
-        rdp=rdp,
         status=Rdp.PushStatus.SUCCESS,
         hope_rdi_id="OLD-RDI",
     )

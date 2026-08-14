@@ -14,7 +14,6 @@ from country_workspace.rdp.repository import (
     qs_individuals_for_rdp,
     rdp_selection,
     set_rdp_beneficiaries_removed,
-    set_rdp_push_status,
 )
 from country_workspace.workspaces.models import CountryHousehold
 
@@ -179,25 +178,6 @@ def test_qs_individuals_for_push_includes_members_and_referenced_collectors() ->
 
     assert result == {member.pk, collector.pk}
     assert unreferenced.pk not in result
-
-
-@pytest.mark.parametrize("dedup_lock", [None, False], ids=["keep_dedup_lock", "update_dedup_lock"])
-def test_set_rdp_push_status(rdp: Rdp, dedup_lock: bool | None) -> None:
-    rdp.is_dedup_settings_locked = True
-    rdp.save(update_fields=["is_dedup_settings_locked"])
-
-    set_rdp_push_status(
-        rdp=rdp,
-        status=Rdp.PushStatus.SUCCESS,
-        hope_rdi_id="RID",
-        is_dedup_settings_locked=dedup_lock,
-    )
-
-    rdp.refresh_from_db()
-
-    assert rdp.status == Rdp.PushStatus.SUCCESS
-    assert rdp.hope_rdi_id == "RID"
-    assert rdp.is_dedup_settings_locked is (True if dedup_lock is None else dedup_lock)
 
 
 @pytest.mark.parametrize("full", [False, True], ids=["minimal", "full"])

@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from django.db import transaction
 
@@ -38,15 +38,6 @@ def claim_rdp_data_push(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
         return rdp
 
 
-def start_rdp_push_attempt(*, rdp: Rdp) -> UUID:
-    """Start a new push attempt for an already-locked RDP."""
-    push_attempt_id = uuid4()
-    rdp.status = Rdp.PushStatus.PUSH_PENDING
-    rdp.push_attempt_id = push_attempt_id
-    rdp.save(update_fields=["status", "push_attempt_id"])
-    return push_attempt_id
-
-
 def lock_rdp_push_attempt(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
     """Lock and return the matching active RDP push attempt."""
     return (
@@ -59,14 +50,6 @@ def lock_rdp_push_attempt(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
         )
         .first()
     )
-
-
-def finish_rdp_push_attempt(*, rdp: Rdp, status: Rdp.PushStatus, hope_rdi_id: str) -> None:
-    """Finish an already-locked RDP push attempt."""
-    rdp.status = status
-    rdp.hope_rdi_id = hope_rdi_id
-    rdp.push_attempt_id = None
-    rdp.save(update_fields=["status", "hope_rdi_id", "push_attempt_id"])
 
 
 def rdp_for_push(*, pk: int) -> Rdp:

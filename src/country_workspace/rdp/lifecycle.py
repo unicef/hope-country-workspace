@@ -60,15 +60,6 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     return {"rdp_id": rdp.id}
 
 
-def _mark_rdp_cancelled(*, rdp: Rdp) -> None:
-    """Mark an already-locked RDP as cancelled."""
-    rdp.status = Rdp.PushStatus.CANCELLED
-    rdp.hope_rdi_id = rdp.hope_rdi_id or "N/A"
-    rdp.is_dedup_settings_locked = False
-    rdp.push_attempt_id = None
-    rdp.save(update_fields=["status", "hope_rdi_id", "is_dedup_settings_locked", "push_attempt_id"])
-
-
 def reset_rdp(*, rdp_id: int) -> ActionCheck:
     """Reset the latest successful RDP."""
     with transaction.atomic():
@@ -78,7 +69,7 @@ def reset_rdp(*, rdp_id: int) -> ActionCheck:
             return check
 
         set_rdp_beneficiaries_removed(rdp=rdp, removed=False)
-        _mark_rdp_cancelled(rdp=rdp)
+        rdp.mark_cancelled()
 
     return ActionCheck(True)
 
@@ -106,6 +97,6 @@ def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
             dedup_engine_rejected = True
 
-        _mark_rdp_cancelled(rdp=rdp)
+        rdp.mark_cancelled()
 
     return {"rdp_id": rdp_id, "deduplication_set_rejected": dedup_engine_rejected}

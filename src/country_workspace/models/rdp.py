@@ -1,4 +1,5 @@
 from typing import Final
+from uuid import UUID, uuid4
 
 from django.db import models
 from django.db.models import Q
@@ -113,3 +114,42 @@ class Rdp(BaseModel):
             return
         beneficiaries = "households" if is_household else "individuals"
         getattr(self, beneficiaries).set(pks)
+
+    def start_push_attempt(self) -> UUID:
+        """Start a new push attempt on an already-locked RDP."""
+        push_attempt_id = uuid4()
+        self.status = self.PushStatus.PUSH_PENDING
+        self.push_attempt_id = push_attempt_id
+        self.is_dedup_settings_locked = False
+        self.save(update_fields=["status", "push_attempt_id", "is_dedup_settings_locked"])
+        return push_attempt_id
+
+    def mark_deduplication_pending(self) -> None:
+        """Mark deduplication as pending on an already-locked RDP."""
+        self.status = self.PushStatus.DEDUP_PENDING
+        self.is_dedup_settings_locked = True
+        self.save(update_fields=["status", "is_dedup_settings_locked"])
+
+    def finish_push_attempt(self, *, status: RdpPushStatus, hope_rdi_id: str) -> None:
+        """Finish the active push attempt on an already-locked RDP."""
+        if status not in {self.PushStatus.SUCCESS, self.PushStatus.FAILURE}:
+            raise ValueError(f"Invalid final push status: {status}")
+        self.status = status
+        self.hope_rdi_id = hope_rdi_id
+        self.push_attempt_id = None
+        self.save(update_fields=["status", "hope_rdi_id", "push_attempt_id"])
+
+    def mark_deduplication_failed(self) -> None:
+        """Mark deduplication as failed on an already-locked RDP."""
+        self.status = self.PushStatus.FAILURE
+        self.hope_rdi_id = self.hope_rdi_id or "N/A"
+        self.is_dedup_settings_locked = False
+        self.save(update_fields=["status", "hope_rdi_id", "is_dedup_settings_locked"])
+
+    def mark_cancelled(self) -> None:
+        """Mark an already-locked RDP as cancelled."""
+        self.status = self.PushStatus.CANCELLED
+        self.hope_rdi_id = self.hope_rdi_id or "N/A"
+        self.is_dedup_settings_locked = False
+        self.push_attempt_id = None
+        self.save(update_fields=["status", "hope_rdi_id", "is_dedup_settings_locked", "push_attempt_id"])

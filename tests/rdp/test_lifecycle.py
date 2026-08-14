@@ -8,12 +8,7 @@ from country_workspace.contrib.dedup_engine import REJECTABLE_DEDUPLICATION_SET_
 from country_workspace.exceptions import RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.lifecycle import (
-    _mark_rdp_cancelled,
-    cancel_existing_rdp_core,
-    create_rdp_core,
-    reset_rdp,
-)
+from country_workspace.rdp.lifecycle import cancel_existing_rdp_core, create_rdp_core, reset_rdp
 from country_workspace.rdp.policy import ActionCheck
 
 MOD = "country_workspace.rdp.lifecycle"
@@ -121,20 +116,6 @@ def test_create_rdp_integrity_error(create_job: AsyncJob, mocker: MockerFixture,
     assert message in str(exc_info.value)
 
 
-@pytest.mark.parametrize("hope_rdi_id", [None, "RID"], ids=["without_rdi", "with_rdi"])
-def test_mark_rdp_cancelled(rdp: Rdp, hope_rdi_id: str | None) -> None:
-    rdp.hope_rdi_id = hope_rdi_id
-
-    _mark_rdp_cancelled(rdp=rdp)
-
-    rdp.refresh_from_db()
-
-    assert rdp.status == Rdp.PushStatus.CANCELLED
-    assert rdp.hope_rdi_id == (hope_rdi_id or "N/A")
-    assert rdp.is_dedup_settings_locked is False
-    assert rdp.push_attempt_id is None
-
-
 @pytest.mark.parametrize("allowed", [True, False], ids=["allowed", "denied"])
 def test_reset_rdp(rdp: Rdp, mocker: MockerFixture, allowed: bool) -> None:
     policy = mocker.MagicMock()
@@ -142,7 +123,7 @@ def test_reset_rdp(rdp: Rdp, mocker: MockerFixture, allowed: bool) -> None:
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     removed = mocker.patch(f"{MOD}.set_rdp_beneficiaries_removed")
-    cancelled = mocker.patch(f"{MOD}._mark_rdp_cancelled")
+    cancelled = mocker.patch.object(rdp, "mark_cancelled")
 
     result = reset_rdp(rdp_id=rdp.pk)
 
@@ -171,7 +152,7 @@ def test_cancel_existing_rdp(cancel_job: AsyncJob, rdp: Rdp, mocker: MockerFixtu
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     mocker.patch(f"{MOD}.require_policy_check")
     reject = mocker.patch(f"{MOD}.reject_deduplication_set")
-    cancelled = mocker.patch(f"{MOD}._mark_rdp_cancelled")
+    cancelled = mocker.patch.object(rdp, "mark_cancelled")
 
     result = cancel_existing_rdp_core(cancel_job)
 
@@ -180,7 +161,7 @@ def test_cancel_existing_rdp(cancel_job: AsyncJob, rdp: Rdp, mocker: MockerFixtu
         "deduplication_set_rejected": expected_rejected,
     }
     assert reject.called is expected_rejected
-    cancelled.assert_called_once_with(rdp=rdp)
+    cancelled.assert_called_once_with()
 
 
 def test_cancel_existing_rdp_remote_error(cancel_job: AsyncJob, rdp: Rdp, mocker: MockerFixture) -> None:
@@ -193,7 +174,7 @@ def test_cancel_existing_rdp_remote_error(cancel_job: AsyncJob, rdp: Rdp, mocker
     mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     mocker.patch(f"{MOD}.require_policy_check")
     mocker.patch(f"{MOD}.reject_deduplication_set", side_effect=RemoteUnavailableError("boom"))
-    cancelled = mocker.patch(f"{MOD}._mark_rdp_cancelled")
+    cancelled = mocker.patch.object(rdp, "mark_cancelled")
 
     with pytest.raises(RdpWorkflowError, match="boom"):
         cancel_existing_rdp_core(cancel_job)

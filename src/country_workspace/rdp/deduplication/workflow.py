@@ -17,12 +17,11 @@ from country_workspace.rdp.policy import ActionCheck, get_rdp_policy, require_po
 from country_workspace.rdp.repository import (
     append_rdp_operation_log,
     lock_rdp_for_update,
-    set_rdp_push_status,
     qs_individuals_for_rdp,
 )
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome
-from country_workspace.rdp.push.repository import rdp_for_push, start_rdp_push_attempt
+from country_workspace.rdp.push.repository import rdp_for_push
 from country_workspace.rdp.push.workflow import push_existing_rdp_core, _fail_pending_push
 
 from .constants import DEDUP_CALLBACK_SALT
@@ -42,16 +41,14 @@ def create_rdp_and_start_dedup_core(job: AsyncJob) -> dict[str, Any]:
     """
     create_result = create_rdp_core(job)
     rdp_id = create_result["rdp_id"]
-
-    with transaction.atomic():
-        _check, rdp = claim_rdp_deduplication(rdp_id)
-        if rdp is None:
-            raise RdpWorkflowError({"errors": ["RDP: could not claim deduplication set."], "rdp_id": rdp_id})
+    check, rdp = claim_rdp_deduplication(rdp_id)
+    if rdp is None:
+        raise RdpWorkflowError(
+            {"errors": [check.reason or "RDP: could not claim deduplication set."], "rdp_id": rdp_id}
+        )
 
     awaiting_callback = False
     try:
-        job.refresh_from_db()
-
         callback_url = _build_dedup_callback_url(rdp_id=rdp_id, job_id=job.pk)
         processor = DedupProcessor(rdp)
         processor.run(notification_url=callback_url)
@@ -59,13 +56,12 @@ def create_rdp_and_start_dedup_core(job: AsyncJob) -> dict[str, Any]:
         if processor.has_errors:
             with transaction.atomic():
                 locked = lock_rdp_for_update(pk=rdp_id)
-                set_rdp_push_status(rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A")
+                locked.mark_deduplication_failed()
             raise RdpWorkflowError({**processor.total, "rdp_id": rdp_id})
 
         with transaction.atomic():
             locked = lock_rdp_for_update(pk=rdp_id)
-            locked.status = Rdp.PushStatus.DEDUP_PENDING
-            locked.save(update_fields=["status"])
+            locked.mark_deduplication_pending()
 
         awaiting_callback = True
         return {**create_result, "workflow_outcome": RdpWorkflowOutcome.AWAITING_DEDUP_CALLBACK}
@@ -86,7 +82,7 @@ def _build_dedup_callback_url(rdp_id: int, job_id: int) -> str:
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     rdp = rdp_for_dedup(pk=rdp_id)
     policy = get_rdp_policy(rdp)
-    check = policy.deduplicate_check()
+    check = policy.claim_deduplication_check()
     if not check.allowed:
         return check, None
 
@@ -96,6 +92,7 @@ def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
             return ActionCheck(False, f"RDP: can not run dedup in status={locked.status}"), None
         if locked.is_dedup_settings_locked:
             return ActionCheck(False, "RDP: deduplication has already been started for this RDP."), None
+
         update_fields = ["is_dedup_settings_locked"]
         locked.is_dedup_settings_locked = True
         if policy.can_create_deduplication_set and not locked.deduplication_set_id:
@@ -142,9 +139,7 @@ def _lock_and_fail_rdp(rdp_id: int, *, reason: str) -> None:
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
         if locked.status == Rdp.PushStatus.DEDUP_PENDING:
-            set_rdp_push_status(
-                rdp=locked, status=Rdp.PushStatus.FAILURE, hope_rdi_id="N/A", is_dedup_settings_locked=False
-            )
+            locked.mark_deduplication_failed()
             logger.warning("dedup_callback_handle: rdp_id=%s marked FAILURE (%s)", rdp_id, reason)
         else:
             logger.info("dedup_callback_handle: rdp_id=%s skip FAILURE (%s); status=%s", rdp_id, reason, locked.status)
@@ -193,7 +188,7 @@ def _handle_deduplicated(rdp: Rdp, rdp_id: int, job_id: int, findings_count: int
                 )
                 return
 
-            push_attempt_id = start_rdp_push_attempt(rdp=locked_rdp)
+            push_attempt_id = locked_rdp.start_push_attempt()
             push_job = AsyncJob.objects.create(
                 description=f"Prepare RDP {rdp_id} for HOPE push",
                 type=AsyncJob.JobType.TASK,

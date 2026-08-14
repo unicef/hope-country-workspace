@@ -29,11 +29,9 @@ from country_workspace.rdp.types import RdpWorkflowOutcome
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
-    finish_rdp_push_attempt,
     get_or_create_rdp_push_data_job,
     lock_rdp_push_attempt,
     rdp_for_push,
-    start_rdp_push_attempt,
 )
 from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
@@ -79,8 +77,7 @@ def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str |
             return
 
         current_rdi_id = rdp.hope_rdi_id if rdp.hope_rdi_id not in {None, "N/A"} else None
-        finish_rdp_push_attempt(
-            rdp=rdp,
+        rdp.finish_push_attempt(
             status=Rdp.PushStatus.FAILURE,
             hope_rdi_id=current_rdi_id or hope_rdi_id or "N/A",
         )
@@ -134,7 +131,7 @@ def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
             return ActionCheck(False, "RDP: can not push while deduplication is queued or running."), None
         if locked.status not in {Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE}:
             return ActionCheck(False, f"RDP: can not push in status={locked.status}"), None
-        start_rdp_push_attempt(rdp=locked)
+        locked.start_push_attempt()
 
     return ActionCheck(True), locked
 
@@ -144,9 +141,9 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     config: PushPreparationJobConfig = job.config
     rdp_id = config["rdp_id"]
     push_attempt_id = UUID(config["push_attempt_id"])
-    rdi_id_to_reset = config["rdi_id_to_reset"]
+    rdi_id_to_reset: str | None = None
 
-    def run() -> dict[str, Any]:
+    def run(rdi_id_to_reset: str | None) -> dict[str, Any]:
         with transaction.atomic():
             rdp = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
             if rdp is None:
@@ -162,6 +159,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                 rdi_id=rdi_id_to_reset,
                 callback_url=callback_url,
             )
+
             if reset_result == RdiResetResult.ACCEPTED:
                 # TODO(Vitali): Use Bitcaster to recover the push attempt if the HOPE reset or callback delivery fails.
                 return {
@@ -169,6 +167,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                     "reset_result": reset_result.value,
                     "workflow_outcome": RdpWorkflowOutcome.AWAITING_PUSH_READY_CALLBACK,
                 }
+
             if reset_result == RdiResetResult.MERGE_IN_PROGRESS:
                 raise RdpWorkflowError(
                     {
@@ -177,6 +176,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
                         "hope_rdi_id": rdi_id_to_reset,
                     }
                 )
+
             if reset_result == RdiResetResult.ALREADY_MERGED:
                 _finish_already_merged_push(
                     rdp_id=rdp_id,
@@ -199,7 +199,8 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         }
 
     try:
-        return run()
+        rdi_id_to_reset = config["rdi_id_to_reset"]
+        return run(rdi_id_to_reset)
     except HopeRdiResetUnconfirmedError:
         # TODO(Vitali): Use Bitcaster to resolve push attempts with an unconfirmed HOPE reset outcome.
         return {
@@ -253,19 +254,26 @@ def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_
     with transaction.atomic():
         if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return
+
         set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
-        finish_rdp_push_attempt(rdp=rdp, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
-        group_reference_id = rdp.program.unicef_id
-        deduplication_set_id = rdp.deduplication_set_id
+        rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
         program_id = rdp.program_id
 
-    approve_deduplication_set_after_successful_push(
-        rdp_id=rdp_id,
-        group_reference_id=group_reference_id,
-        deduplication_set_id=deduplication_set_id,
-    )
+        transaction.on_commit(
+            partial(
+                approve_deduplication_set_after_successful_push,
+                rdp_id=rdp_id,
+                group_reference_id=rdp.program.unicef_id,
+                deduplication_set_id=rdp.deduplication_set_id,
+            ),
+            robust=True,
+        )
+
     rdp_push_status_changed_signal.send_robust(
-        sender=Rdp, program_id=program_id, rdp_id=rdp_id, status=Rdp.PushStatus.SUCCESS
+        sender=Rdp,
+        program_id=program_id,
+        rdp_id=rdp_id,
+        status=Rdp.PushStatus.SUCCESS,
     )
 
 
@@ -313,22 +321,22 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
             locked = lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
             if locked is None:
                 raise RdpWorkflowError({"errors": ["RDP: push attempt changed before completion."], "rdp_id": rdp_id})
-
             if locked.hope_rdi_id != new_rdi_id:
                 raise RuntimeError(
                     f"RDP: hope_rdi_id changed before completion: {locked.hope_rdi_id!r} != {new_rdi_id!r}"
                 )
 
             set_rdp_beneficiaries_removed(rdp=locked, removed=True)
-            finish_rdp_push_attempt(rdp=locked, status=Rdp.PushStatus.SUCCESS, hope_rdi_id=new_rdi_id)
-            group_reference_id = locked.program.unicef_id
-            deduplication_set_id = locked.deduplication_set_id
-
-        approve_deduplication_set_after_successful_push(
-            rdp_id=rdp_id,
-            group_reference_id=group_reference_id,
-            deduplication_set_id=deduplication_set_id,
-        )
+            locked.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=new_rdi_id)
+            transaction.on_commit(
+                partial(
+                    approve_deduplication_set_after_successful_push,
+                    rdp_id=rdp_id,
+                    group_reference_id=locked.program.unicef_id,
+                    deduplication_set_id=locked.deduplication_set_id,
+                ),
+                robust=True,
+            )
 
         pushed_count = sum(processor.total.get(key, 0) for key in ("households", "individuals", "people"))
 

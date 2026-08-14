@@ -96,23 +96,6 @@ def set_rdp_beneficiaries_removed(*, rdp: Rdp, removed: bool) -> None:
         rdp.individuals.update(removed=removed)
 
 
-def set_rdp_push_status(
-    *,
-    rdp: Rdp,
-    status: Rdp.PushStatus,
-    hope_rdi_id: str,
-    is_dedup_settings_locked: bool | None = None,
-) -> None:
-    """Persist push status fields for an already-locked RDP."""
-    rdp.status = status
-    rdp.hope_rdi_id = hope_rdi_id
-    update_fields = ["status", "hope_rdi_id"]
-    if is_dedup_settings_locked is not None:
-        rdp.is_dedup_settings_locked = is_dedup_settings_locked
-        update_fields.append("is_dedup_settings_locked")
-    rdp.save(update_fields=update_fields)
-
-
 def append_rdp_operation_log(
     *,
     rdp: Rdp,

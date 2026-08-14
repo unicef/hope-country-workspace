@@ -56,7 +56,8 @@ def deduplicated_setup(rdp, mocker: MockerFixture):
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
 
     attempt_id = uuid4()
-    start = mocker.patch(f"{MOD}.start_rdp_push_attempt", return_value=attempt_id)
+    rdp.start_push_attempt.return_value = attempt_id
+    start = rdp.start_push_attempt
 
     push_job = mocker.MagicMock(pk=22)
     create = mocker.patch.object(AsyncJob.objects, "create", return_value=push_job)
@@ -101,7 +102,7 @@ def test_build_dedup_callback_url(mocker: MockerFixture) -> None:
 def test_claim_rdp_deduplication(rdp, mocker: MockerFixture, case) -> None:
     scenario, expected = case
     policy = mocker.MagicMock(can_create_deduplication_set=scenario == "new_set")
-    policy.deduplicate_check.return_value = ActionCheck(scenario != "policy_denied")
+    policy.claim_deduplication_check.return_value = ActionCheck(scenario != "policy_denied")
 
     if scenario == "status_changed":
         rdp.status = Rdp.PushStatus.SUCCESS
@@ -154,7 +155,6 @@ def test_create_rdp_and_start_dedup(job, rdp, mocker: MockerFixture, case: str) 
 
     locked = mocker.MagicMock()
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
-    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
     release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     if case == "claim_error":
@@ -167,8 +167,7 @@ def test_create_rdp_and_start_dedup(job, rdp, mocker: MockerFixture, case: str) 
             **create_result,
             "workflow_outcome": RdpWorkflowOutcome.AWAITING_DEDUP_CALLBACK,
         }
-        assert locked.status == Rdp.PushStatus.DEDUP_PENDING
-        locked.save.assert_called_once_with(update_fields=["status"])
+        locked.mark_deduplication_pending.assert_called_once_with()
         release.assert_not_called()
     else:
         with pytest.raises(RdpWorkflowError):
@@ -176,13 +175,7 @@ def test_create_rdp_and_start_dedup(job, rdp, mocker: MockerFixture, case: str) 
 
         assert release.called is (case == "processor_error")
         if case == "processor_error":
-            set_status.assert_called_once_with(
-                rdp=locked,
-                status=Rdp.PushStatus.FAILURE,
-                hope_rdi_id="N/A",
-            )
-        else:
-            set_status.assert_not_called()
+            locked.mark_deduplication_failed.assert_called_once_with()
 
 
 @pytest.mark.parametrize("has_errors", [False, True], ids=["success", "processor_error"])
@@ -235,19 +228,13 @@ def test_dedup_existing_rdp(job, rdp, mocker: MockerFixture, has_errors: bool) -
 def test_lock_and_fail_rdp(rdp, mocker: MockerFixture, status: str) -> None:
     rdp.status = status
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
-    set_status = mocker.patch(f"{MOD}.set_rdp_push_status")
 
     _lock_and_fail_rdp(7, reason="boom")
 
     if status == Rdp.PushStatus.DEDUP_PENDING:
-        set_status.assert_called_once_with(
-            rdp=rdp,
-            status=Rdp.PushStatus.FAILURE,
-            hope_rdi_id="N/A",
-            is_dedup_settings_locked=False,
-        )
+        rdp.mark_deduplication_failed.assert_called_once_with()
     else:
-        set_status.assert_not_called()
+        rdp.mark_deduplication_failed.assert_not_called()
 
 
 @pytest.mark.parametrize(

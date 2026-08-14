@@ -1,4 +1,4 @@
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from django.db import transaction
@@ -6,12 +6,10 @@ from django.db import transaction
 from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.rdp.push.repository import (
     claim_rdp_data_push,
-    finish_rdp_push_attempt,
     get_or_create_rdp_push_data_job,
     lock_rdp_push_attempt,
     rdp_for_push,
     serializer_for_program,
-    start_rdp_push_attempt,
 )
 
 
@@ -36,18 +34,8 @@ def program(request: pytest.FixtureRequest) -> Program:
     return ProgramFactory() if request.param else ProgramFactory(serializer=None)
 
 
-def test_start_rdp_push_attempt(rdp: Rdp) -> None:
-    push_attempt_id = start_rdp_push_attempt(rdp=rdp)
-
-    rdp.refresh_from_db()
-
-    assert isinstance(push_attempt_id, UUID)
-    assert rdp.status == Rdp.PushStatus.PUSH_PENDING
-    assert rdp.push_attempt_id == push_attempt_id
-
-
 def test_lock_rdp_push_attempt(rdp: Rdp) -> None:
-    push_attempt_id = start_rdp_push_attempt(rdp=rdp)
+    push_attempt_id = rdp.start_push_attempt()
 
     with transaction.atomic():
         locked = lock_rdp_push_attempt(rdp_id=rdp.pk, push_attempt_id=push_attempt_id)
@@ -57,7 +45,7 @@ def test_lock_rdp_push_attempt(rdp: Rdp) -> None:
 
 
 def test_lock_rdp_push_attempt_rejects_wrong_attempt(rdp: Rdp) -> None:
-    start_rdp_push_attempt(rdp=rdp)
+    rdp.start_push_attempt()
 
     with transaction.atomic():
         locked = lock_rdp_push_attempt(rdp_id=rdp.pk, push_attempt_id=uuid4())
@@ -65,24 +53,8 @@ def test_lock_rdp_push_attempt_rejects_wrong_attempt(rdp: Rdp) -> None:
     assert locked is None
 
 
-def test_finish_rdp_push_attempt(rdp: Rdp) -> None:
-    start_rdp_push_attempt(rdp=rdp)
-
-    finish_rdp_push_attempt(
-        rdp=rdp,
-        status=Rdp.PushStatus.SUCCESS,
-        hope_rdi_id="RID",
-    )
-
-    rdp.refresh_from_db()
-
-    assert rdp.status == Rdp.PushStatus.SUCCESS
-    assert rdp.hope_rdi_id == "RID"
-    assert rdp.push_attempt_id is None
-
-
 def test_claim_rdp_data_push(rdp: Rdp) -> None:
-    push_attempt_id = start_rdp_push_attempt(rdp=rdp)
+    push_attempt_id = rdp.start_push_attempt()
 
     claimed = claim_rdp_data_push(rdp_id=rdp.pk, push_attempt_id=push_attempt_id)
 
@@ -93,20 +65,20 @@ def test_claim_rdp_data_push(rdp: Rdp) -> None:
 
 
 def test_claim_rdp_data_push_only_once(rdp: Rdp) -> None:
-    push_attempt_id = start_rdp_push_attempt(rdp=rdp)
+    push_attempt_id = rdp.start_push_attempt()
 
     assert claim_rdp_data_push(rdp_id=rdp.pk, push_attempt_id=push_attempt_id) is not None
     assert claim_rdp_data_push(rdp_id=rdp.pk, push_attempt_id=push_attempt_id) is None
 
 
 def test_claim_rdp_data_push_rejects_wrong_attempt(rdp: Rdp) -> None:
-    start_rdp_push_attempt(rdp=rdp)
+    rdp.start_push_attempt()
 
     assert claim_rdp_data_push(rdp_id=rdp.pk, push_attempt_id=uuid4()) is None
 
 
 def test_get_or_create_rdp_push_data_job(rdp: Rdp) -> None:
-    push_attempt_id = start_rdp_push_attempt(rdp=rdp)
+    push_attempt_id = rdp.start_push_attempt()
 
     first, first_created = get_or_create_rdp_push_data_job(
         rdp=rdp,
