@@ -24,6 +24,16 @@ def test_properties(batch: "CountryBatch"):
     assert batch.country_office == batch.program.country_office
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    ["name", "import_date", "imported_by", "source", "status"],
+)
+def test_batch_fields_have_help_text(field_name: str) -> None:
+    from country_workspace.models import Batch
+
+    assert Batch._meta.get_field(field_name).help_text
+
+
 def test_picture_import_commands_store_and_clear_payload(batch: "CountryBatch") -> None:
     from testutils.factories import UserFactory
 

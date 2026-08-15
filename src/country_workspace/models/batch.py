@@ -20,15 +20,37 @@ class Batch(BaseModel):
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
-    name = models.CharField(max_length=255, blank=True, null=True)
-    import_date = models.DateTimeField(auto_now=True)
-    imported_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    source = models.CharField(max_length=255, blank=True, null=True, choices=BatchSource.choices)
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=_("Name of this import batch."),
+    )
+    import_date = models.DateTimeField(
+        auto_now=True,
+        help_text=_("Date and time this batch was created."),
+    )
+    imported_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        help_text=_("User who started the import."),
+    )
+    source = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        choices=BatchSource.choices,
+        help_text=_("Where the records were imported from (RDI file, Aurora, or Kobo)."),
+    )
     status = models.CharField(
         max_length=32,
         choices=BatchStatus.choices,
         default=BatchStatus.LOADING,
         db_index=True,
+        help_text=_(
+            "Loading while the import is still processing. Complete when the source-specific import has finished. "
+            "Validation may continue afterwards."
+        ),
     )
     picture_import_state = models.JSONField(default=dict, blank=True)
 
