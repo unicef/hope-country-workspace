@@ -583,9 +583,9 @@ def test_merge_images() -> None:
         {(column := "column"): "value"},
         second_row := {"column": "value"},
     )
-    sheet_images = {0: {0: (image_data := "IMAGE_DATA")}}
+    sheet_images = {2: {0: (image_data := "IMAGE_DATA")}}
 
-    result = list(merge_images(sheet, sheet_images))
+    result = list(merge_images(sheet, sheet_images, start_at_row=2))
 
     assert result == [{column: image_data}, second_row]
 
@@ -627,7 +627,7 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
         start_at_row=expected_start_at_row,
     )
     extract_images_mock.assert_called_once_with(filepath, sheet_name)
-    merge_images_mock.assert_called_once_with(sheet, images)
+    merge_images_mock.assert_called_once_with(sheet, images, expected_start_at_row)
 
 
 def test_read_sheets_sheet_not_found_error(mocker: MockerFixture, config: Config) -> None:
