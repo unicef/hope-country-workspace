@@ -36,20 +36,18 @@ from .repository import (
 from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
 
-def _build_push_ready_callback_url(*, rdp_id: int, push_attempt_id: UUID) -> str:
-    """Build the signed HOPE push-ready callback URL."""
-    token = signing.dumps(
-        {
-            "rdp_id": rdp_id,
-            "push_attempt_id": str(push_attempt_id),
-        },
+def _build_push_ready_callback_url() -> str:
+    """Build the HOPE push-ready callback URL."""
+    path = reverse("api:callbacks:hope-rdp-push-ready")
+    return f"{config.APP_BASE_URL.rstrip('/')}{path}"
+
+
+def _build_push_ready_callback_token(*, rdp_id: int, push_attempt_id: UUID) -> str:
+    """Build the signed HOPE push-ready callback token."""
+    return signing.dumps(
+        {"rdp_id": rdp_id, "push_attempt_id": str(push_attempt_id)},
         salt=PUSH_READY_CALLBACK_SALT,
     )
-    path = reverse(
-        "api:callbacks:hope-rdp-push-ready",
-        kwargs={"signed_token": token},
-    )
-    return f"{config.APP_BASE_URL.rstrip('/')}{path}"
 
 
 def _workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflowConfig:
@@ -154,10 +152,10 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
         reset_result: RdiResetResult | None = None
         if rdi_id_to_reset is not None:
-            callback_url = _build_push_ready_callback_url(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
             reset_result = HopeApi(co_slug=co_slug).reset_rdi(
                 rdi_id=rdi_id_to_reset,
-                callback_url=callback_url,
+                callback_url=_build_push_ready_callback_url(),
+                signed_token=_build_push_ready_callback_token(rdp_id=rdp_id, push_attempt_id=push_attempt_id),
             )
 
             if reset_result == RdiResetResult.ACCEPTED:

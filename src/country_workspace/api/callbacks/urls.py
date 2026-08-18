@@ -13,7 +13,7 @@ urlpatterns = [
         name="dedup-engine-rdp-state-changed",
     ),
     path(
-        "hope/rdps/push-ready/<str:signed_token>/",
+        "hope/rdps/push-ready/",
         HopeRdpPushReadyCallbackView.as_view(),
         name="hope-rdp-push-ready",
     ),

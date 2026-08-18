@@ -62,11 +62,17 @@ class HopeApi:
         url = ROUTES[route].format(co_slug=self.co_slug, **({"rdi_id": rdi_id} if rdi_id else {}))
         return self.client.post(url, payload)
 
-    def reset_rdi(self, rdi_id: str, callback_url: str) -> RdiResetResult:
+    def reset_rdi(self, rdi_id: str, callback_url: str, signed_token: str) -> RdiResetResult:
         url = ROUTES[Route.RESET_RDI].format(co_slug=self.co_slug, rdi_id=rdi_id)
 
         try:
-            self.client.post(url, {"callback_url": callback_url})
+            self.client.post(
+                url,
+                {
+                    "callback_url": callback_url,
+                    "signed_token": signed_token,
+                },
+            )
         except HopeResponseError as exc:
             if exc.response.status_code == HTTPStatus.NOT_FOUND:
                 return RdiResetResult.NOT_FOUND

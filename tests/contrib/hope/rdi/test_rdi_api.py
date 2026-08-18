@@ -15,6 +15,7 @@ MOD = "country_workspace.contrib.hope.rdi.api"
 CO_SLUG = "CO"
 RDI_ID = "RID"
 CALLBACK_URL = "https://cw.example/callback/"
+SIGNED_TOKEN = "signed-token"
 RDI_URL = f"{CO_SLUG}/rdi/{RDI_ID}"
 
 
@@ -58,10 +59,13 @@ def test_post_methods(
 
 
 def test_reset_rdi_accepted(hope_api: HopeApi, hope_client: HopeClient) -> None:
-    result = hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
+    result = hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN)
 
     assert result is RdiResetResult.ACCEPTED
-    hope_client.post.assert_called_once_with(f"{RDI_URL}/reset/", {"callback_url": CALLBACK_URL})
+    hope_client.post.assert_called_once_with(
+        f"{RDI_URL}/reset/",
+        {"callback_url": CALLBACK_URL, "signed_token": SIGNED_TOKEN},
+    )
 
 
 def test_reset_rdi_not_found(
@@ -72,7 +76,7 @@ def test_reset_rdi_not_found(
     response = mocker.Mock(status_code=HTTPStatus.NOT_FOUND)
     hope_client.post.side_effect = HopeResponseError("not found", response=response)
 
-    result = hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
+    result = hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN)
 
     assert result is RdiResetResult.NOT_FOUND
 
@@ -96,14 +100,14 @@ def test_reset_rdi_server_error_is_unconfirmed(
     hope_client.post.side_effect = HopeResponseError("server error", response=response)
 
     with pytest.raises(HopeRdiResetUnconfirmedError):
-        hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
+        hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN)
 
 
 def test_reset_rdi_remote_error_is_unconfirmed(hope_api: HopeApi, hope_client: HopeClient) -> None:
     hope_client.post.side_effect = RemoteError("connection failed")
 
     with pytest.raises(HopeRdiResetUnconfirmedError):
-        hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
+        hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN)
 
 
 def test_reset_rdi_client_error_propagates(
@@ -117,7 +121,7 @@ def test_reset_rdi_client_error_propagates(
     hope_client.post.side_effect = error
 
     with pytest.raises(HopeResponseError) as exc_info:
-        hope_api.reset_rdi(RDI_ID, CALLBACK_URL)
+        hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN)
 
     assert exc_info.value is error
 
@@ -140,4 +144,4 @@ def test_reset_rdi_conflict(
     response.json.return_value = {"error": error_code}
     hope_client.post.side_effect = HopeResponseError("conflict", response=response)
 
-    assert hope_api.reset_rdi(RDI_ID, CALLBACK_URL) is expected
+    assert hope_api.reset_rdi(RDI_ID, CALLBACK_URL, SIGNED_TOKEN) is expected

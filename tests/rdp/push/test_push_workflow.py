@@ -12,6 +12,7 @@ from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
 from country_workspace.rdp.push.workflow import (
+    _build_push_ready_callback_token,
     _build_push_ready_callback_url,
     _fail_pending_push,
     _push_data_steps,
@@ -103,11 +104,13 @@ def push_data_setup(rdp: Rdp, data_job: AsyncJob, processor, mocker: MockerFixtu
 
 
 @override_config(APP_BASE_URL="https://cw.example.org/")
-def test_build_push_ready_callback_url(push_attempt_id: UUID) -> None:
-    url = _build_push_ready_callback_url(rdp_id=7, push_attempt_id=push_attempt_id)
-    signed_token = url.rstrip("/").rsplit("/", 1)[-1]
+def test_build_push_ready_callback_url() -> None:
+    assert _build_push_ready_callback_url().startswith("https://cw.example.org/")
 
-    assert url.startswith("https://cw.example.org/")
+
+def test_build_push_ready_callback_token(push_attempt_id: UUID) -> None:
+    signed_token = _build_push_ready_callback_token(rdp_id=7, push_attempt_id=push_attempt_id)
+
     assert signing.loads(signed_token, salt=PUSH_READY_CALLBACK_SALT) == {
         "rdp_id": 7,
         "push_attempt_id": str(push_attempt_id),
@@ -328,6 +331,7 @@ def test_push_preparation_reset(rdp: Rdp, preparation_job: AsyncJob, mocker: Moc
 
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
     mocker.patch(f"{MOD}._build_push_ready_callback_url", return_value="callback")
+    mocker.patch(f"{MOD}._build_push_ready_callback_token", return_value="token")
     api = mocker.MagicMock()
     api.reset_rdi.return_value = reset_result
     mocker.patch(f"{MOD}.HopeApi", return_value=api)
@@ -337,6 +341,7 @@ def test_push_preparation_reset(rdp: Rdp, preparation_job: AsyncJob, mocker: Moc
 
     assert result["reset_result"] == reset_result.value
     assert result["workflow_outcome"] is expected_outcome
+    api.reset_rdi.assert_called_once_with(rdi_id="OLD-RDI", callback_url="callback", signed_token="token")
     assert schedule.called is (reset_result is RdiResetResult.NOT_FOUND)
 
 
@@ -382,6 +387,7 @@ def test_push_preparation_fails_when_merge_is_in_progress(
     preparation_job.config["rdi_id_to_reset"] = "OLD-RDI"
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
     mocker.patch(f"{MOD}._build_push_ready_callback_url", return_value="callback")
+    mocker.patch(f"{MOD}._build_push_ready_callback_token", return_value="token")
 
     api = mocker.MagicMock()
     api.reset_rdi.return_value = RdiResetResult.MERGE_IN_PROGRESS
@@ -564,6 +570,7 @@ def test_push_preparation_finishes_success_when_rdi_is_already_merged(
     preparation_job.config["rdi_id_to_reset"] = "OLD-RDI"
     mocker.patch(f"{MOD}.lock_rdp_push_attempt", return_value=rdp)
     mocker.patch(f"{MOD}._build_push_ready_callback_url", return_value="callback")
+    mocker.patch(f"{MOD}._build_push_ready_callback_token", return_value="token")
 
     api = mocker.MagicMock()
     api.reset_rdi.return_value = RdiResetResult.ALREADY_MERGED

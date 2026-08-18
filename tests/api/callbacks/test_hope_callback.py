@@ -15,26 +15,26 @@ VIEW_NAME = "api:callbacks:hope-rdp-push-ready"
 
 
 @pytest.fixture
-def callback_url() -> tuple[str, UUID]:
+def callback_url() -> tuple[str, UUID, str]:
     push_attempt_id = uuid4()
     token = signing.dumps(
         {"rdp_id": 1, "push_attempt_id": str(push_attempt_id)},
         salt=PUSH_READY_CALLBACK_SALT,
     )
-    return reverse(VIEW_NAME, kwargs={"signed_token": token}), push_attempt_id
+    return reverse(VIEW_NAME), push_attempt_id, token
 
 
 @pytest.mark.parametrize("queued", [True, False])
 def test_push_ready_callback(
     client: Client,
     mocker: MockerFixture,
-    callback_url: tuple[str, UUID],
+    callback_url: tuple[str, UUID, str],
     queued: bool,
 ) -> None:
-    url, push_attempt_id = callback_url
+    url, push_attempt_id, token = callback_url
     handler = mocker.patch.object(views, "handle_push_ready_callback", return_value=queued)
 
-    response = client.post(url)
+    response = client.post(url, data={"signed_token": token}, content_type="application/json")
 
     assert response.status_code == (status.HTTP_202_ACCEPTED if queued else status.HTTP_200_OK)
     assert response.json()["code"] == ("queued" if queued else "ignored")
@@ -47,10 +47,23 @@ def test_push_ready_callback(
 def test_push_ready_callback_rejects_invalid_signature(client: Client, mocker: MockerFixture) -> None:
     handler = mocker.patch.object(views, "handle_push_ready_callback")
 
-    response = client.post(reverse(VIEW_NAME, kwargs={"signed_token": "invalid"}))
+    response = client.post(
+        reverse(VIEW_NAME),
+        data={"signed_token": "invalid"},
+        content_type="application/json",
+    )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "invalid" in response.json()["detail"].lower()
+    handler.assert_not_called()
+
+
+def test_push_ready_callback_rejects_missing_token(client: Client, mocker: MockerFixture) -> None:
+    handler = mocker.patch.object(views, "handle_push_ready_callback")
+
+    response = client.post(reverse(VIEW_NAME), data={}, content_type="application/json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
     handler.assert_not_called()
 
 
@@ -61,7 +74,11 @@ def test_push_ready_callback_rejects_invalid_payload(client: Client, mocker: Moc
     )
     handler = mocker.patch.object(views, "handle_push_ready_callback")
 
-    response = client.post(reverse(VIEW_NAME, kwargs={"signed_token": token}))
+    response = client.post(
+        reverse(VIEW_NAME),
+        data={"signed_token": token},
+        content_type="application/json",
+    )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     handler.assert_not_called()
@@ -70,19 +87,19 @@ def test_push_ready_callback_rejects_invalid_payload(client: Client, mocker: Moc
 def test_push_ready_callback_returns_server_error(
     client: Client,
     mocker: MockerFixture,
-    callback_url: tuple[str, UUID],
+    callback_url: tuple[str, UUID, str],
 ) -> None:
-    url, _ = callback_url
+    url, _, token = callback_url
     mocker.patch.object(views, "handle_push_ready_callback", side_effect=RuntimeError("boom"))
     client.raise_request_exception = False
 
-    response = client.post(url)
+    response = client.post(url, data={"signed_token": token}, content_type="application/json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def test_push_ready_callback_rejects_get(client: Client, callback_url: tuple[str, UUID]) -> None:
-    url, _ = callback_url
+def test_push_ready_callback_rejects_get(client: Client, callback_url: tuple[str, UUID, str]) -> None:
+    url, _, _ = callback_url
 
     response = client.get(url)
 
