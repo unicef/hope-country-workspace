@@ -50,8 +50,8 @@ def extract_images(filepath: str, *sheet_names: str) -> Generator[Mapping[int, M
         yield images
 
 
-def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]]) -> Sheet:
-    for i, row in enumerate(sheet):
+def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]], start_at_row: int = 0) -> Sheet:
+    for i, row in enumerate(sheet, start=start_at_row):
         if i in sheet_images:
             yield {key: sheet_images[i].get(j, value) for j, (key, value) in enumerate(row.items())}
         else:
@@ -100,7 +100,7 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
         )
         sheet_images = extract_images(filepath, *sheet_names)
         for (_, sheet), images in zip(sheets, sheet_images, strict=False):
-            sheet_with_images = merge_images(sheet, images)
+            sheet_with_images = merge_images(sheet, images, start_at_row)
             if config["master_detail"]:
                 yield filter_rows_with_household_pk(config, sheet_with_images)
             else:
