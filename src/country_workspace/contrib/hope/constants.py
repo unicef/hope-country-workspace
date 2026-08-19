@@ -18,4 +18,4 @@ DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
 
 DOCUMENT_TYPES = ("national_id", "national_passport")
 MAX_DOCUMENT_COLUMNS = 3
-ACCOUNT_TYPES = ("mobile", "bank")
+ACCOUNT_TYPES = ("mobile", "bank", "cash")

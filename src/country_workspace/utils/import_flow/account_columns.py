@@ -3,9 +3,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from country_workspace.contrib.hope.constants import ACCOUNT_TYPES
+
 _ACCOUNT_COLUMN_RE = re.compile(r"^account__(.+?)__(.+)$")
 
 _DIRECT_FIELDS = ("number", "financial_institution")
+
+
+class AccountColumnError(ValueError):
+    pass
 
 
 def _present(value: Any) -> bool:
@@ -25,6 +31,8 @@ def expand_account_columns(row: dict[str, Any]) -> dict[str, Any]:
     field.
 
     If no ``account__{type}__*`` keys are found the row is returned unchanged.
+
+    Raises ``AccountColumnError`` if ``{type}`` is not one of ``ACCOUNT_TYPES``.
     """
     account_keys: set[str] = set()
     direct: dict[str, Any] = {}
@@ -39,6 +47,10 @@ def expand_account_columns(row: dict[str, Any]) -> dict[str, Any]:
 
         account_type, field_name = match.groups()
         account_keys.add(key)
+        if account_type not in ACCOUNT_TYPES:
+            raise AccountColumnError(
+                f"Unknown account type {account_type!r} in column {key!r}. Valid types: {', '.join(ACCOUNT_TYPES)}"
+            )
         if not _present(value):
             continue
 

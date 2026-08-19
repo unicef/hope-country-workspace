@@ -1,4 +1,6 @@
-from country_workspace.utils.import_flow.account_columns import expand_account_columns
+import pytest
+
+from country_workspace.utils.import_flow.account_columns import AccountColumnError, expand_account_columns
 
 
 def test_no_account_columns_returns_unchanged() -> None:
@@ -113,7 +115,21 @@ def test_old_prefixed_format_passes_through() -> None:
     assert result == row
 
 
-def test_account_type_with_underscore() -> None:
-    row = {"account__mobile_money__number": "0777777777"}
+def test_cash_account_type_is_recognized() -> None:
+    row = {"account__cash__number": "0777777777"}
     result = expand_account_columns(row)
-    assert result == {"mobile_money_number": "0777777777"}
+    assert result == {"cash_number": "0777777777"}
+
+
+def test_unknown_account_type_raises() -> None:
+    # e.g. a typo of "mobile" -- should fail fast instead of silently
+    # becoming an alien "moblie_number" field.
+    row = {"account__moblie__number": "0788888888"}
+    with pytest.raises(AccountColumnError, match="Unknown account type 'moblie'"):
+        expand_account_columns(row)
+
+
+def test_unknown_account_type_error_lists_valid_types() -> None:
+    row = {"account__moblie__number": "0788888888"}
+    with pytest.raises(AccountColumnError, match="mobile, bank, cash"):
+        expand_account_columns(row)
