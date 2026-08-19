@@ -145,7 +145,7 @@ class BatchPictureImportForm(forms.Form):
 class CountryBatchAdminForm(forms.ModelForm):
     class Meta:
         model = CountryBatch
-        fields = ("name", "import_date", "imported_by", "source", "status")
+        fields = ("name", "imported_by", "source", "status")
         help_texts = {
             "related_jobs": _("Background jobs associated with this batch."),
         }
