@@ -111,6 +111,8 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
 
 def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config) -> Mapping[int, Household]:
     mapping = {}
+    file_name = normalize_file_name(job.file.name)
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
     household_mapping_id = config.get("household_mapping_id")
     transform_row = build_import_processor(
         program=job.program,
@@ -124,7 +126,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         job.ensure_not_cancelled(refresh=True)
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
-        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), household_key)
+        originating_id = get_xlsx_originating_id(file_name, household_key, epoch=epoch_ms)
         try:
             mapping[household_key] = cast(
                 "Household",
@@ -146,6 +148,8 @@ def process_beneficiaries(
     sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
 ) -> Mapping[int, Individual]:
     mapping = {}
+    file_name = normalize_file_name(job.file.name)
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
@@ -163,8 +167,7 @@ def process_beneficiaries(
         beneficiary_key = get_value(row, config["beneficiary_id_column"])
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
-        originating_id = get_xlsx_originating_id(normalize_file_name(job.file.name), beneficiary_key)
-
+        originating_id = get_xlsx_originating_id(file_name, beneficiary_key, epoch=epoch_ms)
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)

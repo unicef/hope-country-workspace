@@ -328,8 +328,8 @@ def test_validate_alien_fields_household_and_member_both_have_aliens() -> None:
 
 def test_get_originating_id() -> None:
     args = ["arg1", "arg2", "arg3"]
-    expected_output = "arg1#arg2#arg3"
-    output = get_originating_id(*args)
+    expected_output = "arg1#arg2#arg3#1234567890000"
+    output = get_originating_id(*args, epoch=1234567890000)
     assert output == expected_output
 
 
