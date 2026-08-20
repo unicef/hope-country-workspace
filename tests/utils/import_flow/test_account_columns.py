@@ -115,12 +115,6 @@ def test_old_prefixed_format_passes_through() -> None:
     assert result == row
 
 
-def test_cash_account_type_is_recognized() -> None:
-    row = {"account__cash__number": "0777777777"}
-    result = expand_account_columns(row)
-    assert result == {"cash_number": "0777777777"}
-
-
 def test_unknown_account_type_raises() -> None:
     # e.g. a typo of "mobile" -- should fail fast instead of silently
     # becoming an alien "moblie_number" field.
@@ -131,5 +125,12 @@ def test_unknown_account_type_raises() -> None:
 
 def test_unknown_account_type_error_lists_valid_types() -> None:
     row = {"account__moblie__number": "0788888888"}
-    with pytest.raises(AccountColumnError, match="mobile, bank, cash"):
+    with pytest.raises(AccountColumnError, match="mobile, bank"):
+        expand_account_columns(row)
+
+
+def test_removed_cash_account_type_raises() -> None:
+    # "cash" was removed on the HOPE side; it must not be treated as valid here.
+    row = {"account__cash__number": "0777777777"}
+    with pytest.raises(AccountColumnError, match="Unknown account type 'cash'"):
         expand_account_columns(row)
