@@ -2,11 +2,12 @@ from typing import Any, TYPE_CHECKING
 from contextlib import suppress
 from django.apps import apps
 from django.core.exceptions import ValidationError
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.forms import ModelChoiceField
 from django.urls import resolve, Resolver404
 from django_select2.forms import ModelSelect2Widget
 
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.context import get_batch
 from country_workspace.state import state
 
@@ -128,12 +129,37 @@ def _resolve_hh_batch_pks() -> tuple[int | None, int | None]:
     return row or (None, None)
 
 
+def _household_role_ref_pks(household_id: int) -> list[int]:
+    """PKs of individuals referenced by the household's role-reference flex fields."""
+    Household = apps.get_model("country_workspace", "Household")
+    flex_fields = Household.objects.filter(pk=household_id).values_list("flex_fields", flat=True).first() or {}
+    return [
+        int(value)
+        for field_name in HOUSEHOLD_ROLE_REF_FIELDS
+        if isinstance(value := flex_fields.get(field_name), int) or (isinstance(value, str) and value.isdigit())
+    ]
+
+
 def _get_individuals_queryset(batch_id: int | None, household_id: int | None = None) -> QuerySet["Individual"]:
-    """Get filtered Individual queryset for given batch_id and household_id."""
+    """Get filtered Individual queryset for given batch_id and household_id.
+
+    External collectors (relationship == NON_BENEFICIARY) are deduplicated program-wide and
+    keep household=NULL and the batch of their first import, so they are explicitly included:
+    program-wide when no household limit applies, and always when referenced by the given
+    household's role-reference flex fields.
+    """
     Individual = apps.get_model("country_workspace", "Individual")
     if batch_id is None:
         return Individual.objects.none()
-    qs = Individual.objects.filter(batch_id=batch_id, removed=False)
+    qs = Individual.objects.filter(removed=False)
     if household_id is not None:
-        return qs.filter(household_id=household_id).only("id", "name", "household_id")
-    return qs.only("id", "name")
+        role_refs = Q(pk__in=_household_role_ref_pks(household_id))
+        return qs.filter(Q(batch_id=batch_id, household_id=household_id) | role_refs).only("id", "name", "household_id")
+    program_id = (
+        apps.get_model("country_workspace", "Batch")
+        .objects.filter(pk=batch_id)
+        .values_list("program_id", flat=True)
+        .first()
+    )
+    collectors = Q(household__isnull=True, batch__program_id=program_id)
+    return qs.filter(Q(batch_id=batch_id) | collectors).only("id", "name")

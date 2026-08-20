@@ -12,6 +12,7 @@ from country_workspace.contrib.kobo.sync import (
     AlienFieldsError,
     build_individual_processor,
     Config,
+    ImportedIndividual,
     ImportResult,
     create_household,
     create_individuals,
@@ -37,6 +38,7 @@ from testutils.factories import (
     FlexFieldFactory,
     HouseholdFactory,
     IndividualFactory,
+    ProgramFactory,
     SyncLogFactory,
 )
 from testutils.factories.smart_fields import DataCheckerFieldsetFactory
@@ -161,6 +163,7 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     processor_result.get.return_value = "Full Name"
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
+    individual_class_mock.return_value.pk = None
 
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
@@ -171,19 +174,24 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
             ),
         ],
     }
-    originating_id = "KOB#1#1"
+    asset_uid = "asset-id"
     batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
     household_mock = mocker.MagicMock(name="household")
+    submission_mock = mocker.MagicMock(id=1)
+    submission_mock.get.side_effect = data.get
 
     individuals = create_individuals(
         batch_mock,
         household_mock,
-        cast("Submission", data),
+        cast("Submission", submission_mock),
         config,
-        originating_id,
+        asset_uid,
     )
 
-    assert individuals == [individual_class_mock.return_value for _ in data[INDIVIDUAL_RECORDS_FIELD]]
+    assert individuals == [
+        ImportedIndividual(individual=individual_class_mock.return_value, fields=processor_mock.return_value)
+    ]
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
     processor_mock.assert_called_once_with(individual_data)
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
@@ -191,11 +199,175 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         batch=batch_mock,
         raw_data=individual_data,
         flex_fields=processor_mock.return_value,
-        originating_id=f"{originating_id}#0001",
+        originating_id="KOB#asset-id#1#0001#1234567890123",
         household=household_mock,
         name=processor_result.get.return_value,
     )
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
+
+
+def test_create_individuals_routes_collectors_to_get_or_create(mocker: MockerFixture, config: Config) -> None:
+    collector_fields = {"full_name": "John Collector", "relationship": "NON_BENEFICIARY"}
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=mocker.MagicMock(return_value=collector_fields),
+    )
+    get_or_create_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_or_create_collector")
+    collector_mock = mocker.MagicMock(name="collector")
+    get_or_create_mock.return_value = (collector_mock, True)
+    batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    household_mock = mocker.MagicMock(name="household")
+    submission_mock = mocker.MagicMock(id=1)
+    submission_mock.get.return_value = [collector_fields]
+
+    individuals = create_individuals(
+        batch_mock,
+        household_mock,
+        cast("Submission", submission_mock),
+        config,
+        "asset-id",
+    )
+
+    assert individuals == [ImportedIndividual(individual=collector_mock, fields=collector_fields)]
+    get_or_create_mock.assert_called_once_with(
+        program=batch_mock.program,
+        batch=batch_mock,
+        individual_fields=collector_fields,
+        raw_data=collector_fields,
+        originating_id="KOB#asset-id#1#0001#1234567890123",
+        name="John Collector",
+    )
+    household_mock.program.individuals.bulk_create.assert_called_once_with([])
+
+
+@pytest.mark.django_db
+def test_create_individuals_deduplicates_collectors_across_households(mocker: MockerFixture, config: Config) -> None:
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=dict,
+    )
+    batch = BatchFactory()
+    household_one = HouseholdFactory(batch=batch, individuals=[])
+    household_two = HouseholdFactory(batch=BatchFactory(program=batch.program), individuals=[])
+    collector_record = {
+        "full_name": "John Collector",
+        "given_name": "John",
+        "family_name": "Collector",
+        "relationship": "NON_BENEFICIARY",
+        "role": "PRIMARY",
+    }
+    data = {INDIVIDUAL_RECORDS_FIELD: [collector_record]}
+    submission_one = mocker.MagicMock(id=1)
+    submission_one.get.side_effect = data.get
+    submission_two = mocker.MagicMock(id=2)
+    submission_two.get.side_effect = data.get
+
+    individuals_one = create_individuals(batch, household_one, submission_one, config, "asset-id")
+    individuals_two = create_individuals(household_two.batch, household_two, submission_two, config, "asset-id")
+
+    collector = individuals_one[0].individual
+    assert individuals_two[0].individual.pk == collector.pk
+    assert collector.household is None
+    assert collector.identity_hash
+    assert batch.program.individuals.count() == 1
+
+    set_roles_and_relationships(household_one, individuals_one)
+    set_roles_and_relationships(household_two, individuals_two)
+    household_one.refresh_from_db()
+    household_two.refresh_from_db()
+    assert household_one.flex_fields[HOUSEHOLD_ROLE_REF_FIELDS.primary_collector] == collector.pk
+    assert household_two.flex_fields[HOUSEHOLD_ROLE_REF_FIELDS.primary_collector] == collector.pk
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("first_role", "second_role", "first_field", "second_field"),
+    [
+        pytest.param(
+            "PRIMARY",
+            "ALTERNATE",
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+            id="primary then alternate",
+        ),
+        pytest.param(
+            "ALTERNATE",
+            "PRIMARY",
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            id="alternate then primary",
+        ),
+    ],
+)
+def test_create_individuals_uses_current_submission_role_for_reused_collectors(
+    mocker: MockerFixture,
+    config: Config,
+    first_role: str,
+    second_role: str,
+    first_field: str,
+    second_field: str,
+) -> None:
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=dict,
+    )
+    program = ProgramFactory()
+    household_one = HouseholdFactory(batch=BatchFactory(program=program), individuals=[])
+    household_two = HouseholdFactory(batch=BatchFactory(program=program), individuals=[])
+    base_record = {
+        "full_name": "John Collector",
+        "given_name": "John",
+        "family_name": "Collector",
+        "relationship": "NON_BENEFICIARY",
+    }
+
+    first_submission = mocker.MagicMock(id=1)
+    first_submission.get.return_value = [{**base_record, "role": first_role}]
+    second_submission = mocker.MagicMock(id=2)
+    second_submission.get.return_value = [{**base_record, "role": second_role}]
+
+    first = create_individuals(household_one.batch, household_one, first_submission, config, "asset-id")
+    second = create_individuals(household_two.batch, household_two, second_submission, config, "asset-id")
+
+    collector = first[0].individual
+    assert second[0].individual.pk == collector.pk
+    assert collector.flex_fields.get("role") == first_role
+
+    set_roles_and_relationships(household_one, first)
+    set_roles_and_relationships(household_two, second)
+    household_one.refresh_from_db()
+    household_two.refresh_from_db()
+
+    assert household_one.flex_fields[first_field] == collector.pk
+    assert household_two.flex_fields[second_field] == collector.pk
+    assert household_two.flex_fields.get(first_field) != collector.pk
+
+
+@pytest.mark.django_db
+def test_create_individuals_keeps_members_and_deduplicates_collectors(mocker: MockerFixture, config: Config) -> None:
+    mocker.patch(
+        "country_workspace.contrib.kobo.sync.build_individual_processor",
+        return_value=dict,
+    )
+    batch = BatchFactory()
+    household = HouseholdFactory(batch=batch, individuals=[])
+    data = {
+        INDIVIDUAL_RECORDS_FIELD: [
+            {"full_name": "Member One", "relationship": "HEAD"},
+            {"full_name": "John Collector", "relationship": "NON_BENEFICIARY", "role": "PRIMARY"},
+        ]
+    }
+
+    submission_mock = mocker.MagicMock(id=1)
+    submission_mock.get.side_effect = data.get
+    individuals = create_individuals(batch, household, submission_mock, config, "asset-id")
+
+    member, collector = individuals[0].individual, individuals[1].individual
+    assert member.household == household
+    assert member.identity_hash is None
+    assert collector.household is None
+    assert batch.program.individuals.count() == 2
 
 
 def test_create_household(mocker: MockerFixture, config: Config) -> None:
@@ -242,14 +414,10 @@ def test_create_individuals_passes_mapping_id(mocker: MockerFixture, config: Con
 
     config_with_mapping = {**config, "individual_mapping_id": 99}
     batch_mock = mocker.MagicMock()
+    submission_mock = mocker.MagicMock(id=1)
+    submission_mock.get.return_value = [{}]
 
-    create_individuals(
-        batch_mock,
-        mocker.MagicMock(),
-        cast("Submission", {INDIVIDUAL_RECORDS_FIELD: [{}]}),
-        config_with_mapping,
-        "orig",
-    )
+    create_individuals(batch_mock, mocker.MagicMock(), submission_mock, config_with_mapping, "asset-id")
 
     build_processor_mock.assert_called_once_with(batch_mock.program, 99)
 
@@ -308,8 +476,15 @@ def test_import_asset(mocker: MockerFixture, config: Config, submission) -> None
 
     assert result == ImportResult(households=2, individuals=len(individual_mocks) * 2, completed=True)
     asset_mock.submissions.assert_called_once_with(min_id=100)
-    assert create_household_mock.call_count == 2
-    assert create_individuals_mock.call_count == 2
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
+    assert create_household_mock.call_args_list == [
+        mocker.call(batch, submission_1, config, id_generator_mock, f"KOB#test_asset_uid#101#{epoch_ms}"),
+        mocker.call(batch, submission_2, config, id_generator_mock, f"KOB#test_asset_uid#102#{epoch_ms}"),
+    ]
+    assert create_individuals_mock.call_args_list == [
+        mocker.call(batch, create_household_mock.return_value, submission_1, config, "test_asset_uid", job=None),
+        mocker.call(batch, create_household_mock.return_value, submission_2, config, "test_asset_uid", job=None),
+    ]
     assert set_roles_and_relationships_mock.call_count == 2
 
     sync_log.refresh_from_db()
@@ -373,8 +548,8 @@ def test_import_asset_on_error_persists_previous_data(
     def create_household_real(batch, submission, config, id_generator, originating_id):
         return HouseholdFactory(batch=batch, individuals=[])
 
-    def create_individuals_real(batch, household, submission, config, originating_id, job=None):
-        return [IndividualFactory(batch=batch, household=household)]
+    def create_individuals_real(batch, household, submission, config, asset_uid, job=None):
+        return [ImportedIndividual(individual=IndividualFactory(batch=batch, household=household), fields={})]
 
     mocker.patch(
         "country_workspace.contrib.kobo.sync.create_household",
@@ -715,7 +890,7 @@ def test_create_individuals_checks_cancellation_per_individual(mocker: MockerFix
     submission = {config["individual_records_field"]: [{"some_field": "value"}]}
 
     with pytest.raises(GracefulJobCancellationError):
-        create_individuals(batch, household, submission, config, "originating_id", job=job)
+        create_individuals(batch, household, submission, config, "asset-id", job=job)
 
     job.ensure_not_cancelled.assert_called_once_with(refresh=True)
 
@@ -730,31 +905,33 @@ def test_create_individuals_with_job_checks_cancellation_and_continues(
         return_value="full_name",
     )
     individual_class_mock = mocker.patch("country_workspace.contrib.kobo.sync.Individual")
+    individual_class_mock.return_value.pk = None
     build_processor_mock.return_value = mocker.MagicMock(side_effect=[{"full_name": "Name 1"}, {"full_name": "Name 2"}])
 
     job = mocker.MagicMock()
-    submission = {
-        config["individual_records_field"]: [
-            {"full_name": "Name 1"},
-            {"full_name": "Name 2"},
-        ]
-    }
+    submission = mocker.MagicMock(id=1)
+    submission.get.return_value = [{"full_name": "Name 1"}, {"full_name": "Name 2"}]
     household_mock = mocker.MagicMock(name="household")
 
     individuals = create_individuals(
         mocker.MagicMock(name="batch"),
         household_mock,
-        cast("Submission", submission),
+        submission,
         config,
-        "originating_id",
+        "asset-id",
         job=job,
     )
 
-    assert individuals == [individual_class_mock.return_value, individual_class_mock.return_value]
+    assert [item.individual for item in individuals] == [
+        individual_class_mock.return_value,
+        individual_class_mock.return_value,
+    ]
     assert job.ensure_not_cancelled.call_count == 2
     assert build_processor_mock.call_count == 2
     assert get_fullname_key_mock.call_count == 2
-    household_mock.program.individuals.bulk_create.assert_called_once_with(individuals)
+    household_mock.program.individuals.bulk_create.assert_called_once_with(
+        [individual_class_mock.return_value, individual_class_mock.return_value]
+    )
 
 
 def test_get_fullname_key_key_exists() -> None:
@@ -830,9 +1007,12 @@ def test_set_roles_and_relationships(
     household_mock = mocker.MagicMock()
     household_mock.flex_fields = {}
     individual_mock = mocker.MagicMock()
-    individual_mock.flex_fields = individual_flex_fields
+    individual_mock.flex_fields = {}
 
-    set_roles_and_relationships(household_mock, [individual_mock])
+    set_roles_and_relationships(
+        household_mock,
+        [ImportedIndividual(individual=individual_mock, fields=individual_flex_fields)],
+    )
 
     assert household_mock.flex_fields[field_name] == individual_mock.id
     household_mock.save.assert_called_once_with(update_fields=["flex_fields"])

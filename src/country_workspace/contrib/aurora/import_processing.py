@@ -160,16 +160,16 @@ def import_result(
         current_id = int(pk_value)
         if current_id <= last_id:
             return ImportResult(people=0)
+
         with transaction.atomic():
             record = prepare_record(result, private_key)
-            originating_id = get_aurora_originating_id(record["pk"])
             if config.get("master_detail"):
-                created_households, created_individuals = create_household_and_individuals(
-                    batch, record, config, originating_id
-                )
+                created_households, created_individuals = create_household_and_individuals(batch, record, config)
                 household_counter += created_households
                 people_counter += created_individuals
             else:
+                epoch_ms = int(batch.import_date.timestamp() * 1000)
+                originating_id = get_aurora_originating_id(record["pk"], epoch=epoch_ms)
                 create_individual(batch, record, config, originating_id)
                 people_counter += 1
             last_successful_id = current_id
@@ -231,7 +231,9 @@ def create_household(batch: Batch, record: Mapping[str, Any], config: Config, or
 
 
 def create_household_and_individuals(
-    batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str
+    batch: Batch,
+    record: Mapping[str, Any],
+    config: Config,
 ) -> tuple[int, int]:
     fields = record.get("fields", {})
     household_candidates = ("household", "household-info", "household_info")
@@ -259,8 +261,15 @@ def create_household_and_individuals(
     shared_fields = {k: v for k, v in fields.items() if k not in group_keys and k is not None}
     household_raw = households_data[0] if households_data else {}
     household_fields = {**shared_fields, **household_raw}
+    record_pk = record["pk"]
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
 
-    household = create_household(batch, household_fields, config, f"{originating_id}#HH0")
+    household = create_household(
+        batch,
+        household_fields,
+        config,
+        get_aurora_originating_id(record_pk, "HH0", epoch=epoch_ms),
+    )
     people_counter = 0
     for idx, individual_raw in enumerate(individuals_data):
         try:
@@ -269,12 +278,12 @@ def create_household_and_individuals(
                 batch,
                 individual_fields,
                 config,
-                f"{originating_id}#IND{idx}",
+                get_aurora_originating_id(record_pk, f"IND{idx}", epoch=epoch_ms),
                 household=household,
             )
             people_counter += 1
         except Exception as exc:
-            raise ImportError(f"Failed to create Aurora individual #{idx} for record {originating_id}") from exc
+            raise ImportError(f"Failed to create Aurora individual #{idx} for record {record_pk}") from exc
 
     return 1, people_counter
 

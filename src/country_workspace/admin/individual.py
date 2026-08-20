@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import LinkedAutoCompleteFilter, AutoCompleteFilter
+from django import forms
 from django.contrib import admin, messages
 from django.urls import reverse
 from django.utils.translation import gettext as _
@@ -9,6 +10,7 @@ from django.http import HttpRequest, HttpResponse
 
 from ..models import Individual
 from ..utils.imports import validate_alien_fields
+from ..utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .actions import reprocess_records
 from .base import BaseModelAdmin
 from .filters import IsValidFilter
@@ -35,6 +37,30 @@ class IndividualAdmin(BaseModelAdmin):
         "household",
     )
     readonly_fields = ("originating_id",)
+
+    def get_form(
+        self,
+        request: HttpRequest,
+        obj: Individual | None = None,
+        change: bool = False,
+        **kwargs: Any,
+    ) -> type[forms.ModelForm]:
+        form_class = super().get_form(request, obj, change, **kwargs)
+
+        class IndividualAdminForm(form_class):
+            def clean(self) -> dict[str, Any]:
+                cleaned_data = super().clean()
+                if not self.instance.pk:
+                    return cleaned_data
+                locked = find_locked_field_changes(
+                    self.instance.flex_fields or {},
+                    cleaned_data.get("flex_fields") or {},
+                )
+                if locked:
+                    raise forms.ValidationError(STRUCTURAL_FIELD_LOCK_ERROR % {"fields": ", ".join(locked)})
+                return cleaned_data
+
+        return IndividualAdminForm
 
     @link(change_list=True, change_form=False)
     def view_in_workspace(self, btn: "LinkButton") -> None:

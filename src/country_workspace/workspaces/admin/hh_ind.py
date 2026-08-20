@@ -20,8 +20,9 @@ from ._import_data import ImportDataMixin
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from ..permissions import can_import_program_data
-from ...models import Batch
+from ...models import Batch, Individual
 from ...utils.imports import validate_alien_fields
+from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import Base64ImageField, get_checker_fields
@@ -301,13 +302,9 @@ class BeneficiaryBaseAdmin(
             if obj:
                 form: "FlexForm" = form_class(request.POST, request.FILES, prefix="flex_field", initial=initials)
                 form_valid = form.is_valid()
-                if form_valid or "_save_invalid" in request.POST:
-                    obj.flex_fields = form.cleaned_data
-                    self.save_model(request, obj, form, True)
-                    if form_valid:
-                        self.message_user(request, _("Record saved!"), messages.SUCCESS)
-                    else:
-                        self.message_user(request, _("Record saved but not validated"), messages.WARNING)
+                if (form_valid or "_save_invalid" in request.POST) and self._save_flex_fields(
+                    request, obj, form, form_valid
+                ):
                     return HttpResponseRedirect(request.META["HTTP_REFERER"])
                 self.message_user(request, "Please fixes the errors below", messages.ERROR)
         else:
@@ -322,6 +319,22 @@ class BeneficiaryBaseAdmin(
         context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
 
         return TemplateResponse(request, self.change_form_template, context)
+
+    def _save_flex_fields(self, request: HttpRequest, obj: "Beneficiary", form: "FlexForm", form_valid: bool) -> bool:
+        locked = (
+            find_locked_field_changes(obj.flex_fields or {}, form.cleaned_data) if isinstance(obj, Individual) else {}
+        )
+        if locked:
+            form.add_error(None, STRUCTURAL_FIELD_LOCK_ERROR % {"fields": ", ".join(locked)})
+            return False
+
+        obj.flex_fields = form.cleaned_data
+        self.save_model(request, obj, form, True)
+        if form_valid:
+            self.message_user(request, _("Record saved!"), messages.SUCCESS)
+        else:
+            self.message_user(request, _("Record saved but not validated"), messages.WARNING)
+        return True
 
     @staticmethod
     def _get_ordered_fields(dc: "DataChecker", form: "FlexForm") -> dict:

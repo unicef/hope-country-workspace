@@ -141,6 +141,32 @@ def test_widget_get_queryset_with_batch_filter(batch: Batch, individual: Individ
 
 
 @pytest.mark.django_db
+def test_widget_get_queryset_includes_program_wide_external_collectors(
+    office: Office, program: Program, batch: Batch, individual: Individual
+) -> None:
+    from testutils.factories import BatchFactory, CountryProgramFactory, IndividualFactory
+
+    collector = IndividualFactory(household=None, batch=BatchFactory(program=program), removed=False)
+    other_program = CountryProgramFactory(country_office=office)
+    foreign = IndividualFactory(household=None, batch=BatchFactory(program=other_program), removed=False)
+
+    qs = BeneficiarySelect2Widget(batch_id=batch.id).get_queryset()
+
+    assert individual in qs
+    assert collector in qs
+    assert foreign not in qs
+
+
+@pytest.mark.django_db
+def test_widget_get_queryset_excludes_removed_external_collectors(program: Program, batch: Batch) -> None:
+    from testutils.factories import BatchFactory, IndividualFactory
+
+    removed_collector = IndividualFactory(household=None, batch=BatchFactory(program=program), removed=True)
+
+    assert removed_collector not in BeneficiarySelect2Widget(batch_id=batch.id).get_queryset()
+
+
+@pytest.mark.django_db
 def test_widget_value_from_datadict_resolves_household_code_to_pk(mocker: MockerFixture, batch: Batch) -> None:
     apps = MagicMock()
     # apps.get_model(...).objects.filter(...).values_list(...).first() -> 777
@@ -180,6 +206,22 @@ def test_field_init_with_household_limit(mocker: MockerFixture, batch: Batch, ho
 
     assert field.queryset.exists()
     assert all(getattr(ind, "household_id", None) == household.id for ind in field.queryset)
+
+
+@pytest.mark.django_db
+def test_field_init_with_household_limit_includes_referenced_external_collector(
+    mocker: MockerFixture, program: Program, batch: Batch, household: Household
+) -> None:
+    from testutils.factories import BatchFactory, IndividualFactory
+
+    collector = IndividualFactory(household=None, batch=BatchFactory(program=program), removed=False)
+    household.flex_fields["primary_collector_id"] = collector.pk
+    household.save(update_fields=["flex_fields"])
+    mocker.patch(f"{MOD}._resolve_hh_batch_pks", return_value=(household.id, batch.id))
+
+    field = BeneficiaryReferenceModelChoiceField(limit_to_household=True)
+
+    assert collector in field.queryset
 
 
 @pytest.mark.django_db

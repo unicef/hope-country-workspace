@@ -1,5 +1,6 @@
 import re
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
 from urllib.parse import urlparse
 from constance import config as constance_config
@@ -20,10 +21,20 @@ from country_workspace.contrib.kobo.api.common import DataGetter
 from country_workspace.contrib.kobo.api.data.asset import Asset
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
+from country_workspace.models.household import (
+    RELATIONSHIP_HEAD,
+    RELATIONSHIP_NON_BENEFICIARY,
+    ROLE_ALTERNATE,
+    ROLE_PRIMARY,
+)
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.import_flow import (
+    build_import_processor,
+    get_or_create_collector,
+    run_batch_postprocessing,
+)
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -157,16 +168,26 @@ def get_fullname_key(individual: Iterable[str]) -> str | None:
     return next((key for key in individual if key.startswith("full_name")), None)
 
 
+@dataclass(frozen=True)
+class ImportedIndividual:
+    """An individual record paired with its occurrence-specific processed fields."""
+
+    individual: Individual
+    fields: dict[str, Any]
+    created: bool = True
+
+
 def create_individuals(  # noqa: PLR0913
     batch: Batch,
     household: Household,
     submission: Submission,
     config: Config,
-    originating_id: str,
+    asset_uid: str,
     job: AsyncJob | None = None,
-) -> list[Individual]:
-    individuals = []
+) -> list[ImportedIndividual]:
+    individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
@@ -175,17 +196,31 @@ def create_individuals(  # noqa: PLR0913
             individual_mapping_id,
         )(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
-        individuals.append(
-            Individual(
+        name = individual_fields.get(fullname, "") if fullname else ""
+        ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
+        if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
+            # External collectors are deduplicated program-wide: the first
+            # occurrence is reused, linked to households only via role refs.
+            individual, created = get_or_create_collector(
+                program=batch.program,
+                batch=batch,
+                individual_fields=individual_fields,
+                raw_data=raw_individual,
+                originating_id=ind_originating_id,
+                name=name,
+            )
+            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields, created=created))
+        else:
+            individual = Individual(
                 batch=batch,
                 household=household,
-                name=individual_fields.get(fullname, "") if fullname else "",
-                originating_id=f"{originating_id}#{idx:04d}",
+                name=name,
+                originating_id=ind_originating_id,
                 flex_fields=individual_fields,
                 raw_data=raw_individual,
-            ),
-        )
-    household.program.individuals.bulk_create(individuals)
+            )
+            individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
+    household.program.individuals.bulk_create([item.individual for item in individuals if item.individual.pk is None])
     return individuals
 
 
@@ -220,25 +255,25 @@ class ImportResult(TypedDict):
     completed: bool
 
 
-def _is_primary_collector(individual: Individual) -> bool:
-    return individual.flex_fields.get("role") == "PRIMARY"
+def _is_primary_collector(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("role") == ROLE_PRIMARY
 
 
-def _is_alternate_collector(individual: Individual) -> bool:
-    return individual.flex_fields.get("role") == "ALTERNATE"
+def _is_alternate_collector(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("role") == ROLE_ALTERNATE
 
 
-def _is_head_of_household(individual: Individual) -> bool:
-    return individual.flex_fields.get("relationship") == "HEAD"
+def _is_head_of_household(imported: ImportedIndividual) -> bool:
+    return imported.fields.get("relationship") == RELATIONSHIP_HEAD
 
 
-def set_roles_and_relationships(household: Household, individuals: list[Individual]) -> None:
+def set_roles_and_relationships(household: Household, individuals: list[ImportedIndividual]) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
-    if primary_collector := next(filter(_is_primary_collector, individuals), None):
+    if primary_collector := next((item.individual for item in individuals if _is_primary_collector(item)), None):
         household.flex_fields[fields.primary_collector] = primary_collector.id
-    if alternate_collector := next(filter(_is_alternate_collector, individuals), None):
+    if alternate_collector := next((item.individual for item in individuals if _is_alternate_collector(item)), None):
         household.flex_fields[fields.alternate_collector] = alternate_collector.id
-    if head_of_household := next(filter(_is_head_of_household, individuals), None):
+    if head_of_household := next((item.individual for item in individuals if _is_head_of_household(item)), None):
         household.flex_fields[fields.head_of_household] = head_of_household.id
     household.save(update_fields=["flex_fields"])
 
@@ -323,6 +358,7 @@ def import_asset(  # noqa: PLR0913
 
     start_time = timezone.now()
     time_exhausted = False
+    epoch_ms = int(batch.import_date.timestamp() * 1000)
 
     submissions_iterator = asset.submissions(min_id=last_id)
 
@@ -331,16 +367,16 @@ def import_asset(  # noqa: PLR0913
             if job:
                 job.ensure_not_cancelled(refresh=True)
             current_submission = submission
-            originating_id = get_kobo_originating_id(asset.uid, str(submission.id))
+            originating_id = get_kobo_originating_id(asset.uid, submission.id, epoch=epoch_ms)
             # One transaction per submission: if this block fails, only this
             # submission is rolled back; previously committed data stays.
             with transaction.atomic():
                 household = create_household(batch, submission, config, id_generator, originating_id)
-                individuals = create_individuals(batch, household, submission, config, originating_id, job=job)
+                individuals = create_individuals(batch, household, submission, config, asset.uid, job=job)
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1
-                individual_counter += len(individuals)
+                individual_counter += sum(1 for item in individuals if item.created)
 
             last_successful_id = submission.id
             if timebox_seconds is not None:
