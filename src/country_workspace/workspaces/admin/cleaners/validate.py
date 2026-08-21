@@ -155,10 +155,18 @@ def _validate_and_count(objs: Iterable[Model]) -> tuple[int, int]:
     return valid, invalid
 
 
+def _single_batch_id(queryset: QuerySet) -> int | None:
+    batch_ids = list(queryset.order_by().values_list("batch_id", flat=True).distinct()[:2])
+    if len(batch_ids) == 1:
+        return batch_ids[0]
+    return None
+
+
 def create_validation_jobs(
     description: str, owner: str, program: Program, queryset: QuerySet, *, validation_scope: str = "program"
 ) -> None:
     opts = queryset.model._meta
+    batch_id = _single_batch_id(queryset)
     queryset = queryset.order_by("pk").values_list("pk", flat=True)
     chunk_size = config.CHUNK_SIZE_FOR_VALIDATION_TASK
     total_records = queryset.count()
@@ -174,6 +182,7 @@ def create_validation_jobs(
             owner=owner,
             action=fqn(validate_queryset),
             program=program,
+            batch_id=batch_id,
             config={
                 "pks": chunk,
                 "model_name": opts.label,

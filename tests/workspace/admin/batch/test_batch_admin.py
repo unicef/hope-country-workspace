@@ -374,7 +374,7 @@ def test_batch_admin_get_queryset_filters_program_and_office(batch_admin, rf: Re
     result = batch_admin.get_queryset(request)
 
     assert result is filtered_qs
-    qs.select_related.assert_called_once_with("program", "country_office")
+    qs.select_related.assert_called_once_with("program__beneficiary_group", "country_office", "imported_by")
     related_qs.filter.assert_called_once_with(country_office=tenant, program=program)
 
 
@@ -384,6 +384,28 @@ def test_batch_admin_permissions_are_disabled(batch_admin, rf: RequestFactory, u
 
     assert batch_admin.has_add_permission(request) is False
     assert batch_admin.has_delete_permission(request) is False
+
+
+def test_batch_admin_fields_include_related_jobs(batch_admin) -> None:
+    expected = ("name", "import_date", "imported_by", "source", "status", "related_jobs")
+    assert batch_admin.fields == expected
+    assert batch_admin.readonly_fields == expected
+    assert batch_admin.form.Meta.help_texts["related_jobs"]
+
+
+def test_related_jobs(batch_admin, batch: CountryBatch, mocker) -> None:
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+    from testutils.factories import AsyncJobFactory
+
+    assert batch_admin.related_jobs(batch) == "-"
+
+    job = AsyncJobFactory(batch=batch, program=batch.program)
+    mocker.patch.object(batch_admin_module, "reverse", return_value="/job-url")
+
+    result = str(batch_admin.related_jobs(batch))
+
+    assert "/job-url" in result
+    assert str(job) in result
 
 
 def test_batch_admin_picture_payload_helpers(batch_admin, batch: CountryBatch, rf: RequestFactory, user) -> None:
@@ -1128,18 +1150,30 @@ def test_imported_records_button_visibility(
     assert f"batch__exact={batch.pk}" in button.href
 
 
-def test_imported_individuals_button_uses_member_label(batch_admin, batch: CountryBatch) -> None:
+def test_imported_individuals_button_uses_member_label_plural(batch_admin, batch: CountryBatch) -> None:
     from testutils.factories.program import BeneficiaryGroupFactory
 
-    batch.program.beneficiary_group = BeneficiaryGroupFactory(member_label="Member")
+    batch.program.beneficiary_group = BeneficiaryGroupFactory(member_label="Member", member_label_plural="Members")
+    batch.program.save(update_fields=["beneficiary_group"])
+
+    button = batch_admin.imported_individuals.get_button({"original": batch})
+    batch_admin.imported_individuals.func(batch_admin, button)
+
+    assert button.label == "Members"
+    assert button.visible is True
+    assert f"batch__exact={batch.pk}" in button.href
+
+
+def test_imported_individuals_button_falls_back_to_member_label(batch_admin, batch: CountryBatch) -> None:
+    from testutils.factories.program import BeneficiaryGroupFactory
+
+    batch.program.beneficiary_group = BeneficiaryGroupFactory(member_label="Member", member_label_plural="")
     batch.program.save(update_fields=["beneficiary_group"])
 
     button = batch_admin.imported_individuals.get_button({"original": batch})
     batch_admin.imported_individuals.func(batch_admin, button)
 
     assert button.label == "Member"
-    assert button.visible is True
-    assert f"batch__exact={batch.pk}" in button.href
 
 
 def test_imported_buttons_keep_defaults_without_beneficiary_group(batch_admin, batch: CountryBatch) -> None:
