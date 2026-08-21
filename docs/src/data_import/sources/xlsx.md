@@ -62,6 +62,8 @@ Some beneficiary data is represented by repeating groups of related fields. For 
 
 Workbook columns must produce the field names expected by the Program's Individual DataChecker after any Mapping Importer is applied, including the configured Fieldset prefixes. See **[Fieldsets](../../data_validation/datachecker_configuration.md#fieldset)** and **[Prefixes](../../data_validation/datachecker_configuration.md#prefixes)** for details.
 
+Workbook columns can also use the HOPE Core account naming convention, such as `account__mobile__number` or `account__bank__financial_institution_pk`. Country Workspace automatically converts these `account__{type}__{field}` columns into the fields expected by the **HOPE Account** Fieldset (e.g. `mobile_number`), without requiring a Mapping Importer or Program default field. See **[Repeating fieldsets](kobo.md#repeating-fieldsets)** for details.
+
 ## Start an RDI import
 
 1. Select the required **Office** and **[Program](../../program.md)**.

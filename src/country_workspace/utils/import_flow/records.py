@@ -6,6 +6,7 @@ from constance import config as constance_config
 
 from country_workspace.models import Batch, Household, Individual, Program
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS, clean_field_names
+from .account_columns import expand_account_columns
 from .document_columns import expand_document_columns
 
 Processor = Callable[[dict[str, Any]], dict[str, Any]]
@@ -77,6 +78,7 @@ def process_import_record(  # noqa: PLR0913
         data = program.apply_mapping_importer(model, data, mapping_id=mapping_id)
 
     data = expand_document_columns(data)
+    data = expand_account_columns(data)
 
     for processor in post_processors or ():
         data = processor(data)
