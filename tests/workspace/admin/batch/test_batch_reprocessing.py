@@ -189,12 +189,17 @@ def test_apply_import_processor_updates_record_and_preserves_generated_fields(mo
 def test_apply_import_processor_recomputes_collector_identity_hash(mocker) -> None:
     flex_fields = {"relationship": "NON_BENEFICIARY", "given_name": "John", "birth_date": "1990-01-01"}
     record = mocker.MagicMock(spec=Individual, raw_data={"external": "value"}, flex_fields=dict(flex_fields))
+    record.apply_flex_payload.side_effect = lambda payload, preserve_existing_files=False: (
+        setattr(record, "flex_fields", dict(payload)) or {"flex_fields"}
+    )
     processor = mocker.MagicMock(return_value={**flex_fields, "phone_no": "123"})
 
     assert _apply_import_processor(record, processor) is True
 
     assert record.identity_hash == compute_collector_hash({**flex_fields, "phone_no": "123"})
-    record.save.assert_called_once_with(update_fields=["flex_fields", "last_checked", "errors", "identity_hash"])
+    record.save.assert_called_once()
+    update_fields = record.save.call_args.kwargs["update_fields"]
+    assert set(update_fields) == {"flex_fields", "last_checked", "errors", "identity_hash"}
 
 
 def test_apply_import_processor_blocks_structural_changes_for_external_collector(mocker) -> None:
@@ -202,6 +207,9 @@ def test_apply_import_processor_blocks_structural_changes_for_external_collector
         spec=Individual,
         raw_data={"external": "value"},
         flex_fields={"relationship": "NON_BENEFICIARY", "role": "PRIMARY", "given_name": "John"},
+    )
+    record.apply_flex_payload.side_effect = lambda payload, preserve_existing_files=False: (
+        setattr(record, "flex_fields", dict(payload)) or {"flex_fields"}
     )
     processor = mocker.MagicMock(
         return_value={"relationship": "HEAD", "role": "ALTERNATE", "given_name": "John", "phone_no": "1"}
@@ -222,6 +230,9 @@ def test_apply_import_processor_blocks_member_to_external_collector(mocker) -> N
         spec=Individual,
         raw_data={"external": "value"},
         flex_fields={"relationship": "HEAD", "role": "PRIMARY"},
+    )
+    record.apply_flex_payload.side_effect = lambda payload, preserve_existing_files=False: (
+        setattr(record, "flex_fields", dict(payload)) or {"flex_fields"}
     )
     processor = mocker.MagicMock(return_value={"relationship": "NON_BENEFICIARY", "role": "PRIMARY", "given_name": "A"})
 
