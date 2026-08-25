@@ -131,8 +131,16 @@ class Validable(Cachable, models.Model):
             self.flex_fields = dict(payload)
             return {"flex_fields"}
 
+        file_field_names = set(self.checker.get_file_field_names())
         text_fields, new_file_values = split_flex_payload(self.checker, payload)
         file_values = self.get_flex_files_map() if preserve_existing_files else {}
+        # Keep only currently configured file fields and drop stale legacy keys.
+        file_values = {key: value for key, value in file_values.items() if key in file_field_names}
+        raw_file_values = dict(self.checker.split_data(payload).get("files", {}))
+        # Explicit empty values mean "clear this file field".
+        for key, value in raw_file_values.items():
+            if key in file_field_names and (value is None or (isinstance(value, str) and not value.strip())):
+                file_values.pop(key, None)
         file_values.update(new_file_values)
         self.flex_fields = text_fields
         self.flex_files = encode_flex_files_blob(file_values)
@@ -152,9 +160,15 @@ class Validable(Cachable, models.Model):
         if self.checker is None:
             return update_fields
 
+        file_field_names = set(self.checker.get_file_field_names())
         text_fields, new_file_values = split_flex_payload(self.checker, self.flex_fields or {})
         existing_file_values = self.get_flex_files_map()
-        file_values = dict(existing_file_values)
+        # Keep only file values for fields that are still file-typed.
+        file_values = {key: value for key, value in existing_file_values.items() if key in file_field_names}
+        raw_file_values = dict(self.checker.split_data(self.flex_fields or {}).get("files", {}))
+        for key, value in raw_file_values.items():
+            if key in file_field_names and (value is None or (isinstance(value, str) and not value.strip())):
+                file_values.pop(key, None)
         file_values.update(new_file_values)
 
         next_blob = encode_flex_files_blob(file_values)

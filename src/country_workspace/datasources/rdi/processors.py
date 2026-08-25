@@ -135,7 +135,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
-                    batch_id=batch.pk,
+                    batch=batch,
                     name=str(get_value(row, config["household_label"])),
                     originating_id=originating_id,
                     flex_fields=text_fields,
@@ -184,7 +184,7 @@ def process_beneficiaries(
             mapping[beneficiary_key] = cast(
                 "Individual",
                 Individual.objects.create(
-                    batch_id=batch.pk,
+                    batch=batch,
                     name=name,
                     household=household,
                     originating_id=originating_id,

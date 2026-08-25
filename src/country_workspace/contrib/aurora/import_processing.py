@@ -226,7 +226,7 @@ def create_individual(
     )
     extras.setdefault("household", None)
     return Individual.objects.create(
-        batch_id=batch.pk,
+        batch=batch,
         name="",
         originating_id=originating_id,
         flex_fields=text_fields,
@@ -253,7 +253,7 @@ def create_household(
         transformed,
     )
     return Household.objects.create(
-        batch_id=batch.pk,
+        batch=batch,
         name="",
         originating_id=originating_id,
         flex_fields=text_fields,

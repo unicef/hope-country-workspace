@@ -270,7 +270,7 @@ def test_process_households(
     mock_create.assert_has_calls(
         [
             mocker.call(
-                batch_id=batch.pk,
+                batch=batch,
                 name=str(row[config["household_label"]]),
                 flex_fields={"processed": "value"},
                 flex_files=None,
@@ -346,7 +346,7 @@ def test_process_beneficiaries_with_households(
     mock_create.assert_has_calls(
         [
             mocker.call(
-                batch_id=batch_mock.pk,
+                batch=batch_mock,
                 name=row[FULL_NAME_COLUMN],
                 household=household_mapping[row[config["household_id_column"]]],
                 flex_fields={"processed": "value"},
@@ -404,7 +404,7 @@ def test_process_beneficiaries_people_only(
         cleaned_row = {k.removeprefix(prefix): v for k, v in row.items()}
         expected_calls.append(
             mocker.call(
-                batch_id=batch_mock.pk,
+                batch=batch_mock,
                 name=cleaned_row[FULL_NAME_COLUMN],
                 household=None,
                 flex_fields={"processed": "value"},

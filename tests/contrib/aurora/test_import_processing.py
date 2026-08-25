@@ -641,7 +641,7 @@ def test_create_individual_creates_record(
     build_processor.assert_called_once_with(batch.program, mapping_id=None)
     processor.assert_called_once_with(expected_row)
     create_individual_mock.assert_called_once_with(
-        batch_id=5,
+        batch=batch,
         name="",
         household=household,
         originating_id=originating_id,

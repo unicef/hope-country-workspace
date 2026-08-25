@@ -183,7 +183,7 @@ def test_apply_flex_payload_without_checker_keeps_payload_in_flex_fields() -> No
 
 
 @pytest.mark.django_db
-def test_apply_flex_payload_preserves_existing_files_by_default() -> None:
+def test_apply_flex_payload_preserves_only_current_file_fields_by_default() -> None:
     from testutils.factories import (
         CountryBatchFactory,
         CountryHouseholdFactory,
@@ -203,8 +203,32 @@ def test_apply_flex_payload_preserves_existing_files_by_default() -> None:
 
     assert updated == {"flex_fields", "flex_files"}
     files = decode_flex_files_blob(individual.flex_files)
-    assert "legacy_photo" in files
+    assert "legacy_photo" not in files
     assert individual.get_flex_value("photo") == "data:image/png;base64,AAAA"
+
+
+@pytest.mark.django_db
+def test_apply_flex_payload_explicit_empty_file_clears_existing_value() -> None:
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        CountryProgramFactory,
+        DataCheckerFactory,
+    )
+
+    checker = DataCheckerFactory(fields=[("photo", Base64ImageField), ("full_name", forms.CharField)])
+    program = CountryProgramFactory(individual_checker=checker)
+    batch = CountryBatchFactory(program=program, country_office=program.country_office)
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(batch=batch, household=household, flex_fields={"full_name": "Jane Doe"})
+    individual.flex_files = encode_flex_files_blob({"photo": "data:image/png;base64,ZZZ"})
+
+    individual.apply_flex_payload({"full_name": "John Doe", "photo": ""})
+
+    files = decode_flex_files_blob(individual.flex_files)
+    assert "photo" not in files
+    assert individual.get_flex_value("photo") is None
 
 
 @pytest.mark.django_db
@@ -299,3 +323,25 @@ def test_get_flex_value_returns_default_when_missing() -> None:
     individual = CountryIndividualFactory(batch=batch, household=household, flex_fields={"full_name": "Jane Doe"})
 
     assert individual.get_flex_value("unknown", "fallback") == "fallback"
+
+
+@pytest.mark.django_db
+def test_merge_prefers_text_value_when_stale_file_entry_exists() -> None:
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        CountryProgramFactory,
+    )
+
+    program = CountryProgramFactory(individual_checker=None)
+    batch = CountryBatchFactory(program=program, country_office=program.country_office)
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(
+        batch=batch,
+        household=household,
+        flex_fields={"photo": "TEXT_VALUE", "full_name": "Jane Doe"},
+    )
+    individual.flex_files = encode_flex_files_blob({"photo": "data:image/png;base64,AAAA"})
+
+    assert individual.get_combined_flex_fields()["photo"] == "TEXT_VALUE"

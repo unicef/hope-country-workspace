@@ -195,10 +195,6 @@ def create_individuals(  # noqa: PLR0913
         if job:
             job.ensure_not_cancelled(refresh=True)
         individual_fields = processor(raw_individual)
-        text_fields, file_values = split_flex_payload(
-            checker,
-            individual_fields,
-        )
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
         ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
@@ -215,6 +211,10 @@ def create_individuals(  # noqa: PLR0913
             )
             individuals.append(ImportedIndividual(individual=individual, fields=individual_fields, created=created))
         else:
+            text_fields, file_values = split_flex_payload(
+                checker,
+                individual_fields,
+            )
             individual = Individual(
                 batch=batch,
                 household=household,

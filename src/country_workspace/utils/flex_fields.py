@@ -93,13 +93,12 @@ def merge_flex_payload(
     therefore no checker lookup) is needed here.
     """
     merged = dict(flex_fields or {})
-    merged.update(
-        {
-            field_name: public_value
-            for field_name, value in decode_flex_files_blob(flex_files).items()
-            if (public_value := to_public_flex_file_value(value))
-        }
-    )
+    for field_name, value in decode_flex_files_blob(flex_files).items():
+        # ``flex_fields`` owns precedence if the same key exists in both places.
+        if field_name in merged:
+            continue
+        if public_value := to_public_flex_file_value(value):
+            merged[field_name] = public_value
     return merged
 
 
