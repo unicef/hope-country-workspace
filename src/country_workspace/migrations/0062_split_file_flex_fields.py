@@ -197,7 +197,7 @@ def split_file_flex_fields(apps: StateApps, schema_editor: BaseDatabaseSchemaEdi
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0060_remove_individual_update_update_and_more"),
+        ("country_workspace", "0061_batch_field_help_texts"),
     ]
     atomic = False
     operations = [
