@@ -7,7 +7,8 @@ import sentry_sdk
 from celery.exceptions import Ignore
 from constance import config as constance_config
 from django.core.cache import cache
-from django.db.models import QuerySet
+from django.db import transaction
+from django.db.models import Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from redis_lock import Lock
@@ -19,6 +20,7 @@ from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
 from country_workspace.models.jobs import GracefulJobCancellationError
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -307,19 +309,25 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
 
 def batch_cleanup(job: AsyncJob) -> dict[str, int]:
     job.ensure_not_cancelled(refresh=True)
-    batch = job.batch
-    if not batch:
+    if not (batch := job.batch):
         raise ValueError("batch is required for batch cleanup job")
 
     program = batch.program
     deleted_counts = {"batches": 0, "households": 0, "individuals": 0}
 
-    try:
-        with suppress_cache_updates():
-            deleted_counts.update(_cleanup_batches([batch.pk], job, program_id=program.pk if program else None))
-    finally:
-        if program:
-            cache_manager.incr_cache_version(program=program)
+    with transaction.atomic(), suppress_cache_updates():
+        Program.objects.select_for_update().get(pk=program.pk)
+        if Rdp.objects.filter(
+            Q(households__batch_id=batch.pk)
+            | Q(households__members__batch_id=batch.pk)
+            | Q(individuals__batch_id=batch.pk)
+            | Q(individuals__household__batch_id=batch.pk),
+            status__in=NON_TERMINAL_RDP_STATUSES,
+        ).exists():
+            raise ValueError("Cannot clean a batch referenced by an unfinished RDP.")
 
+        deleted_counts.update(_cleanup_batches([batch.pk], job, program_id=program.pk))
+
+    cache_manager.incr_cache_version(program=program)
     logger.info("Batch cleanup completed: %s", deleted_counts)
     return deleted_counts

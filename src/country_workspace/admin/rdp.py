@@ -1,25 +1,18 @@
+from uuid import UUID
+
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
-from django.contrib import admin
-from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.contrib import admin, messages
+from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.rdp import fail_stuck_rdp_push, get_rdp_policy, reset_rdp
 from country_workspace.models import Rdp
 from .base import BaseModelAdmin
-
-
-def is_latest_successful_rdp(obj: Rdp) -> bool:
-    """Return True if this RDP is the latest successful RDP for its program."""
-    return not Rdp.objects.filter(
-        Q(push_date__gt=obj.push_date) | Q(push_date=obj.push_date, pk__gt=obj.pk),
-        program_id=obj.program_id,
-        status=Rdp.PushStatus.SUCCESS,
-    ).exists()
 
 
 @admin.register(Rdp)
@@ -81,28 +74,25 @@ class RdpAdmin(BaseModelAdmin):
         change_list=False,
         label="Reset",
         html_attrs={"class": "btn-warning"},
-        enabled=lambda btn: (
-            btn.context["original"].status == Rdp.PushStatus.SUCCESS
-            and is_latest_successful_rdp(btn.context["original"])
-        ),
+        enabled=lambda btn: get_rdp_policy(btn.context["original"]).reset_check().allowed,
     )
     def reset(self, request: HttpRequest, pk: int) -> HttpResponse:
         obj: Rdp = self.get_object(request, str(pk))
-
-        if obj.status != Rdp.PushStatus.SUCCESS:
-            self.message_user(request, "Reset is only allowed for SUCCESS status.", level="error")
-            return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
-
-        if not is_latest_successful_rdp(obj):
-            self.message_user(request, "Reset is only allowed for the latest successful RDP.", level="error")
+        check = get_rdp_policy(obj).reset_check()
+        if not check.allowed:
+            self.message_user(request, check.reason or "Reset is not allowed.", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         def _action(_: HttpRequest) -> HttpResponseRedirect:
-            with transaction.atomic():
-                obj.households.all().update(removed=False)
-                obj.individuals.all().update(removed=False)
-                obj.status = Rdp.PushStatus.CANCELLED
-                obj.save()
+            check = reset_rdp(rdp_id=pk)
+            if check.allowed:
+                self.message_user(
+                    request,
+                    "RDP reset successfully. Related beneficiaries marked as not removed.",
+                    level=messages.SUCCESS,
+                )
+            else:
+                self.message_user(request, check.reason or "Reset is not allowed.", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:country_workspace_rdp_change", args=[pk]))
 
         return confirm_action(
@@ -114,6 +104,56 @@ class RdpAdmin(BaseModelAdmin):
                 "This will set all related households and individuals to removed=False "
                 "and mark the RDP status as CANCELLED. This action cannot be undone."
             ),
-            success_message="RDP reset successfully. Related beneficiaries marked as not removed.",
+            error_message="RDP reset failed.",
+            pk=str(pk),
+        )
+
+    # TODO(Vitali): Remove this button and fail_stuck_rdp_push after Bitcaster recovery is implemented.
+    @button(
+        permission="country_workspace.reset_rdp",
+        change_form=True,
+        change_list=False,
+        label="Fail stuck push",
+        html_attrs={"class": "btn-warning"},
+        visible=lambda btn: btn.context["original"].status == Rdp.PushStatus.PUSH_PENDING,
+    )
+    def fail_stuck_push(self, request: HttpRequest, pk: int) -> HttpResponse:  # pragma: no cover
+        change_url = reverse("admin:country_workspace_rdp_change", args=[pk])
+
+        if not (raw_attempt_id := request.GET.get("push_attempt_id")):
+            if not (attempt_id := self.get_object(request, str(pk)).push_attempt_id):
+                self.message_user(request, "RDP: no active push attempt was found.", level=messages.ERROR)
+                return HttpResponseRedirect(change_url)
+            return HttpResponseRedirect(f"{request.path}?push_attempt_id={attempt_id}")
+
+        try:
+            push_attempt_id = UUID(raw_attempt_id)
+        except ValueError:
+            self.message_user(request, "Invalid push attempt ID.", level=messages.ERROR)
+            return HttpResponseRedirect(change_url)
+
+        def _action(_: HttpRequest) -> HttpResponseRedirect:
+            check = fail_stuck_rdp_push(rdp_id=pk, push_attempt_id=push_attempt_id)
+            self.message_user(
+                request,
+                "Recovery completed. The RDP can now be retried."
+                if check.allowed
+                else check.reason or "Recovery is not allowed.",
+                level=messages.SUCCESS if check.allowed else messages.ERROR,
+            )
+            return HttpResponseRedirect(change_url)
+
+        return confirm_action(
+            self,
+            request,
+            _action,
+            "Fail this stuck push?",
+            description=(
+                "Use this action only after confirming that the push preparation job is not running. "
+                "For a retry, also confirm that the HOPE callback is no longer expected. "
+                "The selected push attempt will be marked as FAILURE and can then be retried. "
+                "This action will be removed after Bitcaster recovery is implemented."
+            ),
+            error_message="Stuck-push recovery failed.",
             pk=str(pk),
         )

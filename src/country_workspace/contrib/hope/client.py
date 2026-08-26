@@ -121,7 +121,7 @@ class HopeClient:
             if response.status_code == 400 and path.endswith("/push/people/"):
                 return {"errors": True, "people": response.json()}
             response.raise_for_status()
-            return response.json()
+            return response.json() if response.content else {}
 
     def delete(self, path: str) -> "FlatJsonType":
         url, response = self._send("DELETE", path)
