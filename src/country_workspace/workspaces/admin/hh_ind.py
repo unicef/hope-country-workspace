@@ -294,8 +294,9 @@ class BeneficiaryBaseAdmin(
         elif not self.has_view_or_change_permission(request, obj):
             raise PermissionDenied
 
-        if obj.flex_fields:
-            initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
+        combined_flex_fields = obj.get_combined_flex_fields() if obj else {}
+        if combined_flex_fields:
+            initials = {k.replace("flex_fields__", ""): v for k, v in combined_flex_fields.items()}
         else:
             initials = {}
         if request.method == "POST":
