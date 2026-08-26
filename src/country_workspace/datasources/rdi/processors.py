@@ -2,7 +2,7 @@ import logging
 from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
-from typing import Any, cast, Mapping
+from typing import Any, cast, Mapping, NamedTuple
 
 from PIL import Image
 from django.db.transaction import atomic
@@ -15,7 +15,7 @@ from country_workspace.context import batch_ctx
 from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
-from country_workspace.utils.fields import Record
+from country_workspace.utils.fields import Record, to_reference_key
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.utils.import_flow import (
@@ -34,6 +34,19 @@ logger = logging.getLogger(__name__)
 
 # household_id values meaning "no household": 0 marks an Individual without a Household (e.g. an external Collector)
 NO_HOUSEHOLD_KEYS = (None, "", 0, "0")
+
+
+class BeneficiaryImportResult(NamedTuple):
+    """Individuals resulting from a beneficiary sheet.
+
+    ``reference_pks`` maps the ``individual_id`` used *in the sheet being imported*
+    to the pk of the resulting record. It cannot be derived from ``mapping``: a
+    reused external collector keeps the ``individual_id`` of the import that first
+    created it, which is unrelated to the ids of the sheet referencing it now.
+    """
+
+    mapping: dict[Any, Individual]
+    reference_pks: dict[str, int]
 
 
 def image_location(image: RDIImage) -> tuple[int, int]:
@@ -148,10 +161,11 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
 
 def process_beneficiaries(
     sheet: Sheet, job: AsyncJob, batch: Batch, config: Config, household_mapping: Mapping[int, Household] | None = None
-) -> Mapping[int, Individual]:
-    mapping = {}
+) -> BeneficiaryImportResult:
     file_name = normalize_file_name(job.file.name)
     epoch_ms = int(batch.import_date.timestamp() * 1000)
+    mapping: dict[Any, Individual] = {}
+    reference_pks: dict[str, int] = {}
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
@@ -189,7 +203,7 @@ def process_beneficiaries(
             if is_external_collector:
                 # External collectors are deduplicated program-wide: the first
                 # occurrence is reused, linked to households only via role refs.
-                mapping[beneficiary_key], _created = get_or_create_collector(
+                individual, _created = get_or_create_collector(
                     program=batch.program,
                     batch=batch,
                     individual_fields=individual_fields,
@@ -198,7 +212,7 @@ def process_beneficiaries(
                     name=name,
                 )
             else:
-                mapping[beneficiary_key] = cast(
+                individual = cast(
                     "Individual",
                     Individual.objects.create(
                         batch_id=batch.pk,
@@ -212,6 +226,11 @@ def process_beneficiaries(
         except Exception as e:
             raise SheetProcessingError(sheet_name, beneficiary_key) from e
 
+        mapping[beneficiary_key] = individual
+        # index by this sheet's id, which a reused collector does not carry itself
+        if reference := to_reference_key(individual_fields.get("individual_id")):
+            reference_pks[reference] = individual.pk
+
     if invalid_household_refs:
         logger.error(
             "Skipped %d individual(s) with invalid household references in sheet %s: %s",
@@ -220,7 +239,7 @@ def process_beneficiaries(
             ", ".join(f"individual {ind!r} -> household {hh!r}" for ind, hh in invalid_household_refs),
         )
 
-    return mapping
+    return BeneficiaryImportResult(mapping, reference_pks)
 
 
 def import_from_rdi(job: AsyncJob) -> dict[str, int]:
@@ -294,32 +313,48 @@ def import_from_rdi(job: AsyncJob) -> dict[str, int]:
 def _import_master_detail(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     household_sheet, individual_sheet = read_sheets(config, job.file, SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS)
     household_mapping = process_households(household_sheet, job, batch, config)
-    individuals_mapping = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
-    _sync_ind_pks(household_mapping, individuals_mapping)
-    return {"household": len(household_mapping), "individual": len(individuals_mapping)}
+    beneficiaries = process_beneficiaries(individual_sheet, job, batch, config, household_mapping)
+    _sync_ind_pks(household_mapping, beneficiaries.reference_pks)
+    return {"household": len(household_mapping), "individual": len(beneficiaries.mapping)}
 
 
 def _import_people_only(job: AsyncJob, batch: Batch, config: Config) -> dict[str, int]:
     (people_sheet,) = read_sheets(config, job.file, SheetName.PEOPLE)
-    people_mapping = process_beneficiaries(people_sheet, job, batch, config)
-    return {"people": len(people_mapping)}
+    people = process_beneficiaries(people_sheet, job, batch, config)
+    return {"people": len(people.mapping)}
 
 
-def _sync_ind_pks(households_mapping: dict, individuals_mapping: dict) -> None:
-    pk_mapping = {
-        individual_ref: individual.pk
-        for individual in individuals_mapping.values()
-        if (individual_ref := individual.flex_fields.get("individual_id"))
-    }
+def _sync_ind_pks(households_mapping: Mapping[Any, Household], reference_pks: Mapping[str, int]) -> None:
+    """Replace the sheet-local individual references on households with real pks.
 
+    References that cannot be resolved are cleared rather than left alone: a
+    sheet-local id kept in place would later be read as a pk and silently point at
+    an unrelated record.
+    """
     fields = HOUSEHOLD_ROLE_REF_FIELDS
+    unresolved: list[str] = []
+
+    def resolve(household: Household, field: str, value: Any) -> int | None:
+        reference = to_reference_key(value)
+        pk = reference_pks.get(reference) if reference else None
+        if reference and pk is None:
+            unresolved.append(f"household {household.pk!r} {field}={value!r}")
+        return pk
+
     for household in households_mapping.values():
         flex_fields = household.flex_fields.copy()
-        flex_fields[fields.head_of_household] = pk_mapping.get(flex_fields.get(fields.head_of_household))
-        flex_fields[fields.primary_collector] = pk_mapping.get(flex_fields.get(fields.primary_collector))
+        flex_fields[fields.head_of_household] = resolve(
+            household, fields.head_of_household, flex_fields.get(fields.head_of_household)
+        )
+        flex_fields[fields.primary_collector] = resolve(
+            household, fields.primary_collector, flex_fields.get(fields.primary_collector)
+        )
 
         if alt_id := flex_fields.get(fields.alternate_collector):
-            flex_fields[fields.alternate_collector] = pk_mapping.get(alt_id)
+            flex_fields[fields.alternate_collector] = resolve(household, fields.alternate_collector, alt_id)
 
         household.flex_fields = flex_fields
         household.save(update_fields=["flex_fields"])
+
+    if unresolved:
+        logger.warning("Cleared %d unresolved household role reference(s): %s", len(unresolved), ", ".join(unresolved))
