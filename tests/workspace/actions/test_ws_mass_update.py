@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 import pytest
+from django import forms
 from django.urls import reverse
 from pytest_django.fixtures import SettingsWrapper
 from testutils.utils import select_office
@@ -7,7 +8,8 @@ from constance.test import override_config
 from responses import RequestsMock, matchers
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.mass_update import mass_update_impl
+from country_workspace.utils.flex_fields import Base64ImageField
+from country_workspace.workspaces.admin.cleaners.mass_update import mass_update_impl, operations
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -137,6 +139,40 @@ def test_mass_update_impl_bumps_cache(household):
 
     version_after = cache_manager.get_cache_version(program=household.program)
     assert version_after == version_before + 1
+
+
+def test_mass_update_impl_updates_existing_file_field_stored_in_flex_files():
+    from country_workspace.models import Individual
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryIndividualFactory,
+        CountryProgramFactory,
+        DataCheckerFactory,
+    )
+
+    checker = DataCheckerFactory(fields=[("photo", Base64ImageField), ("full_name", forms.CharField)])
+    program = CountryProgramFactory(individual_checker=checker)
+    batch = CountryBatchFactory(program=program, country_office=program.country_office)
+    individual = CountryIndividualFactory(
+        batch=batch,
+        household=None,
+        flex_fields={"full_name": "Jane Doe", "photo": "data:image/png;base64,AAAA"},
+    )
+    update_fields = individual.apply_flex_payload(individual.flex_fields)
+    individual.save(update_fields=update_fields)
+    individual.refresh_from_db()
+    assert "photo" not in individual.flex_fields
+    assert individual.get_flex_value("photo") == "data:image/png;base64,AAAA"
+
+    set_null_op_id = next(k for k, v in operations._dict.items() if v[1] == "set null")
+    mass_update_impl(
+        Individual.objects.filter(pk=individual.pk),
+        {"photo": (set_null_op_id, "")},
+        create_missing_fields=False,
+    )
+
+    individual.refresh_from_db()
+    assert individual.get_flex_value("photo") is None
 
 
 @override_config(HOPE_API_URL="https://hope-dummy.org/api/rest", HOPE_API_TOKEN="dummy_token")
