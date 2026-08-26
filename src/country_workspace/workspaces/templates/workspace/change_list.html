@@ -1,9 +1,11 @@
 {% extends "workspace/_base.html" %}
-{% load i18n static workspace_list workspace_urls %}
-{% block extrastyle %}
+{% load i18n workspace_list workspace_urls %}
+{% block extrahead %}
     {{ block.super }}
-    <link rel="stylesheet" href="{% static "admin/css/changelists.css" %}" />
-{% endblock extrastyle %}
+    {% if cl.formset or action_form %}
+        <script src="{% url "workspace:jsi18n" %}"></script>
+    {% endif %}
+{% endblock extrahead %}
 {% block content %}
     <div id="content">
         {% block object-tools %}
