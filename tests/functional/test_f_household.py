@@ -99,6 +99,7 @@ def test_list_household_select_all_fields(browser, household: "CountryHousehold"
     browser.click_link("Households")
 
     browser.click("#action-toggle")
+    browser.assert_text("1 of 1 selected", ".action-counter")
     browser.select_option_by_value("select[name=action]", "bulk_update_export")
     browser.click('button[type="submit"][name="index"]')
 
