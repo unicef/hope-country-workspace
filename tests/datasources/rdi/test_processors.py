@@ -699,6 +699,36 @@ def test_process_beneficiaries_failed_to_create(
     assert exc_info.value.sheet_name == expected_sheet_name
 
 
+def test_process_beneficiaries_failed_to_transform(
+    mocker: MockerFixture,
+    config: Config,
+    individual_sheet: Sheet,
+    people_sheet: Sheet,
+    household_mapping: Mapping[int, Any],
+) -> None:
+    job = mocker.MagicMock()
+    job.file.name = "uploads/rdi.xlsx"
+    batch = mocker.MagicMock()
+
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor",
+        return_value=mocker.MagicMock(side_effect=Exception("mapping failed")),
+    )
+    mock_create = mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create")
+
+    sheet = individual_sheet if config["master_detail"] else people_sheet
+    household_map = household_mapping if config["master_detail"] else None
+    expected_sheet_name = SheetName.INDIVIDUALS if config["master_detail"] else SheetName.PEOPLE
+    expected_object_id = sheet[0][config["beneficiary_id_column"]]
+
+    with pytest.raises(SheetProcessingError) as exc_info:
+        process_beneficiaries(sheet, job, batch, config, household_map)
+
+    assert exc_info.value.sheet_name == expected_sheet_name
+    assert exc_info.value.object_id == expected_object_id
+    mock_create.assert_not_called()
+
+
 def test_import_from_rdi(  # noqa: PLR0915
     mocker: MockerFixture,
     config: Config,

@@ -198,8 +198,8 @@ def process_beneficiaries(
                 invalid_household_refs.append((beneficiary_key, household_key))
                 continue
 
-        individual_fields = transform_row(cleaned_row)
         try:
+            individual_fields = transform_row(cleaned_row)
             if is_external_collector:
                 # External collectors are deduplicated program-wide: the first
                 # occurrence is reused, linked to households only via role refs.
