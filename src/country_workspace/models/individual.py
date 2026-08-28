@@ -22,6 +22,7 @@ class Individual(HopeBlobMixin, FlexFieldGroupingMixin, Validable, BaseModel):
 
     household = models.ForeignKey("Household", on_delete=models.CASCADE, null=True, blank=True, related_name="members")
     system_fields = models.JSONField(default=dict, blank=True)
+    blob_hashes = models.JSONField(default=dict, blank=True, editable=False)
     identity_hash = models.CharField(
         max_length=64,
         null=True,
