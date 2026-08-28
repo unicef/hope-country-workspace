@@ -73,7 +73,10 @@ def test_import_from_rdi_passes_transformers_to_postprocessing(mocker: MockerFix
     batch = batch_cls.objects.create.return_value
 
     mocker.patch("country_workspace.datasources.rdi.processors.read_sheets", return_value=([],))
-    mocker.patch("country_workspace.datasources.rdi.processors.process_beneficiaries", return_value={})
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.process_beneficiaries",
+        return_value=processors.BeneficiaryImportResult({}, {}),
+    )
     postprocessing = mocker.patch("country_workspace.datasources.rdi.processors.run_batch_postprocessing")
     mocker.patch("country_workspace.datasources.rdi.processors.detect_and_mark_collisions_for_batch")
 
