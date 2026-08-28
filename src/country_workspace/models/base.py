@@ -13,11 +13,13 @@ from country_workspace.utils.flex_fields import (
     encode_flex_files_blob,
     get_obj_checksum,
     merge_flex_payload,
-    split_flex_payload,
+    split_flex_storage,
     to_public_flex_file_value,
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from django.db.models import Model, QuerySet
     from hope_flex_fields.models import DataChecker
 
@@ -42,6 +44,13 @@ class ValidableQuerySet(BaseQuerySet):
     def all(self) -> "QuerySet[Model, Model]":
         return super().all().defer("flex_files")
 
+    def with_flex_storage(self) -> "QuerySet[Model, Model]":
+        return self.select_related(
+            "batch__program__household_checker",
+            "batch__program__individual_checker",
+            "batch__program__country_office",
+        ).defer(None)
+
 
 class ValidableManager(models.Manager["Validable"]):
     _queryset_class = ValidableQuerySet
@@ -62,6 +71,7 @@ class Cachable:
 
 
 CHECKSUM_FIELDS: set[str] = {"flex_fields", "flex_files", "removed"}
+_CHECKER_FILE_FIELDS_CACHE: dict[int, tuple["datetime", frozenset[str]]] = {}
 
 
 class Validable(Cachable, models.Model):
@@ -125,52 +135,54 @@ class Validable(Cachable, models.Model):
             return self.flex_fields[field_name]
         return to_public_flex_file_value(self.get_flex_files_map().get(field_name, default))
 
+    @staticmethod
+    def _checker_file_field_names(checker: "DataChecker") -> set[str]:
+        cached = _CHECKER_FILE_FIELDS_CACHE.get(checker.pk)
+        if cached is not None and cached[0] == checker.last_modified:
+            return set(cached[1])
+        names = frozenset(checker.get_file_field_names())
+        _CHECKER_FILE_FIELDS_CACHE[checker.pk] = (checker.last_modified, names)
+        return set(names)
+
+    def _resolve_flex_storage(
+        self,
+        payload: dict[str, Any],
+        *,
+        preserve_existing_files: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        checker = self.checker
+        if checker is None:
+            return None
+
+        file_field_names = self._checker_file_field_names(checker)
+        text_fields, new_file_values, cleared_files = split_flex_storage(checker, payload, file_field_names)
+        stored = self.get_flex_files_map() if preserve_existing_files else {}
+        file_values = {key: value for key, value in stored.items() if key in file_field_names}
+        for key in cleared_files:
+            file_values.pop(key, None)
+        file_values.update(new_file_values)
+        return text_fields, file_values
+
     def apply_flex_payload(self, payload: dict[str, Any], *, preserve_existing_files: bool = True) -> set[str]:
-        """Split payload into text/files and apply both storage fields."""
-        if self.checker is None:
+        resolved = self._resolve_flex_storage(payload, preserve_existing_files=preserve_existing_files)
+        if resolved is None:
             self.flex_fields = dict(payload)
             return {"flex_fields"}
 
-        file_field_names = set(self.checker.get_file_field_names())
-        text_fields, new_file_values = split_flex_payload(self.checker, payload)
-        file_values = self.get_flex_files_map() if preserve_existing_files else {}
-        # Keep only currently configured file fields and drop stale legacy keys.
-        file_values = {key: value for key, value in file_values.items() if key in file_field_names}
-        raw_file_values = dict(self.checker.split_data(payload).get("files", {}))
-        # Explicit empty values mean "clear this file field".
-        for key, value in raw_file_values.items():
-            if key in file_field_names and (value is None or (isinstance(value, str) and not value.strip())):
-                file_values.pop(key, None)
-        file_values.update(new_file_values)
-        self.flex_fields = text_fields
+        self.flex_fields, file_values = resolved
         self.flex_files = encode_flex_files_blob(file_values)
         return {"flex_fields", "flex_files"}
 
     def normalize_flex_storage(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
-        """Guarantee text/file separation at save time.
-
-        This is an intentional, idempotent invariant (not a hidden contract):
-        no matter how ``flex_fields`` was populated, any file-typed keys (as
-        reported by the data checker) are moved into ``flex_files`` before the
-        row is written, while existing file values are preserved.
-        """
+        """Move any file-typed key from ``flex_fields`` to ``flex_files`` before the row is written."""
         if update_fields is not None and not (set(update_fields) & {"flex_fields", "flex_files"}):
             return update_fields
 
-        if self.checker is None:
+        resolved = self._resolve_flex_storage(self.flex_fields or {}, preserve_existing_files=True)
+        if resolved is None:
             return update_fields
 
-        file_field_names = set(self.checker.get_file_field_names())
-        text_fields, new_file_values = split_flex_payload(self.checker, self.flex_fields or {})
-        existing_file_values = self.get_flex_files_map()
-        # Keep only file values for fields that are still file-typed.
-        file_values = {key: value for key, value in existing_file_values.items() if key in file_field_names}
-        raw_file_values = dict(self.checker.split_data(self.flex_fields or {}).get("files", {}))
-        for key, value in raw_file_values.items():
-            if key in file_field_names and (value is None or (isinstance(value, str) and not value.strip())):
-                file_values.pop(key, None)
-        file_values.update(new_file_values)
-
+        text_fields, file_values = resolved
         next_blob = encode_flex_files_blob(file_values)
         if self.flex_fields != text_fields:
             self.flex_fields = text_fields

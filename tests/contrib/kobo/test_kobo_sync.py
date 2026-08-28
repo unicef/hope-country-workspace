@@ -198,7 +198,9 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         ImportedIndividual(individual=individual_class_mock.return_value, fields=processor_mock.return_value)
     ]
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
-    batch_mock.program.individual_checker.split_data.assert_called_once_with(processor_mock.return_value)
+    batch_mock.program.individual_checker.split_data.assert_called_once_with(
+        processor_mock.return_value, file_field_names=None
+    )
     processor_mock.assert_called_once_with(individual_data)
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
@@ -408,7 +410,9 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
-    batch_mock.program.household_checker.split_data.assert_called_once_with(processor_mock.return_value)
+    batch_mock.program.household_checker.split_data.assert_called_once_with(
+        processor_mock.return_value, file_field_names=None
+    )
     processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
     processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)

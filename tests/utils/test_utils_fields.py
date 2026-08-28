@@ -15,10 +15,14 @@ from country_workspace.utils.flex_fields import (
     Base64ImageField,
     ConsentSharingChoice,
     decode_flex_files_blob,
+    describe_flex_file_value,
     encode_flex_files_blob,
+    get_checker_fields,
     split_flex_payload,
+    split_flex_storage,
     merge_flex_payload,
     split_options,
+    summarize_flex_payload,
     to_storage_flex_file_value,
     to_public_flex_file_value,
     get_obj_checksum,
@@ -50,6 +54,12 @@ def test_clean_field_names(mocker: MockerFixture) -> None:
 def test_base64_image_input(value: str | None) -> None:
     input_ = Base64ImageInput()
     assert input_.is_initial(value) == bool(value)
+
+
+def test_base64_image_field_is_registered_on_startup() -> None:
+    from hope_flex_fields.registry import field_registry
+
+    assert field_registry.get_class(Base64ImageField) is Base64ImageField
 
 
 def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
@@ -252,6 +262,72 @@ def test_split_flex_payload_without_checker_returns_payload_as_text() -> None:
     text, files = split_flex_payload(None, payload)
     assert text == payload
     assert files == {}
+
+
+def test_split_flex_storage_reports_explicitly_emptied_files() -> None:
+    checker = Mock(spec=["split_data"])
+    checker.split_data.return_value = {
+        "fields": {"name": "John"},
+        "files": {"photo": "", "signature": "data:image/png;base64,QUJD"},
+    }
+
+    split = split_flex_storage(checker, {}, {"photo", "signature"})
+
+    assert split.text_fields == {"name": "John"}
+    assert set(split.file_values) == {"signature"}
+    assert split.cleared_files == {"photo"}
+    checker.split_data.assert_called_once_with({}, file_field_names={"photo", "signature"})
+
+
+def test_describe_flex_file_value_replaces_payload_with_a_label() -> None:
+    stored = to_storage_flex_file_value("data:image/png;base64,QUJD")
+
+    described = describe_flex_file_value(stored)
+
+    assert "QUJD" not in described
+    assert described.startswith("image/png (")
+    assert described == describe_flex_file_value("data:image/png;base64,QUJD")
+    assert described != describe_flex_file_value("data:image/png;base64,WFla")
+
+
+def test_summarize_flex_payload_describes_files_from_both_storages() -> None:
+    legacy = {"name": "John", "photo": "data:image/png;base64,QUJD"}
+    blob = encode_flex_files_blob({"signature": to_storage_flex_file_value("data:image/png;base64,WFla")})
+
+    summary = summarize_flex_payload(legacy, blob, {"photo", "signature"})
+
+    assert summary["name"] == "John"
+    assert summary["photo"].startswith("image/png (")
+    assert summary["signature"].startswith("image/png (")
+    assert "QUJD" not in summary["photo"]
+
+
+def test_get_checker_fields_skips_file_fields_and_applies_placeholder_prefix() -> None:
+    checker = _checker_with_fields("national_id_%s", ["photo", "number"], file_field_names={"national_id_photo"})
+
+    assert list(get_checker_fields(checker, with_fs_prefix=True)) == [
+        ("national_id_photo", "national_id_Photo"),
+        ("national_id_number", "national_id_Number"),
+    ]
+    assert list(get_checker_fields(checker, with_fs_prefix=True, skip_file_fields=True)) == [
+        ("national_id_number", "national_id_Number"),
+    ]
+
+
+def _checker_with_fields(prefix: str, names: list[str], file_field_names: set[str]) -> SimpleNamespace:
+    class _Members(list):
+        def select_related(self, *args: str) -> "_Members":
+            return self
+
+        def order_by(self, *args: str) -> "_Members":
+            return self
+
+        def all(self) -> "_Members":
+            return self
+
+    fields = [SimpleNamespace(name=name, attrs={"label": name.capitalize()}) for name in names]
+    member = SimpleNamespace(prefix=prefix, fieldset=SimpleNamespace(get_fields=lambda: fields))
+    return SimpleNamespace(members=_Members([member]), get_file_field_names=lambda: file_field_names)
 
 
 def test_split_flex_payload_with_checker_split() -> None:

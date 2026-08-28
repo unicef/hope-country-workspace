@@ -111,16 +111,13 @@ def mass_update_impl(
     config: "FormOperations",
     create_missing_fields: bool = False,
 ) -> None:
-    first = queryset.select_related("batch__program").only("batch__program").first()
+    first = queryset.select_related("batch__program").defer("raw_data").first()
     if first is None:
         return
     program = first.program
     with transaction.atomic(), suppress_cache_updates():
         for record in (
-            queryset.select_related("batch__program")
-            .defer("raw_data")
-            .undefer("flex_files")
-            .iterator(chunk_size=MASS_UPDATE_ITERATOR_CHUNK_SIZE)
+            queryset.with_flex_storage().defer("raw_data").iterator(chunk_size=MASS_UPDATE_ITERATOR_CHUNK_SIZE)
         ):
             combined_fields = record.get_combined_flex_fields()
             changed = False

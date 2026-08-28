@@ -336,7 +336,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     build_processor = partial(_build_processor, batch=batch, program=batch.program)
 
     household_records, household_preserved = _preserve_flex_fields(
-        households.only("pk", "name", "raw_data"),
+        households.with_flex_storage(),
         batch,
         Household,
     )
@@ -355,7 +355,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     processed_individuals = (
         _run_import_processors(
             label="individual",
-            records=individuals.only("pk", "name", "raw_data", "flex_fields"),
+            records=individuals.with_flex_storage(),
             count=individual_count,
             mapping=config.individual_mapping,
             processor=build_processor(model=Individual, mapping_id=config.individual_mapping_id),

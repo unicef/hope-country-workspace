@@ -6,7 +6,7 @@ from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
-from country_workspace.workspaces.admin.cleaners.regex import regex_update_impl, update_json
+from country_workspace.workspaces.admin.cleaners.regex import RegexUpdateForm, regex_update_impl, update_json
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -72,6 +72,19 @@ def test_update_json_does_not_change_non_string_values() -> None:
 
     assert result.original == original_value
     assert result.updated == original_value
+
+
+def test_regex_form_excludes_file_fields(mocker) -> None:
+    checker = mocker.MagicMock()
+    get_checker_fields_mock = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.regex.get_checker_fields",
+        return_value=[("full_name", "Full name")],
+    )
+
+    form = RegexUpdateForm(data={"field": "full_name", "regex": ".*", "subst": "x"}, checker=checker)
+
+    get_checker_fields_mock.assert_called_once_with(checker, with_fs_prefix=True, skip_file_fields=True)
+    assert form.fields["field"].choices == [("full_name", "Full name")]
 
 
 def test_update_json_does_not_change_float_values() -> None:

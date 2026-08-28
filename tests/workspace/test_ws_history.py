@@ -6,6 +6,12 @@ from django.urls import reverse
 from pyquery import PyQuery
 from testutils.utils import select_office
 
+from country_workspace.utils.flex_fields import (
+    Base64ImageField,
+    describe_flex_file_value,
+    to_storage_flex_file_value,
+)
+
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
     from testutils.types import CWTestApp
@@ -58,3 +64,39 @@ def test_individual_history(app, individual: "CountryIndividual"):
 
         res = app.get(url, headers={"etag": etag})
         assert res.status_code == 304
+
+
+def test_individual_history_tracks_file_changes(app):
+    from testutils.factories import (
+        CountryBatchFactory,
+        CountryHouseholdFactory,
+        CountryIndividualFactory,
+        CountryProgramFactory,
+        DataCheckerFactory,
+    )
+
+    checker = DataCheckerFactory(fields=[("photo", Base64ImageField)])
+    program = CountryProgramFactory(individual_checker=checker)
+    batch = CountryBatchFactory(program=program, country_office=program.country_office)
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(batch=batch, household=household, flex_fields={})
+
+    with pghistory.context(user={"email": "<EMAIL>", "username": "user #1"}):
+        individual.apply_flex_payload({"photo": "data:image/png;base64,AAAA"})
+        individual.save(update_fields=["flex_fields", "flex_files"])
+        individual.apply_flex_payload({"photo": "data:image/png;base64,BBBB"})
+        individual.save(update_fields=["flex_fields", "flex_files"])
+
+    url = reverse("workspace:workspaces_countryindividual_history", args=[individual.pk])
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+        assert b"base64,AAAA" not in res.content
+        assert b"base64,BBBB" not in res.content
+        pq = PyQuery(res.content)
+        old_values = [node.text.strip() for node in pq("table.history tbody tr td div.old_value")]
+        new_values = [node.text.strip() for node in pq("table.history tbody tr td div.new_value")]
+        transitions = set(zip(old_values, new_values, strict=False))
+        assert (
+            describe_flex_file_value(to_storage_flex_file_value("data:image/png;base64,AAAA")),
+            describe_flex_file_value(to_storage_flex_file_value("data:image/png;base64,BBBB")),
+        ) in transitions

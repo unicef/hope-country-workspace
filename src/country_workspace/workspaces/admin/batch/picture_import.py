@@ -166,11 +166,15 @@ class BatchPictureImportService:
         if not assignments:
             return 0
         record_ids = [item["record_id"] for item in assignments]
-        individuals = CountryIndividual.objects.filter(
-            pk__in=record_ids,
-            batch=self.batch,
-            removed=False,
-        ).in_bulk()
+        individuals = (
+            CountryIndividual.objects.filter(
+                pk__in=record_ids,
+                batch=self.batch,
+                removed=False,
+            )
+            .with_flex_storage()
+            .in_bulk()
+        )
 
         updated = 0
         with transaction.atomic():

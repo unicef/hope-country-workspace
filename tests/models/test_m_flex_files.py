@@ -1,7 +1,11 @@
+from types import SimpleNamespace
+
 from django import forms
+from django.utils import timezone
 
 import pytest
 
+from country_workspace.models.base import Validable
 from country_workspace.utils.flex_fields import Base64ImageField, decode_flex_files_blob, encode_flex_files_blob
 
 
@@ -91,7 +95,6 @@ def test_save_only_text_field_preserves_existing_file() -> None:
     individual.save(update_fields=update_fields)
     individual.refresh_from_db()
 
-    # Update only a text field; the file value must survive the save.
     individual.flex_fields["full_name"] = "John Doe"
     individual.save(update_fields=["flex_fields"])
     individual.refresh_from_db()
@@ -138,7 +141,6 @@ def test_normalize_flex_storage_skips_when_update_fields_exclude_flex() -> None:
     household = CountryHouseholdFactory(batch=batch, individuals=0)
     individual = CountryIndividualFactory(batch=batch, household=household, flex_fields={"full_name": "Jane Doe"})
 
-    # update_fields untouched by flex storage -> normalization is a no-op passthrough
     assert individual.normalize_flex_storage(["name"]) == ["name"]
 
 
@@ -323,6 +325,24 @@ def test_get_flex_value_returns_default_when_missing() -> None:
     individual = CountryIndividualFactory(batch=batch, household=household, flex_fields={"full_name": "Jane Doe"})
 
     assert individual.get_flex_value("unknown", "fallback") == "fallback"
+
+
+@pytest.mark.django_db
+def test_checker_file_fields_are_cached_until_the_checker_changes() -> None:
+    from testutils.factories import DataCheckerFactory
+
+    checker = DataCheckerFactory(fields=[("photo", Base64ImageField), ("full_name", forms.CharField)])
+    assert Validable._checker_file_field_names(checker) == {"photo"}
+
+    stale = SimpleNamespace(
+        pk=checker.pk,
+        last_modified=checker.last_modified,
+        get_file_field_names=lambda: {"never_used"},
+    )
+    assert Validable._checker_file_field_names(stale) == {"photo"}
+
+    stale.last_modified = timezone.now()
+    assert Validable._checker_file_field_names(stale) == {"never_used"}
 
 
 @pytest.mark.django_db

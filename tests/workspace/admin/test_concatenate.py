@@ -54,6 +54,13 @@ def test_concatenate_field_form_sets_choices_and_valid_pattern():
     ]
 
 
+def test_concatenate_field_form_excludes_file_fields(mock_checker_fields: MagicMock):
+    checker = MagicMock()
+    ConcatenateFieldForm(data=form_data(), checker=checker)
+
+    mock_checker_fields.assert_called_once_with(checker, with_fs_prefix=True, skip_file_fields=True)
+
+
 def test_concatenate_field_form_requires_placeholder():
     form = ConcatenateFieldForm(
         data=form_data(pattern="full name"),

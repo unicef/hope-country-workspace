@@ -7,5 +7,5 @@ if TYPE_CHECKING:
 
 
 def calculate_checksum_impl(queryset: "QuerySet[Validable]") -> None:
-    for record in queryset.all():
+    for record in queryset.with_flex_storage().defer("raw_data"):
         record.save()

@@ -25,7 +25,7 @@ from ...utils.imports import validate_alien_fields
 from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from ...utils.flex_fields import Base64ImageField, get_checker_fields
+from ...utils.flex_fields import Base64ImageField, get_checker_fields, summarize_flex_payload
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -381,11 +381,13 @@ class BeneficiaryBaseAdmin(
             history = []
             prev = {}
             field_names = [f.name for __, f in obj.checker.get_fields()]
+            file_field_names = obj.checker.get_file_field_names()
             for entry in obj.events.select_related("pgh_context").all():
+                entry_flex = summarize_flex_payload(entry.flex_fields, entry.flex_files, file_field_names)
                 changes = {}
                 for field_name in field_names:
                     old_value = prev.get(field_name, "")
-                    new_value = entry.flex_fields.get(field_name, "")
+                    new_value = entry_flex.get(field_name, "")
                     if old_value != new_value:
                         changes[field_name] = {"from": old_value, "to": new_value}
                 history.append(
@@ -396,7 +398,7 @@ class BeneficiaryBaseAdmin(
                         "user": entry.pgh_context.metadata["user"],
                     }
                 )
-                prev = entry.flex_fields
+                prev = entry_flex
             history.reverse()
             cache_manager.store(key, history)
 

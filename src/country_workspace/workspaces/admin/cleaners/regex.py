@@ -38,8 +38,7 @@ class RegexUpdateForm(BaseActionForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
-        choices = list(get_checker_fields(checker, with_fs_prefix=True))
-        self.fields["field"].choices = choices
+        self.fields["field"].choices = list(get_checker_fields(checker, with_fs_prefix=True, skip_file_fields=True))
 
 
 class UpdateResult(NamedTuple):

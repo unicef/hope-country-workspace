@@ -1,12 +1,14 @@
 from base64 import b64decode, b64encode
 import binascii
+from contextlib import suppress
 import hashlib
 import json
 import re
-from typing import TYPE_CHECKING, Any, Generator, Literal
+from typing import TYPE_CHECKING, Any, Generator, Literal, NamedTuple
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
+from django.template.defaultfilters import filesizeformat
 import msgpack
 
 from hope_flex_fields.models import DataChecker
@@ -23,7 +25,6 @@ _BIN_CONTENT_KEY = "content"
 
 
 def _decode_legacy_json_blob(raw: bytes) -> dict[str, Any]:
-    """Fallback decoder for blobs stored by the previous JSON-based format."""
     try:
         parsed = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
@@ -32,10 +33,6 @@ def _decode_legacy_json_blob(raw: bytes) -> dict[str, Any]:
 
 
 def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict[str, Any]:
-    """Decode ``flex_files`` blob into ``{field_name: content}``.
-
-    Primary format is msgpack. Legacy json blobs are still readable.
-    """
     if not value:
         return {}
     raw = bytes(value) if isinstance(value, memoryview | bytearray) else value
@@ -47,14 +44,12 @@ def decode_flex_files_blob(value: bytes | memoryview | bytearray | None) -> dict
 
 
 def encode_flex_files_blob(value: dict[str, Any]) -> bytes | None:
-    """Encode a ``{field_name: content}`` mapping to msgpack bytes."""
     if not value:
         return None
     return msgpack.packb(dict(sorted(value.items())), use_bin_type=True)
 
 
 def to_storage_flex_file_value(value: Any) -> Any:
-    """Convert external file value to compact binary storage representation."""
     if not isinstance(value, str):
         return value
     match = _DATA_URI_PATTERN.fullmatch(value.strip())
@@ -72,7 +67,6 @@ def to_storage_flex_file_value(value: Any) -> Any:
 
 
 def to_public_flex_file_value(value: Any) -> Any:
-    """Convert internal storage representation to external/public value."""
     if not isinstance(value, dict) or not value.get(_BIN_VALUE_KEY):
         return value
     mimetype = value.get(_BIN_MIMETYPE_KEY)
@@ -87,14 +81,8 @@ def merge_flex_payload(
     flex_fields: dict[str, Any] | None,
     flex_files: bytes | memoryview | bytearray | None,
 ) -> dict[str, Any]:
-    """Overlay stored file values on top of the text fields.
-
-    The blob only ever holds file-typed keys, so no field-name filtering (and
-    therefore no checker lookup) is needed here.
-    """
     merged = dict(flex_fields or {})
     for field_name, value in decode_flex_files_blob(flex_files).items():
-        # ``flex_fields`` owns precedence if the same key exists in both places.
         if field_name in merged:
             continue
         if public_value := to_public_flex_file_value(value):
@@ -102,30 +90,101 @@ def merge_flex_payload(
     return merged
 
 
+def is_blank_flex_file_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str | bytes | bytearray):
+        return not value.strip()
+    return False
+
+
+class FlexStorageSplit(NamedTuple):
+    text_fields: dict[str, Any]
+    file_values: dict[str, Any]
+    cleared_files: set[str]
+
+
+def split_flex_storage(
+    checker: DataChecker | None,
+    payload: dict[str, Any],
+    file_field_names: set[str] | None = None,
+) -> FlexStorageSplit:
+    if checker is None:
+        return FlexStorageSplit(dict(payload), {}, set())
+
+    split = checker.split_data(payload, file_field_names=file_field_names)
+    file_values: dict[str, Any] = {}
+    cleared_files: set[str] = set()
+    for key, value in split.get("files", {}).items():
+        if is_blank_flex_file_value(value):
+            cleared_files.add(key)
+        else:
+            file_values[key] = to_storage_flex_file_value(value)
+    return FlexStorageSplit(dict(split.get("fields", {})), file_values, cleared_files)
+
+
 def split_flex_payload(
     checker: DataChecker | None,
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if checker is None:
-        return dict(payload), {}
-    split = checker.split_data(payload)
-    text_fields = dict(split.get("fields", {}))
-    raw_file_values = dict(split.get("files", {}))
-
-    file_values = {
-        key: to_storage_flex_file_value(value)
-        for key, value in raw_file_values.items()
-        if value not in (None, "") and not (isinstance(value, str) and not value.strip())
-    }
+    text_fields, file_values, __ = split_flex_storage(checker, payload)
     return text_fields, file_values
 
 
-def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Generator[tuple[str, str], None, None]:
+def describe_flex_file_value(value: Any) -> str:
+    mimetype: str | None = None
+    content: bytes | None = None
+    if isinstance(value, dict) and value.get(_BIN_VALUE_KEY):
+        mimetype = value.get(_BIN_MIMETYPE_KEY)
+        raw = value.get(_BIN_CONTENT_KEY)
+        if isinstance(raw, bytes | bytearray | memoryview):
+            content = bytes(raw)
+    elif isinstance(value, str) and (match := _DATA_URI_PATTERN.fullmatch(value.strip())):
+        mimetype = match.group("mimetype")
+        with suppress(binascii.Error, ValueError):
+            content = b64decode(match.group("content"), validate=True)
+
+    if content is None:
+        return str(value)
+    digest = hashlib.md5(content).hexdigest()[:8]  # noqa: S324
+    return f"{mimetype or 'file'} ({filesizeformat(len(content))}, {digest})"
+
+
+def summarize_flex_payload(
+    flex_fields: dict[str, Any] | None,
+    flex_files: bytes | memoryview | bytearray | None,
+    file_field_names: set[str],
+) -> dict[str, Any]:
+    merged = dict(flex_fields or {})
+    for field_name, value in decode_flex_files_blob(flex_files).items():
+        merged.setdefault(field_name, value)
+    return {
+        field_name: describe_flex_file_value(value) if field_name in file_field_names and value else value
+        for field_name, value in merged.items()
+    }
+
+
+def apply_field_prefix(prefix: str, name: str) -> str:
+    if not prefix:
+        return name
+    return prefix % name if "%s" in prefix else f"{prefix}{name}"
+
+
+def get_checker_fields(
+    checker: DataChecker,
+    with_fs_prefix: bool = False,
+    skip_file_fields: bool = False,
+) -> Generator[tuple[str, str], None, None]:
+    file_field_names = checker.get_file_field_names() if skip_file_fields else set()
     for fs in checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
+        prefix = fs.prefix or ""
         for field in fs.fieldset.get_fields():
+            if skip_file_fields and apply_field_prefix(prefix, field.name) in file_field_names:
+                continue
+            label = field.attrs.get("label", field.name) or field.name
             yield (
-                f"{fs.prefix if with_fs_prefix else ''}{field.name}",
-                f"{fs.prefix if with_fs_prefix else ''}{(field.attrs.get('label', field.name) or field.name)}",
+                apply_field_prefix(prefix if with_fs_prefix else "", field.name),
+                apply_field_prefix(prefix if with_fs_prefix else "", label),
             )
 
 

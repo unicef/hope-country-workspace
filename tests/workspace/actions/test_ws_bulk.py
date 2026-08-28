@@ -7,6 +7,9 @@ from unittest.mock import Mock
 import openpyxl
 import pytest
 import xlsxwriter
+from django import forms
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from testutils.factories import FlexFieldFactory
@@ -14,11 +17,13 @@ from testutils.utils import select_office
 from webtest import Upload
 
 from country_workspace.state import state
+from country_workspace.utils.flex_fields import Base64ImageField
 from country_workspace.workspaces.admin.cleaners.bulk_update import (
     TYPES,
     create_bulk_update_template,
     _get_queryset_with_is_valid_annotation,
 )
+from country_workspace.workspaces.admin.forms import BulkUpdateExportForm
 from tests.extras.testutils.factories import CountryHouseholdFactory
 from tests.workspace.actions import stub
 
@@ -144,6 +149,32 @@ def test_create_bulk_update_template(household: "CountryHousehold", force_migrat
     sheet = workbook.worksheets[0]
     headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
     assert headers == selected_fields
+
+
+def test_create_bulk_update_template_never_loads_flex_files(program):
+    CountryHouseholdFactory.create_batch(3, batch__program=program)
+    selected_fields = stub.header_base + stub.header_add["ind"]
+    model = CountryHouseholdFactory._meta.model
+    job = Mock()
+    job.config = {"pks": model.objects.values_list("id", flat=True), "columns": selected_fields}
+    qs = _get_queryset_with_is_valid_annotation(model, job)
+
+    with CaptureQueriesContext(connection) as queries:
+        create_bulk_update_template(qs, program, selected_fields)
+
+    assert [query for query in queries.captured_queries if "flex_files" in query["sql"]] == []
+
+
+def test_bulk_update_export_form_excludes_file_fields():
+    from testutils.factories import DataCheckerFactory
+
+    checker = DataCheckerFactory(fields=[("photo", Base64ImageField), ("full_name", forms.CharField)])
+
+    form = BulkUpdateExportForm(checker=checker)
+
+    choices = [name for name, __ in form.fields["fields"].choices]
+    assert "full_name" in choices
+    assert "photo" not in choices
 
 
 def test_create_bulk_update_template_with_errors(program):

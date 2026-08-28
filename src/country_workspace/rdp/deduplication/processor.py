@@ -45,13 +45,14 @@ class DedupProcessor(ProcessorBase):
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
-        for pk, photo in (
+        for individual in (
             qs_individuals_for_rdp(rdp=self.rdp)
-            .values_list("id", "flex_fields__photo")
+            .only("id", "flex_fields", "flex_files")
             .iterator(chunk_size=IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE)
         ):
+            photo = individual.get_flex_value("photo")
             if isinstance(photo, str) and (photo := photo.strip()):
-                yield {"reference_pk": str(pk), "filename": photo}
+                yield {"reference_pk": str(individual.pk), "filename": photo}
 
     def create_deduplication_set(
         self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None
