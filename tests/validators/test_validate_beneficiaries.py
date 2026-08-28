@@ -47,8 +47,7 @@ def test_validate_beneficiaries_success(
         if config["validate_mode"] == ValidateMode.NONE:
             beneficiary.validate_with_checker.assert_not_called()
         else:
-            fail_if_alien = config["validate_mode"] == ValidateMode.CHECK_AND_FAIL_IF_ALIEN
-            beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)
+            beneficiary.validate_with_checker.assert_called_once_with()
 
 
 def test_validate_beneficiaries_validation_error(
@@ -76,13 +75,12 @@ def test_collect_validation_errors_success() -> None:
         1: Mock(validate_with_checker=Mock(return_value=True)),
         2: Mock(validate_with_checker=Mock(return_value=True)),
     }
-    fail_if_alien = True
 
-    result = _collect_validation_errors(beneficiary_mapping, fail_if_alien)
+    result = _collect_validation_errors(beneficiary_mapping)
 
     assert result == []
     for beneficiary in beneficiary_mapping.values():
-        beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)
+        beneficiary.validate_with_checker.assert_called_once_with()
 
 
 def test_collect_validation_errors_with_failures() -> None:
@@ -91,10 +89,9 @@ def test_collect_validation_errors_with_failures() -> None:
         2: Mock(validate_with_checker=Mock(return_value=False)),
         3: Mock(validate_with_checker=Mock(return_value=False)),
     }
-    fail_if_alien = False
 
-    result = _collect_validation_errors(beneficiary_mapping, fail_if_alien)
+    result = _collect_validation_errors(beneficiary_mapping)
 
     assert result == [2, 3]
     for beneficiary in beneficiary_mapping.values():
-        beneficiary.validate_with_checker.assert_called_once_with(fail_if_alien=fail_if_alien)
+        beneficiary.validate_with_checker.assert_called_once_with()
