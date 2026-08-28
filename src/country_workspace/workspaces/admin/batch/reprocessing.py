@@ -101,10 +101,10 @@ def _apply_import_processor(
         flex_fields |= {
             field: value for field, attr in preserved.items() if (value := getattr(record, attr, None)) is not None
         }
-    record.flex_fields = flex_fields
+    updated = record.apply_flex_payload(flex_fields, preserve_existing_files=False)
     record.last_checked = None
     record.errors = {}
-    update_fields = ["flex_fields", "last_checked", "errors"]
+    update_fields = [*updated, "last_checked", "errors"]
     if isinstance(record, Individual) and flex_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
         # Keep the dedup key in sync with the rebuilt identity fields.
         record.identity_hash = compute_collector_hash(flex_fields)
@@ -336,7 +336,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     build_processor = partial(_build_processor, batch=batch, program=batch.program)
 
     household_records, household_preserved = _preserve_flex_fields(
-        households.only("pk", "name", "raw_data"),
+        households.with_flex_storage(),
         batch,
         Household,
     )
@@ -355,7 +355,7 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
     processed_individuals = (
         _run_import_processors(
             label="individual",
-            records=individuals.only("pk", "name", "raw_data", "flex_fields"),
+            records=individuals.with_flex_storage(),
             count=individual_count,
             mapping=config.individual_mapping,
             processor=build_processor(model=Individual, mapping_id=config.individual_mapping_id),

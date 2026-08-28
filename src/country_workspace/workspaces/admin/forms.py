@@ -23,7 +23,10 @@ class BulkUpdateExportForm(BaseActionForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
-        self.fields["fields"].choices = [(name, name) for name, fld in checker.get_form()().fields.items()]
+        file_field_names = checker.get_file_field_names()
+        self.fields["fields"].choices = [
+            (name, name) for name in checker.get_form()().fields if name not in file_field_names
+        ]
 
 
 class BulkUpdateImportForm(forms.Form):

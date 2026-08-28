@@ -18,6 +18,7 @@ class Config(AppConfig):
         from .remotes.country import CountryAttributeHandler
 
         from country_workspace.utils.flex_fields import (
+            Base64ImageField,
             CustomMultipleChoiceField,
             ObservedDisabilityChoice,
         )
@@ -34,6 +35,7 @@ class Config(AppConfig):
         field_registry.register(ChoiceFieldWithEmptyDisplay)
         field_registry.register(ObservedDisabilityChoice)
         field_registry.register(CustomMultipleChoiceField)
+        field_registry.register(Base64ImageField)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry

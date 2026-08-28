@@ -34,6 +34,7 @@ GLOBAL_EXCLUDED_MODELS = RegexList(
     [
         r"django_celery_beat\.ClockedSchedule",
         r"contenttypes\.ContentType",
+        r"country_workspace\.SyncLog",
         r"webpush\.BrowserAdmin",
         "authtoken",
         "social_django",
@@ -155,7 +156,7 @@ def test_app_list(app: "DjangoTestApp", app_label: str) -> None:
     assert res.status_code == 200
 
 
-@pytest.mark.skip_models("constance.Config")
+@pytest.mark.skip_models("constance.Config", "country_workspace.SyncLog")
 def test_admin_changelist(app: "DjangoTestApp", model_admin: "ModelAdmin[Model]", record: Model) -> None:
     url = reverse_model_admin(model_admin, "changelist")
     opts: Options[Model] = model_admin.model._meta

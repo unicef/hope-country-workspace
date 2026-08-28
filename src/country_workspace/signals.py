@@ -6,6 +6,7 @@ from typing import Any
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 from hope_flex_fields.models import DataChecker, DataCheckerFieldset, Fieldset, FlexField
 
 from country_workspace.models import Program
@@ -43,6 +44,8 @@ def _process_program(program: Program) -> None:
 
 
 def _process_datachecker_change(dc: DataChecker) -> None:
+    # Touch the checker: caches keyed on `last_modified` must be dropped in every process.
+    DataChecker.objects.filter(pk=dc.pk).update(last_modified=timezone.now())
     programs = _get_dc_associated_programs(dc=dc)
 
     deferred = getattr(_invalidation_state, "deferred_program_pks", None)

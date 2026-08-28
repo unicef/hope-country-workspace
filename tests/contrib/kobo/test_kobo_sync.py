@@ -31,6 +31,7 @@ from country_workspace.contrib.kobo.sync import (
 )
 from country_workspace.models import Program, SyncLog
 from country_workspace.models.jobs import GracefulJobCancellationError
+from country_workspace.utils.flex_fields import decode_flex_files_blob, to_public_flex_file_value
 from testutils.factories import (
     BatchFactory,
     DataCheckerFactory,
@@ -161,10 +162,10 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
 
     processor_result = mocker.MagicMock()
     processor_result.get.return_value = "Full Name"
+    processor_result.items.return_value = [("full_name", "Full Name"), ("photo", "data:image/png;base64,AAA")]
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
     individual_class_mock.return_value.pk = None
-
     data = {
         INDIVIDUAL_RECORDS_FIELD: [
             (
@@ -177,6 +178,10 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
     asset_uid = "asset-id"
     batch_mock = mocker.MagicMock(name="batch")
     batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    batch_mock.program.individual_checker.split_data.return_value = {
+        "fields": {"full_name": "Full Name"},
+        "files": {"photo": "data:image/png;base64,AAA"},
+    }
     household_mock = mocker.MagicMock(name="household")
     submission_mock = mocker.MagicMock(id=1)
     submission_mock.get.side_effect = data.get
@@ -193,16 +198,24 @@ def test_create_individuals(mocker: MockerFixture, config: Config) -> None:
         ImportedIndividual(individual=individual_class_mock.return_value, fields=processor_mock.return_value)
     ]
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
+    batch_mock.program.individual_checker.split_data.assert_called_once_with(
+        processor_mock.return_value, file_field_names=None
+    )
     processor_mock.assert_called_once_with(individual_data)
     get_fullname_key_mock.assert_called_once_with(processor_mock.return_value.keys())
     individual_class_mock.assert_called_once_with(
         batch=batch_mock,
         raw_data=individual_data,
-        flex_fields=processor_mock.return_value,
+        flex_fields={"full_name": "Full Name"},
+        flex_files=mocker.ANY,
         originating_id="KOB#asset-id#1#0001#1234567890123",
         household=household_mock,
         name=processor_result.get.return_value,
     )
+    kwargs = individual_class_mock.call_args.kwargs
+    files = decode_flex_files_blob(kwargs["flex_files"])
+    assert set(files) == {"photo"}
+    assert to_public_flex_file_value(files["photo"]) == "data:image/png;base64,AAA"
     household_mock.program.individuals.bulk_create.assert_called_once_with([individual_class_mock.return_value])
 
 
@@ -378,11 +391,12 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     )
     id_generator_mock = mocker.MagicMock(name="id_generator")
     processor_result = mocker.MagicMock()
+    processor_result.items.return_value = [("field", "value")]
     processor_mock = mocker.MagicMock(return_value=processor_result)
     build_processor_mock.return_value = processor_mock
-
     originating_id = "KOB#1#1"
     batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.program.household_checker.split_data.return_value = {"fields": {"field": "value"}, "files": {}}
     submission_mock = mocker.MagicMock(name="submission")
 
     household = create_household(
@@ -396,12 +410,16 @@ def test_create_household(mocker: MockerFixture, config: Config) -> None:
     assert household == batch_mock.program.households.create.return_value
     extract_household_data_mock.assert_called_once_with(submission_mock, INDIVIDUAL_RECORDS_FIELD)
     build_processor_mock.assert_called_once_with(batch_mock.program, None)
+    batch_mock.program.household_checker.split_data.assert_called_once_with(
+        processor_mock.return_value, file_field_names=None
+    )
     processor_mock.assert_called_once_with(extract_household_data_mock.return_value)
     id_generator_mock.assert_called_once()
     processor_result.__setitem__.assert_called_once_with("household_id", id_generator_mock.return_value)
     batch_mock.program.households.create.assert_called_once_with(
         batch=batch_mock,
-        flex_fields=processor_result,
+        flex_fields={"field": "value", "household_id": id_generator_mock.return_value},
+        flex_files=None,
         raw_data=extract_household_data_mock.return_value,
         originating_id=originating_id,
     )
@@ -439,6 +457,9 @@ def test_create_household_passes_mapping_id(mocker: MockerFixture, config: Confi
     )
 
     build_processor_mock.assert_called_once_with(batch_mock.program, 77)
+    batch_mock.program.household_checker.split_data.assert_called_once()
+    split_arg = batch_mock.program.household_checker.split_data.call_args.args[0]
+    assert split_arg["household_id"] == 1
 
 
 @pytest.mark.django_db
@@ -751,8 +772,21 @@ def test_import_asset_timeboxed_returns_incomplete_and_keeps_watermark(
     )
 
     assert result == ImportResult(households=1, individuals=1, completed=False)
-    create_household_mock.assert_called_once_with(batch, submission_1, config, id_generator_mock, mocker.ANY)
-    create_individuals_mock.assert_called_once()
+    create_household_mock.assert_called_once_with(
+        batch,
+        submission_1,
+        config,
+        id_generator_mock,
+        mocker.ANY,
+    )
+    create_individuals_mock.assert_called_once_with(
+        batch,
+        create_household_mock.return_value,
+        submission_1,
+        config,
+        mocker.ANY,
+        job=None,
+    )
     assert SyncLog.objects.get(name="kobo_test_asset_uid").last_id == "1"
 
 
@@ -927,7 +961,7 @@ def test_create_individuals_with_job_checks_cancellation_and_continues(
         individual_class_mock.return_value,
     ]
     assert job.ensure_not_cancelled.call_count == 2
-    assert build_processor_mock.call_count == 2
+    build_processor_mock.assert_called_once()
     assert get_fullname_key_mock.call_count == 2
     household_mock.program.individuals.bulk_create.assert_called_once_with(
         [individual_class_mock.return_value, individual_class_mock.return_value]

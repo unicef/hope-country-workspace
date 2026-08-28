@@ -25,6 +25,8 @@ def mock_checker():
 def mixin_instance(mock_checker):
     instance = FlexFieldGroupingMixin()
     instance.checker = mock_checker
+    instance.flex_fields = {}
+    instance.get_combined_flex_fields = lambda: dict(instance.flex_fields)
     return instance
 
 

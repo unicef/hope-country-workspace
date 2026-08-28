@@ -30,11 +30,9 @@ from country_workspace.models.household import (
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
 from country_workspace.utils.imports import get_kobo_originating_id
-from country_workspace.utils.import_flow import (
-    build_import_processor,
-    get_or_create_collector,
-    run_batch_postprocessing,
-)
+from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.flex_fields import encode_flex_files_blob, split_flex_payload
+from country_workspace.utils.import_flow import get_or_create_collector
 from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
@@ -188,13 +186,15 @@ def create_individuals(  # noqa: PLR0913
     individuals: list[ImportedIndividual] = []
     individual_mapping_id = config.get("individual_mapping_id")
     epoch_ms = int(batch.import_date.timestamp() * 1000)
+    checker = batch.program.individual_checker
+    processor = build_individual_processor(
+        batch.program,
+        individual_mapping_id,
+    )
     for idx, raw_individual in enumerate(submission.get(config["individual_records_field"], []), start=1):
         if job:
             job.ensure_not_cancelled(refresh=True)
-        individual_fields = build_individual_processor(
-            batch.program,
-            individual_mapping_id,
-        )(raw_individual)
+        individual_fields = processor(raw_individual)
         fullname = get_fullname_key(cast("Iterable[str]", individual_fields.keys()))
         name = individual_fields.get(fullname, "") if fullname else ""
         ind_originating_id = get_kobo_originating_id(asset_uid, submission.id, f"{idx:04d}", epoch=epoch_ms)
@@ -211,12 +211,17 @@ def create_individuals(  # noqa: PLR0913
             )
             individuals.append(ImportedIndividual(individual=individual, fields=individual_fields, created=created))
         else:
+            text_fields, file_values = split_flex_payload(
+                checker,
+                individual_fields,
+            )
             individual = Individual(
                 batch=batch,
                 household=household,
                 name=name,
                 originating_id=ind_originating_id,
-                flex_fields=individual_fields,
+                flex_fields=text_fields,
+                flex_files=encode_flex_files_blob(file_values),
                 raw_data=raw_individual,
             )
             individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
@@ -237,13 +242,20 @@ def create_household(
         batch.program,
         household_mapping_id,
     )(raw_household_fields)
-    household_fields["household_id"] = id_generator()
+    text_fields, file_values = split_flex_payload(
+        batch.program.household_checker,
+        household_fields,
+    )
+    household_id = id_generator()
+    household_fields["household_id"] = household_id
+    text_fields["household_id"] = household_id
     return cast(
         "Household",
         batch.program.households.create(
             batch=batch,
             originating_id=originating_id,
-            flex_fields=household_fields,
+            flex_fields=text_fields,
+            flex_files=encode_flex_files_blob(file_values),
             raw_data=raw_household_fields,
         ),
     )
@@ -371,8 +383,21 @@ def import_asset(  # noqa: PLR0913
             # One transaction per submission: if this block fails, only this
             # submission is rolled back; previously committed data stays.
             with transaction.atomic():
-                household = create_household(batch, submission, config, id_generator, originating_id)
-                individuals = create_individuals(batch, household, submission, config, asset.uid, job=job)
+                household = create_household(
+                    batch,
+                    submission,
+                    config,
+                    id_generator,
+                    originating_id,
+                )
+                individuals = create_individuals(
+                    batch,
+                    household,
+                    submission,
+                    config,
+                    asset.uid,
+                    job=job,
+                )
                 set_roles_and_relationships(household, individuals)
 
                 household_counter += 1

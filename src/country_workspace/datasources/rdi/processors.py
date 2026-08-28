@@ -15,6 +15,7 @@ from country_workspace.contrib.hope.collision import detect_and_mark_collisions_
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record
+from country_workspace.utils.flex_fields import encode_flex_files_blob, split_flex_payload
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
@@ -114,6 +115,7 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
     file_name = normalize_file_name(job.file.name)
     epoch_ms = int(batch.import_date.timestamp() * 1000)
     household_mapping_id = config.get("household_mapping_id")
+    checker = batch.program.household_checker
     transform_row = build_import_processor(
         program=job.program,
         model=Household,
@@ -128,13 +130,16 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
         originating_id = get_xlsx_originating_id(file_name, household_key, epoch=epoch_ms)
         try:
+            transformed = transform_row(row)
+            text_fields, file_values = split_flex_payload(checker, transformed)
             mapping[household_key] = cast(
                 "Household",
                 Household.objects.create(
-                    batch_id=batch.pk,
+                    batch=batch,
                     name=str(get_value(row, config["household_label"])),
                     originating_id=originating_id,
-                    flex_fields=transform_row(row),
+                    flex_fields=text_fields,
+                    flex_files=encode_flex_files_blob(file_values),
                     raw_data=row,
                 ),
             )
@@ -150,6 +155,7 @@ def process_beneficiaries(
     mapping = {}
     file_name = normalize_file_name(job.file.name)
     epoch_ms = int(batch.import_date.timestamp() * 1000)
+    checker = batch.program.individual_checker
     people_prefix = config.get("people_prefix") if household_mapping is None else None
     household_id_column = config.get("household_id_column") if household_mapping is not None else None
     sheet_name = SheetName.PEOPLE if household_mapping is None else SheetName.INDIVIDUALS
@@ -173,14 +179,17 @@ def process_beneficiaries(
         household = get_hh_for_ind(cleaned_row, household_id_column, household_mapping)
 
         try:
+            transformed = transform_row(cleaned_row)
+            text_fields, file_values = split_flex_payload(checker, transformed)
             mapping[beneficiary_key] = cast(
                 "Individual",
                 Individual.objects.create(
-                    batch_id=batch.pk,
+                    batch=batch,
                     name=name,
                     household=household,
                     originating_id=originating_id,
-                    flex_fields=transform_row(cleaned_row),
+                    flex_fields=text_fields,
+                    flex_files=encode_flex_files_blob(file_values),
                     raw_data=row,
                 ),
             )

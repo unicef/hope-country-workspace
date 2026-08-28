@@ -229,6 +229,15 @@ def test_dcfieldset_update_triggers_processing(ind_datachecker, ind_dcfieldset):
         mocked.assert_called_once_with(dc=ind_datachecker)
 
 
+def test_process_datachecker_change_touches_last_modified(hh_datachecker):
+    before = hh_datachecker.last_modified
+
+    _process_datachecker_change(hh_datachecker)
+
+    hh_datachecker.refresh_from_db()
+    assert hh_datachecker.last_modified > before
+
+
 def test_datachecker_update_does_not_trigger_processing(hh_datachecker):
     with patch("country_workspace.signals._process_datachecker_change") as mocked:
         hh_datachecker.description = "Updated"

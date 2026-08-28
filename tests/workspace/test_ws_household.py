@@ -231,6 +231,8 @@ def hh_with_address(household) -> "CountryHousehold":
 
     household.program.household_checker = dc
     household.program.save()
+    # Household.checker is a cached_property; force refresh after checker swap.
+    household.__dict__.pop("checker", None)
 
     return household
 
@@ -253,6 +255,8 @@ def hh_with_check_initial(household) -> "CountryHousehold":
 
     household.program.household_checker = dc
     household.program.save()
+    # Household.checker is cached; ensure fixture uses the updated checker.
+    household.__dict__.pop("checker", None)
 
     return household
 

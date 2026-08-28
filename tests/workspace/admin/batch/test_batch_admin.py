@@ -892,6 +892,32 @@ def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -
     assert individual.flex_fields["photo"] == "data:image/jpeg;base64,Zm9v"
 
 
+def test_apply_picture_assignments_does_not_query_per_record(batch: CountryBatch) -> None:
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+
+    def apply(count: int, tag: str) -> int:
+        individuals = [
+            CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": ""}) for __ in range(count)
+        ]
+        assignments = [
+            {"record_id": individual.pk, "data_uri": f"data:image/jpeg;base64,{tag}"} for individual in individuals
+        ]
+        with CaptureQueriesContext(connection) as queries:
+            BatchPictureImportService(batch).apply_assignments("photo", assignments)
+        return len(queries.captured_queries)
+
+    one = apply(1, "Zm9v")
+    three = apply(3, "YmFy")
+
+    queries_per_record = 2  # the existence check and the UPDATE
+    assert three - one == 2 * queries_per_record
+
+
 def test_picture_import_service_helpers() -> None:
     assert BatchPictureImportService._normalize_match_key(None) == ""
     assert BatchPictureImportService._normalize_match_key("  AbC ") == "abc"

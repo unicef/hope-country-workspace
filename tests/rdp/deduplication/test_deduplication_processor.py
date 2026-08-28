@@ -62,20 +62,20 @@ def test_run(processor: DedupProcessor, mocker: MockerFixture, case) -> None:
 
 
 def test_iter_images(processor: DedupProcessor, mocker: MockerFixture) -> None:
+    individuals = []
+    for pk, photo in enumerate([" one.jpg ", "", None, 123, "two.jpg"], 1):
+        individual = mocker.MagicMock(pk=pk)
+        individual.get_flex_value.return_value = photo
+        individuals.append(individual)
     qs = mocker.MagicMock()
-    qs.values_list.return_value.iterator.return_value = [
-        (1, " one.jpg "),
-        (2, ""),
-        (3, None),
-        (4, 123),
-        (5, "two.jpg"),
-    ]
+    qs.only.return_value.iterator.return_value = individuals
     mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
 
     assert list(processor._iter_images()) == [
         {"reference_pk": "1", "filename": "one.jpg"},
         {"reference_pk": "5", "filename": "two.jpg"},
     ]
+    qs.only.assert_called_once_with("id", "flex_fields", "flex_files")
 
 
 @pytest.mark.parametrize(

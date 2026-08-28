@@ -8,9 +8,18 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from country_workspace.cache.manager import cache_manager
-from country_workspace.utils.flex_fields import get_obj_checksum
+from country_workspace.utils.flex_fields import (
+    decode_flex_files_blob,
+    encode_flex_files_blob,
+    get_obj_checksum,
+    merge_flex_payload,
+    split_flex_storage,
+    to_public_flex_file_value,
+)
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from django.db.models import Model, QuerySet
     from hope_flex_fields.models import DataChecker
 
@@ -35,6 +44,13 @@ class ValidableQuerySet(BaseQuerySet):
     def all(self) -> "QuerySet[Model, Model]":
         return super().all().defer("flex_files")
 
+    def with_flex_storage(self) -> "QuerySet[Model, Model]":
+        return self.select_related(
+            "batch__program__household_checker",
+            "batch__program__individual_checker",
+            "batch__program__country_office",
+        ).defer(None)
+
 
 class ValidableManager(models.Manager["Validable"]):
     _queryset_class = ValidableQuerySet
@@ -55,6 +71,7 @@ class Cachable:
 
 
 CHECKSUM_FIELDS: set[str] = {"flex_fields", "flex_files", "removed"}
+_CHECKER_FILE_FIELDS_CACHE: dict[int, tuple["datetime", frozenset[str]]] = {}
 
 
 class Validable(Cachable, models.Model):
@@ -98,6 +115,7 @@ class Validable(Cachable, models.Model):
         using: str | None = None,
         update_fields: Iterable[str] | None = None,
     ) -> None:
+        update_fields = self.normalize_flex_storage(update_fields)
         update_fields = self.update_checksum(update_fields)
         super().save(
             force_insert=force_insert,
@@ -105,6 +123,77 @@ class Validable(Cachable, models.Model):
             using=using,
             update_fields=update_fields,
         )
+
+    def get_flex_files_map(self) -> dict[str, Any]:
+        return decode_flex_files_blob(self.flex_files)
+
+    def get_combined_flex_fields(self) -> dict[str, Any]:
+        return merge_flex_payload(self.flex_fields, self.flex_files)
+
+    def get_flex_value(self, field_name: str, default: object | None = None) -> object | None:
+        if field_name in self.flex_fields:
+            return self.flex_fields[field_name]
+        return to_public_flex_file_value(self.get_flex_files_map().get(field_name, default))
+
+    @staticmethod
+    def _checker_file_field_names(checker: "DataChecker") -> set[str]:
+        cached = _CHECKER_FILE_FIELDS_CACHE.get(checker.pk)
+        if cached is not None and cached[0] == checker.last_modified:
+            return set(cached[1])
+        names = frozenset(checker.get_file_field_names())
+        _CHECKER_FILE_FIELDS_CACHE[checker.pk] = (checker.last_modified, names)
+        return set(names)
+
+    def _resolve_flex_storage(
+        self,
+        payload: dict[str, Any],
+        *,
+        preserve_existing_files: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        checker = self.checker
+        if checker is None:
+            return None
+
+        file_field_names = self._checker_file_field_names(checker)
+        text_fields, new_file_values, cleared_files = split_flex_storage(checker, payload, file_field_names)
+        stored = self.get_flex_files_map() if preserve_existing_files else {}
+        file_values = {key: value for key, value in stored.items() if key in file_field_names}
+        for key in cleared_files:
+            file_values.pop(key, None)
+        file_values.update(new_file_values)
+        return text_fields, file_values
+
+    def apply_flex_payload(self, payload: dict[str, Any], *, preserve_existing_files: bool = True) -> set[str]:
+        resolved = self._resolve_flex_storage(payload, preserve_existing_files=preserve_existing_files)
+        if resolved is None:
+            self.flex_fields = dict(payload)
+            return {"flex_fields"}
+
+        self.flex_fields, file_values = resolved
+        self.flex_files = encode_flex_files_blob(file_values)
+        return {"flex_fields", "flex_files"}
+
+    def normalize_flex_storage(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
+        """Move any file-typed key from ``flex_fields`` to ``flex_files`` before the row is written."""
+        if update_fields is not None and not (set(update_fields) & {"flex_fields", "flex_files"}):
+            return update_fields
+
+        resolved = self._resolve_flex_storage(self.flex_fields or {}, preserve_existing_files=True)
+        if resolved is None:
+            return update_fields
+
+        text_fields, file_values = resolved
+        next_blob = encode_flex_files_blob(file_values)
+        if self.flex_fields != text_fields:
+            self.flex_fields = text_fields
+        if self.flex_files != next_blob:
+            self.flex_files = next_blob
+
+        if update_fields is not None:
+            fields = set(update_fields)
+            fields.update({"flex_fields", "flex_files"})
+            return fields
+        return None
 
     def update_checksum(self, update_fields: Iterable[str] | None) -> Iterable[str] | None:
         """Update models checksum if needed, returns fields to update on model save."""
@@ -124,7 +213,8 @@ class Validable(Cachable, models.Model):
 
     def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
         update_fields = []
-        errors = self.checker.validate([self.flex_fields], fail_if_alien=fail_if_alien)
+        current_data = self.get_combined_flex_fields()
+        errors = self.checker.validate([current_data], fail_if_alien=fail_if_alien)
         cleaned = self.checker.form.cleaned_data
         new_errors = next(iter((errors or {}).values()), {})
 
@@ -132,14 +222,13 @@ class Validable(Cachable, models.Model):
             self.errors = new_errors
             update_fields.append("errors")
 
-        flex_fields = self.flex_fields or {}
-        if cleaned != flex_fields:
-            self.flex_fields = cleaned
+        if cleaned != current_data:
+            cleaned_payload = dict(cleaned)
             # keep invalid values
             for field_name in new_errors:
-                if field_name in flex_fields:
-                    self.flex_fields[field_name] = flex_fields[field_name]
-            update_fields.append("flex_fields")
+                if field_name in current_data:
+                    cleaned_payload[field_name] = current_data[field_name]
+            update_fields.extend(self.apply_flex_payload(cleaned_payload))
 
         self.last_checked = timezone.now()
         update_fields.append("last_checked")

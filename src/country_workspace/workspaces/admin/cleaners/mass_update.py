@@ -111,20 +111,27 @@ def mass_update_impl(
     config: "FormOperations",
     create_missing_fields: bool = False,
 ) -> None:
-    first = queryset.select_related("batch__program").only("batch__program").first()
+    first = queryset.select_related("batch__program").defer("raw_data").first()
     if first is None:
         return
     program = first.program
     with transaction.atomic(), suppress_cache_updates():
-        for record in queryset.defer("raw_data").iterator(chunk_size=MASS_UPDATE_ITERATOR_CHUNK_SIZE):
+        for record in (
+            queryset.with_flex_storage().defer("raw_data").iterator(chunk_size=MASS_UPDATE_ITERATOR_CHUNK_SIZE)
+        ):
+            combined_fields = record.get_combined_flex_fields()
+            changed = False
             for field_name, attrs in config.items():
                 op, new_value = attrs
-                if field_name in record.flex_fields:
-                    old_value = record.flex_fields[field_name]
+                if field_name in combined_fields:
+                    old_value = combined_fields[field_name]
                     func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func(old_value, new_value)
+                    changed = True
                 elif create_missing_fields:
                     func = operations.get_function_by_id(op)
                     record.flex_fields[field_name] = func("", new_value)
-            record.save(update_fields=["flex_fields"])
+                    changed = True
+            if changed:
+                record.save(update_fields=["flex_fields"])
     cache_manager.incr_cache_version(program=program)

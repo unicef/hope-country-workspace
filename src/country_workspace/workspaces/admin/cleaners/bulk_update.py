@@ -73,6 +73,7 @@ if TYPE_CHECKING:
 
 
 ITERATOR_CHUNK_SIZE = 50
+_MISSING = object()
 
 
 class XlsValidateRule:
@@ -217,7 +218,10 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
         fmt = lambda v: ", ".join(map(str, v)) if isinstance(v, list | tuple) else str(v if v is not None else "")
         for row, record in enumerate(queryset.iterator(chunk_size=ITERATOR_CHUNK_SIZE), 1):
             for col, fld in enumerate(columns):
-                value = getattr(record, fld, record.flex_fields.get(fld))
+                # `flex_files` is deferred here: reading it would cost one query per record.
+                value = getattr(record, fld, _MISSING)
+                if value is _MISSING:
+                    value = (record.flex_fields or {}).get(fld)
                 worksheet.write(row, col, fmt(value))
 
         _add_choices_worksheet(workbook, field_to_choices, columns)

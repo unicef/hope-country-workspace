@@ -77,12 +77,12 @@ def reprocess_records(
                     mapping.apply(data)
                 if transformer:
                     data = transformer.apply(data)
-                record.flex_fields = data
+                updated = record.apply_flex_payload(data, preserve_existing_files=True)
 
                 record.last_checked = None
                 record.errors = {}
 
-                record.save(update_fields=["flex_fields", "last_checked", "errors"])
+                record.save(update_fields=[*updated, "last_checked", "errors"])
                 count += 1
 
         modeladmin.message_user(request, _("Successfully reprocessed %s records.") % count, messages.SUCCESS)

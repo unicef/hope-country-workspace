@@ -128,8 +128,18 @@ def test_import_data_calls_client_and_aggregates(
     client_cls.return_value.get.assert_called_once_with(
         f"registration/{config['registration_reference_pk']}/records/", params={"ser": "encrypted"}
     )
-    import_result_mock.assert_any_call(batch, {"pk": "5"}, job.config, private_key=PRIVATE.decode())
-    import_result_mock.assert_any_call(batch, {"pk": "6"}, job.config, private_key=PRIVATE.decode())
+    import_result_mock.assert_any_call(
+        batch,
+        {"pk": "5"},
+        job.config,
+        private_key=PRIVATE.decode(),
+    )
+    import_result_mock.assert_any_call(
+        batch,
+        {"pk": "6"},
+        job.config,
+        private_key=PRIVATE.decode(),
+    )
     postprocessing.assert_called_once_with(
         batch,
         household_transformer_id=None,
@@ -433,7 +443,11 @@ def test_import_result_master_detail_creates_households_and_people(mocker: Mocke
     result = import_result(batch, result_payload, config)
 
     assert result == ImportResult(people=1, households=1)
-    create_household_and_individuals.assert_called_once_with(batch, result_payload, config)
+    create_household_and_individuals.assert_called_once_with(
+        batch,
+        result_payload,
+        config,
+    )
     update_or_create.assert_called_once()
 
 
@@ -606,6 +620,10 @@ def test_create_individual_creates_record(
 ) -> None:
     batch = mocker.MagicMock()
     batch.pk = 5
+    batch.program.individual_checker.split_data.return_value = {
+        "fields": {"x": "y"},
+        "files": {},
+    }
     household = mocker.MagicMock() if has_household else None
 
     processor = mocker.MagicMock(return_value={"x": "y"})
@@ -623,11 +641,12 @@ def test_create_individual_creates_record(
     build_processor.assert_called_once_with(batch.program, mapping_id=None)
     processor.assert_called_once_with(expected_row)
     create_individual_mock.assert_called_once_with(
-        batch_id=5,
+        batch=batch,
         name="",
         household=household,
         originating_id=originating_id,
         flex_fields={"x": "y"},
+        flex_files=None,
         raw_data=record,
     )
     assert result is create_individual_mock.return_value

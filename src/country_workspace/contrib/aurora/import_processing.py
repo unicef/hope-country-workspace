@@ -14,6 +14,7 @@ from country_workspace.contrib.aurora.crypto import decrypt_payload
 from country_workspace.contrib.aurora.models import Registration
 from country_workspace.models import AsyncJob, Batch, Individual, SyncLog, Program, Household
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
+from country_workspace.utils.flex_fields import encode_flex_files_blob, split_flex_payload
 from country_workspace.utils.imports import get_aurora_originating_id
 from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
 from country_workspace.utils.sync_log import get_aurora_sync_log_name
@@ -103,7 +104,12 @@ def import_data(job: AsyncJob) -> ImportResult:
     client = AuroraClient()
     for result in client.get(f"registration/{config['registration_reference_pk']}/records/", params={"ser": ser}):
         job.ensure_not_cancelled(refresh=True)
-        imported = import_result(batch, result, config, private_key=private_key)
+        imported = import_result(
+            batch,
+            result,
+            config,
+            private_key=private_key,
+        )
         total_people += imported.people
         total_households += imported.households
 
@@ -163,14 +169,23 @@ def import_result(
 
         with transaction.atomic():
             record = prepare_record(result, private_key)
+            epoch_ms = int(batch.import_date.timestamp() * 1000)
+            originating_id = get_aurora_originating_id(record["pk"], epoch=epoch_ms)
             if config.get("master_detail"):
-                created_households, created_individuals = create_household_and_individuals(batch, record, config)
+                created_households, created_individuals = create_household_and_individuals(
+                    batch,
+                    record,
+                    config,
+                )
                 household_counter += created_households
                 people_counter += created_individuals
             else:
-                epoch_ms = int(batch.import_date.timestamp() * 1000)
-                originating_id = get_aurora_originating_id(record["pk"], epoch=epoch_ms)
-                create_individual(batch, record, config, originating_id)
+                create_individual(
+                    batch,
+                    record,
+                    config,
+                    originating_id,
+                )
                 people_counter += 1
             last_successful_id = current_id
     except Exception as e:
@@ -204,28 +219,45 @@ def create_individual(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
     )
+    transformed = individual_row_processor(row)
+    text_fields, file_values = split_flex_payload(
+        batch.program.individual_checker,
+        transformed,
+    )
     extras.setdefault("household", None)
     return Individual.objects.create(
-        batch_id=batch.pk,
+        batch=batch,
         name="",
         originating_id=originating_id,
-        flex_fields=individual_row_processor(row),
+        flex_fields=text_fields,
+        flex_files=encode_flex_files_blob(file_values),
         raw_data=record,
         **extras,
     )
 
 
-def create_household(batch: Batch, record: Mapping[str, Any], config: Config, originating_id: str) -> Household:
+def create_household(
+    batch: Batch,
+    record: Mapping[str, Any],
+    config: Config,
+    originating_id: str,
+) -> Household:
     row = record.get("fields", record)
     household_row_processor = build_household_processor(
         batch.program,
         mapping_id=config.get("household_mapping_id"),
     )
+    transformed = household_row_processor(row)
+    text_fields, file_values = split_flex_payload(
+        batch.program.household_checker,
+        transformed,
+    )
     return Household.objects.create(
-        batch_id=batch.pk,
+        batch=batch,
         name="",
         originating_id=originating_id,
-        flex_fields=household_row_processor(row),
+        flex_fields=text_fields,
+        flex_files=encode_flex_files_blob(file_values),
         raw_data=record,
     )
 
