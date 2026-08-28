@@ -135,6 +135,11 @@ CONFIG: "dict[str, ConfigItem]" = {
         "django.core.files.storage.FileSystemStorage",
         setting("storages"),
     ),
+    "FILE_STORAGE_HOPE": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
     "FILE_STORAGE_STATIC": (
         str,
         "django.contrib.staticfiles.storage.StaticFilesStorage",
