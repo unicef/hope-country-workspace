@@ -21,5 +21,5 @@ def test_engine_uses_configured_manager_class(settings):
 
 def test_results_queue_uses_binding_keys(settings):
     queues = settings.STREAMING["QUEUES"]
-    assert "binding_keys" in queues["results"]
+    assert queues["results"]["binding_keys"] == ["ocr.result"]
     assert "routing" not in queues["results"]

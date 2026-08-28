@@ -37,6 +37,12 @@ class RdpLogEntryType(models.TextChoices):
     REVIEW_DECISION = "REVIEW_DECISION", _("Review decision")
 
 
+class RdpOperationAction(models.TextChoices):
+    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
+    APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+    START_OCR = "START_OCR", _("Start OCR")
+
+
 class Rdp(BaseModel):
     """Represents a Registration Data Push (RDP) object in the system."""
 
@@ -111,6 +117,7 @@ class Rdp(BaseModel):
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
             ("reset_rdp", _("Can reset RDP")),
+            ("run_ocr_rdp", _("Can run RDP OCR")),
         ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")
