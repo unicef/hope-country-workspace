@@ -12,7 +12,7 @@ STREAMING = {
     "LISTEN_CALLBACK": "country_workspace.stream.callbacks.handle_event",
     "QUEUES": {
         "results": {
-            "binding_keys": ["cw.#"],
+            "binding_keys": ["ocr.result"],
         },
     },
 }

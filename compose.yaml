@@ -24,6 +24,7 @@ x-env: &env
     - HOPE_API_URL=${HOPE_API_URL:-http://host.docker.internal:8080/api/rest/}
     - HOPE_API_TOKEN=${HOPE_API_TOKEN:-}
     - FILE_STORAGE_MEDIA=storages.backends.azure_storage.AzureStorage?azure_container=media&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10010/devstoreaccount1;
+    - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10010/devstoreaccount1;
 
 x-common: &common
   build:
