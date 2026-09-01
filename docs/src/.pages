@@ -11,4 +11,4 @@ nav:
   - Data cleaning and updates: data_cleaning_updates.md
   - Data Import: data_import
   - Data Validation: data_validation
-  - Push Data to HOPE Core: push_data.md
+  - Registration Data Pushes: rdp
