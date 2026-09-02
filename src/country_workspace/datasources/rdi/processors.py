@@ -94,6 +94,15 @@ def normalize_row_structure(row: Record, people_prefix: str | None = None) -> tu
     return row, name_column
 
 
+def is_empty_row(row: Record) -> bool:
+    """Return True when every cell is empty. Styled Excel rows still yield keys with empty values."""
+    return all(v in (None, "", []) for v in row.values())
+
+
+def skip_empty_rows(sheet: Sheet) -> Sheet:
+    return (row for row in sheet if not is_empty_row(row))
+
+
 def filter_rows_with_household_pk(config: Config, sheet: Sheet) -> Sheet:
     household_id_column = config["household_id_column"]
 
@@ -115,7 +124,7 @@ def read_sheets(config: Config, filepath: str, *sheet_names: str) -> Generator[S
         )
         sheet_images = extract_images(filepath, *sheet_names)
         for (_, sheet), images in zip(sheets, sheet_images, strict=False):
-            sheet_with_images = merge_images(sheet, images, start_at_row)
+            sheet_with_images = skip_empty_rows(merge_images(sheet, images, start_at_row))
             if config["master_detail"]:
                 yield filter_rows_with_household_pk(config, sheet_with_images)
             else:
