@@ -28,8 +28,8 @@ class CountryJobAdmin(
 
     list_display = (
         "description",
-        "info",
         "status",
+        "info",
         "datetime_queued",
         "completed_time",
         # "type",

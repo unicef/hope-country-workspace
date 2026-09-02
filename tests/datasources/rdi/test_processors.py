@@ -14,6 +14,7 @@ from country_workspace.datasources.rdi.exceptions import (
     SheetProcessingError,
 )
 from country_workspace.datasources.rdi.processors import (
+    BeneficiaryImportResult,
     extract_images,
     filter_rows_with_household_pk,
     get_value,
@@ -25,6 +26,7 @@ from country_workspace.datasources.rdi.processors import (
     process_beneficiaries,
     process_households,
     read_sheets,
+    _sync_ind_pks,
 )
 from country_workspace.datasources.rdi.utils import date_to_iso_string, datetime_to_date
 from country_workspace.models import Batch, Household, Individual
@@ -103,6 +105,15 @@ def household_mapping(mocker: MockerFixture) -> Mapping[int, Any]:
         HOUSEHOLD_1_PK: mocker.MagicMock(name=HOUSEHOLD_1_NAME),
         HOUSEHOLD_2_PK: mocker.MagicMock(name=HOUSEHOLD_2_NAME),
     }
+
+
+@pytest.fixture
+def canonical_transform(mocker: MockerFixture, config: Config):
+    """Patch the import processor to map the sheet's id column onto ``individual_id``."""
+    return mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor",
+        return_value=lambda row: dict(row, individual_id=row[config["beneficiary_id_column"]]),
+    )
 
 
 @pytest.fixture
@@ -192,7 +203,7 @@ def test_filter_rows_with_household_pk(
 ) -> None:
     household_sheet_list = list(household_sheet)
     get_value_mock = mocker.patch("country_workspace.datasources.rdi.processors.get_value")
-    get_value_mock.side_effect = True, False
+    get_value_mock.side_effect = True, None
 
     result = list(filter_rows_with_household_pk(config, household_sheet))
 
@@ -325,7 +336,7 @@ def test_process_beneficiaries_with_households(
         household_mapping,
     )
 
-    assert len(result) == len(list(individual_sheet))
+    assert len(result.mapping) == len(list(individual_sheet))
     build_processor_mock.assert_called_once_with(
         program=job_mock.program,
         model=Individual,
@@ -347,6 +358,259 @@ def test_process_beneficiaries_with_households(
             for row in individual_sheet
         ]
     )
+
+
+@pytest.mark.parametrize(
+    ("household_id", "expected_count"),
+    [(None, 0), ("", 0), (0, 1), ("0", 1), (HOUSEHOLD_1_PK, 1)],
+    ids=["none", "empty_string", "zero_int", "zero_string", "valid"],
+)
+def test_filter_rows_with_household_pk_values(
+    config: Config,
+    household_id: Any,
+    expected_count: int,
+    skip_if_not_master_detail: None,
+) -> None:
+    sheet: Sheet = [{config["household_id_column"]: household_id, config["household_label"]: HOUSEHOLD_1_NAME}]
+
+    result = list(filter_rows_with_household_pk(config, sheet))
+
+    assert len(result) == expected_count
+
+
+@pytest.mark.parametrize("zero_household_id", [0, "0"], ids=["zero_int", "zero_string"])
+def test_process_beneficiaries_with_zero_household_id(
+    mocker: MockerFixture,
+    config: Config,
+    individual_sheet: Sheet,
+    household_mapping: Mapping[int, Household],
+    zero_household_id: Any,
+    skip_if_not_master_detail: None,
+) -> None:
+    mock_create = mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create")
+    mocker.patch("country_workspace.datasources.rdi.processors.build_import_processor", return_value=lambda row: row)
+    collector_mock = mocker.patch("country_workspace.datasources.rdi.processors.get_or_create_collector")
+    collector_mock.return_value = (collector := mocker.MagicMock(name="collector")), True
+    logger_mock = mocker.patch("country_workspace.datasources.rdi.processors.logger")
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    batch_mock = mocker.MagicMock(name="batch")
+    sheet = [dict(individual_sheet[0], **{config["household_id_column"]: zero_household_id})]
+
+    result = process_beneficiaries(sheet, job_mock, batch_mock, config, household_mapping)
+
+    assert len(result.mapping) == 1
+    assert result.mapping[sheet[0][config["beneficiary_id_column"]]] is collector
+    mock_create.assert_not_called()  # external collectors go through get_or_create_collector
+    collector_mock.assert_called_once()
+    logger_mock.error.assert_not_called()
+
+
+def test_process_beneficiaries_skips_invalid_household_reference(
+    mocker: MockerFixture,
+    config: Config,
+    individual_sheet: Sheet,
+    household_mapping: Mapping[int, Household],
+    skip_if_not_master_detail: None,
+) -> None:
+    mock_create = mocker.patch(
+        "country_workspace.datasources.rdi.processors.Individual.objects.create",
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch("country_workspace.datasources.rdi.processors.build_import_processor", return_value=lambda row: row)
+    logger_mock = mocker.patch("country_workspace.datasources.rdi.processors.logger")
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    batch_mock = mocker.MagicMock(name="batch")
+    invalid_household_id = 999
+    sheet = [individual_sheet[0], dict(individual_sheet[1], **{config["household_id_column"]: invalid_household_id})]
+
+    result = process_beneficiaries(sheet, job_mock, batch_mock, config, household_mapping)
+
+    assert len(result.mapping) == 1
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["household"] is household_mapping[HOUSEHOLD_1_PK]
+    logger_mock.error.assert_called_once()
+    log_args = " ".join(str(arg) for arg in logger_mock.error.call_args.args)
+    assert str(invalid_household_id) in log_args
+    assert str(sheet[1][config["beneficiary_id_column"]]) in log_args
+
+
+def test_process_beneficiaries_deduplicates_external_collectors(
+    mocker: MockerFixture,
+    config: Config,
+    individual_sheet: Sheet,
+    household_mapping: Mapping[int, Household],
+    skip_if_not_master_detail: None,
+) -> None:
+    mock_create = mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create")
+    mocker.patch("country_workspace.datasources.rdi.processors.build_import_processor", return_value=lambda row: row)
+    collector_mock = mocker.patch("country_workspace.datasources.rdi.processors.get_or_create_collector")
+    existing_collector = mocker.MagicMock(name="existing_collector")
+    collector_mock.return_value = (existing_collector, False)
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    batch_mock = mocker.MagicMock(name="batch")
+    batch_mock.import_date.timestamp.return_value = 1_234_567_890.123
+    collector_row = dict(individual_sheet[1], **{config["household_id_column"]: 0})
+    sheet = [individual_sheet[0], collector_row]
+
+    result = process_beneficiaries(sheet, job_mock, batch_mock, config, household_mapping)
+
+    assert len(result.mapping) == 2
+    assert result.mapping[collector_row[config["beneficiary_id_column"]]] is existing_collector
+    mock_create.assert_called_once()  # only the non-collector row is created directly
+    assert mock_create.call_args.kwargs["household"] is household_mapping[HOUSEHOLD_1_PK]
+    collector_mock.assert_called_once_with(
+        program=batch_mock.program,
+        batch=batch_mock,
+        individual_fields=collector_row,
+        raw_data=collector_row,
+        originating_id=f"XLS#rdi.xlsx#{collector_row[config['beneficiary_id_column']]}#1234567890123",
+        name=collector_row[FULL_NAME_COLUMN],
+    )
+
+
+STALE_COLLECTOR_ID = 99  # the individual_id the collector had in the import that created it
+REUSED_COLLECTOR_PK = 801
+MEMBER_PK = 900
+
+
+@pytest.fixture
+def reused_collector(mocker: MockerFixture):
+    """A collector created by an earlier import, so carrying that import's individual_id."""
+    collector = mocker.MagicMock(name="reused_collector", pk=REUSED_COLLECTOR_PK)
+    collector.flex_fields = {"individual_id": STALE_COLLECTOR_ID}
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.get_or_create_collector",
+        return_value=(collector, False),
+    )
+    return collector
+
+
+def test_process_beneficiaries_indexes_reused_collector_by_current_sheet_id(
+    mocker: MockerFixture,
+    config: Config,
+    household_mapping: Mapping[int, Household],
+    canonical_transform: None,
+    reused_collector: Any,
+    skip_if_not_master_detail: None,
+) -> None:
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.Individual.objects.create",
+        side_effect=lambda **kwargs: mocker.MagicMock(pk=MEMBER_PK, flex_fields=kwargs["flex_fields"]),
+    )
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    collector_sheet_id = 4
+    sheet = [
+        {
+            FULL_NAME_COLUMN: "Omar Said",
+            config["household_id_column"]: HOUSEHOLD_1_PK,
+            config["beneficiary_id_column"]: 3,
+        },
+        {
+            FULL_NAME_COLUMN: "Maria Rossi",
+            config["household_id_column"]: 0,
+            config["beneficiary_id_column"]: collector_sheet_id,
+        },
+    ]
+
+    result = process_beneficiaries(sheet, job_mock, mocker.MagicMock(name="batch"), config, household_mapping)
+
+    assert result.mapping[collector_sheet_id] is reused_collector
+    assert result.reference_pks == {"3": MEMBER_PK, str(collector_sheet_id): REUSED_COLLECTOR_PK}
+    assert str(STALE_COLLECTOR_ID) not in result.reference_pks
+
+
+def test_sync_ind_pks_links_household_to_reused_collector(
+    mocker: MockerFixture,
+    config: Config,
+    household_mapping: Mapping[int, Household],
+    canonical_transform: None,
+    reused_collector: Any,
+    skip_if_not_master_detail: None,
+) -> None:
+    """A household must reach a reused collector through the id used in its own sheet."""
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.Individual.objects.create",
+        side_effect=lambda **kwargs: mocker.MagicMock(pk=MEMBER_PK, flex_fields=kwargs["flex_fields"]),
+    )
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    household = mocker.MagicMock(name="household", pk=600)
+    household.flex_fields = {fields.head_of_household: 3, fields.primary_collector: 4}
+    sheet = [
+        {
+            FULL_NAME_COLUMN: "Omar Said",
+            config["household_id_column"]: HOUSEHOLD_1_PK,
+            config["beneficiary_id_column"]: 3,
+        },
+        {FULL_NAME_COLUMN: "Maria Rossi", config["household_id_column"]: 0, config["beneficiary_id_column"]: 4},
+    ]
+
+    result = process_beneficiaries(sheet, job_mock, mocker.MagicMock(name="batch"), config, household_mapping)
+    _sync_ind_pks({HOUSEHOLD_1_PK: household}, result.reference_pks)
+
+    assert household.flex_fields[fields.head_of_household] == MEMBER_PK
+    assert household.flex_fields[fields.primary_collector] == REUSED_COLLECTOR_PK
+    household.save.assert_called_once_with(update_fields=["flex_fields"])
+
+
+def test_sync_ind_pks_stale_collector_id_does_not_shadow_a_member(
+    mocker: MockerFixture,
+    config: Config,
+    household_mapping: Mapping[int, Household],
+    canonical_transform: None,
+    reused_collector: Any,
+    skip_if_not_master_detail: None,
+) -> None:
+    """A member whose sheet id equals the reused collector's stale id must win its own role."""
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.Individual.objects.create",
+        side_effect=lambda **kwargs: mocker.MagicMock(pk=MEMBER_PK, flex_fields=kwargs["flex_fields"]),
+    )
+    job_mock = mocker.MagicMock(name="job")
+    job_mock.file.name = "uploads/rdi.xlsx"
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    household = mocker.MagicMock(name="household", pk=600)
+    household.flex_fields = {fields.head_of_household: STALE_COLLECTOR_ID, fields.primary_collector: 4}
+    sheet = [
+        {
+            FULL_NAME_COLUMN: "Jean Baptiste",
+            config["household_id_column"]: HOUSEHOLD_1_PK,
+            config["beneficiary_id_column"]: STALE_COLLECTOR_ID,
+        },
+        {FULL_NAME_COLUMN: "Maria Rossi", config["household_id_column"]: 0, config["beneficiary_id_column"]: 4},
+    ]
+
+    result = process_beneficiaries(sheet, job_mock, mocker.MagicMock(name="batch"), config, household_mapping)
+    _sync_ind_pks({HOUSEHOLD_1_PK: household}, result.reference_pks)
+
+    assert household.flex_fields[fields.head_of_household] == MEMBER_PK
+    assert household.flex_fields[fields.primary_collector] == REUSED_COLLECTOR_PK
+
+
+def test_sync_ind_pks_clears_and_reports_unresolved_reference(mocker: MockerFixture) -> None:
+    logger_mock = mocker.patch("country_workspace.datasources.rdi.processors.logger")
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    household = mocker.MagicMock(name="household", pk=600)
+    missing_id = 77
+    household.flex_fields = {
+        fields.head_of_household: 3,
+        fields.primary_collector: missing_id,
+        fields.alternate_collector: 8,
+    }
+
+    _sync_ind_pks({HOUSEHOLD_1_PK: household}, {"3": MEMBER_PK, "8": REUSED_COLLECTOR_PK})
+
+    assert household.flex_fields[fields.head_of_household] == MEMBER_PK
+    assert household.flex_fields[fields.alternate_collector] == REUSED_COLLECTOR_PK
+    # a sheet-local id left in place would later be read as a pk
+    assert household.flex_fields[fields.primary_collector] is None
+    logger_mock.warning.assert_called_once()
+    assert str(missing_id) in " ".join(str(arg) for arg in logger_mock.warning.call_args.args)
 
 
 def test_process_beneficiaries_people_only(
@@ -376,7 +640,7 @@ def test_process_beneficiaries_people_only(
         None,
     )
 
-    assert len(result) == len(list(people_sheet))
+    assert len(result.mapping) == len(list(people_sheet))
     build_processor_mock.assert_called_once_with(
         program=job_mock.program,
         model=Individual,
@@ -435,6 +699,36 @@ def test_process_beneficiaries_failed_to_create(
     assert exc_info.value.sheet_name == expected_sheet_name
 
 
+def test_process_beneficiaries_failed_to_transform(
+    mocker: MockerFixture,
+    config: Config,
+    individual_sheet: Sheet,
+    people_sheet: Sheet,
+    household_mapping: Mapping[int, Any],
+) -> None:
+    job = mocker.MagicMock()
+    job.file.name = "uploads/rdi.xlsx"
+    batch = mocker.MagicMock()
+
+    mocker.patch(
+        "country_workspace.datasources.rdi.processors.build_import_processor",
+        return_value=mocker.MagicMock(side_effect=Exception("mapping failed")),
+    )
+    mock_create = mocker.patch("country_workspace.datasources.rdi.processors.Individual.objects.create")
+
+    sheet = individual_sheet if config["master_detail"] else people_sheet
+    household_map = household_mapping if config["master_detail"] else None
+    expected_sheet_name = SheetName.INDIVIDUALS if config["master_detail"] else SheetName.PEOPLE
+    expected_object_id = sheet[0][config["beneficiary_id_column"]]
+
+    with pytest.raises(SheetProcessingError) as exc_info:
+        process_beneficiaries(sheet, job, batch, config, household_map)
+
+    assert exc_info.value.sheet_name == expected_sheet_name
+    assert exc_info.value.object_id == expected_object_id
+    mock_create.assert_not_called()
+
+
 def test_import_from_rdi(  # noqa: PLR0915
     mocker: MockerFixture,
     config: Config,
@@ -486,10 +780,13 @@ def test_import_from_rdi(  # noqa: PLR0915
             individual_mock.pk = i
             processed_individuals[i] = individual_mock
 
-        process_beneficiaries_mock.return_value = processed_individuals
+        process_beneficiaries_mock.return_value = BeneficiaryImportResult(
+            processed_individuals,
+            {f"ind_{i}": i for i in range(1, max_individual_id)},
+        )
     else:
         read_sheets_mock.return_value = (people_sheet,)
-        process_beneficiaries_mock.return_value = people_mapping
+        process_beneficiaries_mock.return_value = BeneficiaryImportResult(dict(people_mapping), {})
 
     result = import_from_rdi(job)
 

@@ -10,7 +10,9 @@ Open **Batches** in the **[Analyst / Collector Workspace](../interfaces.md#analy
 
 Only Batches belonging to the selected Office and Program are available.
 
-Open a Batch to review its source, status, and imported beneficiary records.
+Open a Batch to review its name, import date, importer, source, status, related jobs, and imported beneficiary records. Each field includes a short description.
+
+Related jobs include import, validation, reprocessing, and picture import tasks associated with the Batch.
 
 For a household-based Program, the Batch provides separate links to its Households and Individuals. For a people-only Program, it provides a link to its People records. The link names follow the beneficiary labels configured for the **[Program](../program.md)**.
 

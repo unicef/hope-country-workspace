@@ -139,6 +139,8 @@ document_1_country
 document_1_expire_date
 ```
 
+Aurora fields can also use the HOPE Core account naming convention, such as `account__mobile__number` or `account__bank__financial_institution_pk`. Country Workspace automatically converts these `account__{type}__{field}` fields into the fields expected by the **HOPE Account** Fieldset (e.g. `mobile_number`), without requiring a Mapping Importer or Program default field. See **[Repeating fieldsets](kobo.md#repeating-fieldsets)** for details.
+
 ## Start an Aurora import
 
 1. Select the required **Office** and **[Program](../../program.md)**.

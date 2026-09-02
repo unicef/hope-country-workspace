@@ -124,6 +124,23 @@ document_1_expire_date
 
 Country Workspace converts these questions into the corresponding repeating document data during import.
 
+Kobo questions can also use the HOPE Core account naming convention, such as:
+
+```text
+account__mobile__number
+account__mobile__financial_institution
+account__mobile__provider
+account__bank__number
+```
+
+Country Workspace automatically converts these `account__{type}__{field}` questions into the fields expected by the **HOPE Account** Fieldset:
+
+* `account__{type}__number` becomes `{type}_number`;
+* `account__{type}__financial_institution` becomes `{type}_financial_institution`;
+* any other `account__{type}__{field}` question is collected into the `{type}_data` JSON field.
+
+This conversion happens automatically for every import source (Kobo, xlsx/RDI, and Aurora) and does not require a Mapping Importer or Program default field, as long as the question name already matches the `account__{type}__{field}` convention above. Use a **[Mapping Importer](../mapping_transformers.md#mapping-importers)** to rename a differently named question (for example `financial_institution_pk`) to the expected field name first.
+
 ## Start a Kobo import
 
 1. Select the required **Office** and **[Program](../../program.md)**.
@@ -182,7 +199,7 @@ During processing, the job creates a **[Batch](../batches.md)** and imports the 
 
 Kobo follows the general **[import lifecycle](../index.md#what-happens-during-import)**.
 
-Source preparation includes downloading attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying Mapping Importers, processing supported document questions, applying Program defaults, and removing ignored fields.
+Source preparation includes downloading attachments, removing Kobo metadata and system questions, removing group paths from question names, normalizing field names and selected values, applying Mapping Importers, processing supported document and account questions, applying Program defaults, and removing ignored fields.
 
 Country Workspace creates one Household for each submission and processes one Individual entry for each item in the configured repeat group. Regular Individuals are created as Household members; matching external collectors reuse the existing Program-wide record. The source fields used for each imported record are stored for later Batch reprocessing.
 

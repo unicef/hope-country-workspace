@@ -27,7 +27,10 @@ def app(django_app_factory: "MixinWithInstanceVariables", admin_user: "User") ->
 def rdp() -> Rdp:
     from testutils.factories import CountryRdpFactory
 
-    return CountryRdpFactory(status=Rdp.PushStatus.SUCCESS)
+    return CountryRdpFactory(
+        status=Rdp.PushStatus.SUCCESS,
+        program__beneficiary_group__master_detail=True,
+    )
 
 
 @pytest.fixture

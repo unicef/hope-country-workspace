@@ -14,6 +14,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.html import format_html_join
 from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
@@ -141,6 +142,15 @@ class BatchPictureImportForm(forms.Form):
         return zip_file
 
 
+class CountryBatchAdminForm(forms.ModelForm):
+    class Meta:
+        model = CountryBatch
+        fields = ("name", "imported_by", "source", "status")
+        help_texts = {
+            "related_jobs": _("Background jobs associated with this batch."),
+        }
+
+
 @register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ["name", "import_date", "imported_by", "source", "status"]
@@ -149,7 +159,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     change_form_template = ["workspace/batch/change_form.html", "workspace/change_form.html"]
     ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
-    readonly_fields = fields = ("name", "source", "status")
+    readonly_fields = fields = ("name", "import_date", "imported_by", "source", "status", "related_jobs")
+    form = CountryBatchAdminForm
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["modeladmin"] = self
@@ -160,7 +171,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .select_related("program", "country_office")
+            .select_related("program__beneficiary_group", "country_office", "imported_by")
             .filter(country_office=state.tenant, program=state.program)
         )
 
@@ -169,6 +180,25 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
         return False
+
+    def related_jobs(self, obj: CountryBatch) -> str:
+        if not (jobs := obj.jobs.order_by("datetime_created")).exists():
+            return "-"
+        return format_html_join(
+            "\n",
+            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
+            "<a href='{}' style='color: var(--link-fg)'>{}</a>"
+            "<span style='white-space:nowrap'>{}</span>"
+            "</div>",
+            (
+                (
+                    reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
+                    str(job),
+                    str(job.task_status) if getattr(job, "task_status", None) is not None else "—",
+                )
+                for job in jobs
+            ),
+        )
 
     @staticmethod
     def _delete_uploaded_zip(file_name: str | None) -> None:
@@ -368,7 +398,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         obj = btn.context["original"]
         btn.href = f"{base}?batch__exact={obj.pk}"
         if obj.program.beneficiary_group:
-            btn.label = obj.program.beneficiary_group.member_label
+            btn.label = obj.program.beneficiary_group.member_label_plural or obj.program.beneficiary_group.member_label
 
     @button(
         visible=False,

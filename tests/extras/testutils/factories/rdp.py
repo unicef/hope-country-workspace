@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import factory
 from django.utils import timezone
 
@@ -18,7 +20,7 @@ class RdpFactory(AutoRegisterModelFactory):
     program = factory.SubFactory(ProgramFactory)
     deduplication_set_id = None
     is_dedup_settings_locked = False
-    is_push_locked = False
+    push_attempt_id = factory.LazyAttribute(lambda obj: uuid4() if obj.status == Rdp.PushStatus.PUSH_PENDING else None)
     operation_log = factory.LazyFunction(list)
 
     class Meta:

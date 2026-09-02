@@ -200,7 +200,40 @@ def test_create_validation_jobs_sets_context_and_validation_metadata(program, fo
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_scope"] == "program"
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_total_chunks"] == 1
     assert create_mock.call_args.kwargs["config"]["kwargs"]["validation_run_id"]
+    assert create_mock.call_args.kwargs["batch_id"] == individual.batch_id
     job_mock.queue.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_skips_batch_when_records_span_batches(program, force_migrated_records, mocker):
+    from testutils.factories import IndividualFactory
+
+    first = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+    second = IndividualFactory(
+        household=None,
+        batch__program=program,
+        batch__country_office=program.country_office,
+    )
+    job_mock = mocker.Mock()
+    create_mock = mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create",
+        return_value=job_mock,
+    )
+
+    create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.filter(pk__in=[first.pk, second.pk]),
+        validation_scope="program",
+    )
+
+    assert first.batch_id != second.batch_id
+    assert create_mock.call_args.kwargs["batch_id"] is None
 
 
 @pytest.mark.django_db
