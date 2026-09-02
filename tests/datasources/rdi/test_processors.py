@@ -21,10 +21,12 @@ from country_workspace.datasources.rdi.processors import (
     image_location,
     image_content,
     import_from_rdi,
+    is_empty_row,
     extract_images,
     merge_images,
     normalize_row_structure,
     read_sheets,
+    skip_empty_rows,
 )
 from country_workspace.datasources.rdi.utils import datetime_to_date, date_to_iso_string
 from country_workspace.models import Batch, Household, Individual
@@ -177,6 +179,39 @@ def test_get_value_raise_exception_when_key_is_missing() -> None:
 
     with pytest.raises(ColumnConfigurationError):
         get_value(row, "column")
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        ({}, True),
+        ({"a": None, "b": None}, True),
+        ({"a": "", "b": None}, True),
+        ({"a": "", "b": []}, True),
+        ({"a": None, "b": 0}, False),
+        ({"a": "value", "b": None}, False),
+        ({"a": False}, False),
+    ],
+    ids=["empty_dict", "all_none", "blank_and_none", "blank_and_empty_list", "zero", "partial", "false"],
+)
+def test_is_empty_row(row: Record, expected: bool) -> None:
+    assert is_empty_row(row) is expected
+
+
+def test_skip_empty_rows_keeps_zero_and_drops_blank_rows() -> None:
+    rows: Sheet = [
+        {"household_id": 1, "name": "A"},
+        {"household_id": None, "name": None},
+        {"household_id": "", "name": ""},
+        {"household_id": 0, "name": None},
+        {"household_id": 2, "name": "B"},
+    ]
+
+    assert list(skip_empty_rows(rows)) == [
+        {"household_id": 1, "name": "A"},
+        {"household_id": 0, "name": None},
+        {"household_id": 2, "name": "B"},
+    ]
 
 
 def test_filter_rows_with_household_pk(
@@ -548,6 +583,9 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
     extract_images_mock = mocker.patch("country_workspace.datasources.rdi.processors.extract_images")
     extract_images_mock.return_value = ((images := Mock()),)
     merge_images_mock = mocker.patch("country_workspace.datasources.rdi.processors.merge_images")
+    skip_empty_rows_mock = mocker.patch("country_workspace.datasources.rdi.processors.skip_empty_rows")
+    skipped = Mock()
+    skip_empty_rows_mock.return_value = skipped
 
     filepath = "test"
     sheet_name = "first"
@@ -559,11 +597,12 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
 
     result = list(read_sheets(config, filepath, sheet_name))
 
+    skip_empty_rows_mock.assert_called_once_with(merge_images_mock.return_value)
     if config["master_detail"]:
         assert result == [filter_rows_with_household_pk_mock.return_value]
-        filter_rows_with_household_pk_mock.assert_called_once_with(config, merge_images_mock.return_value)
+        filter_rows_with_household_pk_mock.assert_called_once_with(config, skipped)
     else:
-        assert result == [merge_images_mock.return_value]
+        assert result == [skipped]
 
     compose_mock.assert_called_once_with(datetime_to_date_mock, date_to_iso_string_mock)
 
@@ -576,6 +615,51 @@ def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
     )
     extract_images_mock.assert_called_once_with(filepath, sheet_name)
     merge_images_mock.assert_called_once_with(sheet, images)
+
+
+def test_read_sheets_skips_fully_empty_styled_rows(tmp_path, config: Config) -> None:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    if config["master_detail"]:
+        sheet_name = SheetName.HOUSEHOLDS
+        headers = [config["household_id_column"], config["household_label"]]
+        data_rows = [
+            [HOUSEHOLD_1_PK, HOUSEHOLD_1_NAME],
+            [None, None],
+            [HOUSEHOLD_2_PK, HOUSEHOLD_2_NAME],
+        ]
+    else:
+        sheet_name = SheetName.PEOPLE
+        name_col = f"{config.get('people_prefix', '')}{FULL_NAME_COLUMN}"
+        headers = [config["beneficiary_id_column"], name_col]
+        data_rows = [
+            [INDIVIDUAL_1_PK, "John Doe"],
+            [None, None],
+            [INDIVIDUAL_2_PK, "Jane Smith"],
+        ]
+
+    path = tmp_path / "styled_empty_rows.xlsx"
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet_name
+    fill = PatternFill(fgColor="FFFF00", fill_type="solid")
+    font = Font(bold=True)
+    for col, header in enumerate(headers, start=1):
+        worksheet.cell(1, col, header)
+    for row_idx, values in enumerate(data_rows, start=2):
+        for col, value in enumerate(values, start=1):
+            cell = worksheet.cell(row_idx, col, value)
+            if value is None:
+                cell.font = font
+                cell.fill = fill
+    workbook.save(path)
+
+    (sheet,) = read_sheets(config, str(path), sheet_name)
+    rows = list(sheet)
+
+    assert [row[headers[0]] for row in rows] == [data_rows[0][0], data_rows[2][0]]
+    assert all(not is_empty_row(row) for row in rows)
 
 
 def test_read_sheets_sheet_not_found_error(mocker: MockerFixture, config: Config) -> None:
