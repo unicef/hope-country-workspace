@@ -5,6 +5,7 @@ from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.ocr import orchestration
 from country_workspace.models import OcrRun, Rdp
 from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY
 
 pytestmark = pytest.mark.django_db
 
@@ -68,7 +69,7 @@ def test_run_ocr_core_publishes_batches_and_marks_in_progress(
 
     assert publish.call_count == 2
     routing_keys = {call.args[0] for call in publish.call_args_list}
-    assert routing_keys == {"ocr.request"}
+    assert routing_keys == {OCR_REQUEST_ROUTING_KEY}
 
     payloads = [call.args[1] for call in publish.call_args_list]
     batch_indices = sorted(p["batch_index"] for p in payloads)

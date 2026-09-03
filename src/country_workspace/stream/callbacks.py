@@ -9,7 +9,7 @@ from country_workspace.contrib.hope.ocr import handle_ocr_result
 
 logger = logging.getLogger(__name__)
 
-OCR_RESULT_ROUTING_KEY = "ocr.result"
+OCR_RESULT_ROUTING_KEY = "hcw.ocr.result"
 
 
 def handle_event(

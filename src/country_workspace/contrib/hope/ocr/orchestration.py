@@ -10,7 +10,7 @@ from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import append_rdp_operation_log, lock_rdp_for_update
-from country_workspace.stream.publish import publish
+from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
 
 from .policy import get_ocr_policy
 from .repository import apply_ocr_batch_result, rdp_for_ocr, resolve_ocr_documents
@@ -93,9 +93,10 @@ def run_ocr_core(job: AsyncJob) -> dict[str, Any]:
             "batch_total": batch_total,
             "documents": batch,
         }
-        if not publish("ocr.request", payload):
+        if not publish(OCR_REQUEST_ROUTING_KEY, payload):
             logger.error(
-                "ocr.request: publish failed for run=%s batch_index=%s/%s",
+                "%s: publish failed for run=%s batch_index=%s/%s",
+                OCR_REQUEST_ROUTING_KEY,
                 ocr_run.correlation_id,
                 index,
                 batch_total,

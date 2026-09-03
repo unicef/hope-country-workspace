@@ -12,6 +12,17 @@ RAW_BYTES = b"fake-png-bytes"
 DATA_URI = f"data:image/png;base64,{base64.b64encode(RAW_BYTES).decode()}"
 
 
+@pytest.fixture(autouse=True)
+def hope_filesystem_storage(tmp_path, monkeypatch):
+    """Use local filesystem for HOPE blobs; avoids Azurite/.env Azure config in unit tests."""
+    from django.core.files.storage import FileSystemStorage
+
+    storage = FileSystemStorage(location=str(tmp_path / "hope"))
+    monkeypatch.setattr("country_workspace.services.hope_blob.HOPE_STORAGE", storage)
+    monkeypatch.setattr("country_workspace.storages.HOPE_STORAGE", storage)
+    return storage
+
+
 @pytest.fixture
 def office():
     from testutils.factories import OfficeFactory
@@ -41,7 +52,11 @@ def individual_checker_with_documents():
 def program(office, individual_checker_with_documents):
     from testutils.factories import CountryProgramFactory
 
-    prog = CountryProgramFactory(country_office=office, individual_checker=individual_checker_with_documents)
+    prog = CountryProgramFactory(
+        country_office=office,
+        individual_checker=individual_checker_with_documents,
+        beneficiary_group__master_detail=False,
+    )
     state.program = prog
     return prog
 
