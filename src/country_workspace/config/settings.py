@@ -109,6 +109,7 @@ STORAGES = {
     "default": env.storage("FILE_STORAGE_DEFAULT"),
     "staticfiles": env.storage("FILE_STORAGE_STATIC"),
     "media": env.storage("FILE_STORAGE_MEDIA"),
+    "hope": env.storage("FILE_STORAGE_HOPE"),
 }
 
 SECRET_KEY = env("SECRET_KEY")

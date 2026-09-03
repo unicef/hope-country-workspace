@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0061_blob_hashes"),
+        ("country_workspace", "0063_blob_hashes"),
     ]
 
     operations = [
