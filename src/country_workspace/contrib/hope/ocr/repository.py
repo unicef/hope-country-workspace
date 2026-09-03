@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, OCR_BATCH_SIZE
-from country_workspace.contrib.hope.push.repository import qs_individuals_for_rdp
+from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.models import OcrRun, Rdp
 from country_workspace.services.hope_blob import image_field_names, sync_record_blobs
 
@@ -23,23 +23,23 @@ def rdp_for_ocr(*, pk: int) -> Rdp:
 def resolve_ocr_documents(rdp: Rdp) -> Iterator[OcrDocumentRequest]:
     """Yield one OCR document per individual: the first populated DOCUMENT_TYPES pair.
 
-    Individuals with no complete (photo, number) pair are skipped and do not
+    Individuals with no complete (image, number) pair are skipped and do not
     count toward batch_total, per docs/src/flows/rdp_ocr.md.
     """
     image_fields = image_field_names(rdp.program.individual_checker)
     for ind in qs_individuals_for_rdp(rdp=rdp).iterator(chunk_size=OCR_BATCH_SIZE):
         for doc_type in DOCUMENT_TYPES:
-            photo_field = f"{doc_type}_photo"
+            image_field = f"{doc_type}_image"
             number_field = f"{doc_type}_document_number"
 
             pattern = ind.flex_fields.get(number_field)
             if not (isinstance(pattern, str) and pattern.strip()):
                 continue
-            if not ind.flex_fields.get(photo_field):
+            if not ind.flex_fields.get(image_field):
                 continue
 
-            paths = sync_record_blobs(ind, image_fields, only={photo_field})
-            if filename := paths.get(photo_field):
+            paths = sync_record_blobs(ind, image_fields, only={image_field})
+            if filename := paths.get(image_field):
                 yield {"individual_id": ind.pk, "filename": filename, "pattern": pattern.strip()}
             break
 
