@@ -19,7 +19,7 @@ def test_engine_uses_configured_manager_class(settings):
     assert manager.backend.client_name == settings.STREAMING["CLIENT_NAME"]
 
 
-def test_results_queue_uses_binding_keys(settings):
+def test_ocr_results_queue_uses_binding_keys(settings):
     queues = settings.STREAMING["QUEUES"]
-    assert queues["results"]["binding_keys"] == ["ocr.result"]
-    assert "routing" not in queues["results"]
+    assert queues["ocr_results"]["binding_keys"] == ["hcw.ocr.result"]
+    assert "routing" not in queues["ocr_results"]
