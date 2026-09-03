@@ -1,6 +1,6 @@
 from country_workspace.models import OcrRun, Rdp
 
-from ..push.policy import ActionCheck
+from country_workspace.rdp.policy import ActionCheck
 
 
 class OcrActionPolicy:

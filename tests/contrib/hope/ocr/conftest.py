@@ -30,7 +30,7 @@ def individual_checker_with_documents():
     checker = DataCheckerFactory()
     fieldset = FieldsetFactory()
     FlexFieldFactory(fieldset=fieldset, name="document_number")
-    FlexFieldFactory(fieldset=fieldset, name="photo", definition__field_type=Base64ImageField)
+    FlexFieldFactory(fieldset=fieldset, name="image", definition__field_type=Base64ImageField)
     for doc_type in DOCUMENT_TYPES:
         DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix=f"{doc_type}_")
 
@@ -75,7 +75,7 @@ def make_individual(batch, rdp):
 def complete_document_flex_fields():
     return {
         "national_id_document_number": "ID-123",
-        "national_id_photo": DATA_URI,
+        "national_id_image": DATA_URI,
         "national_passport_document_number": "",
-        "national_passport_photo": "",
+        "national_passport_image": "",
     }
