@@ -5,10 +5,11 @@ from uuid import uuid4
 from django.db import IntegrityError, transaction
 
 from country_workspace.contrib.hope.constants import OCR_BATCH_SIZE
-from country_workspace.contrib.hope.exceptions import HopePushError
-from country_workspace.contrib.hope.push.policy import ActionCheck
-from country_workspace.contrib.hope.push.repository import append_rdp_operation_log, lock_rdp_for_update
 from country_workspace.models import AsyncJob, OcrRun, Rdp
+from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.rdp.exceptions import RdpWorkflowError
+from country_workspace.rdp.policy import ActionCheck
+from country_workspace.rdp.repository import append_rdp_operation_log, lock_rdp_for_update
 from country_workspace.stream.publish import publish
 
 from .policy import get_ocr_policy
@@ -48,13 +49,12 @@ def get_batches(documents: list[dict], size: int) -> list[list[dict]]:
     return [documents[i : i + size] for i in range(0, len(documents), size)]
 
 
-def _log_ocr_operation(*, rdp: Rdp, job: AsyncJob, result: dict[str, Any]) -> None:
+def _log_ocr_operation(*, rdp: Rdp, result: dict[str, Any]) -> None:
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
         append_rdp_operation_log(
             rdp=locked,
-            action=Rdp.OperationAction.START_OCR,
-            job_id=job.pk,
+            action=RdpOperationAction.START_OCR,
             result=result,
         )
 
@@ -76,10 +76,9 @@ def run_ocr_core(job: AsyncJob) -> dict[str, Any]:
         OcrRun.objects.filter(pk=ocr_run.pk).update(status=OcrRun.Status.FAILED)
         _log_ocr_operation(
             rdp=rdp,
-            job=job,
-            result={"error": "no documents with both a photo and a document number"},
+            result={"error": "no documents with both an image and a document number"},
         )
-        raise HopePushError({"errors": ["OCR: no documents to process"]})
+        raise RdpWorkflowError({"errors": ["OCR: no documents to process"]})
 
     batch_total = len(batches)
     OcrRun.objects.filter(pk=ocr_run.pk).update(batch_total=batch_total)
@@ -108,7 +107,6 @@ def run_ocr_core(job: AsyncJob) -> dict[str, Any]:
     OcrRun.objects.filter(pk=ocr_run.pk).update(status=OcrRun.Status.IN_PROGRESS if succeeded else OcrRun.Status.FAILED)
     _log_ocr_operation(
         rdp=rdp,
-        job=job,
         result={
             "correlation_id": str(ocr_run.correlation_id),
             "batch_total": batch_total,
@@ -119,7 +117,7 @@ def run_ocr_core(job: AsyncJob) -> dict[str, Any]:
     if not succeeded:
         # batch_total was already persisted, so results can still complete the
         # run later even though this publish attempt was only partial.
-        raise HopePushError({"errors": [f"OCR: publish failed after {published}/{batch_total} batches"]})
+        raise RdpWorkflowError({"errors": [f"OCR: publish failed after {published}/{batch_total} batches"]})
 
     return {"correlation_id": str(ocr_run.correlation_id), "batch_total": batch_total, "batches_published": published}
 

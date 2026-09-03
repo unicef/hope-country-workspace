@@ -1,9 +1,10 @@
 import pytest
 
 from country_workspace.contrib.hope import ocr as ocr_pkg
-from country_workspace.contrib.hope.exceptions import HopePushError
+from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.ocr import orchestration
 from country_workspace.models import OcrRun, Rdp
+from country_workspace.models.rdp import RdpOperationAction
 
 pytestmark = pytest.mark.django_db
 
@@ -86,7 +87,7 @@ def test_run_ocr_core_publishes_batches_and_marks_in_progress(
     assert ocr_run.status == OcrRun.Status.IN_PROGRESS
 
     rdp.refresh_from_db()
-    assert rdp.operation_log[-1]["action"] == Rdp.OperationAction.START_OCR.value
+    assert rdp.operation_log[-1]["action"] == RdpOperationAction.START_OCR.value
     assert rdp.operation_log[-1]["result"]["batches_published"] == 2
 
     assert result["batch_total"] == 2
@@ -96,7 +97,7 @@ def test_run_ocr_core_publishes_batches_and_marks_in_progress(
 def test_run_ocr_core_fails_when_no_documents(rdp, job):
     OcrRun.objects.create(rdp=rdp)
 
-    with pytest.raises(HopePushError):
+    with pytest.raises(RdpWorkflowError):
         orchestration.run_ocr_core(job)
 
     ocr_run = rdp.ocr_run
@@ -113,7 +114,7 @@ def test_run_ocr_core_marks_failed_on_publish_failure(rdp, make_individual, comp
 
     mocker.patch.object(orchestration, "publish", return_value=False)
 
-    with pytest.raises(HopePushError):
+    with pytest.raises(RdpWorkflowError):
         orchestration.run_ocr_core(job)
 
     ocr_run = rdp.ocr_run

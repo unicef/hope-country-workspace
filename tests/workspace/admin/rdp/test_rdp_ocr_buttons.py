@@ -1,7 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.hope.push.policy import ActionCheck
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.models import OcrRun
 from country_workspace.workspaces.admin import rdp as rdp_admin_mod
 from country_workspace.workspaces.models import CountryRdp

@@ -16,7 +16,7 @@ def test_resolve_ocr_documents_yields_first_complete_document_type(rdp, make_ind
     doc = documents[0]
     assert doc["individual_id"] == ind.pk
     assert doc["pattern"] == "ID-123"
-    assert doc["filename"] == ind.hope_blob_key("national_id_photo")
+    assert doc["filename"] == ind.hope_blob_key("national_id_image")
     assert HOPE_STORAGE.exists(doc["filename"])
 
 
@@ -26,7 +26,7 @@ def test_resolve_ocr_documents_prefers_first_document_type_in_order(
     """When both national_id and national_passport are complete, only national_id (first) is used."""
     flex_fields = dict(complete_document_flex_fields)
     flex_fields["national_passport_document_number"] = "PP-999"
-    flex_fields["national_passport_photo"] = complete_document_flex_fields["national_id_photo"]
+    flex_fields["national_passport_image"] = complete_document_flex_fields["national_id_image"]
     make_individual(flex_fields)
 
     documents = list(resolve_ocr_documents(rdp))
@@ -39,9 +39,9 @@ def test_resolve_ocr_documents_prefers_first_document_type_in_order(
     "flex_fields",
     [
         {},
-        {"national_id_document_number": "ID-123", "national_id_photo": ""},
-        {"national_id_document_number": "", "national_id_photo": "data:image/png;base64,Zm9v"},
-        {"national_id_document_number": "   ", "national_id_photo": "data:image/png;base64,Zm9v"},
+        {"national_id_document_number": "ID-123", "national_id_image": ""},
+        {"national_id_document_number": "", "national_id_image": "data:image/png;base64,Zm9v"},
+        {"national_id_document_number": "   ", "national_id_image": "data:image/png;base64,Zm9v"},
     ],
     ids=["nothing", "photo_missing", "number_missing", "number_blank"],
 )
