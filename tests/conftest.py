@@ -116,7 +116,7 @@ def pytest_configure(config):
         "MANAGER_CLASS": "streaming.manager.ChangeManager",
         "LISTEN_CALLBACK": "country_workspace.stream.callbacks.handle_event",
         "QUEUES": {
-            "results": {"binding_keys": ["ocr.result"]},
+            "ocr_results": {"binding_keys": ["hcw.ocr.result"]},
         },
     }
     django.setup()

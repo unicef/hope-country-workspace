@@ -90,7 +90,7 @@ services:
         condition: service_healthy
     # Optional STREAM_N_* overrides, e.g.:
     # environment:
-    #   - STREAM_1_QUEUES=results
+    #   - STREAM_1_QUEUES=ocr_results
     #   - STREAM_1_CALLBACK=country_workspace.stream.callbacks.handle_event
 
   # One container: web + celery + beat + flower + streaming
