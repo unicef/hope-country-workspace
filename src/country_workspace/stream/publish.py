@@ -6,6 +6,8 @@ from streaming.utils import make_event
 
 logger = logging.getLogger(__name__)
 
+OCR_REQUEST_ROUTING_KEY = "hd.ocr.request"
+
 
 def publish(routing_key: str, payload: dict[str, Any]) -> bool:
     """Publish a payload to the streaming exchange under the given routing key.
