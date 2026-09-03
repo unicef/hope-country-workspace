@@ -11,16 +11,11 @@ def validate_beneficiaries(beneficiary_mapping: BeneficiaryMapping, config: Vali
     if mode is ValidateMode.NONE:
         return
 
-    fail_if_alien = mode is ValidateMode.CHECK_AND_FAIL_IF_ALIEN
     with state.set(tenant=office):
-        if error_keys := _collect_validation_errors(beneficiary_mapping, fail_if_alien):
+        if error_keys := _collect_validation_errors(beneficiary_mapping):
             beneficiary = next(iter(beneficiary_mapping.values()))
             raise BeneficiaryValidationError(beneficiary._meta.object_name, error_keys)
 
 
-def _collect_validation_errors(beneficiary_mapping: BeneficiaryMapping, fail_if_alien: bool) -> list[int]:
-    return [
-        key
-        for key, beneficiary in beneficiary_mapping.items()
-        if not beneficiary.validate_with_checker(fail_if_alien=fail_if_alien)
-    ]
+def _collect_validation_errors(beneficiary_mapping: BeneficiaryMapping) -> list[int]:
+    return [key for key, beneficiary in beneficiary_mapping.items() if not beneficiary.validate_with_checker()]

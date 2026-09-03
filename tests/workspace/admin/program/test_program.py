@@ -42,7 +42,6 @@ def test_import_kobo_schedules_job(program_admin, mock_request, mocker: MockerFi
     form.cleaned_data = {
         "batch_name": "",
         "validate_after_import": True,
-        "fail_if_alien": False,
         "project_id": "project-1",
         "individual_records_field": "individual_questions",
         "household_mapping": None,
@@ -68,7 +67,6 @@ def test_import_kobo_schedules_job(program_admin, mock_request, mocker: MockerFi
         config={
             "batch_name": "AUTO-BATCH",
             "validate_after_import": True,
-            "fail_if_alien": False,
             "project_id": "project-1",
             "individual_records_field": "individual_questions",
             "household_mapping_id": None,

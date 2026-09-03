@@ -64,16 +64,16 @@ class Household(FlexFieldGroupingMixin, Validable, BaseModel):
         return Individual.objects.filter(pk__in=refs, household=None, removed=False)
 
     @override
-    def validate_with_checker(self, fail_if_alien: bool = False) -> bool:
+    def validate_with_checker(self) -> bool:
         # Identity collision errors are set at import time only — preserve them
         # across re-validations since validate_with_checker replaces errors wholesale.
         external_collectors = list(self._external_collectors())
         identity_error = self.errors.get("identity")
-        super().validate_with_checker(fail_if_alien=fail_if_alien)
+        super().validate_with_checker()
 
         members_failed = False
         for ind in chain(self.members.all(), external_collectors):
-            members_failed |= not ind.validate_with_checker(fail_if_alien=fail_if_alien)
+            members_failed |= not ind.validate_with_checker()
 
         ext_msgs = self.program.beneficiary_validator.validate(self)
 

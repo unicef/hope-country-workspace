@@ -120,7 +120,6 @@ class ImportDataMixin:
                 "master_detail": master_detail,
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
-                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "beneficiary_id_column": form.cleaned_data.get("beneficiary_id_column"),
                 **(
                     {
@@ -171,7 +170,6 @@ class ImportDataMixin:
             config: AuroraConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": form.cleaned_data.get("validate_after_import"),
-                "fail_if_alien": form.cleaned_data.get("fail_if_alien"),
                 "registration_reference_pk": getattr(form.cleaned_data.get("registration"), "reference_pk", None),
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
                 "household_mapping_id": form.cleaned_data.get("household_mapping").id
@@ -216,7 +214,6 @@ class ImportDataMixin:
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
-                "fail_if_alien": bool(form.cleaned_data.get("fail_if_alien")),
                 "project_id": form.cleaned_data["project_id"],
                 "individual_records_field": form.cleaned_data["individual_records_field"],
                 "household_mapping_id": (
