@@ -1,8 +1,8 @@
 import pytest
 
+import country_workspace.storages as cw_storages
 from country_workspace.contrib.hope.ocr.repository import apply_ocr_batch_result, resolve_ocr_documents
 from country_workspace.models import OcrRun
-from country_workspace.storages import HOPE_STORAGE
 
 pytestmark = pytest.mark.django_db
 
@@ -17,7 +17,7 @@ def test_resolve_ocr_documents_yields_first_complete_document_type(rdp, make_ind
     assert doc["individual_id"] == ind.pk
     assert doc["pattern"] == "ID-123"
     assert doc["filename"] == ind.hope_blob_key("national_id_image")
-    assert HOPE_STORAGE.exists(doc["filename"])
+    assert cw_storages.HOPE_STORAGE.exists(doc["filename"])
 
 
 def test_resolve_ocr_documents_prefers_first_document_type_in_order(
