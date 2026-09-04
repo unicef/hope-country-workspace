@@ -80,7 +80,7 @@ def get_hh_for_ind(
 
 def is_empty_row(row: Record) -> bool:
     """Return True when every cell is empty. Styled Excel rows still yield keys with empty values."""
-    return all(value in (None, "", []) for value in row.values())
+    return all(value in (None, "") for value in row.values())
 
 
 def skip_empty_rows(sheet: Sheet) -> Sheet:

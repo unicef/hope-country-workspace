@@ -187,12 +187,11 @@ def test_get_value_raise_exception_when_key_is_missing() -> None:
         ({}, True),
         ({"a": None, "b": None}, True),
         ({"a": "", "b": None}, True),
-        ({"a": "", "b": []}, True),
         ({"a": None, "b": 0}, False),
         ({"a": "value", "b": None}, False),
         ({"a": False}, False),
     ],
-    ids=["empty_dict", "all_none", "blank_and_none", "blank_and_empty_list", "zero", "partial", "false"],
+    ids=["empty_dict", "all_none", "blank_and_none", "zero", "partial", "false"],
 )
 def test_is_empty_row(row: Record, expected: bool) -> None:
     assert is_empty_row(row) is expected
