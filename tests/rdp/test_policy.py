@@ -374,7 +374,7 @@ def test_dedup_engine_state(rdp: Rdp, mocker: MockerFixture, case) -> None:
     scenario, expected = case
     status = expected.status
 
-    rdp.status = Rdp.PushStatus.SUCCESS if scenario == "closed" else Rdp.PushStatus.PENDING
+    rdp.status = Rdp.PushStatus.SUCCESS if scenario == "closed" else Rdp.PushStatus.DEDUP_PENDING
     remote = mocker.patch.object(
         RdpActionPolicy,
         "deduplication_status",

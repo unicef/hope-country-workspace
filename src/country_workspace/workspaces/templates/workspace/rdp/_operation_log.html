@@ -1,0 +1,16 @@
+{% load i18n %}
+<details>
+    <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
+        {% translate "Show entries" %}
+    </summary>
+    <div class="mt-3 space-y-3">
+        {% for row in rows %}
+            <div>
+                <strong>{{ row.action }}</strong> · {{ row.timestamp }}
+                {% if row.result %}
+                    <pre class="overflow-x-auto">{{ row.result }}</pre>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</details>
