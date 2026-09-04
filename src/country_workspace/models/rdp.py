@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from django.db import models
 from django.db.models import Q
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy as _
 
 from .base import BaseModel
 from .user import User
@@ -41,29 +41,52 @@ class Rdp(BaseModel):
 
     PushStatus = RdpPushStatus
 
-    country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
-    program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
-    name = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=15, choices=get_rdp_status_choices, default=PushStatus.PENDING, blank=True)
-    hope_rdi_id = models.CharField(
-        max_length=200, null=True, editable=False, help_text=_("RDI unique ID within the HOPE core.")
+    country_office = models.ForeignKey(
+        "Office",
+        on_delete=models.CASCADE,
+        related_name="%(class)ss",
+        help_text=_("Country office associated with this RDP."),
     )
-    push_date = models.DateTimeField(auto_now=True)
-    pushed_by = models.ForeignKey(User, on_delete=models.CASCADE)
-    deduplication_set_id = models.UUIDField(blank=True, null=True)
+    program = models.ForeignKey(
+        "Program", on_delete=models.CASCADE, related_name="%(class)ss", help_text=_("Program associated with this RDP.")
+    )
+    name = models.CharField(max_length=255, blank=True, null=True, help_text=_("Name of this Registration Data Push."))
+    status = models.CharField(
+        max_length=15,
+        choices=get_rdp_status_choices,
+        default=PushStatus.PENDING,
+        blank=True,
+        help_text=_("Current stage of this RDP in the processing workflow."),
+    )
+    hope_rdi_id = models.CharField(
+        max_length=200,
+        null=True,
+        editable=False,
+        help_text=_("Unique identifier of the RDI in HOPE associated with this RDP."),
+    )
+    push_date = models.DateTimeField(
+        auto_now_add=True,
+        help_text=_("Date and time when this RDP was created."),
+    )
+    pushed_by = models.ForeignKey(User, on_delete=models.CASCADE, help_text=_("User who initiated this RDP."))
+    deduplication_set_id = models.UUIDField(
+        blank=True,
+        null=True,
+        help_text=_("Unique identifier of the deduplication set created in DedupEngine for this RDP."),
+    )
     is_dedup_settings_locked = models.BooleanField(
         default=False,
-        help_text=_("Locks program-level deduplication settings while this RDP deduplication is queued or running."),
+        help_text=_("Whether program-level deduplication settings are locked while this RDP is being deduplicated."),
     )
     push_attempt_id = models.UUIDField(
         null=True,
         editable=False,
-        help_text="Unique identifier of the active HOPE push attempt. Cleared when the attempt finishes.",
+        help_text=_("Unique identifier of the active HOPE push attempt. Cleared when the attempt finishes."),
     )
     operation_log = models.JSONField(
         default=list,
         blank=True,
-        help_text=_("Append-only chronological log of RDP operations."),
+        help_text=_("Chronological log of operations recorded for this RDP."),
     )
 
     class Meta:
