@@ -67,6 +67,11 @@ def ona_sync_log(mocker: MockerFixture):
     }
 
 
+@pytest.fixture(autouse=True)
+def ona_data_imported_signal(mocker: MockerFixture):
+    return mocker.patch("country_workspace.contrib.ona.import_processing.data_imported_signal.send")
+
+
 def _mock_atomic(mocker: MockerFixture) -> None:
     atomic = mocker.patch("country_workspace.contrib.ona.import_processing.transaction.atomic")
     atomic.return_value.__enter__.return_value = None
@@ -157,7 +162,7 @@ def test_import_data_calls_client_and_aggregates(
         base_url="https://data.inform.unicef.org",
         token="dummy-token",
     )
-    client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"])
+    client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"], last_id=None)
 
     import_submission_mock.assert_any_call(batch=batch, submission={"_id": 1, "_uuid": "uuid-1"}, config=job.config)
     import_submission_mock.assert_any_call(batch=batch, submission={"_id": 2, "_uuid": "uuid-2"}, config=job.config)
@@ -200,6 +205,7 @@ def test_import_data_skips_submissions_up_to_synclog_last_id(
 
     result = import_data(job)
 
+    client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"], last_id=100)
     assert result == ImportResult(people=3, households=0)
     assert import_submission_mock.call_count == 2
     assert import_submission_mock.call_args_list[0].kwargs["submission"] == {"_id": 101, "_uuid": "new-101"}
@@ -260,7 +266,10 @@ def test_import_data_reuses_existing_job_batch(
     job.batch_id = 777
 
     batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch_cls.BatchStatus.LOADING = "LOADING"
+    batch_cls.BatchStatus.COMPLETE = "COMPLETE"
     existing_batch = batch_cls.objects.select_for_update.return_value.select_related.return_value.get.return_value
+    existing_batch.status = "COMPLETE"
 
     client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
     client_cls.return_value.iter_submissions.return_value = []
@@ -283,7 +292,8 @@ def test_import_data_reuses_existing_job_batch(
         individual_transformer_id=None,
     )
     job.save.assert_not_called()
-    existing_batch.save.assert_called_once_with(update_fields=["status"])
+    assert existing_batch.save.call_count == 2
+    assert existing_batch.status == "COMPLETE"
 
 
 def test_import_data_passes_transformers_to_postprocessing(mocker: MockerFixture, job, config: Config) -> None:
@@ -318,7 +328,9 @@ def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture,
 
     mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
     validation_queryset = mocker.MagicMock()
-    mocker.patch("country_workspace.contrib.ona.import_processing._validation_queryset", return_value=validation_queryset)
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing._validation_queryset", return_value=validation_queryset
+    )
     create_validation_jobs = mocker.patch("country_workspace.contrib.ona.import_processing.create_validation_jobs")
 
     import_data(job)
@@ -328,6 +340,7 @@ def test_import_data_creates_validation_jobs_when_enabled(mocker: MockerFixture,
         owner=job.owner,
         program=job.program,
         queryset=validation_queryset,
+        validation_scope="batch",
     )
 
 
@@ -354,6 +367,11 @@ def test_import_submission_non_master_detail(mocker: MockerFixture, config: Conf
     assert kwargs["originating_id"] == "ONA#uuid-123#IND0"
     assert kwargs["row"]["full_name"] == "Ahmad Ali"
     assert kwargs["row"]["age"] == 35
+    assert kwargs["raw_data"] == {
+        "_uuid": "uuid-123",
+        "name": "Ahmad Ali",
+        "age": 35,
+    }
 
 
 def test_import_submission_master_detail(mocker: MockerFixture, config: Config) -> None:
@@ -396,8 +414,14 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
     create_household.assert_called_once()
     assert create_household.call_args.kwargs["originating_id"] == "ONA#uuid-123#HH0"
     assert create_household.call_args.kwargs["row"]["household_name"] == "Ahmad Household"
+    assert create_household.call_args.kwargs["raw_data"] == {
+        "_uuid": "uuid-123",
+        "household/name": "Ahmad Household",
+    }
 
     assert create_individual.call_count == 2
+    assert create_individual.call_args_list[0].kwargs["raw_data"] == {"name": "Ahmad Ali"}
+    assert create_individual.call_args_list[1].kwargs["raw_data"] == {"name": "Sara Ahmad"}
     assert create_individual.call_args_list[0].kwargs["originating_id"] == "ONA#uuid-123#IND0"
     assert create_individual.call_args_list[0].kwargs["household"] is household
     assert create_individual.call_args_list[1].kwargs["originating_id"] == "ONA#uuid-123#IND1"
@@ -434,7 +458,7 @@ def test_create_individual_keeps_raw_data_flat(mocker: MockerFixture, config: Co
     create_individual(
         batch=batch,
         row={"full_name": "Ahmad Ali", "age": 35},
-        raw_submission={"_uuid": "uuid-123", "name": "Ahmad Ali"},
+        raw_data={"name": "Ahmad Ali", "age": 35},
         config=config,
         originating_id="ONA#uuid-123#IND0",
     )
@@ -443,9 +467,8 @@ def test_create_individual_keeps_raw_data_flat(mocker: MockerFixture, config: Co
     created_kwargs = individual_cls.objects.create.call_args.kwargs
 
     assert created_kwargs["raw_data"] == {
-        "full_name": "Ahmad Ali",
+        "name": "Ahmad Ali",
         "age": 35,
-        "_ona_source_submission": {"_uuid": "uuid-123", "name": "Ahmad Ali"},
     }
     assert "fields" not in created_kwargs["raw_data"]
     assert created_kwargs["flex_fields"] == {"processed": "value"}
@@ -466,7 +489,10 @@ def test_create_household_keeps_raw_data_flat(mocker: MockerFixture, config: Con
     create_household(
         batch=batch,
         row={"household_name": "Ahmad Household"},
-        raw_submission={"_uuid": "uuid-123", "household/name": "Ahmad Household"},
+        raw_data={
+            "_uuid": "uuid-123",
+            "household/name": "Ahmad Household",
+        },
         config={
             **config,
             "household_mapping_id": None,
@@ -478,10 +504,136 @@ def test_create_household_keeps_raw_data_flat(mocker: MockerFixture, config: Con
     created_kwargs = household_cls.objects.create.call_args.kwargs
 
     assert created_kwargs["raw_data"] == {
-        "household_name": "Ahmad Household",
-        "_ona_source_submission": {"_uuid": "uuid-123", "household/name": "Ahmad Household"},
+        "_uuid": "uuid-123",
+        "household/name": "Ahmad Household",
     }
     assert "fields" not in created_kwargs["raw_data"]
     assert created_kwargs["flex_fields"] == {"processed": "household"}
     processor.assert_called_once_with({"household_name": "Ahmad Household"})
 
+
+def test_create_individual_uses_external_collector_helper(
+    mocker: MockerFixture,
+    config: Config,
+) -> None:
+    batch = mocker.MagicMock()
+    batch.program = mocker.MagicMock()
+
+    processor = mocker.MagicMock(
+        return_value={
+            "full_name": "Collector One",
+            "relationship": "NON_BENEFICIARY",
+            "role": "PRIMARY",
+        }
+    )
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_individual_processor",
+        return_value=processor,
+    )
+
+    collector = mocker.MagicMock()
+    get_or_create_collector = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.get_or_create_collector",
+        return_value=(collector, True),
+    )
+    individual_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Individual")
+
+    result = create_individual(
+        batch=batch,
+        row={"full_name": "Collector One"},
+        raw_data={"name": "Collector One"},
+        config=config,
+        originating_id="ONA#uuid-123#IND0",
+        household=mocker.MagicMock(),
+    )
+
+    assert result.individual is collector
+    assert result.fields["relationship"] == "NON_BENEFICIARY"
+
+    get_or_create_collector.assert_called_once_with(
+        program=batch.program,
+        batch=batch,
+        individual_fields={
+            "full_name": "Collector One",
+            "relationship": "NON_BENEFICIARY",
+            "role": "PRIMARY",
+        },
+        raw_data={"name": "Collector One"},
+        originating_id="ONA#uuid-123#IND0",
+    )
+    individual_cls.objects.create.assert_not_called()
+
+
+def test_set_roles_and_relationships_sets_all_household_refs(
+    mocker: MockerFixture,
+) -> None:
+    from country_workspace.contrib.ona.import_processing import (
+        ImportedIndividual,
+        set_roles_and_relationships,
+    )
+
+    household = mocker.MagicMock()
+    household.flex_fields = {}
+
+    primary = mocker.MagicMock()
+    primary.id = 101
+
+    alternate = mocker.MagicMock()
+    alternate.id = 102
+
+    head = mocker.MagicMock()
+    head.id = 103
+
+    set_roles_and_relationships(
+        household,
+        [
+            ImportedIndividual(
+                individual=primary,
+                fields={"role": "PRIMARY", "relationship": "NON_BENEFICIARY"},
+            ),
+            ImportedIndividual(
+                individual=alternate,
+                fields={"role": "ALTERNATE", "relationship": "NON_BENEFICIARY"},
+            ),
+            ImportedIndividual(
+                individual=head,
+                fields={"relationship": "HEAD"},
+            ),
+        ],
+    )
+
+    assert household.flex_fields["primary_collector_id"] == 101
+    assert household.flex_fields["alternate_collector_id"] == 102
+    assert household.flex_fields["head_of_household_id"] == 103
+    household.save.assert_called_once_with(update_fields=["flex_fields"])
+
+
+def test_import_data_emits_data_imported_signal(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+    ona_data_imported_signal,
+) -> None:
+    _mock_atomic(mocker)
+
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch = batch_cls.objects.create.return_value
+    batch.program_id = 123
+    batch.id = 456
+
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = []
+
+    mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+
+    result = import_data(job)
+
+    assert result == ImportResult(people=0, households=0)
+
+    ona_data_imported_signal.assert_called_once_with(
+        sender=batch_cls,
+        program_id=123,
+        batch_id=456,
+        record_count=0,
+        source=batch_cls.BatchSource.ONA,
+    )

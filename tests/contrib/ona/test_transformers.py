@@ -85,31 +85,43 @@ def test_transform_submission_to_records_master_detail():
     )
 
     assert result["household"] == {
-        "household_name": "Ahmad Household",
-        "residence_governorate": "Sana'a",
-        "source_submission_id": 123,
-        "source_submission_uuid": "abc-123",
-        "source_submission_time": "2026-06-07T10:00:00",
+        "fields": {
+            "household_name": "Ahmad Household",
+            "residence_governorate": "Sana'a",
+        },
+        "raw_data": {
+            "_id": 123,
+            "_uuid": "abc-123",
+            "_submission_time": "2026-06-07T10:00:00",
+            "household/name": "Ahmad Household",
+            "household/governorate": "Sana'a",
+        },
     }
 
     assert result["individuals"] == [
         {
-            "full_name": "Ahmad Ali",
-            "age": 35,
-            "sex": "Male",
-            "source_submission_id": 123,
-            "source_submission_uuid": "abc-123",
-            "source_submission_time": "2026-06-07T10:00:00",
-            "source_individual_index": 0,
+            "fields": {
+                "full_name": "Ahmad Ali",
+                "age": 35,
+                "sex": "Male",
+            },
+            "raw_data": {
+                "name": "Ahmad Ali",
+                "age": 35,
+                "sex": "Male",
+            },
         },
         {
-            "full_name": "Sara Ahmad",
-            "age": 30,
-            "sex": "Female",
-            "source_submission_id": 123,
-            "source_submission_uuid": "abc-123",
-            "source_submission_time": "2026-06-07T10:00:00",
-            "source_individual_index": 1,
+            "fields": {
+                "full_name": "Sara Ahmad",
+                "age": 30,
+                "sex": "Female",
+            },
+            "raw_data": {
+                "name": "Sara Ahmad",
+                "age": 30,
+                "sex": "Female",
+            },
         },
     ]
 
@@ -137,12 +149,12 @@ def test_transform_submission_to_records_non_master_detail():
     assert result["household"] is None
     assert result["individuals"] == [
         {
-            "full_name": "Ahmad Ali",
-            "age": 35,
-            "sex": "Male",
-            "source_submission_id": 123,
-            "source_submission_uuid": "abc-123",
-            "source_submission_time": "2026-06-07T10:00:00",
+            "fields": {
+                "full_name": "Ahmad Ali",
+                "age": 35,
+                "sex": "Male",
+            },
+            "raw_data": submission,
         }
     ]
 

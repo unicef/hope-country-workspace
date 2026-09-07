@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any
+import json
+from typing import TYPE_CHECKING, Any
 
-import requests
+from requests import Session
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from .exceptions import OnaApiError, OnaAuthenticationError, OnaRateLimitError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class OnaClient:
@@ -21,6 +26,16 @@ class OnaClient:
         self.token = token
         self.timeout = timeout
         self.page_size = page_size
+        self.session = Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=(429, 502, 503, 504),
+            allowed_methods=frozenset(("GET",)),
+            respect_retry_after_header=True,
+            raise_on_status=False,
+        )
+        self.session.mount("https://", HTTPAdapter(max_retries=retries))
 
     @property
     def headers(self) -> dict[str, str]:
@@ -32,7 +47,7 @@ class OnaClient:
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{self.base_url}/{path.lstrip('/')}"
 
-        response = requests.get(
+        response = self.session.get(
             url,
             headers=self.headers,
             params=params or {},
@@ -59,13 +74,19 @@ class OnaClient:
         form_id: str | int,
         start: int,
         limit: int | None = None,
+        last_id: int | None = None,
     ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "start": start,
+            "limit": limit or self.page_size,
+            "sort": json.dumps({"_id": 1}),
+        }
+        if last_id is not None:
+            params["query"] = json.dumps({"_id": {"$gt": last_id}})
+
         data = self.get(
             f"/api/v1/data/{form_id}",
-            params={
-                "start": start,
-                "limit": limit or self.page_size,
-            },
+            params=params,
         )
 
         if not isinstance(data, list):
@@ -73,7 +94,7 @@ class OnaClient:
 
         return data
 
-    def iter_submissions(self, form_id: str | int) -> Iterator[dict[str, Any]]:
+    def iter_submissions(self, form_id: str | int, *, last_id: int | None = None) -> Iterator[dict[str, Any]]:
         start = 0
 
         while True:
@@ -81,14 +102,11 @@ class OnaClient:
                 form_id=form_id,
                 start=start,
                 limit=self.page_size,
+                last_id=last_id,
             )
 
             if not submissions:
                 break
 
             yield from submissions
-
-            if len(submissions) < self.page_size:
-                break
-
             start += self.page_size
