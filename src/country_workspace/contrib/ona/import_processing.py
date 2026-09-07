@@ -1,22 +1,37 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
-from typing import Any, NamedTuple, NotRequired
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import QuerySet
 from django.utils import timezone
 from constance import config as constance_config
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import transform_submission_to_records
+from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
+from country_workspace.notifications.signals import data_imported_signal
+from country_workspace.models.household import (
+    RELATIONSHIP_HEAD,
+    RELATIONSHIP_NON_BENEFICIARY,
+    ROLE_ALTERNATE,
+    ROLE_PRIMARY,
+)
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.import_flow import build_import_processor, run_batch_postprocessing
+from country_workspace.utils.import_flow import (
+    build_import_processor,
+    get_or_create_collector,
+    run_batch_postprocessing,
+)
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from django.db.models import QuerySet
 
 
 def get_ona_sync_log_name(form_id: str | int) -> str:
@@ -40,6 +55,11 @@ class ImportResult(NamedTuple):
     households: int = 0
 
 
+class ImportedIndividual(NamedTuple):
+    individual: Individual
+    fields: dict[str, Any]
+
+
 def import_data(job: AsyncJob) -> ImportResult:
     """
     INFORM/ONA RDI import entry point.
@@ -57,7 +77,6 @@ def import_data(job: AsyncJob) -> ImportResult:
     if not config.get("form_id"):
         raise ImportError("form_id is required for ONA import")
 
-    
     with transaction.atomic():
         batch_id = getattr(job, "batch_id", None)
         if batch_id:
@@ -76,6 +95,10 @@ def import_data(job: AsyncJob) -> ImportResult:
             job.batch = batch
             job.save(update_fields=["batch"])
 
+        if batch_id and batch.status != Batch.BatchStatus.LOADING:
+            batch.status = Batch.BatchStatus.LOADING
+            batch.save(update_fields=["status"])
+
     client = OnaClient(
         base_url=constance_config.ONA_API_URL,
         token=constance_config.ONA_API_TOKEN,
@@ -92,7 +115,7 @@ def import_data(job: AsyncJob) -> ImportResult:
     current_submission_id: int | None = None
 
     try:
-        for submission in client.iter_submissions(config["form_id"]):
+        for submission in client.iter_submissions(config["form_id"], last_id=last_id):
             job.ensure_not_cancelled(refresh=True)
 
             current_submission_id = get_ona_submission_cursor_id(submission)
@@ -125,10 +148,19 @@ def import_data(job: AsyncJob) -> ImportResult:
                 owner=job.owner,
                 program=job.program,
                 queryset=_validation_queryset(batch, config),
+                validation_scope="batch",
             )
 
         batch.status = Batch.BatchStatus.COMPLETE
         batch.save(update_fields=["status"])
+
+        data_imported_signal.send(
+            sender=Batch,
+            program_id=batch.program_id,
+            batch_id=batch.id,
+            record_count=total_people + total_households,
+            source=Batch.BatchSource.ONA,
+        )
 
         return ImportResult(
             people=total_people,
@@ -174,28 +206,31 @@ def import_submission(
 
     with transaction.atomic():
         if config.get("master_detail"):
-            household_data = transformed["household"] or {}
-            individual_rows = transformed["individuals"]
+            household_record = transformed["household"] or {"fields": {}, "raw_data": {}}
+            individual_records = transformed["individuals"]
 
             household = create_household(
                 batch=batch,
-                row=household_data,
-                raw_submission=submission,
+                row=household_record["fields"],
+                raw_data=household_record["raw_data"],
                 config=config,
                 originating_id=f"{originating_id}#HH0",
             )
 
             people_counter = 0
-            for index, individual_data in enumerate(individual_rows):
-                create_individual(
+            imported_individuals: list[ImportedIndividual] = []
+            for index, individual_record in enumerate(individual_records):
+                imported_individual = create_individual(
                     batch=batch,
-                    row=individual_data,
-                    raw_submission=submission,
+                    row=individual_record["fields"],
+                    raw_data=individual_record["raw_data"],
                     config=config,
                     originating_id=f"{originating_id}#IND{index}",
                     household=household,
                 )
+                imported_individuals.append(imported_individual)
                 people_counter += 1
+            set_roles_and_relationships(household, imported_individuals)
 
             return ImportResult(
                 people=people_counter,
@@ -203,11 +238,11 @@ def import_submission(
             )
 
         people_counter = 0
-        for index, individual_data in enumerate(transformed["individuals"]):
+        for index, individual_record in enumerate(transformed["individuals"]):
             create_individual(
                 batch=batch,
-                row=individual_data,
-                raw_submission=submission,
+                row=individual_record["fields"],
+                raw_data=individual_record["raw_data"],
                 config=config,
                 originating_id=f"{originating_id}#IND{index}",
             )
@@ -219,38 +254,80 @@ def import_submission(
         )
 
 
-def create_individual(
+def create_individual(  # noqa: PLR0913
     *,
     batch: Batch,
     row: Mapping[str, Any],
-    raw_submission: Mapping[str, Any],
+    raw_data: Mapping[str, Any],
     config: Config,
     originating_id: str,
     household: Household | None = None,
-) -> Individual:
+) -> ImportedIndividual:
     individual_row_processor = build_individual_processor(
         batch.program,
         mapping_id=config.get("individual_mapping_id"),
     )
+    individual_fields = individual_row_processor(row)
 
-    return Individual.objects.create(
-        batch_id=batch.pk,
-        name="",
-        originating_id=originating_id,
-        household=household,
-        flex_fields=individual_row_processor(row),
-        raw_data={
-            **dict(row),
-            "_ona_source_submission": dict(raw_submission),
-        },
+    if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
+        individual, _created = get_or_create_collector(
+            program=batch.program,
+            batch=batch,
+            individual_fields=individual_fields,
+            raw_data=dict(raw_data),
+            originating_id=originating_id,
+        )
+    else:
+        individual = Individual.objects.create(
+            batch_id=batch.pk,
+            name="",
+            originating_id=originating_id,
+            household=household,
+            flex_fields=individual_fields,
+            raw_data=dict(raw_data),
+        )
+
+    return ImportedIndividual(
+        individual=individual,
+        fields=individual_fields,
     )
+
+
+def set_roles_and_relationships(
+    household: Household,
+    individuals: list[ImportedIndividual],
+) -> None:
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+
+    primary_collector = next(
+        (item.individual for item in individuals if item.fields.get("role") == ROLE_PRIMARY),
+        None,
+    )
+    if primary_collector is not None:
+        household.flex_fields[fields.primary_collector] = primary_collector.id
+
+    alternate_collector = next(
+        (item.individual for item in individuals if item.fields.get("role") == ROLE_ALTERNATE),
+        None,
+    )
+    if alternate_collector is not None:
+        household.flex_fields[fields.alternate_collector] = alternate_collector.id
+
+    head_of_household = next(
+        (item.individual for item in individuals if item.fields.get("relationship") == RELATIONSHIP_HEAD),
+        None,
+    )
+    if head_of_household is not None:
+        household.flex_fields[fields.head_of_household] = head_of_household.id
+
+    household.save(update_fields=["flex_fields"])
 
 
 def create_household(
     *,
     batch: Batch,
     row: Mapping[str, Any],
-    raw_submission: Mapping[str, Any],
+    raw_data: Mapping[str, Any],
     config: Config,
     originating_id: str,
 ) -> Household:
@@ -264,20 +341,12 @@ def create_household(
         name="",
         originating_id=originating_id,
         flex_fields=household_row_processor(row),
-        raw_data={
-            **dict(row),
-            "_ona_source_submission": dict(raw_submission),
-        },
+        raw_data=dict(raw_data),
     )
 
 
 def get_ona_submission_id(submission: Mapping[str, Any]) -> str:
-    value = (
-        submission.get("_uuid")
-        or submission.get("_id")
-        or submission.get("id")
-        or submission.get("uuid")
-    )
+    value = submission.get("_uuid") or submission.get("_id") or submission.get("id") or submission.get("uuid")
 
     if value is None:
         raise ImportError("ONA submission is missing _uuid/_id/id/uuid")

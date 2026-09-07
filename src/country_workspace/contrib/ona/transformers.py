@@ -8,7 +8,8 @@ from .exceptions import OnaMappingError
 
 def get_nested_value(data: Mapping[str, Any], path: str) -> Any:
     """
-    Supports both:
+    Support flat ONA/ODK keys and nested JSON.
+
     1. Flat ONA/ODK keys:
        household/head/name
 
@@ -39,6 +40,7 @@ def map_fields(
         "hh/name": "full_name",
         "hh/gov": "residence_governorate"
     }
+
     """
     output: dict[str, Any] = {}
 
@@ -60,7 +62,7 @@ def transform_submission_to_records(
     individuals_key: str = "individuals",
 ) -> dict[str, Any]:
     """
-    Transform one ONA submission into import-ready records.
+    Transform one ONA submission into mapped records with separate raw source data.
 
     For non-master-detail:
         returns one individual record.
@@ -71,26 +73,16 @@ def transform_submission_to_records(
     household_field_mapping = household_field_mapping or {}
     individual_field_mapping = individual_field_mapping or {}
 
-    source_metadata = {
-        "source_submission_id": submission.get("_id"),
-        "source_submission_uuid": submission.get("_uuid"),
-        "source_submission_time": submission.get("_submission_time"),
-    }
-
     if not master_detail:
-        individual = {
-            **map_fields(submission, individual_field_mapping),
-            **source_metadata,
-        }
         return {
             "household": None,
-            "individuals": [individual],
+            "individuals": [
+                {
+                    "fields": map_fields(submission, individual_field_mapping),
+                    "raw_data": dict(submission),
+                }
+            ],
         }
-
-    household = {
-        **map_fields(submission, household_field_mapping),
-        **source_metadata,
-    }
 
     raw_individuals = get_nested_value(submission, individuals_key)
 
@@ -103,6 +95,8 @@ def transform_submission_to_records(
     if not isinstance(raw_individuals, list):
         raise OnaMappingError(f"Expected list for individuals_key: {individuals_key}")
 
+    raw_household = {key: value for key, value in submission.items() if key != individuals_key}
+
     individuals = []
     for index, raw_individual in enumerate(raw_individuals):
         if not isinstance(raw_individual, Mapping):
@@ -110,13 +104,15 @@ def transform_submission_to_records(
 
         individuals.append(
             {
-                **map_fields(raw_individual, individual_field_mapping),
-                **source_metadata,
-                "source_individual_index": index,
+                "fields": map_fields(raw_individual, individual_field_mapping),
+                "raw_data": dict(raw_individual),
             }
         )
 
     return {
-        "household": household,
+        "household": {
+            "fields": map_fields(submission, household_field_mapping),
+            "raw_data": raw_household,
+        },
         "individuals": individuals,
     }
