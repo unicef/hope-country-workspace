@@ -88,6 +88,8 @@ ENV PATH=/venv/bin:/usr/local/bin/:/usr/bin:/bin \
 WORKDIR /app
 COPY uv.lock README.md MANIFEST.in pyproject.toml /app/
 COPY src /app/src/
+COPY docker/conf /conf/
+COPY docker/bin/* /usr/local/bin/
 
 RUN --mount=type=cache,target=/root/.uv-cache \
     find ./src -name 'node_modules' -prune \
@@ -170,7 +172,7 @@ RUN --mount=type=cache,target=/root/.uv-cache \
 
 EXPOSE 8000
 ENTRYPOINT exec docker-entrypoint.sh "$0" "$@"
-CMD ["run"]
+CMD ["web"]
 
 
 LABEL maintainer="hope@unicef.org"

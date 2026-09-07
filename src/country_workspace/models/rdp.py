@@ -34,6 +34,7 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
 class RdpOperationAction(models.TextChoices):
     START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
     APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+    START_OCR = "START_OCR", _("Start OCR")
 
 
 class Rdp(BaseModel):
@@ -95,6 +96,7 @@ class Rdp(BaseModel):
             ("deduplicate_rdp", _("Can run RDP deduplication")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
             ("reset_rdp", _("Can reset RDP")),
+            ("run_ocr_rdp", _("Can run RDP OCR")),
         ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")

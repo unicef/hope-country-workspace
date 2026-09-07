@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
   "bitcaster-sdk>=0.1",
   "celery>=5.4",
+  "circus>=0.19",
   "cryptography>=41",
   "deepdiff>=8.0.1",
   "deprecation>=2.1",
@@ -48,6 +49,7 @@ dependencies = [
   "django-smart-admin>=2.6",
   "django-smart-env>=0.1",
   "django-storages[azure]>=1.14.4",
+  "django-streaming>=0.8",
   "django-stubs-ext",
   "django-sysinfo>=2.6.2",
   "django-tailwind>=3.8",
