@@ -7,7 +7,6 @@ from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -19,7 +18,6 @@ from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
-from django.utils.html import format_html, format_html_join
 
 from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.compat.admin_extra_buttons import confirm_action
@@ -73,6 +71,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "hope_rdi_id",
         "dedup_engine_state",
         "deduplication_set_id",
+        "ocr_status",
+        "ocr_progress",
+        "ocr_correlation_id",
         "processing_history",
         "operation_log_display",
     )
@@ -85,18 +86,26 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         fieldsets = [
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
-        # if obj and obj.program.biometric_deduplication_enabled:
-        #     fields.extend(("dedup_engine_state", "deduplication_set_id"))
-        # if obj and hasattr(obj, "ocr_run"):
-        #     fields.append("ocr_run_display")
-        # fields.extend(("related_jobs", "operation_log_display"))
-        # return fields
 
         if obj and obj.program.biometric_deduplication_enabled:
             fields = ["deduplication_set_id"]
             if obj.status in NON_TERMINAL_RDP_STATUSES:
                 fields.insert(0, "dedup_engine_state")
             fieldsets.append((_("Deduplication"), {"fields": fields}))
+
+        if obj and hasattr(obj, "ocr_run"):
+            fieldsets.append(
+                (
+                    _("OCR"),
+                    {
+                        "fields": (
+                            "ocr_status",
+                            "ocr_progress",
+                            "ocr_correlation_id",
+                        )
+                    },
+                )
+            )
 
         fieldsets.extend(
             [
@@ -180,24 +189,18 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         return render_to_string("workspace/rdp/_operation_log.html", {"rows": rows})
 
-    @display(description="OCR run")
-    def ocr_run_display(self, obj: CountryRdp) -> str:
-        """Return a compact summary of this RDP's OCR run, if any."""
-        try:
-            run = obj.ocr_run
-        except ObjectDoesNotExist:
-            return "-"
+    @display(description=_("Status"))
+    def ocr_status(self, obj: CountryRdp) -> str:
+        return str(obj.ocr_run.get_status_display())
 
-        progress = f"{len(run.received_batch_ids)}/{run.batch_total}" if run.batch_total else "-"
-        summary = f"{run.get_status_display()} ({progress}) · correlation_id={run.correlation_id}"
-        if not run.results:
-            return summary
+    @display(description=_("Progress"))
+    def ocr_progress(self, obj: CountryRdp) -> str:
+        run = obj.ocr_run
+        return f"{len(run.received_batch_ids)}/{run.batch_total}" if run.batch_total else "—"
 
-        return format_html(
-            "{}<pre>{}</pre>",
-            summary,
-            json.dumps(run.results, indent=2, ensure_ascii=False),
-        )
+    @display(description=_("Correlation ID"))
+    def ocr_correlation_id(self, obj: CountryRdp) -> str:
+        return str(obj.ocr_run.correlation_id)
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         try:
