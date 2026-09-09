@@ -11,11 +11,12 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
+from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
-from django.utils.html import format_html, format_html_join
+from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
@@ -30,7 +31,7 @@ from country_workspace.rdp import (
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
 from country_workspace.state import state
 
 from ..models import CountryRdp
@@ -61,23 +62,40 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     list_display = ("name", "push_date", "status", "deduplication_set_id")
     list_filter = (("status", ChoiceFilter),)
     search_fields = ("name", "deduplication_set_id")
-    change_list_template = ["workspace/change_list.html"]
-    change_form_template = ["workspace/change_form.html"]
     ordering = ("-push_date",)
+    readonly_fields = (
+        "name",
+        "status",
+        "push_date",
+        "hope_rdi_id",
+        "dedup_engine_state",
+        "deduplication_set_id",
+        "processing_history",
+        "operation_log_display",
+    )
 
-    def get_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
-        fields = [
-            "name",
-            "push_date",
-            "status",
+    def get_fieldsets(
+        self,
+        request: HttpRequest,
+        obj: CountryRdp | None = None,
+    ) -> list[tuple[str | None, dict[str, Any]]]:
+        fieldsets = [
+            (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
-        if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(("dedup_engine_state", "deduplication_set_id"))
-        fields.extend(("related_jobs", "operation_log_display"))
-        return fields
 
-    def get_readonly_fields(self, request: HttpRequest, obj: CountryRdp | None = None) -> list[str]:
-        return self.get_fields(request, obj)
+        if obj and obj.program.biometric_deduplication_enabled:
+            fields = ["deduplication_set_id"]
+            if obj.status in NON_TERMINAL_RDP_STATUSES:
+                fields.insert(0, "dedup_engine_state")
+            fieldsets.append((_("Deduplication"), {"fields": fields}))
+
+        fieldsets.extend(
+            [
+                (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
+                (_("Operation log"), {"fields": ("operation_log_display",), "classes": ("content-only",)}),
+            ]
+        )
+        return fieldsets
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
@@ -88,34 +106,45 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def has_add_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
 
-    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
-        kwargs["modeladmin"] = self
-        kwargs["modeladmin_name"] = self.__class__.__name__
-        return super().get_common_context(request, pk, **kwargs)
-
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
-    def related_jobs(self, obj: CountryRdp) -> str:
-        if not (jobs := obj.jobs.order_by("datetime_created")).exists():
-            return "-"
-        return format_html_join(
-            "\n",
-            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
-            "<a href='{}' style='color: var(--link-fg)'>{}</a>"
-            "<span style='white-space:nowrap'>{}</span>"
-            "</div>",
-            (
-                (
-                    reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
-                    str(job),
-                    str(job.task_status) if getattr(job, "task_status", None) is not None else "—",
-                )
-                for job in jobs
-            ),
-        )
+    def change_view(
+        self,
+        request: HttpRequest,
+        object_id: str,
+        form_url: str = "",
+        extra_context: dict[str, Any] | None = None,
+    ) -> HttpResponse:
+        extra_context = {
+            **(extra_context or {}),
+            "dynamic_field_help_texts": {
+                "dedup_engine_state": _("Current deduplication state reported by DedupEngine for this RDP."),
+            },
+        }
+        return super().change_view(request, object_id, form_url, extra_context)
 
-    @display(description="Operation log")
+    @display(description="")
+    def processing_history(self, obj: CountryRdp) -> str:
+        jobs = list(obj.jobs.order_by("datetime_created"))
+        if not jobs:
+            return "—"
+
+        rows = [
+            {
+                "url": reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
+                "step": job.description or _("Background job"),
+                "scheduled_at": (
+                    date_format(timezone.localtime(job.datetime_queued), "Y-m-d H:i:s") if job.datetime_queued else "—"
+                ),
+                "status": job.task_status or "—",
+            }
+            for job in jobs
+        ]
+
+        return render_to_string("workspace/rdp/_processing_history.html", {"rows": rows})
+
+    @display(description="")
     def operation_log_display(self, obj: CountryRdp) -> str:
         """Return formatted RDP operation log."""
         if not obj.operation_log:
@@ -126,23 +155,21 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             action = entry.get("action", "—")
             with suppress(TypeError, ValueError):
                 action = RdpOperationAction(action).label
+
             timestamp = entry.get("timestamp", "—")
             if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
                 timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
+
             result = entry.get("result")
             rows.append(
-                (
-                    action,
-                    timestamp,
-                    format_html("<pre>{}</pre>", json.dumps(result, indent=2, ensure_ascii=False)) if result else "",
-                )
+                {
+                    "action": action,
+                    "timestamp": timestamp,
+                    "result": json.dumps(result, indent=2, ensure_ascii=False) if result else "",
+                }
             )
 
-        return format_html_join(
-            "",
-            "<div><strong>{}</strong> · {}{}</div>",
-            rows,
-        )
+        return render_to_string("workspace/rdp/_operation_log.html", {"rows": rows})
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         try:
@@ -180,7 +207,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         permission="country_workspace.deduplicate_rdp",
         visible=lambda btn: _is_visible(btn, "is_deduplicate_visible"),
         enabled=lambda btn: _is_allowed(btn, "claim_deduplication_check"),
-        html_attrs={"title": "Run Deduplication process on DedupEngine."},
+        html_attrs={"title": "Queue RDP for deduplication in DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
@@ -194,7 +221,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     messages.error(request, check.reason or "Action is not allowed.")
                     return redirect(self._change_url(obj))
                 job = AsyncJob.objects.create(
-                    description="Run Deduplication process on DedupEngine",
+                    description="Queue RDP for deduplication in DedupEngine",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
                     action=fqn(dedup_existing_rdp_core),
@@ -279,7 +306,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 if locked.push_attempt_id is None:
                     raise RuntimeError("RDP push attempt was not initialized.")
                 job = AsyncJob.objects.create(
-                    description="Prepare RDP for HOPE push",
+                    description="Prepare HOPE for RDP push",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
                     action=fqn(push_existing_rdp_core),

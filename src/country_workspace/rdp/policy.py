@@ -231,7 +231,7 @@ class RdpActionPolicy:
         )
 
     def dedup_engine_state(self) -> DedupEngineState:
-        if not self.is_open:
+        if self.rdp.status not in NON_TERMINAL_RDP_STATUSES:
             return DedupEngineState()
         try:
             status = self.deduplication_status(self.rdp)
