@@ -9,7 +9,6 @@ from pytest_mock import MockerFixture
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.kobo.sync import (
     ACCEPT_JSON_HEADERS,
-    AlienFieldsError,
     build_individual_processor,
     Config,
     ImportedIndividual,
@@ -25,23 +24,16 @@ from country_workspace.contrib.kobo.sync import (
     get_fullname_key,
     set_roles_and_relationships,
     get_id_generator,
-    get_allowed_fields,
-    get_alien_fields,
-    check_for_alien_fields,
 )
 from country_workspace.models import Program, SyncLog
 from country_workspace.models.jobs import GracefulJobCancellationError
 from testutils.factories import (
     BatchFactory,
-    DataCheckerFactory,
-    FieldsetFactory,
-    FlexFieldFactory,
     HouseholdFactory,
     IndividualFactory,
     ProgramFactory,
     SyncLogFactory,
 )
-from testutils.factories.smart_fields import DataCheckerFieldsetFactory
 
 if TYPE_CHECKING:
     from country_workspace.contrib.kobo.api.data.submission import Submission
@@ -64,7 +56,6 @@ def config() -> Config:
         "project_id": PROJECT_ID,
         "individual_records_field": INDIVIDUAL_RECORDS_FIELD,
         "validate_after_import": True,
-        "fail_if_alien": False,
     }
 
 
@@ -1021,176 +1012,3 @@ def test_set_roles_and_relationships(
 def test_get_id_generator() -> None:
     id_generator = get_id_generator()
     assert [id_generator() for _ in range(5)] == [1, 2, 3, 4, 5]
-
-
-@pytest.mark.django_db
-def test_get_allowed_fields() -> None:
-    checker = DataCheckerFactory()
-
-    def add_field(prefix: str, field_name: str) -> None:
-        fieldset = FieldsetFactory()
-        FlexFieldFactory(fieldset=fieldset, name=field_name)
-        DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix=prefix)
-
-    add_field("", "field1")
-    add_field("fs1_", "field2")
-    add_field("fs2_", "field3")
-
-    allowed = get_allowed_fields(checker)
-
-    assert allowed == {"field1", "fs1_field2", "fs2_field3"}
-
-
-def test_get_allowed_fields_no_checker() -> None:
-    allowed = get_allowed_fields(None)
-    assert allowed == set()
-
-
-def test_get_alien_fields() -> None:
-    data = {"field1": "value1", "field2": "value2", "alien1": "value3"}
-    allowed = {"field1", "field2", "field3"}
-
-    alien = get_alien_fields(data, allowed)
-
-    assert alien == {"alien1"}
-
-
-def test_get_alien_fields_respects_constance_ignore() -> None:
-    data = {"audit": "value1", "uuid": "value2", "field2": "value3"}
-    allowed = set()
-
-    with override_config(KOBO_FIELDS_TO_IGNORE="audit, uuid"):
-        alien = get_alien_fields(data, allowed)
-
-    assert alien == {"field2"}
-
-
-def test_get_alien_fields_none_found() -> None:
-    data = {"field1": "value1", "field2": "value2"}
-    allowed = {"field1", "field2", "field3"}
-
-    alien = get_alien_fields(data, allowed)
-
-    assert alien == set()
-
-
-def test_check_for_alien_fields_no_aliens(mocker: MockerFixture, config: Config) -> None:
-    from hope_flex_fields.models import DataChecker
-
-    batch_mock = mocker.MagicMock()
-    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
-    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
-
-    submission_mock = mocker.MagicMock()
-    submission_mock.get.return_value = [{"individual_field": "value"}]
-
-    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
-    get_allowed_fields_mock.return_value = {"household_field", "individual_field"}
-
-    household_processor = mocker.MagicMock(return_value={"household_field": "value"})
-    individual_processor = mocker.MagicMock(return_value={"individual_field": "value"})
-    build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor",
-        return_value=household_processor,
-    )
-    build_individual_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_individual_processor",
-        return_value=individual_processor,
-    )
-
-    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
-    extract_household_data_mock.return_value = {"household_field": "value"}
-
-    mapping_importer = mocker.MagicMock()
-    check_for_alien_fields(batch_mock, submission_mock, config, mapping_importer)
-
-    build_household_processor_mock.assert_called_once_with(
-        batch_mock.program,
-        mapping_id=None,
-        apply_defaults=False,
-        apply_mapping=False,
-        post_processors=(mapping_importer,),
-    )
-    build_individual_processor_mock.assert_called_once_with(
-        batch_mock.program,
-        mapping_id=None,
-        apply_defaults=False,
-        apply_mapping=False,
-        post_processors=(mapping_importer,),
-    )
-    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
-    individual_processor.assert_called_once_with(submission_mock.get.return_value[0])
-
-
-def test_check_for_alien_fields_with_household_aliens(mocker: MockerFixture, config: Config) -> None:
-    from hope_flex_fields.models import DataChecker
-
-    batch_mock = mocker.MagicMock()
-    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
-    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
-
-    submission_mock = mocker.MagicMock()
-    submission_mock.get.return_value = []
-
-    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
-    extract_household_data_mock.return_value = {"known_field": "value", "alien_field": "value"}
-
-    household_processor = mocker.MagicMock(return_value={"known_field": "value", "alien_field": "value"})
-    build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor",
-        return_value=household_processor,
-    )
-
-    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
-    get_allowed_fields_mock.return_value = {"known_field"}
-
-    with pytest.raises(AlienFieldsError) as exc_info:
-        check_for_alien_fields(batch_mock, submission_mock, config, mocker.MagicMock())
-
-    assert exc_info.value.household_alien_fields == {"alien_field"}
-    assert exc_info.value.individual_alien_fields == set()
-    build_household_processor_mock.assert_called_once()
-    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
-
-
-def test_check_for_alien_fields_with_individual_aliens(mocker: MockerFixture, config: Config) -> None:
-    from hope_flex_fields.models import DataChecker
-
-    batch_mock = mocker.MagicMock()
-    batch_mock.program.household_checker = mocker.MagicMock(spec=DataChecker)
-    batch_mock.program.individual_checker = mocker.MagicMock(spec=DataChecker)
-
-    submission_mock = mocker.MagicMock()
-    submission_mock.get.return_value = [{"known_field": "value", "alien_individual_field": "value"}]
-
-    extract_household_data_mock = mocker.patch("country_workspace.contrib.kobo.sync.extract_household_data")
-    extract_household_data_mock.return_value = {"household_field": "value"}
-
-    household_processor = mocker.MagicMock(return_value={"household_field": "value"})
-    individual_processor = mocker.MagicMock(return_value={"known_field": "value", "alien_individual_field": "value"})
-    build_household_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_household_processor",
-        return_value=household_processor,
-    )
-    build_individual_processor_mock = mocker.patch(
-        "country_workspace.contrib.kobo.sync.build_individual_processor",
-        return_value=individual_processor,
-    )
-
-    def get_allowed_fields_side_effect(checker):
-        if checker == batch_mock.program.household_checker:
-            return {"household_field"}
-        return {"known_field"}
-
-    get_allowed_fields_mock = mocker.patch("country_workspace.contrib.kobo.sync.get_allowed_fields")
-    get_allowed_fields_mock.side_effect = get_allowed_fields_side_effect
-
-    with pytest.raises(AlienFieldsError) as exc_info:
-        check_for_alien_fields(batch_mock, submission_mock, config, mocker.MagicMock())
-
-    assert exc_info.value.household_alien_fields == set()
-    assert exc_info.value.individual_alien_fields == {"alien_individual_field"}
-    build_household_processor_mock.assert_called_once()
-    build_individual_processor_mock.assert_called_once()
-    household_processor.assert_called_once_with(extract_household_data_mock.return_value)
-    individual_processor.assert_called_once_with(submission_mock.get.return_value[0])

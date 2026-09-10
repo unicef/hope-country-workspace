@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Final, NotRequired, TypedDict, cast, TYPE_CHECKING
+from typing import Any, Final, NotRequired, TypedDict, cast
 from urllib.parse import urlparse
 from constance import config as constance_config
 from django.utils import timezone
@@ -11,8 +11,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from django.contrib.contenttypes.models import ContentType
-
-from country_workspace.contrib.kobo.exceptions import AlienFieldsError
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.utils.auth import Auth
@@ -39,9 +37,6 @@ from country_workspace.utils.sync_log import get_kobo_sync_log_name
 from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.notifications.signals import data_imported_signal
-
-if TYPE_CHECKING:
-    from hope_flex_fields.models import DataChecker
 
 
 class Config(BatchNameConfig, ValidateModeConfig):
@@ -276,64 +271,6 @@ def set_roles_and_relationships(household: Household, individuals: list[Imported
     if head_of_household := next((item.individual for item in individuals if _is_head_of_household(item)), None):
         household.flex_fields[fields.head_of_household] = head_of_household.id
     household.save(update_fields=["flex_fields"])
-
-
-def get_allowed_fields(checker: "DataChecker | None") -> set[str]:
-    """Get set of allowed field names from a DataChecker."""
-    if not checker:
-        return set()
-    return {f"{fieldset.prefix}{field.name}" for fieldset, field in list(checker.get_fields())}  # type: ignore[misc]
-
-
-def get_alien_fields(data: dict[str, Any], allowed_fields: set[str], extras: set | None = None) -> set[str]:
-    """Return fields in data that are not in allowed_fields."""
-    data_fields = set(data.keys())
-    kobo_specific_fields = {
-        field.strip() for field in constance_config.KOBO_FIELDS_TO_IGNORE.split(",") if field.strip()
-    }
-    extras = extras or set()
-    return data_fields - kobo_specific_fields - set(extras) - allowed_fields
-
-
-def check_for_alien_fields(
-    batch: Batch, submission: Submission, config: Config, mapping_importer: Callable[[Raw], Raw]
-) -> None:
-    """Check first submission for alien fields and raise if found."""
-    raw_household_fields = extract_household_data(submission, config["individual_records_field"])
-    household_fields = build_household_processor(
-        batch.program,
-        mapping_id=None,
-        apply_defaults=False,
-        apply_mapping=False,
-        post_processors=(mapping_importer,),
-    )(raw_household_fields)
-
-    household_allowed_fields = get_allowed_fields(batch.program.household_checker)
-    household_alien = get_alien_fields(
-        data=household_fields,
-        allowed_fields=household_allowed_fields,
-        extras={config["individual_records_field"]},
-    )
-
-    individual_alien: set[str] = set()
-    if individuals_data := submission.get(config["individual_records_field"]):
-        first_individual = individuals_data[0]
-        individual_fields = build_individual_processor(
-            batch.program,
-            mapping_id=None,
-            apply_defaults=False,
-            apply_mapping=False,
-            post_processors=(mapping_importer,),
-        )(first_individual)
-        individual_allowed_fields = get_allowed_fields(batch.program.individual_checker)
-        individual_alien = get_alien_fields(
-            data=individual_fields,
-            allowed_fields=individual_allowed_fields,
-            extras={config["individual_records_field"]},
-        )
-
-    if household_alien or individual_alien:
-        raise AlienFieldsError(household_alien, individual_alien)
 
 
 def import_asset(  # noqa: PLR0913
