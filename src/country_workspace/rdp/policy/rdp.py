@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-from collections.abc import Callable
 from functools import cached_property
 from typing import NamedTuple
 
@@ -14,21 +12,11 @@ from country_workspace.contrib.dedup_engine import (
     get_deduplication_status,
     make_dedup_client,
 )
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Program, Rdp
+from country_workspace.exceptions import RemoteError
+from country_workspace.models import Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 
-from .exceptions import RdpWorkflowError
-
-
-@dataclass(slots=True, frozen=True)
-class ActionCheck:
-    allowed: bool
-    reason: str | None = None
-
-    def require(self) -> None:
-        if not self.allowed:
-            raise RdpWorkflowError({"errors": [self.reason or "Action is not allowed."]})
+from .common import ActionCheck
 
 
 class DedupEngineState(NamedTuple):
@@ -61,48 +49,6 @@ class DedupEngineState(NamedTuple):
         else:
             result = self.status.deduplication_set_status
         return result
-
-
-class ProgramDedupSettingsPolicy:
-    def __init__(self, program: Program) -> None:
-        self.program = program
-
-    def is_update_dedup_settings_visible(self) -> bool:
-        return self.program.biometric_deduplication_enabled
-
-    def update_dedup_settings_check(self) -> ActionCheck:
-        if not self.program.biometric_deduplication_enabled:
-            return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self._has_blocking_rdp() or self._has_running_deduplication_set():
-            return ActionCheck(
-                False,
-                "Deduplication settings cannot be updated after a successful RDP "
-                "or while deduplication or push to HOPE is queued or running.",
-            )
-        return ActionCheck(True)
-
-    def _has_blocking_rdp(self) -> bool:
-        return (
-            Rdp.objects.filter(program=self.program)
-            .filter(
-                Q(status=Rdp.PushStatus.SUCCESS)
-                | Q(status__in=NON_TERMINAL_RDP_STATUSES, is_dedup_settings_locked=True)
-                | Q(status=Rdp.PushStatus.PUSH_PENDING)
-            )
-            .exists()
-        )
-
-    def _has_running_deduplication_set(self) -> bool:
-        rdp = (
-            Rdp.objects.filter(
-                program=self.program,
-                status__in=NON_TERMINAL_RDP_STATUSES,
-                deduplication_set_id__isnull=False,
-            )
-            .select_related("program")
-            .first()
-        )
-        return bool(rdp and RdpActionPolicy(rdp).deduplication_set_state in RUNNING_DEDUPLICATION_SET_STATES)
 
 
 class RdpActionPolicy:
@@ -244,19 +190,8 @@ class RdpActionPolicy:
         return DedupEngineState(status=status)
 
 
-def get_program_dedup_settings_policy(program: Program) -> ProgramDedupSettingsPolicy:
-    return ProgramDedupSettingsPolicy(program)
-
-
 def get_rdp_policy(rdp: Rdp) -> RdpActionPolicy:
     if (policy := getattr(rdp, "_rdp_policy", None)) is None:
         policy = RdpActionPolicy(rdp)
         rdp._rdp_policy = policy
     return policy
-
-
-def require_policy_check(check: Callable[[], ActionCheck]) -> None:
-    try:
-        check().require()
-    except (RemoteError, RemoteUnavailableError) as exc:
-        raise RdpWorkflowError({"errors": [str(exc)]}) from exc

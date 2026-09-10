@@ -1,0 +1,78 @@
+{% extends "workspace/change_form.html" %}
+{% load i18n workspace_urls %}
+{% block page-title %}
+    &rsaquo; {{ original }}{% admin_url original %}
+    &rsaquo; {% translate "Configure RDP Operations" %}
+{% endblock page-title %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    {% translate "Configure RDP Operations" %}
+                </h1>
+                <p class="mb-5">
+                    {{ form.rdp_operations.help_text }}
+                </p>
+                <form method="post" id="configure-rdp-operations">
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    {{ form.rdp_operations.errors }}
+                    <div class="overflow-x-auto">
+                        <table class="text-left">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="pb-2 pr-6">
+                                    </th>
+                                    <th scope="col" class="pb-2 pr-6">
+                                        {% translate "Operation" %}
+                                    </th>
+                                    <th scope="col" class="pb-2 whitespace-nowrap">
+                                        {% translate "Managed by" %}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for operation in hope_managed_operations %}
+                                    <tr>
+                                        <td class="py-2 pr-6">
+                                            <input type="checkbox" disabled {% if operation.checked %}checked{% endif %} />
+                                        </td>
+                                        <td class="py-2 pr-6">
+                                            {{ operation.label }}
+                                        </td>
+                                        <td class="py-2 whitespace-nowrap">
+                                            {% translate "HOPE" %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                {% for option in form.rdp_operations %}
+                                    <tr>
+                                        <td class="py-2 pr-6">
+                                            {{ option.tag }}
+                                        </td>
+                                        <td class="py-2 pr-6">
+                                            <label for="{{ option.id_for_label }}" class="cursor-pointer">
+                                                {{ option.choice_label }}
+                                            </label>
+                                        </td>
+                                        <td class="py-2 whitespace-nowrap">
+                                            {% translate "Workspace" %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="submit-row">
+                        <input type="submit" value="{% translate 'Save' %}" class="default" name="_save" />
+                        {% url opts|workspace_urlname:'change' original.pk as change_url %}
+                        <a href="{% add_preserved_filters change_url %}" class="closelink">
+                            {% translate "Close" %}
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

@@ -6,9 +6,11 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp
 
 from country_workspace.rdp.deduplication.operations import reject_deduplication_set
+from .config import get_effective_rdp_operations
 from .exceptions import RdpWorkflowError
 from .policy import ActionCheck, get_rdp_policy, require_policy_check
 from .repository import (
+    create_rdp_operations,
     lock_rdp_for_update,
     set_rdp_beneficiaries_removed,
 )
@@ -41,15 +43,16 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     try:
         with transaction.atomic():
-            Program.objects.select_for_update().get(pk=config["program_id"])
+            program = Program.objects.select_for_update().get(pk=config["program_id"])
             rdp = Rdp.objects.create(
                 country_office_id=config["country_office_id"],
-                program_id=config["program_id"],
+                program=program,
                 name=config["batch_name"],
                 pushed_by_id=config["pushed_by_id"],
                 status=Rdp.PushStatus.PENDING,
             )
             rdp.add_beneficiaries(config["pks"], config["master_detail"])
+            create_rdp_operations(rdp=rdp, operation_types=get_effective_rdp_operations(program))
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
     except IntegrityError as e:
         message = "RDP: can not create record"

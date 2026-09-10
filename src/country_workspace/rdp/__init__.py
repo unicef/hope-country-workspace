@@ -1,3 +1,9 @@
+from .config import (
+    HOPE_MANAGED_RDP_OPERATIONS,
+    WORKSPACE_RDP_OPERATION_CHOICES,
+    get_effective_rdp_operations,
+    get_hope_required_rdp_operations,
+)
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.workflow import (
     claim_rdp_deduplication,
@@ -14,8 +20,10 @@ from .types import CreateRdpConfig
 __all__ = [
     "DEDUP_CALLBACK_MAX_AGE",
     "DEDUP_CALLBACK_SALT",
+    "HOPE_MANAGED_RDP_OPERATIONS",
     "PUSH_READY_CALLBACK_MAX_AGE",
     "PUSH_READY_CALLBACK_SALT",
+    "WORKSPACE_RDP_OPERATION_CHOICES",
     "CreateRdpConfig",
     "DedupEngineState",
     "cancel_existing_rdp_core",
@@ -26,6 +34,8 @@ __all__ = [
     "dedup_callback_handle",
     "dedup_existing_rdp_core",
     "fail_stuck_rdp_push",
+    "get_effective_rdp_operations",
+    "get_hope_required_rdp_operations",
     "get_program_dedup_settings_policy",
     "get_rdp_policy",
     "handle_push_ready_callback",

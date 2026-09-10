@@ -5,7 +5,8 @@ from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp
+from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models.rdp_operation import RdpOperationType
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
@@ -94,6 +95,22 @@ def set_rdp_beneficiaries_removed(*, rdp: Rdp, removed: bool) -> None:
         qs_individuals_by_household_pks(pks).update(removed=removed)
     else:
         rdp.individuals.update(removed=removed)
+
+
+def create_rdp_operations(*, rdp: Rdp, operation_types: Iterable[RdpOperationType]) -> None:
+    """Create the operation snapshot for an RDP."""
+    for operation_type in operation_types:
+        RdpOperation.objects.create(rdp=rdp, type=operation_type)
+
+
+def lock_rdp_operation_for_update(*, rdp: Rdp, operation_type: RdpOperationType) -> RdpOperation:
+    """Return an RDP operation locked for update."""
+    return RdpOperation.objects.select_for_update().get(rdp=rdp, type=operation_type)
+
+
+def all_rdp_operations_succeeded(*, rdp: Rdp) -> bool:
+    """Return whether all configured RDP operations completed successfully."""
+    return not rdp.operations.exclude(status=RdpOperation.Status.SUCCESS).exists()
 
 
 def append_rdp_operation_log(

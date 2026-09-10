@@ -125,6 +125,11 @@ class Program(BaseModel):
         default=False,
         help_text="Is biometric deduplication enabled for this program?",
     )
+    rdp_operations = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_("Workspace-managed RDP operations. Operations managed by HOPE are not stored here."),
+    )
 
     def __str__(self) -> str:
         return self.name
