@@ -132,7 +132,6 @@ class ImportDataMixin:
                     }
                 ),
                 "first_line": form.cleaned_data["first_line"],
-                "send_to": request.user.email,
                 "household_mapping_id": household_mapping.id
                 if (household_mapping := form.cleaned_data.get("household_mapping"))
                 else None,
