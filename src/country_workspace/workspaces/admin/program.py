@@ -15,10 +15,16 @@ from django.utils.html import format_html_join
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.rdp import get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
+from country_workspace.rdp import (
+    HOPE_MANAGED_RDP_OPERATIONS,
+    WORKSPACE_RDP_OPERATION_CHOICES,
+    get_effective_rdp_operations,
+    get_hope_required_rdp_operations,
+    get_program_dedup_settings_policy,
+)
 from country_workspace.state import state
 from ._import_data import ImportDataMixin
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
@@ -71,6 +77,16 @@ class SelectIndividualColumnsForm(SelectColumnsForm):
     model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
 
 
+class RdpOperationsForm(forms.Form):
+    rdp_operations = forms.MultipleChoiceField(
+        choices=WORKSPACE_RDP_OPERATION_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label=_("Operations"),
+        help_text=_("Select the operations to run for new RDPs. Operations managed by HOPE are read-only."),
+    )
+
+
 class ProgramForm(forms.ModelForm):
     class Meta:
         model = CountryProgram
@@ -112,6 +128,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         "status",
         "sector",
         "name",
+        "rdp_operations_display",
         "dedup_settings",
     )
     form = ProgramForm
@@ -180,9 +197,11 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
             ),
             (
                 _("Serializer"),
-                {
-                    "fields": ("serializer",),
-                },
+                {"fields": ("serializer",)},
+            ),
+            (
+                _("RDP Processing"),
+                {"fields": ("rdp_operations_display",)},
             ),
         ]
         if obj and obj.biometric_deduplication_enabled:
@@ -201,6 +220,25 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_dedup_client(group_reference_id=program.unicef_id) as client:
             return client.get_deduplication_set_group_config()
+
+    @display(description=_("Operations"))
+    def rdp_operations_display(self, obj: CountryProgram) -> str:
+        operations = get_effective_rdp_operations(obj)
+        if not operations:
+            return "—"
+
+        required = set(get_hope_required_rdp_operations(obj))
+        return format_html_join(
+            "",
+            "<div>{}{}</div>",
+            (
+                (
+                    operation.label,
+                    _(" (managed by HOPE)") if operation in required else "",
+                )
+                for operation in operations
+            ),
+        )
 
     @display(description=_("Settings"))
     def dedup_settings(self, obj: CountryProgram) -> str:
@@ -608,6 +646,37 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
 
         context["form"] = form
         return render(request, "workspace/program/dedup_settings.html", context)
+
+    @button(
+        label=_("Configure RDP Operations"),
+        permission=can_change_country_program,
+    )
+    def configure_rdp_operations(self, request: HttpRequest, pk: str) -> HttpResponse:
+        context = self.get_common_context(request, pk, title=_("Configure RDP Operations"))
+        program: CountryProgram = context["original"]
+
+        form = RdpOperationsForm(
+            request.POST or None,
+            initial={"rdp_operations": program.rdp_operations},
+        )
+        if request.method == "POST" and form.is_valid():
+            program.rdp_operations = form.cleaned_data["rdp_operations"]
+            program.save(update_fields=["rdp_operations"])
+            return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+
+        required = set(get_hope_required_rdp_operations(program))
+        context |= {
+            "form": form,
+            "hope_managed_operations": [
+                {
+                    "value": operation.value,
+                    "label": operation.label,
+                    "checked": operation in required,
+                }
+                for operation in HOPE_MANAGED_RDP_OPERATIONS
+            ],
+        }
+        return render(request, "workspace/program/rdp_operations.html", context)
 
     @button(
         label=_("Import Data"),

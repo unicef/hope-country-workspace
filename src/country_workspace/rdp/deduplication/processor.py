@@ -1,10 +1,10 @@
 from collections.abc import Iterator
-from typing import Any
 from itertools import batched
+from typing import Any
 from uuid import UUID
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.models import Rdp
+from country_workspace.models import RdpOperation
 from country_workspace.rdp.processor import ProcessorBase
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 
@@ -16,30 +16,40 @@ class DedupProcessor(ProcessorBase):
 
     PREFIX = "Dedup"
 
-    def __init__(self, rdp: Rdp) -> None:
+    def __init__(self, operation: RdpOperation) -> None:
         super().__init__()
-        self.rdp = rdp
-        self.group_reference_id = rdp.program.unicef_id
+        self.operation = operation
+        self.rdp = operation.rdp
+        self.group_reference_id = self.rdp.program.unicef_id
 
     def run(self, notification_url: str | None = None) -> None:
-        ds_id = self.rdp.deduplication_set_id
+        external_id = self.operation.external_id
         self.total |= {
             "rdp_id": self.rdp.pk,
             "program": self.group_reference_id,
             "images_sent": 0,
-            "deduplication_set_id": str(ds_id) if ds_id else None,
+            "deduplication_set_id": external_id,
         }
 
-        if ds_id is None:
+        if not external_id:
             self.fail("deduplication_set_id", "is not set")
             return
 
-        with make_dedup_client(self.group_reference_id, deduplication_set_id=str(ds_id)) as client:
+        deduplication_set_id = UUID(external_id)
+
+        with make_dedup_client(
+            self.group_reference_id,
+            deduplication_set_id=external_id,
+        ) as client:
             can_create = self.try_remote("can_create_deduplication_set", client.can_create_deduplication_set)
             if can_create is None:
                 return
             if can_create:
-                self.total["images_sent"] = self.deduplicate(client, ds_id, notification_url=notification_url)
+                self.total["images_sent"] = self.deduplicate(
+                    client,
+                    deduplication_set_id,
+                    notification_url=notification_url,
+                )
                 return
             self.run_remote("process_existing_deduplication_set", client.process)
 

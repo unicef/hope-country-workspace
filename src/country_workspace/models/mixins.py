@@ -1,4 +1,18 @@
+import re
 from collections import defaultdict
+
+
+class HopeBlobMixin:
+    HOPE_BLOB_ENTITY: str = "obj"
+
+    @staticmethod
+    def _sanitize(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9._-]", "_", (value or "").strip())
+
+    def hope_blob_key(self, name: str) -> str:
+        office = self._sanitize(self.country_office.code)
+        program = self._sanitize(self.program.code)
+        return f"{office}/{program}/CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
 
 
 class FlexFieldGroupingMixin:
