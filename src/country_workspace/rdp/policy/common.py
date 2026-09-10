@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
-from ..exceptions import RdpWorkflowError
+from country_workspace.rdp.exceptions import RdpWorkflowError
 
 
 @dataclass(slots=True, frozen=True)
