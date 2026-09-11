@@ -11,6 +11,7 @@ from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, m
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.validation import preflight_errors
+from country_workspace.utils.flex_files import resolve_flex_files
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .repository import serializer_for_program
@@ -189,7 +190,7 @@ class PushProcessor:
         ids, rows = [], []
         for hh in batch:
             ids.append(hh.id)
-            flex_fields = hh.apply_grouping()
+            flex_fields = hh.apply_grouping(resolve_flex_files(hh))
             for key in HOUSEHOLD_ROLE_REF_FIELDS:
                 flex_fields[key] = map_role_value(self.ind_id_map, self._err, hh.pk, key, flex_fields.get(key))
             prefetched = getattr(hh, "prefetched_members", None)
@@ -204,7 +205,8 @@ class PushProcessor:
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'country_workspace_id' per row."""
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            ind.apply_grouping(resolve_flex_files(ind))
+            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
             for ind in batch
         ]
         ids = [row["country_workspace_id"] for row in rows]
@@ -214,7 +216,8 @@ class PushProcessor:
         """Return (ids, payload) for a people batch; inject 'country_workspace_id' per row."""
         ids = [ind.id for ind in batch]
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            ind.apply_grouping(resolve_flex_files(ind))
+            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
             for ind in batch
         ]
         return ids, self.serializer(rows)
