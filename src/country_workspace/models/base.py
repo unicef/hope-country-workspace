@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, override
 from collections.abc import Iterable
 from concurrency.fields import IntegerVersionField
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models.base import ModelBase
 from django.urls import reverse
@@ -69,6 +70,7 @@ class Validable(Cachable, models.Model):
     removed = models.BooleanField(_("Removed"), default=False)
     checksum = models.CharField(_("checksum"), max_length=300, blank=True, null=True, db_index=True)
     originating_id = models.CharField(_("Originating ID"), blank=True)
+    flex_field_files = GenericRelation("country_workspace.FlexFieldFile")
 
     objects = ValidableManager()
 

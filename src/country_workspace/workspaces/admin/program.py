@@ -45,7 +45,8 @@ class SelectColumnsForm(forms.Form):
         checker_form_class = self.checker.get_form_class()
         for name, field in checker_form_class.base_fields.items():
             label = getattr(field, "label", "") or name
-            columns.append((f"flex_fields__{name}", f"{label} ({name})"))
+            suffix = " [file]" if isinstance(field, forms.FileField) else ""
+            columns.append((f"flex_fields__{name}", f"{label} ({name}){suffix}"))
         self.fields["columns"].choices = self.model_core_fields + columns
 
 

@@ -1,9 +1,12 @@
 from collections import UserDict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from country_workspace.contrib.kobo.api.data.common import Raw
 from country_workspace.contrib.kobo.api.raw import submission_list as raw_submission_list
 from country_workspace.contrib.kobo.api.raw.submission_list import Attachment
+
+if TYPE_CHECKING:
+    from country_workspace.utils.flex_files import FlexFileContent
 
 
 class Submission(Raw[raw_submission_list.Submission], UserDict[Any, Any]):
@@ -13,6 +16,8 @@ class Submission(Raw[raw_submission_list.Submission], UserDict[Any, Any]):
         from country_workspace.contrib.kobo.api.data.helpers import filter_out_meta_data
 
         UserDict.__init__(self, filter_out_meta_data(raw))
+        # attachment bytes, keyed by the marker left in the submission data
+        self.files: dict[str, "FlexFileContent"] = {}
 
     @property
     def attachments(self) -> list[Attachment]:
