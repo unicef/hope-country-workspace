@@ -24,6 +24,8 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
+from country_workspace.utils.flex_files import flex_file_src
+
 from .base import WorkspaceInclusionAdminNode
 from .workspace_urls import add_preserved_filters
 
@@ -82,11 +84,18 @@ def flex_field_label_for_field(column_name: str, model: "Model", model_admin: "M
     return column_name.replace("flex_fields__", ""), ""
 
 
+def flex_field_display(value: Any) -> Any:
+    """Render file values as a link, never as their raw reference."""
+    if src := flex_file_src(value):
+        return format_html('<a href="{}" target="_blank">{}</a>', src, _("image"))
+    return value
+
+
 def flex_field_lookup_field(
     field_name: str, result: "CountryIndividual", model_admin: "ModelAdmin"
 ) -> tuple[Field, str, str]:
     dict_key = field_name.replace("flex_fields__", "")
-    f, attr, value = lookup_field(lambda o: o.flex_fields.get(dict_key), result, model_admin)
+    f, attr, value = lookup_field(lambda o: flex_field_display(o.flex_fields.get(dict_key)), result, model_admin)
     return f, attr, value
 
 
