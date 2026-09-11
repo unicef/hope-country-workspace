@@ -1,4 +1,3 @@
-import base64
 import mimetypes
 import zipfile
 from collections import defaultdict
@@ -7,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from constance import config as constance_config
+from django import forms
 from django.core.files.storage import storages
 from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
@@ -14,7 +14,7 @@ from PIL import Image, UnidentifiedImageError
 
 from country_workspace.models import AsyncJob
 from ...models import CountryBatch, CountryIndividual
-from ....utils.flex_fields import Base64ImageField
+from ....utils.flex_files import FlexFileContent, write_flex_file
 
 media_storage = storages["media"]
 
@@ -63,9 +63,9 @@ class BatchPictureImportService:
 
     @classmethod
     def extract_zip_images(
-        cls, zip_file: UploadedFile, *, include_data_uri: bool = True
-    ) -> tuple[list[dict[str, str]], set[str]]:
-        entries: list[dict[str, str]] = []
+        cls, zip_file: UploadedFile, *, include_content: bool = True
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        entries: list[dict[str, Any]] = []
         duplicates: set[str] = set()
         seen_keys: set[str] = set()
 
@@ -93,9 +93,9 @@ class BatchPictureImportService:
                     continue
                 seen_keys.add(key)
 
-                item: dict[str, str] = {"filename": filename, "key": key}
-                if include_data_uri:
-                    item["data_uri"] = f"data:{mimetype};base64,{base64.b64encode(content).decode()}"
+                item: dict[str, Any] = {"filename": filename, "key": key}
+                if include_content:
+                    item["file"] = FlexFileContent(content=content, mimetype=mimetype, filename=filename)
                 entries.append(item)
 
         zip_file.seek(0)
@@ -117,10 +117,10 @@ class BatchPictureImportService:
         return [
             (field_name, field.label or field_name)
             for field_name, field in form.fields.items()
-            if isinstance(field, Base64ImageField)
+            if isinstance(field, forms.FileField)
         ]
 
-    def build_preview(self, match_field: str, zip_file: UploadedFile, include_data_uri: bool = False) -> dict[str, Any]:
+    def build_preview(self, match_field: str, zip_file: UploadedFile, include_content: bool = False) -> dict[str, Any]:
         individuals = list(CountryIndividual.objects.filter(batch=self.batch, removed=False).only("id", "raw_data"))
         by_key: defaultdict[str, list[int]] = defaultdict(list)
         for individual in individuals:
@@ -128,7 +128,7 @@ class BatchPictureImportService:
             if key:
                 by_key[key].append(individual.id)
 
-        zip_entries, duplicate_zip_keys = self.extract_zip_images(zip_file, include_data_uri=include_data_uri)
+        zip_entries, duplicate_zip_keys = self.extract_zip_images(zip_file, include_content=include_content)
         assignments: list[dict[str, Any]] = []
         unmatched_filenames: list[str] = []
         ambiguous_record_keys: set[str] = set()
@@ -143,8 +143,8 @@ class BatchPictureImportService:
                     "record_key": entry["key"],
                     "filename": entry["filename"],
                 }
-                if include_data_uri:
-                    assignment["data_uri"] = entry["data_uri"]
+                if include_content:
+                    assignment["file"] = entry["file"]
                 assignments.append(assignment)
             elif len(record_ids) > 1:
                 ambiguous_record_keys.add(entry["key"])
@@ -178,8 +178,15 @@ class BatchPictureImportService:
                 individual = individuals.get(item["record_id"])
                 if not individual:
                     continue
+                picture: FlexFileContent = item["file"]
                 current = dict(individual.flex_fields or {})
-                current[target_field] = item["data_uri"]
+                current[target_field] = write_flex_file(
+                    individual,
+                    target_field,
+                    picture.content,
+                    picture.mimetype,
+                    picture.filename,
+                )
                 if current != individual.flex_fields:
                     individual.flex_fields = current
                     individual.last_checked = None
@@ -208,7 +215,7 @@ def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
     service = BatchPictureImportService(batch)
     try:
         with media_storage.open(zip_file_name, "rb") as zip_stream:
-            preview = service.build_preview(match_field, zip_stream, include_data_uri=True)
+            preview = service.build_preview(match_field, zip_stream, include_content=True)
         updated = service.apply_assignments(target_field, preview.get("assignments", []))
         return {"updated": updated}
     finally:
