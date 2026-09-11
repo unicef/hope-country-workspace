@@ -1,13 +1,14 @@
 from collections.abc import Callable
 from contextlib import suppress
 from functools import update_wrapper, wraps
+from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from django.apps import apps
 from django.contrib import admin
 from django.core.exceptions import FieldDoesNotExist, PermissionDenied
 from django.db.models import OuterRef, Q, QuerySet, Subquery
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import NoReverseMatch, URLPattern, URLResolver, resolve, reverse
@@ -18,16 +19,20 @@ from django_celery_results.models import TaskResult
 from smart_admin.autocomplete import SmartAutocompleteJsonView
 
 from ..models import AsyncJob
+from ..models.flex_file import FlexFieldFile
 from ..state import state
+from ..utils.flex_files import DEFAULT_MIMETYPE
 from .config import conf
 from .forms import SelectProgramForm, SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_program, get_selected_tenant, is_tenant_valid
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
-    from django.db.models import Field
+    from django.db.models import Field, Model
 
     from ..models import Program
+
+FLEX_FILE_MAX_AGE = 3600
 
 
 class TenantAutocompleteJsonView(SmartAutocompleteJsonView):
@@ -403,6 +408,7 @@ class TenantAdminSite(admin.AdminSite):
         urlpatterns = [
             path("+st/", wrap(self.select_tenant), name="select_tenant"),
             path("+sp/", wrap(self.select_program), name="select_program"),
+            path("+ff/<uuid:pk>/", wrap(self.flex_file), name="flex_file"),
         ]
         urlpatterns += super().get_urls()
         return urlpatterns
@@ -445,6 +451,38 @@ class TenantAdminSite(admin.AdminSite):
 
         context["form"] = form
         return TemplateResponse(request, "workspace/select_tenant.html", context)
+
+    def flex_file(self, request: "HttpRequest", pk: str) -> HttpResponse:
+        """Serve the content of a flex field file.
+
+        Knowing the reference is not enough: the owning record must be visible
+        through the admin of its own model, with the tenant and program scoping
+        that admin applies.
+        """
+        flex_file = FlexFieldFile.objects.with_content().filter(pk=pk).first()
+        if flex_file is None:
+            raise Http404
+        model_admin = self._get_model_admin(flex_file.content_type.model_class())
+        if model_admin is None or not model_admin.has_view_or_change_permission(request):
+            raise PermissionDenied
+        if not model_admin.get_queryset(request).filter(pk=flex_file.object_id).exists():
+            raise Http404
+
+        response = FileResponse(
+            BytesIO(flex_file.content_bytes),
+            content_type=flex_file.mimetype or DEFAULT_MIMETYPE,
+            filename=flex_file.original_filename or str(flex_file.pk),
+        )
+        response["Cache-Control"] = "private, max-age=%d" % FLEX_FILE_MAX_AGE
+        return response
+
+    def _get_model_admin(self, model: "type[Model] | None") -> "ModelAdmin | None":
+        if model is None:
+            return None
+        for registered, model_admin in self._registry.items():
+            if registered is model or registered._meta.proxy_for_model is model:
+                return model_admin
+        return None
 
     # @method_decorator(never_cache)
     def select_program(self, request: "HttpRequest") -> "HttpResponseRedirect | None":
