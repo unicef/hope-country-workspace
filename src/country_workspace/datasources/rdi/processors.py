@@ -1,5 +1,4 @@
 import logging
-from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Generator
 from typing import Any, cast, Mapping, NamedTuple
@@ -13,9 +12,13 @@ from openpyxl.drawing.image import Image as RDIImage
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.context import batch_ctx
 from country_workspace.contrib.hope.collision import detect_and_mark_collisions_for_batch
-from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.models import AsyncJob, Batch, Household, Individual
 from country_workspace.utils.fields import Record, to_reference_key
+from country_workspace.utils.flex_files import (
+    FlexFileContent,
+    materialize_pending_files,
+    pending_marker,
+)
 from country_workspace.utils.imports import get_xlsx_originating_id, normalize_file_name
 from country_workspace.utils.functional import compose
 from country_workspace.utils.import_flow import (
@@ -34,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 # household_id values meaning "no household": 0 marks an Individual without a Household (e.g. an external Collector)
 NO_HOUSEHOLD_KEYS = (None, "", 0, "0")
+PENDING_FILES_KEY = "__flex_files__"
 
 
 class BeneficiaryImportResult(NamedTuple):
@@ -53,32 +57,59 @@ def image_location(image: RDIImage) -> tuple[int, int]:
     return image.anchor._from.row, image.anchor._from.col
 
 
-def image_content(rdi_image: RDIImage) -> tuple[str | None, str]:
+def image_content(rdi_image: RDIImage) -> FlexFileContent:
     image = Image.open(rdi_image.ref)
-    content_type = Image.MIME.get(image.format)
+    mimetype = Image.MIME.get(image.format) or ""
     rdi_image.ref.seek(0)
-    content = b64encode(rdi_image.ref.read()).decode()
-    return content_type, content
+    return FlexFileContent(content=rdi_image.ref.read(), mimetype=mimetype)
 
 
-def extract_images(filepath: str, *sheet_names: str) -> Generator[Mapping[int, Mapping[int, str]], None, None]:
+def extract_images(
+    filepath: str, *sheet_names: str
+) -> Generator[Mapping[int, Mapping[int, FlexFileContent]], None, None]:
     workbook = load_workbook(filepath)
     for n in sheet_names:
         worksheet = workbook[n]
-        images: dict[int, dict[int, str]] = defaultdict(dict)
+        images: dict[int, dict[int, FlexFileContent]] = defaultdict(dict)
         for rdi_image in worksheet._images:
             row, column = image_location(rdi_image)
-            content_type, content = image_content(rdi_image)
-            images[row - 1][column] = VALUE_FORMAT.format(mimetype=content_type, content=content)
+            images[row - 1][column] = image_content(rdi_image)
         yield images
 
 
-def merge_images(sheet: Sheet, sheet_images: Mapping[int, Mapping[int, str]], start_at_row: int = 0) -> Sheet:
+def set_pending_files(row: dict[str, Any], files: Mapping[str, FlexFileContent]) -> dict[str, Any]:
+    """Carry file bytes next to the row they belong to, out of the row values."""
+    if files:
+        row[PENDING_FILES_KEY] = files
+    return row
+
+
+def pop_pending_files(row: dict[str, Any]) -> dict[str, FlexFileContent]:
+    """Take the bytes off the row, which must happen before it becomes `raw_data`."""
+    return row.pop(PENDING_FILES_KEY, None) or {}
+
+
+def merge_images(
+    sheet: Sheet, sheet_images: Mapping[int, Mapping[int, FlexFileContent]], start_at_row: int = 0
+) -> Sheet:
+    """Replace image cells with pending markers, keeping the bytes on the row.
+
+    The marker travels through column mapping, so the file can be attached to
+    the mapped flex field once the record exists.
+    """
     for i, row in enumerate(sheet, start=start_at_row):
-        if i in sheet_images:
-            yield {key: sheet_images[i].get(j, value) for j, (key, value) in enumerate(row.items())}
-        else:
+        if i not in sheet_images:
             yield row
+            continue
+        merged: Record = {}
+        files: dict[str, FlexFileContent] = {}
+        for j, (key, value) in enumerate(row.items()):
+            if item := sheet_images[i].get(j):
+                merged[key] = pending_marker(key)
+                files[key] = item
+            else:
+                merged[key] = value
+        yield set_pending_files(merged, files)
 
 
 def get_value(row: Record, column_name: str) -> Any:
@@ -151,8 +182,9 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
         if (household_key := get_value(row, config["household_id_column"])) in mapping:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key)
         originating_id = get_xlsx_originating_id(file_name, household_key, epoch=epoch_ms)
+        files = pop_pending_files(row)
         try:
-            mapping[household_key] = cast(
+            household = cast(
                 "Household",
                 Household.objects.create(
                     batch_id=batch.pk,
@@ -162,6 +194,8 @@ def process_households(sheet: Sheet, job: AsyncJob, batch: Batch, config: Config
                     raw_data=row,
                 ),
             )
+            materialize_pending_files(household, files)
+            mapping[household_key] = household
         except Exception as e:
             raise SheetProcessingError(SheetName.HOUSEHOLDS, household_key) from e
 
@@ -194,6 +228,7 @@ def process_beneficiaries(
         if beneficiary_key in mapping:
             raise SheetProcessingError(sheet_name, beneficiary_key)
         originating_id = get_xlsx_originating_id(file_name, beneficiary_key, epoch=epoch_ms)
+        files = pop_pending_files(row)
         cleaned_row, name_column = normalize_row_structure(row, people_prefix)
         name = cleaned_row.get(name_column) if name_column else ""
         household = None
@@ -212,7 +247,7 @@ def process_beneficiaries(
             if is_external_collector:
                 # External collectors are deduplicated program-wide: the first
                 # occurrence is reused, linked to households only via role refs.
-                individual, _created = get_or_create_collector(
+                individual, created = get_or_create_collector(
                     program=batch.program,
                     batch=batch,
                     individual_fields=individual_fields,
@@ -232,6 +267,9 @@ def process_beneficiaries(
                         raw_data=row,
                     ),
                 )
+                created = True
+            # a reused collector keeps the files of the import that created it
+            materialize_pending_files(individual, files if created else {})
         except Exception as e:
             raise SheetProcessingError(sheet_name, beneficiary_key) from e
 
