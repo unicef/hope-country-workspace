@@ -30,7 +30,7 @@ class ConcatenateFieldForm(BaseActionForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
-        choices = list(get_checker_fields(checker, with_fs_prefix=True))
+        choices = list(get_checker_fields(checker, with_fs_prefix=True, include_files=False))
         self.fields["destination_field"].choices = choices
 
     def clean_pattern(self) -> str:

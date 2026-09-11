@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
 
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
+
 
 @pytest.fixture
 def office():
@@ -78,6 +80,49 @@ def test_ind_validate(app: "DjangoTestApp", force_migrated_records, individual: 
         assert res.status_code == 200
         individual.refresh_from_db()
         assert individual.errors
+
+
+@pytest.fixture
+def other_program(office, household_checker, individual_checker):
+    """A second program, to check that images are scoped to the selected one."""
+    from testutils.factories import CountryProgramFactory
+
+    return CountryProgramFactory(
+        household_checker=household_checker,
+        individual_checker=individual_checker,
+        household_columns="name\nid\nxx",
+        individual_columns="name\nid\nxx",
+    )
+
+
+@pytest.fixture
+def photo_url(individual: "CountryIndividual") -> str:
+    """The url serving a photo stored for the individual."""
+    from country_workspace.models.flex_file import FlexFieldFile
+    from country_workspace.utils.flex_files import write_flex_file
+
+    reference = write_flex_file(individual, "photo", PHOTO, "image/png", "photo.png")
+    return reverse("workspace:flex_file", args=[FlexFieldFile.parse_reference(reference)])
+
+
+def test_ind_photo_is_served_within_the_selected_program(
+    app: "DjangoTestApp", individual: "CountryIndividual", photo_url: str
+) -> None:
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(photo_url)
+
+    assert res.status_code == 200
+    assert res.body == PHOTO
+    assert res.content_type == "image/png"
+
+
+def test_ind_photo_is_not_served_from_another_program(
+    app: "DjangoTestApp", individual: "CountryIndividual", photo_url: str, other_program
+) -> None:
+    with select_office(app, other_program.country_office, other_program):
+        res = app.get(photo_url, expect_errors=True)
+
+    assert res.status_code == 404
 
 
 def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
