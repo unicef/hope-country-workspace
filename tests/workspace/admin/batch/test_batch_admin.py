@@ -26,7 +26,8 @@ from country_workspace.workspaces.admin.batch.picture_import import (
 )
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
-from country_workspace.utils.flex_fields import Base64ImageField
+from country_workspace.utils.flex_fields import FlexImageField
+from country_workspace.utils.flex_files import FlexFileContent
 
 
 pytestmark = pytest.mark.django_db
@@ -876,20 +877,19 @@ def test_build_picture_import_preview_matches_by_raw_data_field(batch: CountryBa
     assert report["unmatched_filenames"] == ["MISSING.jpg"]
 
 
-def test_apply_picture_assignments_updates_selected_field(batch: CountryBatch) -> None:
-    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
-
-    hh = CountryHouseholdFactory(batch=batch, individuals=0)
-    individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": ""})
-
+def test_apply_picture_assignments_stores_a_file_reference(
+    batch: CountryBatch, individual_without_photo, picture: FlexFileContent
+) -> None:
     updated = BatchPictureImportService(batch).apply_assignments(
         "photo",
-        [{"record_id": individual.pk, "data_uri": "data:image/jpeg;base64,Zm9v"}],
+        [{"record_id": individual_without_photo.pk, "file": picture}],
     )
 
-    individual.refresh_from_db()
+    individual_without_photo.refresh_from_db()
+    flex_file = individual_without_photo.flex_field_files.get(field_name="photo")
     assert updated == 1
-    assert individual.flex_fields["photo"] == "data:image/jpeg;base64,Zm9v"
+    assert individual_without_photo.flex_fields["photo"] == flex_file.reference
+    assert individual_without_photo.last_checked is None
 
 
 def test_picture_import_service_helpers() -> None:
@@ -1017,9 +1017,9 @@ def test_get_target_field_choices_without_checker(batch: CountryBatch) -> None:
     assert BatchPictureImportService(batch).get_target_field_choices() == []
 
 
-def test_get_target_field_choices_returns_only_base64_image_fields(batch: CountryBatch, mocker) -> None:
+def test_get_target_field_choices_returns_only_image_fields(batch: CountryBatch, mocker) -> None:
     class CheckerForm(forms.Form):
-        photo = Base64ImageField(required=False, label="Photo")
+        photo = FlexImageField(required=False, label="Photo")
         notes = forms.CharField(required=False, label="Notes")
 
     checker = batch.program.individual_checker
@@ -1065,66 +1065,58 @@ def test_build_preview_skips_records_with_empty_or_missing_match_values(batch: C
     assert report["matched_files_count"] == 0
 
 
-def test_build_preview_include_data_uri_adds_data_uri_to_assignments(batch: CountryBatch) -> None:
-    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
-
-    hh = CountryHouseholdFactory(batch=batch, individuals=0)
-    CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-1"})
-
+def test_build_preview_carries_the_file_content_when_asked(batch: CountryBatch, matchable_individual) -> None:
     report = BatchPictureImportService(batch).build_preview(
         "beneficiary_id",
-        _make_zip_upload({"A-1.jpg": b"x"}),
-        include_data_uri=True,
+        _make_zip_upload({"A-1.jpg": b""}),
+        include_content=True,
     )
 
-    assert report["assignments"]
-    assert "data_uri" in report["assignments"][0]
+    assert report["assignments"][0]["file"].content == _make_image_bytes("JPEG")
+    assert report["assignments"][0]["file"].mimetype == "image/jpeg"
 
 
 def test_apply_picture_assignments_returns_zero_without_assignments(batch: CountryBatch) -> None:
     assert BatchPictureImportService(batch).apply_assignments("photo", []) == 0
 
 
-def test_apply_picture_assignments_skips_missing_and_unchanged_records(batch: CountryBatch) -> None:
-    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
-
-    hh = CountryHouseholdFactory(batch=batch, individuals=0)
-    individual = CountryIndividualFactory(batch=batch, household=hh, flex_fields={"photo": "same"})
-
+def test_apply_picture_assignments_skips_an_unknown_record(batch: CountryBatch, picture: FlexFileContent) -> None:
     updated = BatchPictureImportService(batch).apply_assignments(
         "photo",
-        [
-            {"record_id": individual.pk, "data_uri": "same"},
-            {"record_id": 999999999, "data_uri": "new"},
-        ],
+        [{"record_id": 999999999, "file": picture}],
     )
 
     assert updated == 0
 
 
-def test_apply_picture_assignments_enforces_batch_and_not_removed(batch: CountryBatch) -> None:
-    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
+def test_apply_picture_assignments_leaves_an_unchanged_picture_alone(
+    batch: CountryBatch, individual_without_photo, picture: FlexFileContent
+) -> None:
+    """Identical content reuses its row, so re-importing the same archive is a no-op."""
+    service = BatchPictureImportService(batch)
+    assignments = [{"record_id": individual_without_photo.pk, "file": picture}]
 
-    hh = CountryHouseholdFactory(batch=batch, individuals=0)
-    removable = CountryIndividualFactory(batch=batch, household=hh, removed=True, flex_fields={"photo": ""})
+    assert service.apply_assignments("photo", assignments) == 1
+    assert service.apply_assignments("photo", assignments) == 0
+    assert individual_without_photo.flex_field_files.filter(field_name="photo").count() == 1
 
-    other_batch = CountryBatchFactory(program=batch.program, country_office=batch.country_office)
-    other_hh = CountryHouseholdFactory(batch=other_batch, individuals=0)
-    outsider = CountryIndividualFactory(batch=other_batch, household=other_hh, flex_fields={"photo": ""})
 
+def test_apply_picture_assignments_enforces_batch_and_not_removed(
+    batch: CountryBatch, removed_individual, individual_of_another_batch, picture: FlexFileContent
+) -> None:
     updated = BatchPictureImportService(batch).apply_assignments(
         "photo",
         [
-            {"record_id": removable.pk, "data_uri": "data:image/jpeg;base64,Zm9v"},
-            {"record_id": outsider.pk, "data_uri": "data:image/jpeg;base64,YmFy"},
+            {"record_id": removed_individual.pk, "file": picture},
+            {"record_id": individual_of_another_batch.pk, "file": picture},
         ],
     )
 
-    removable.refresh_from_db()
-    outsider.refresh_from_db()
+    removed_individual.refresh_from_db()
+    individual_of_another_batch.refresh_from_db()
     assert updated == 0
-    assert removable.flex_fields.get("photo") == ""
-    assert outsider.flex_fields.get("photo") == ""
+    assert removed_individual.flex_fields.get("photo") == ""
+    assert individual_of_another_batch.flex_fields.get("photo") == ""
 
 
 @pytest.mark.parametrize(
@@ -1262,4 +1254,4 @@ def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: C
     individual.refresh_from_db()
     assert batch.get_picture_import_state() == {}
     assert not media_storage.exists(zip_name)
-    assert individual.flex_fields.get("photo", "").startswith("data:image/")
+    assert individual.flex_fields["photo"] == individual.flex_field_files.get(field_name="photo").reference

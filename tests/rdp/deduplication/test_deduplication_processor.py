@@ -1,12 +1,16 @@
+from base64 import b64encode
 from uuid import uuid4
 
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import MissingFlexFileError, RemoteError
 from country_workspace.rdp.deduplication.processor import DedupProcessor
+from country_workspace.utils.flex_files import write_flex_file
+from testutils.factories import IndividualFactory
 
 MOD = "country_workspace.rdp.deduplication.processor"
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -21,6 +25,25 @@ def rdp(mocker: MockerFixture):
 @pytest.fixture
 def processor(rdp) -> DedupProcessor:
     return DedupProcessor(rdp)
+
+
+@pytest.fixture
+def photo_of_individual() -> tuple[int, str]:
+    """An individual pk with the reference of its stored photo."""
+    individual = IndividualFactory(flex_fields={"individual_id": "I-1"})
+    return individual.pk, write_flex_file(individual, "photo", PHOTO, "image/png")
+
+
+@pytest.fixture
+def photo_rows(mocker: MockerFixture):
+    """Feed `_iter_images` the `(pk, photo)` rows it reads from the database."""
+
+    def feed(rows: list[tuple[int, object]]) -> None:
+        qs = mocker.MagicMock()
+        qs.values_list.return_value.iterator.return_value = rows
+        mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
+
+    return feed
 
 
 def test_run_without_deduplication_set(processor: DedupProcessor, mocker: MockerFixture) -> None:
@@ -61,21 +84,41 @@ def test_run(processor: DedupProcessor, mocker: MockerFixture, case) -> None:
     assert client.process.called is process_called
 
 
-def test_iter_images(processor: DedupProcessor, mocker: MockerFixture) -> None:
-    qs = mocker.MagicMock()
-    qs.values_list.return_value.iterator.return_value = [
-        (1, " one.jpg "),
-        (2, ""),
-        (3, None),
-        (4, 123),
-        (5, "two.jpg"),
-    ]
-    mocker.patch(f"{MOD}.qs_individuals_for_rdp", return_value=qs)
+def test_iter_images(processor: DedupProcessor, photo_rows) -> None:
+    photo_rows(
+        [
+            (1, " one.jpg "),
+            (2, ""),
+            (3, None),
+            (4, 123),
+            (5, "two.jpg"),
+        ]
+    )
 
     assert list(processor._iter_images()) == [
         {"reference_pk": "1", "filename": "one.jpg"},
         {"reference_pk": "5", "filename": "two.jpg"},
     ]
+
+
+@pytest.mark.django_db
+def test_iter_images_resolves_references_to_data_uris(
+    processor: DedupProcessor, photo_rows, photo_of_individual: tuple[int, str]
+) -> None:
+    pk, reference = photo_of_individual
+    photo_rows([(pk, reference)])
+
+    assert list(processor._iter_images()) == [
+        {"reference_pk": str(pk), "filename": "data:image/png;base64,%s" % b64encode(PHOTO).decode()}
+    ]
+
+
+@pytest.mark.django_db
+def test_iter_images_raises_when_a_reference_has_no_file(processor: DedupProcessor, photo_rows) -> None:
+    photo_rows([(1, "flexfile:%s" % uuid4())])
+
+    with pytest.raises(MissingFlexFileError):
+        list(processor._iter_images())
 
 
 @pytest.mark.parametrize(

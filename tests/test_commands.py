@@ -1,6 +1,7 @@
 import os
 import random
 import re
+from base64 import b64encode
 from io import StringIO
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -18,6 +19,7 @@ from country_workspace.management.commands.sync import (
     run_program_sync,
 )
 import country_workspace.management.commands.gen_rdi as gen_rdi_cmd
+from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
 
 
@@ -27,6 +29,8 @@ if TYPE_CHECKING:
     from country_workspace.models import User
 
 pytestmark = pytest.mark.django_db
+
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -359,3 +363,39 @@ def test_gen_rdi_validation_errors(cli_args: list[str], err: str) -> None:
 
     with pytest.raises(CommandError, match=re.escape(err)):
         call_command("gen_rdi", *cli_args)
+
+
+@pytest.fixture
+def legacy_individual():
+    """An individual whose photo is still inline, keyed differently in each payload."""
+    from testutils.factories import IndividualFactory
+
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    return IndividualFactory(
+        flex_fields={"individual_id": "I-1", "photo": data_uri},
+        raw_data={"individual_id": "I-1", "beneficiary_photo": data_uri},
+    )
+
+
+def test_migrate_flex_files_converts_inline_data_uris(legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    flex_file = legacy_individual.flex_field_files.get()
+    assert legacy_individual.flex_fields["photo"] == flex_file.reference
+    assert legacy_individual.raw_data["beneficiary_photo"] == flex_file.reference
+    assert legacy_individual.flex_fields["individual_id"] == "I-1"
+    assert FlexFieldFile.objects.with_content().get(pk=flex_file.pk).content_bytes == PHOTO
+    assert "individual: converted 1 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_leaves_converted_records_alone(legacy_individual) -> None:
+    call_command("migrate_flex_files", stdout=StringIO())
+    out = StringIO()
+
+    call_command("migrate_flex_files", stdout=out)
+
+    assert legacy_individual.flex_field_files.count() == 1
+    assert "individual: converted 0 record(s)" in out.getvalue()

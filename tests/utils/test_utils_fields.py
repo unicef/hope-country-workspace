@@ -1,18 +1,32 @@
+from io import BytesIO
 from unittest.mock import Mock, call
 
 import pytest
+from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_mock import MockerFixture
 
 
-from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
     Base64ImageInput,
     Base64ImageField,
     ConsentSharingChoice,
+    FlexImageField,
+    FlexImageInput,
     split_options,
 )
+from country_workspace.utils.flex_files import DATA_URI_FORMAT
+
+REFERENCE = "flexfile:0f3b6a1e-2d0d-4a1e-9a4a-3f5a2d1c8b70"
+
+
+@pytest.fixture
+def png_upload() -> SimpleUploadedFile:
+    """A real one-pixel PNG, so that image validation runs for real."""
+    buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(buffer, format="PNG")
+    return SimpleUploadedFile("photo.png", buffer.getvalue(), content_type="image/png")
 
 
 @pytest.mark.parametrize(
@@ -36,10 +50,30 @@ def test_clean_field_names(mocker: MockerFixture) -> None:
     clean_field_name_mock.assert_called_once_with(key)
 
 
+@pytest.mark.parametrize("widget_class", [FlexImageInput, Base64ImageInput])
 @pytest.mark.parametrize("value", [None, "", "test"])
-def test_base64_image_input(value: str | None) -> None:
-    input_ = Base64ImageInput()
-    assert input_.is_initial(value) == bool(value)
+def test_flex_image_input_treats_any_value_as_initial(value: str | None, widget_class: type) -> None:
+    assert widget_class().is_initial(value) == bool(value)
+
+
+def test_flex_image_input_exposes_the_image_source() -> None:
+    context = FlexImageInput().get_context("photo", REFERENCE, None)
+
+    assert context["widget"]["image_src"].endswith("%s/" % REFERENCE.removeprefix("flexfile:"))
+
+
+def test_flex_image_field_keeps_the_stored_reference_when_nothing_is_uploaded() -> None:
+    assert FlexImageField(required=False).clean(None, REFERENCE) == REFERENCE
+
+
+def test_flex_image_field_returns_empty_when_the_field_is_cleared() -> None:
+    assert FlexImageField(required=False).clean(False, REFERENCE) == ""
+
+
+def test_flex_image_field_leaves_an_upload_to_the_save_layer(png_upload: SimpleUploadedFile) -> None:
+    """The upload is validated here, but only the save layer can write its row."""
+    assert FlexImageField(required=False).clean(png_upload, REFERENCE) == REFERENCE
+    assert FlexImageField(required=False).clean(png_upload, None) == ""
 
 
 def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
@@ -61,7 +95,7 @@ def test_base64_image_field_content_is_encoded(mocker: MockerFixture) -> None:
     instance = Mock(spec=Base64ImageField)
     initial_data = None
 
-    assert Base64ImageField.clean(instance, file, initial_data) == VALUE_FORMAT.format(
+    assert Base64ImageField.clean(instance, file, initial_data) == DATA_URI_FORMAT.format(
         mimetype=content_type, content=data
     )
     super_clean_mock.assert_called_once_with(file, initial_data)
