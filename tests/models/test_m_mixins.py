@@ -1,3 +1,4 @@
+from base64 import b64encode
 from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
@@ -8,12 +9,15 @@ from hope_flex_fields.models import Fieldset
 
 from country_workspace.contrib.hope.constants import DOCUMENT_FIELDSET_NAME, ACCOUNT_FIELDSET_NAME
 from country_workspace.models.mixins import FlexFieldGroupingMixin
+from country_workspace.utils.flex_files import resolve_flex_files, write_flex_file
 from testutils.factories import IndividualFactory, CountryBatchFactory
 from testutils.factories.program import BeneficiaryGroupFactory, CountryProgramFactory
 
 
 if TYPE_CHECKING:
     from country_workspace.workspaces.models import CountryIndividual
+
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -170,6 +174,27 @@ def individual(batch):
             "mobile_money": True,
         },
     )
+
+
+@pytest.fixture
+def individual_with_document_image(individual):
+    """An individual whose national id image is stored as a file reference."""
+    individual.flex_fields["national_id_image"] = write_flex_file(individual, "national_id_image", PHOTO, "image/png")
+    individual.save(update_fields=["flex_fields"])
+    return individual
+
+
+@pytest.mark.django_db
+def test_apply_grouping_expands_references_inside_grouped_items(
+    individual_with_document_image: "CountryIndividual",
+) -> None:
+    """Files are resolved before grouping, so nested document items carry the image."""
+    resolved = resolve_flex_files(individual_with_document_image)
+
+    result = individual_with_document_image.apply_grouping(resolved)
+
+    national_id = next(document for document in result["documents"] if document["type"] == "national_id")
+    assert national_id["image"] == "data:image/png;base64,%s" % b64encode(PHOTO).decode()
 
 
 @pytest.mark.django_db

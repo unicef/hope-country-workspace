@@ -4,11 +4,14 @@ from unittest.mock import MagicMock
 
 import pytest
 from constance.test import override_config
+from openpyxl import load_workbook
 from pytest_mock import MockerFixture
 
 from country_workspace.state import state
 from country_workspace.models import AsyncJob, Country
+from country_workspace.utils.flex_files import write_flex_file
 from country_workspace.workspaces.admin.cleaners.bulk_update import (
+    create_bulk_update_template,
     import_household_updates,
     import_individual_updates,
     validate_date_datetime_fields,
@@ -19,6 +22,9 @@ from country_workspace.workspaces.admin.cleaners.bulk_update import (
     _add_choices_worksheet,
     _extract_choices_from_field,
 )
+from country_workspace.workspaces.models import CountryIndividual
+
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -402,3 +408,76 @@ def test_extract_choices_for_admin_fields():
 
     result = _extract_choices_from_field(fake_field)
     assert result == DummyFieldType().choices
+
+
+@pytest.fixture
+def photo_program(office, photo_checker):
+    """A program whose individual checker has an image field next to a text field."""
+    from testutils.factories import CountryProgramFactory
+
+    return CountryProgramFactory(
+        country_office=office,
+        individual_checker=photo_checker,
+        individual_columns="id\nfamily_name\nphoto",
+        beneficiary_group__master_detail=False,
+    )
+
+
+@pytest.fixture
+def individual_with_photo(photo_program):
+    from testutils.factories import CountryIndividualFactory
+
+    individual = CountryIndividualFactory(
+        batch__program=photo_program, household=None, flex_fields={"family_name": "Smith"}
+    )
+    individual.flex_fields["photo"] = write_flex_file(individual, "photo", PHOTO, "image/png")
+    individual.save(update_fields=["flex_fields"])
+    return individual
+
+
+@pytest.fixture
+def photo_job(photo_program) -> AsyncJob:
+    from testutils.factories import AsyncJobFactory
+
+    job = AsyncJobFactory(program=photo_program)
+    job.file = io.BytesIO(b"dummy content")
+    return job
+
+
+def test_create_bulk_update_template_leaves_file_columns_out(
+    individual_with_photo: CountryIndividual, photo_program
+) -> None:
+    out = create_bulk_update_template(
+        CountryIndividual.objects.filter(pk=individual_with_photo.pk),
+        photo_program,
+        ["id", "family_name", "photo"],
+    )
+
+    header = [cell.value for cell in next(load_workbook(out).worksheets[0].iter_rows())]
+    assert "family_name" in header
+    assert "photo" not in header
+
+
+def test_import_bulk_update_file_ignores_file_columns(
+    mocker: MockerFixture, photo_job: AsyncJob, individual_with_photo: CountryIndividual
+) -> None:
+    reference = individual_with_photo.flex_fields["photo"]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.bulk_update.open_xls",
+        return_value=[
+            {
+                "id": str(individual_with_photo.pk),
+                "version": str(individual_with_photo.version),
+                "family_name": "Jones",
+                "photo": "pasted by hand",
+            }
+        ],
+    )
+
+    with override_config(CONCURRENCY_GUARD=True):
+        total = import_individual_updates(job=photo_job)
+
+    assert total["processed"] == 1
+    individual_with_photo.refresh_from_db()
+    assert individual_with_photo.flex_fields["family_name"] == "Jones"
+    assert individual_with_photo.flex_fields["photo"] == reference
