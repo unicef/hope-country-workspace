@@ -411,12 +411,15 @@ class BeneficiaryBaseAdmin(
                             "from_src": flex_file_src(old_value),
                             "to_src": flex_file_src(new_value),
                         }
+                # changes made outside a request (imports, tasks, migrations) have no context
+                event_context = entry.pgh_context
+                user = event_context.metadata.get("user") if event_context else None
                 history.append(
                     {
                         "changes": changes,
                         "date": entry.pgh_created_at,
                         "pgh_label": entry.pgh_label,
-                        "user": entry.pgh_context.metadata["user"],
+                        "user": user or {"username": _("system")},
                     }
                 )
                 prev = entry.flex_fields
