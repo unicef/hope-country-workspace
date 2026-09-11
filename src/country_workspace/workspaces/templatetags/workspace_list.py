@@ -24,6 +24,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
+from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.flex_files import flex_file_src
 
 from .base import WorkspaceInclusionAdminNode
@@ -89,6 +90,20 @@ def flex_field_display(value: Any) -> Any:
     if src := flex_file_src(value):
         return format_html('<a href="{}" target="_blank">{}</a>', src, _("image"))
     return value
+
+
+@register.filter(name="flex_field_value")
+def flex_field_value(value: Any) -> Any:
+    """Render file values as a thumbnail linking to the full image, with its id."""
+    if not (src := flex_file_src(value)):
+        return value
+    image = format_html(
+        '<a href="{}" target="_blank"><img src="{}" style="max-height: 120px; width: auto" /></a>', src, src
+    )
+    # legacy inline images have no row to identify, and their value is the whole payload
+    if (file_id := FlexFieldFile.parse_reference(value)) is None:
+        return image
+    return format_html('{}<div class="text-xs text-gray-500">{}</div>', image, file_id)
 
 
 def flex_field_lookup_field(
