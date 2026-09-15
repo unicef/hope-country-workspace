@@ -17,6 +17,7 @@ def get_rdp_status_choices() -> list[tuple[str, str]]:
 class RdpPushStatus(models.TextChoices):
     PENDING = "PENDING", _("Pending")
     DEDUP_PENDING = "DEDUP_PENDING", _("Awaiting deduplication")
+    REVIEW_PENDING = "REVIEW_PENDING", _("Awaiting review")
     PUSH_PENDING = "PUSH_PENDING", _("Push in progress")
     SUCCESS = "SUCCESS", _("Success")
     FAILURE = "FAILURE", _("Failure")
@@ -27,6 +28,7 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
     RdpPushStatus.PENDING,
     RdpPushStatus.FAILURE,
     RdpPushStatus.DEDUP_PENDING,
+    RdpPushStatus.REVIEW_PENDING,
     RdpPushStatus.PUSH_PENDING,
 )
 
@@ -74,6 +76,17 @@ class Rdp(BaseModel):
         null=True,
         help_text=_("Unique identifier of the deduplication set created in DedupEngine for this RDP."),
     )
+    deduplication_findings_count = models.PositiveIntegerField(
+        null=True,
+        editable=False,
+        help_text=_("Number of duplicate findings reported by DedupEngine for this RDP."),
+    )
+    duplicate_individuals = models.ManyToManyField(
+        "Individual",
+        related_name="duplicate_rdps",
+        blank=True,
+        help_text=_("Individuals marked as duplicates by DedupEngine for this RDP."),
+    )
     is_dedup_settings_locked = models.BooleanField(
         default=False,
         help_text=_("Whether program-level deduplication settings are locked while this RDP is being deduplicated."),
@@ -94,6 +107,7 @@ class Rdp(BaseModel):
             models.UniqueConstraint(
                 fields=["push_date", "name"],
                 name="uniq_rdp_push_date_name",
+                violation_error_message=_("An RDP with this name and push date already exists."),
             ),
             models.UniqueConstraint(
                 fields=["program"],
@@ -110,6 +124,7 @@ class Rdp(BaseModel):
                     | (~Q(status=RdpPushStatus.PUSH_PENDING) & Q(push_attempt_id__isnull=True))
                 ),
                 name="rdp_push_attempt_state_consistent",
+                violation_error_message=_("Push attempt must be set only while the RDP push is in progress."),
             ),
         ]
         permissions = [
