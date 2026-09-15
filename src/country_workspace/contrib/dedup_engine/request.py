@@ -10,9 +10,9 @@ class CreateDeduplicationSet(TypedDict):
     reference_pk: str
 
 
-class DeduplicationSetGroupConfig(GroupSettings): ...
-
-
 class CreateEncoding(TypedDict):
     filename: str
     reference_pk: str
+
+
+class DeduplicationSetGroupConfig(GroupSettings): ...

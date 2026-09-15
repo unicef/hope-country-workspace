@@ -65,6 +65,9 @@ class Ready(Endpoint): ...
 class Process(Endpoint): ...
 
 
+class Findings(Endpoint): ...
+
+
 class Reject(Endpoint): ...
 
 
@@ -83,6 +86,10 @@ class DeduplicationSet(Endpoint):
     @property
     def process(self) -> Process:
         return Process(url_join(self.url, "process"))
+
+    @property
+    def findings(self) -> Findings:
+        return Findings(url_join(self.url, "findings"))
 
     @property
     def reject(self) -> Reject:
