@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 from django.urls import reverse
@@ -123,6 +124,42 @@ def test_ind_photo_is_not_served_from_another_program(
         res = app.get(photo_url, expect_errors=True)
 
     assert res.status_code == 404
+
+
+def test_ind_photo_of_an_unknown_file_is_not_found(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    url = reverse("workspace:flex_file", args=[uuid4()])
+
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url, expect_errors=True)
+
+    assert res.status_code == 404
+
+
+@pytest.fixture
+def unmanaged_photo_url(individual: "CountryIndividual") -> str:
+    """The url of a file whose owning model has no admin in the workspace."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from country_workspace.models.flex_file import FlexFieldFile
+
+    flex_file = FlexFieldFile.objects.create(
+        content_type=ContentType.objects.get_for_model(FlexFieldFile),
+        object_id=individual.pk,
+        field_name="photo",
+        content=PHOTO,
+        mimetype="image/png",
+        size=len(PHOTO),
+    )
+    return reverse("workspace:flex_file", args=[flex_file.pk])
+
+
+def test_ind_photo_of_an_unmanaged_owner_is_denied(
+    app: "DjangoTestApp", individual: "CountryIndividual", unmanaged_photo_url: str
+) -> None:
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(unmanaged_photo_url, expect_errors=True)
+
+    assert res.status_code == 403
 
 
 def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
