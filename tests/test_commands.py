@@ -399,3 +399,28 @@ def test_migrate_flex_files_leaves_converted_records_alone(legacy_individual) ->
 
     assert legacy_individual.flex_field_files.count() == 1
     assert "individual: converted 0 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_dry_run_writes_nothing(legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--dry-run", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    assert legacy_individual.flex_fields["photo"].startswith("data:image/png;base64,")
+    assert not FlexFieldFile.objects.exists()
+    assert "[dry-run] individual: converted 1 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_reverse_restores_inline_data_uris(legacy_individual) -> None:
+    call_command("migrate_flex_files", stdout=StringIO())
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--reverse", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    assert legacy_individual.flex_fields["photo"] == data_uri
+    assert legacy_individual.raw_data["beneficiary_photo"] == data_uri
+    assert not FlexFieldFile.objects.exists()
+    assert "individual: restored 1 record(s)" in out.getvalue()
