@@ -21,9 +21,27 @@ class DeduplicationSet(TypedDict):
     updated_at: str
 
 
-class DeduplicationSetGroupConfig(GroupSettings): ...
-
-
 class CreatedEncoding(TypedDict):
     reference_pk: str
     filename: str
+
+
+class FindingEntry(TypedDict):
+    reference_pk: int
+
+
+class Finding(TypedDict):
+    first: FindingEntry
+    second: FindingEntry
+    score: NotRequired[float]
+    status_code: NotRequired[int]
+    updated_at: str
+
+
+class PaginatedFindings(TypedDict):
+    count: int
+    next: NotRequired[str | None]
+    results: list[Finding]
+
+
+class DeduplicationSetGroupConfig(GroupSettings): ...

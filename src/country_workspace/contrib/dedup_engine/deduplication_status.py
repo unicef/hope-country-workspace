@@ -1,8 +1,10 @@
 from enum import StrEnum
 from typing import Final, NamedTuple
+
 import sentry_sdk
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+
 from .factory import make_client
 
 

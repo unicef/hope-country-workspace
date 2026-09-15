@@ -23,6 +23,13 @@ class CreateMixin[T, R]:
         return result.json()
 
 
+class ListMixin[R]:
+    def list(self: GenericResource, *, params: Mapping[str, str] | None = None) -> R:
+        result = self.session.get(str(self.endpoint), params=params, timeout=TIMEOUT)
+        result.raise_for_status()
+        return result.json()
+
+
 class RetrieveMixin[R]:
     def retrieve(self: GenericResource) -> R:
         result = self.session.get(str(self.endpoint), timeout=TIMEOUT)
@@ -71,6 +78,12 @@ class ReadyDeduplicationSetAction(
 class ProcessDeduplicationSetAction(
     GenericResource[endpoint.Process],
     ActionMixin[None],
+): ...
+
+
+class FindingsCollection(
+    GenericResource[endpoint.Findings],
+    ListMixin[response.PaginatedFindings],
 ): ...
 
 
