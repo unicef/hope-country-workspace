@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
@@ -26,30 +27,35 @@ from country_workspace.rdp import (
     claim_rdp_deduplication,
     claim_rdp_push,
     dedup_existing_rdp_core,
-    get_rdp_policy,
+    get_deduplication_policy,
+    get_push_policy,
     push_existing_rdp_core,
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
+from country_workspace.rdp.policy import RdpActionPolicy
 from country_workspace.state import state
+from country_workspace.workspaces.models import CountryRdp
+from country_workspace.workspaces.options import WorkspaceModelAdmin
+from country_workspace.workspaces.sites import workspace
 
-from ..models import CountryRdp
-from ..options import WorkspaceModelAdmin
-from ..sites import workspace
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
 
 
-def _is_visible(btn: StandardButton, action: str) -> bool:
-    return bool((obj := btn.original) and getattr(get_rdp_policy(obj), action)())
+type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
 
 
-def _is_allowed(btn: StandardButton, action: str) -> bool:
+def _is_visible(btn: StandardButton, policy_getter: PolicyGetter, action: str) -> bool:
+    return bool((obj := btn.original) and getattr(policy_getter(obj), action)())
+
+
+def _is_allowed(btn: StandardButton, policy_getter: PolicyGetter, action: str) -> bool:
     if (obj := btn.original) is None:
         return False
     try:
-        return getattr(get_rdp_policy(obj), action)().allowed
+        return getattr(policy_getter(obj), action)().allowed
     except RemoteUnavailableError as exc:
         sentry_sdk.capture_exception(exc)
         return False
@@ -173,7 +179,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         try:
-            return str(get_rdp_policy(obj).dedup_engine_state())
+            return str(get_deduplication_policy(obj).dedup_engine_state())
         except RemoteUnavailableError:
             return str(DedupEngineState.unavailable())
         except RemoteError as exc:
@@ -185,13 +191,19 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except NoReverseMatch:
             return reverse("workspace:workspaces_countryrdp_changelist")
 
-    def _deny_if_not_allowed(self, request: HttpRequest, obj: CountryRdp, action: str) -> HttpResponse | None:
+    def _deny_if_not_allowed(
+        self,
+        request: HttpRequest,
+        obj: CountryRdp,
+        policy_getter: PolicyGetter,
+        action: str,
+    ) -> HttpResponse | None:
         def deny(message: str) -> HttpResponse:
             messages.error(request, message)
             return redirect(self._change_url(obj))
 
         try:
-            check = getattr(get_rdp_policy(obj), action)()
+            check = getattr(policy_getter(obj), action)()
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             return deny(str(exc))
@@ -205,8 +217,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
-        visible=lambda btn: _is_visible(btn, "is_deduplicate_visible"),
-        enabled=lambda btn: _is_allowed(btn, "claim_deduplication_check"),
+        visible=lambda btn: _is_visible(btn, get_deduplication_policy, "is_deduplicate_visible"),
+        enabled=lambda btn: _is_allowed(btn, get_deduplication_policy, "claim_deduplication_check"),
         html_attrs={"title": "Queue RDP for deduplication in DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -246,15 +258,15 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.cancel_rdp",
-        visible=lambda btn: _is_visible(btn, "is_cancel_visible"),
-        enabled=lambda btn: _is_allowed(btn, "cancel_check"),
+        visible=lambda btn: _is_visible(btn, get_deduplication_policy, "is_cancel_visible"),
+        enabled=lambda btn: _is_allowed(btn, get_deduplication_policy, "cancel_check"),
         html_attrs={"title": "Cancel this RDP."},
     )
     def cancel(self, request: HttpRequest, pk: str) -> HttpResponse:
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
-        if response := self._deny_if_not_allowed(request, obj, "cancel_check"):
+        if response := self._deny_if_not_allowed(request, obj, get_deduplication_policy, "cancel_check"):
             return response
 
         def schedule_cancel(_: HttpRequest) -> HttpResponse:
@@ -288,8 +300,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
-        visible=lambda btn: _is_visible(btn, "is_push_visible"),
-        enabled=lambda btn: _is_allowed(btn, "start_push_check"),
+        visible=lambda btn: _is_visible(btn, get_push_policy, "is_push_visible"),
+        enabled=lambda btn: _is_allowed(btn, get_push_policy, "start_push_check"),
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:
