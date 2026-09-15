@@ -14,8 +14,7 @@ from country_workspace.models import AsyncJob, Rdp
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
-from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import (
     lock_rdp_for_update,
     qs_households,
@@ -26,6 +25,8 @@ from country_workspace.rdp.repository import (
 )
 from country_workspace.rdp.types import RdpWorkflowOutcome
 
+from .constants import PUSH_READY_CALLBACK_SALT
+from .policy import get_push_policy
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
@@ -117,7 +118,7 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
 def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     """Claim an RDP push by starting a new attempt."""
     rdp = rdp_for_push(pk=rdp_id)
-    check = get_rdp_policy(rdp).start_push_check()
+    check = get_push_policy(rdp).start_push_check()
     if not check.allowed:
         return check, None
 
