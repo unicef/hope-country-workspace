@@ -7,9 +7,10 @@ from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.policy import ActionCheck, get_rdp_policy, require_policy_check
+from country_workspace.rdp.policy import ActionCheck, require_policy_check
 from country_workspace.rdp.repository import append_rdp_operation_log, lock_rdp_for_update
 
+from .policy import get_deduplication_policy
 from .processor import DedupProcessor
 from .repository import release_rdp_dedup_settings_lock, rdp_for_dedup
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 def claim_rdp_deduplication(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     rdp = rdp_for_dedup(pk=rdp_id)
-    policy = get_rdp_policy(rdp)
+    policy = get_deduplication_policy(rdp)
     check = policy.claim_deduplication_check()
     if not check.allowed:
         return check, None
@@ -46,7 +47,7 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     rdp = rdp_for_dedup(pk=rdp_id)
 
     try:
-        require_policy_check(get_rdp_policy(rdp).deduplicate_check)
+        require_policy_check(get_deduplication_policy(rdp).deduplicate_check)
 
         with make_dedup_client(rdp.program.unicef_id) as client:
             dedup_settings = client.get_deduplication_set_group_config()
