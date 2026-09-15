@@ -6,6 +6,7 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp
 
 from country_workspace.rdp.deduplication.operations import reject_deduplication_set
+from country_workspace.rdp.deduplication.policy import get_deduplication_policy
 from .exceptions import RdpWorkflowError
 from .policy import ActionCheck, get_rdp_policy, require_policy_check
 from .repository import (
@@ -80,7 +81,7 @@ def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     with transaction.atomic():
         rdp = lock_rdp_for_update(pk=rdp_id)
-        policy = get_rdp_policy(rdp)
+        policy = get_deduplication_policy(rdp)
         require_policy_check(policy.cancel_check)
 
         group_reference_id = rdp.program.unicef_id
