@@ -121,6 +121,34 @@ def test_iter_images_raises_when_a_reference_has_no_file(processor: DedupProcess
         list(processor._iter_images())
 
 
+@pytest.mark.django_db
+def test_iter_images_raises_when_a_reference_belongs_to_another_individual(
+    processor: DedupProcessor, photo_rows, photo_of_individual: tuple[int, str]
+) -> None:
+    """A reference resolves only for its owner, not for whoever's row happens to hold it."""
+    owner_pk, reference = photo_of_individual
+    other_pk = owner_pk + 1
+
+    photo_rows([(other_pk, reference)])
+
+    with pytest.raises(MissingFlexFileError):
+        list(processor._iter_images())
+
+
+@pytest.mark.django_db
+def test_iter_images_mixes_plain_values_and_references_in_one_batch(
+    processor: DedupProcessor, photo_rows, photo_of_individual: tuple[int, str]
+) -> None:
+    """A plain filename and a resolvable reference land in the same batch and both come out right."""
+    pk, reference = photo_of_individual
+    photo_rows([(1, "one.jpg"), (pk, reference)])
+
+    assert list(processor._iter_images()) == [
+        {"reference_pk": "1", "filename": "one.jpg"},
+        {"reference_pk": str(pk), "filename": "data:image/png;base64,%s" % b64encode(PHOTO).decode()},
+    ]
+
+
 @pytest.mark.parametrize(
     "case",
     [
