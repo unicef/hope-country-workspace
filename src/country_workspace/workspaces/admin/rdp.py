@@ -227,11 +227,23 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         try:
+            policy = get_deduplication_policy(obj)
+            check = policy.claim_deduplication_check()
+            if not check.allowed:
+                messages.error(request, check.reason or "Action is not allowed.")
+                return redirect(self._change_url(obj))
+            can_create_deduplication_set = policy.can_create_deduplication_set
             with transaction.atomic():
-                check, locked = claim_rdp_deduplication(rdp_id=obj.pk)
+                check, locked = claim_rdp_deduplication(
+                    rdp_id=obj.pk,
+                    can_create_deduplication_set=can_create_deduplication_set,
+                    expected_deduplication_set_id=obj.deduplication_set_id,
+                )
                 if not check.allowed or locked is None:
                     messages.error(request, check.reason or "Action is not allowed.")
                     return redirect(self._change_url(obj))
+                if (deduplication_set_id := locked.deduplication_set_id) is None:
+                    raise RuntimeError("RDP deduplication set was not initialized.")
                 job = AsyncJob.objects.create(
                     description="Queue RDP for deduplication in DedupEngine",
                     type=AsyncJob.JobType.TASK,
@@ -239,7 +251,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     action=fqn(dedup_existing_rdp_core),
                     program=locked.program,
                     rdp=locked,
-                    config={"rdp_id": locked.pk},
+                    config={
+                        "rdp_id": locked.pk,
+                        "deduplication_set_id": str(deduplication_set_id),
+                    },
                 )
                 transaction.on_commit(job.queue)
         except RemoteUnavailableError as exc:
