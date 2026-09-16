@@ -18,13 +18,14 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
+from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.rdp import (
     RdpActionPolicy,
     RdpWorkflowError,
@@ -86,6 +87,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "operations_display",
         "processing_history",
         "rdp_log_display",
+        "ocr_run_display",
     )
 
     @staticmethod
@@ -119,20 +121,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if obj and obj.operations.exists():
             fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
 
-        <<<<<<< feature/request-ocr-async-flow
-        if obj and obj.program.biometric_deduplication_enabled:
-            fields.extend(("dedup_engine_state", "deduplication_set_id"))
         if obj and hasattr(obj, "ocr_run"):
-            fields.append("ocr_run_display")
-        fields.extend(("related_jobs", "operation_log_display"))
-        return fields
-        =======
-        >>>>>>> develop
-        if obj and obj.program.biometric_deduplication_enabled:
-            fields = ["deduplication_set_id"]
-            if obj.status in NON_TERMINAL_RDP_STATUSES:
-                fields.insert(0, "dedup_engine_state")
-            fieldsets.append((_("Deduplication"), {"fields": fields}))
+            fieldsets.append((_("OCR"), {"fields": ("ocr_run_display",), "classes": ("content-only",)}))
 
         fieldsets.extend(
             [
@@ -141,7 +131,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             ]
         )
         return fieldsets
-        =======
 
     def has_change_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
