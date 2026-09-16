@@ -162,6 +162,66 @@ def test_ind_photo_of_an_unmanaged_owner_is_denied(
     assert res.status_code == 403
 
 
+@pytest.fixture
+def photo_checker():
+    """A checker with one image field next to a required text field."""
+    from django import forms
+    from testutils.factories import DataCheckerFactory
+
+    from country_workspace.utils.flex_fields import FlexImageField
+
+    return DataCheckerFactory(fields=[("photo", FlexImageField), ("family_name", forms.CharField)])
+
+
+@pytest.fixture
+def photo_program(office, photo_checker):
+    from testutils.factories import CountryProgramFactory
+
+    return CountryProgramFactory(
+        country_office=office,
+        individual_checker=photo_checker,
+        individual_columns="id\nfamily_name\nphoto",
+        beneficiary_group__master_detail=False,
+    )
+
+
+@pytest.fixture
+def individual_without_photo(photo_program):
+    from testutils.factories import CountryIndividualFactory
+
+    return CountryIndividualFactory(batch__program=photo_program, household=None, flex_fields={"family_name": "Smith"})
+
+
+def test_ind_change_form_attaches_an_uploaded_photo(
+    app: "DjangoTestApp", individual_without_photo: "CountryIndividual"
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+    from webtest import Upload
+
+    buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(buffer, format="PNG")
+    png_bytes = buffer.getvalue()
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual_without_photo.country_office, individual_without_photo.program):
+        res = app.get(url)
+        res = res.click(individual_without_photo.name)
+        form = res.forms["countryindividual_form"]
+        form["flex_field-family_name"] = "Smith"
+        form["flex_field-photo"] = Upload("photo.png", png_bytes, "image/png")
+        res = form.submit()
+        assert res.status_code == 302, res.location
+
+    individual_without_photo.refresh_from_db()
+    flex_file = individual_without_photo.flex_field_files.get()
+    assert individual_without_photo.flex_fields["photo"] == flex_file.reference
+    assert flex_file.content_bytes == png_bytes
+    # attach_flex_files runs with update_raw_data=False on this path
+    assert "photo" not in individual_without_photo.raw_data
+
+
 def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
     with select_office(app, individual.country_office, individual.program):
