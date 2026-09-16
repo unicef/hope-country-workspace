@@ -58,3 +58,28 @@ def test_individual_history(app, individual: "CountryIndividual"):
 
         res = app.get(url, headers={"etag": etag})
         assert res.status_code == 304
+
+
+@pytest.fixture
+def individual_changed_without_a_request(individual: "CountryIndividual") -> "CountryIndividual":
+    """A change saved with no pghistory context, as imports, tasks and migrations do."""
+    individual.flex_fields = {"first_name": "Name 3"}
+    individual.save()
+    return individual
+
+
+def test_individual_history_falls_back_to_system_for_changes_without_a_user(
+    app, individual_changed_without_a_request: "CountryIndividual"
+):
+    url = reverse("workspace:workspaces_countryindividual_history", args=[individual_changed_without_a_request.pk])
+    with select_office(
+        app, individual_changed_without_a_request.country_office, individual_changed_without_a_request.program
+    ):
+        res = app.get(url)
+
+    assert res.status_code == 200
+    pq = PyQuery(res.content)
+    # newest first: the change made outside pghistory.context is the first row
+    assert pq("table.history tbody tr td div.old_value")[0].text.strip() == "Name 2"
+    assert pq("table.history tbody tr td div.new_value")[0].text.strip() == "Name 3"
+    assert pq("table.history tbody tr td")[0].text.strip() == "system"
