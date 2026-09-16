@@ -1,3 +1,6 @@
+# Local development stack (tests image + live mounts).
+# Prod images are built separately as Dockerfile target `dist`.
+
 x-env: &env
   environment:
     - DEBUG=true
@@ -7,29 +10,42 @@ x-env: &env
     - CSRF_COOKIE_SECURE=False
     - CSRF_TRUSTED_ORIGINS=http://localhost
     - AUTHENTICATION_BACKENDS=country_workspace.security.backends.AnyUserAuthBackend
-    - HOPE_API_TOKEN=${HOPE_API_TOKEN}
-    - CACHE_URL=redis://redis:6379/1
-    - CELERY_BROKER_URL=redis://redis:6379/9
+    - C_FORCE_ROOT=1
     - CELERY_TASK_ALWAYS_EAGER=False
-    - DATABASE_URL=postgres://hcw:password@db:5432/country_workspace
-    - MEDIA_ROOT=/var/country_workspace/media
+    - CELERY_TASK_STORE_EAGER_RESULT=False
+    - CACHE_URL=redis://redis:6379/0
+    - CELERY_BROKER_URL=redis://redis:6379/9
+    - DATABASE_URL=postgres://postgres:password@db:5432/country_workspace
+    - STREAMING_BROKER_URL=rabbit://guest:guest@rabbitmq:5672/?vhost=/&exchange=django-streaming-broadcast
+    - MEDIA_ROOT=/tmp/media
+    - STATIC_ROOT=/tmp/static
+    - STATIC_URL=/static/
     - SECRET_KEY=sensitive-secret-key
-    - STATIC_ROOT=/var/country_workspace/static
+    - HOPE_API_URL=${HOPE_API_URL:-http://host.docker.internal:8080/api/rest/}
+    - HOPE_API_TOKEN=${HOPE_API_TOKEN:-}
+    - FILE_STORAGE_MEDIA=storages.backends.azure_storage.AzureStorage?azure_container=media&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10010/devstoreaccount1;
+    - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10010/devstoreaccount1;
 
 x-common: &common
   build:
     context: .
     dockerfile: docker/Dockerfile
-    target: dist
+    target: tests
   platform: linux/amd64
-
-  #  volumes:
-  #    - ./src/:/app/src/
-  #    - ./tests/:/app/tests/
-  #    - ./pyproject.toml:/app/pyproject.toml
-  #    - ./uv.lock:/app/uv.lock
-  #    - /var/run/docker.sock:/var/run/docker.sock
-  restart: always
+  security_opt:
+    - apparmor=unconfined
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  env_file:
+    - .env
+  # tests image has no default ENTRYPOINT (CI pytest); wire Circus entrypoint here
+  entrypoint: ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
+  volumes:
+    - ./src:/app/src
+    - ./docker/conf:/conf:ro
+    - ./docker/bin/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+    - ./docker/bin/run-uwsgi.sh:/usr/local/bin/run-uwsgi.sh:ro
+  restart: unless-stopped
   depends_on:
     db:
       condition: service_healthy
@@ -38,45 +54,77 @@ x-common: &common
 
 services:
   backend:
-    <<:  [*common, *env]
+    <<: [*common, *env]
     ports:
-      - 8000:8000
-    command: run
+      - "127.0.0.1:8000:8000"
+    command: ["web"]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthcheck" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthcheck')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   celery_worker:
-    <<:  [*common, *env]
-    # entrypoint: ["sh", "-c", "exec docker-entrypoint.sh \"$0\" \"$@\""]
-    command: worker
+    <<: [*common, *env]
+    command: ["celery"]
+    ports:
+      - "127.0.0.1:5681:5681"
 
   celery-beat:
-    <<:  [*common, *env]
-    command: beat
+    <<: [*common, *env]
+    command: ["beat"]
 
   flower:
-    <<:  [*common, *env]
-    command: flower
-    environment:
-      - DEBUG=true
-      - DATABASE_URL="sqlite://:memory:"
+    <<: [*common, *env]
+    command: ["flower"]
+    ports:
+      - "127.0.0.1:5555:5555"
+
+  stream_listener:
+    <<: [*common, *env]
+    command: ["streaming"]
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Optional STREAM_N_* overrides, e.g.:
+    # environment:
+    #   - STREAM_1_QUEUES=ocr_results
+    #   - STREAM_1_CALLBACK=country_workspace.stream.callbacks.handle_event
+
+  # One container: web + celery + beat + flower + streaming
+  all-in-one:
+    <<: [*common, *env]
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:5555:5555"
+    command: ["web", "celery", "beat", "flower", "streaming"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      azurite:
+        condition: service_started
 
   db:
-    image: postgres:14
+    image: postgres:15
+    security_opt:
+      - apparmor=unconfined
     environment:
-      - POSTGRES_USER=hcw
+      - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=country_workspace
     volumes:
-      - postgres_data14:/var/lib/postgresql14/data/
-    #    ports:
-    #      - 5432:5432
-    restart: always
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "hcw", "-d", "country_workspace" ]
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "country_workspace"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
@@ -85,17 +133,46 @@ services:
 
   redis:
     image: redis:7.2
-    #    ports:
-    #      - 6379:6379
-    restart: always
+    security_opt:
+      - apparmor=unconfined
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
       timeout: 4s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    security_opt:
+      - apparmor=unconfined
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      start_period: 10s
+      start_interval: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    security_opt:
+      - apparmor=unconfined
+    command: "azurite -l /workspace -d /workspace/debug.log --blobPort 10010 --blobHost 0.0.0.0 --loose --silent --skipApiVersionCheck"
+    ports:
+      - "127.0.0.1:10010:10010"
+    volumes:
+      - azurite_data:/workspace
+    restart: unless-stopped
 
 volumes:
-  postgres_data14:
+  postgres_data:
+  azurite_data:

@@ -7,6 +7,7 @@ from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -16,10 +17,12 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.rdp import (
     DedupEngineState,
     cancel_existing_rdp_core,
@@ -72,6 +75,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "deduplication_set_id",
         "processing_history",
         "operation_log_display",
+        "ocr_run_display",
     )
 
     def get_fieldsets(
@@ -88,6 +92,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             if obj.status in NON_TERMINAL_RDP_STATUSES:
                 fields.insert(0, "dedup_engine_state")
             fieldsets.append((_("Deduplication"), {"fields": fields}))
+
+        if obj and hasattr(obj, "ocr_run"):
+            fieldsets.append((_("OCR"), {"fields": ("ocr_run_display",), "classes": ("content-only",)}))
 
         fieldsets.extend(
             [
@@ -170,6 +177,25 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             )
 
         return render_to_string("workspace/rdp/_operation_log.html", {"rows": rows})
+
+    @display(description="OCR run")
+    def ocr_run_display(self, obj: CountryRdp) -> str:
+        """Return a compact summary of this RDP's OCR run, if any."""
+        try:
+            run = obj.ocr_run
+        except ObjectDoesNotExist:
+            return "-"
+
+        progress = f"{len(run.received_batch_ids)}/{run.batch_total}" if run.batch_total else "-"
+        summary = f"{run.get_status_display()} ({progress}) · correlation_id={run.correlation_id}"
+        if not run.results:
+            return summary
+
+        return format_html(
+            "{}<pre>{}</pre>",
+            summary,
+            json.dumps(run.results, indent=2, ensure_ascii=False),
+        )
 
     def dedup_engine_state(self, obj: CountryRdp) -> str:
         try:
@@ -328,6 +354,40 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect(self._change_url(obj))
 
         messages.success(request, "Push to HOPE task scheduled")
+        return redirect(self._change_url(obj))
+
+    @button(
+        label="Run OCR",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.run_ocr_rdp",
+        visible=lambda btn: bool((obj := btn.original) and get_ocr_policy(obj).is_ocr_visible()),
+        enabled=lambda btn: bool((obj := btn.original) and get_ocr_policy(obj).ocr_check().allowed),
+        html_attrs={"title": "Send identity-document images to Hope Documents for OCR."},
+    )
+    def run_ocr(self, request: HttpRequest, pk: str) -> HttpResponse:
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        check, locked = claim_rdp_ocr(rdp_id=obj.pk)
+        if not check.allowed or locked is None:
+            messages.error(request, check.reason or "Action is not allowed.")
+            return redirect(self._change_url(obj))
+
+        with transaction.atomic():
+            job = AsyncJob.objects.create(
+                description="Run OCR on RDP identity documents",
+                type=AsyncJob.JobType.TASK,
+                owner=request.user,
+                action=fqn(run_ocr_core),
+                program=locked.program,
+                rdp=locked,
+                config={"rdp_id": locked.pk},
+            )
+            transaction.on_commit(job.queue)
+
+        messages.success(request, "OCR task scheduled")
         return redirect(self._change_url(obj))
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
