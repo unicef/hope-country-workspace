@@ -1,7 +1,11 @@
+from io import BytesIO
+
 import pytest
+from PIL import Image
 from django.contrib.admin import AdminSite
 
 from country_workspace.models import AsyncJob, Batch, User
+from country_workspace.utils.flex_files import FlexFileContent
 from country_workspace.workspaces.admin.batch import CountryBatchAdmin
 from country_workspace.workspaces.models import CountryBatch
 
@@ -76,6 +80,51 @@ def job_factory(user: User):
 @pytest.fixture
 def batch_admin() -> CountryBatchAdmin:
     return CountryBatchAdmin(CountryBatch, AdminSite())
+
+
+@pytest.fixture
+def individual_without_photo(batch: CountryBatch):
+    """An individual of the batch whose photo field is still empty."""
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    return CountryIndividualFactory(batch=batch, household=household, flex_fields={"photo": ""})
+
+
+@pytest.fixture
+def removed_individual(batch: CountryBatch):
+    """A removed individual of the batch, which picture import has to skip."""
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    return CountryIndividualFactory(batch=batch, household=household, removed=True, flex_fields={"photo": ""})
+
+
+@pytest.fixture
+def individual_of_another_batch(batch: CountryBatch):
+    """An individual of a different batch of the same program."""
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
+
+    other_batch = CountryBatchFactory(program=batch.program, country_office=batch.country_office)
+    household = CountryHouseholdFactory(batch=other_batch, individuals=0)
+    return CountryIndividualFactory(batch=other_batch, household=household, flex_fields={"photo": ""})
+
+
+@pytest.fixture
+def matchable_individual(batch: CountryBatch):
+    """An individual of the batch whose raw data matches the `A-1` archive entry."""
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    household = CountryHouseholdFactory(batch=batch, individuals=0)
+    return CountryIndividualFactory(batch=batch, household=household, raw_data={"beneficiary_id": "A-1"})
+
+
+@pytest.fixture
+def picture() -> FlexFileContent:
+    """A real JPEG payload, since picture import verifies the image content."""
+    buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(buffer, format="JPEG")
+    return FlexFileContent(content=buffer.getvalue(), mimetype="image/jpeg", filename="A-001.jpg")
 
 
 @pytest.fixture

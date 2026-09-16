@@ -1,13 +1,15 @@
 import os
 import random
 import re
+from base64 import b64encode
 from io import StringIO
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 from constance.test import override_config
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from pytest_mock import MockerFixture
 from responses import RequestsMock
 
@@ -18,6 +20,7 @@ from country_workspace.management.commands.sync import (
     run_program_sync,
 )
 import country_workspace.management.commands.gen_rdi as gen_rdi_cmd
+from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
 
 
@@ -27,6 +30,8 @@ if TYPE_CHECKING:
     from country_workspace.models import User
 
 pytestmark = pytest.mark.django_db
+
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -359,3 +364,244 @@ def test_gen_rdi_validation_errors(cli_args: list[str], err: str) -> None:
 
     with pytest.raises(CommandError, match=re.escape(err)):
         call_command("gen_rdi", *cli_args)
+
+
+@pytest.fixture
+def legacy_individual():
+    """An individual whose photo is still inline, keyed differently in each payload."""
+    from testutils.factories import IndividualFactory
+
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    return IndividualFactory(
+        flex_fields={"individual_id": "I-1", "photo": data_uri},
+        raw_data={"individual_id": "I-1", "beneficiary_photo": data_uri},
+    )
+
+
+def test_migrate_flex_files_converts_inline_data_uris(legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    flex_file = legacy_individual.flex_field_files.get()
+    assert legacy_individual.flex_fields["photo"] == flex_file.reference
+    assert legacy_individual.raw_data["beneficiary_photo"] == flex_file.reference
+    assert legacy_individual.flex_fields["individual_id"] == "I-1"
+    assert FlexFieldFile.objects.with_content().get(pk=flex_file.pk).content_bytes == PHOTO
+    assert "individual: converted 1 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_leaves_converted_records_alone(legacy_individual) -> None:
+    call_command("migrate_flex_files", stdout=StringIO())
+    out = StringIO()
+
+    call_command("migrate_flex_files", stdout=out)
+
+    assert legacy_individual.flex_field_files.count() == 1
+    assert "individual: converted 0 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_dry_run_writes_nothing(legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--dry-run", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    assert legacy_individual.flex_fields["photo"].startswith("data:image/png;base64,")
+    assert not FlexFieldFile.objects.exists()
+    assert "[dry-run] individual: converted 1 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_reverse_restores_inline_data_uris(legacy_individual) -> None:
+    call_command("migrate_flex_files", stdout=StringIO())
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--reverse", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    assert legacy_individual.flex_fields["photo"] == data_uri
+    assert legacy_individual.raw_data["beneficiary_photo"] == data_uri
+    assert not FlexFieldFile.objects.exists()
+    assert "individual: restored 1 record(s)" in out.getvalue()
+
+
+@pytest.fixture
+def legacy_household():
+    """A household whose signature is still inline, on a model --model individual should skip."""
+    from testutils.factories import HouseholdFactory
+
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    return HouseholdFactory(flex_fields={"consent_sign": data_uri})
+
+
+def test_migrate_flex_files_model_filter_only_touches_the_given_model(legacy_individual, legacy_household) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--model", "individual", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    legacy_household.refresh_from_db()
+    assert FlexFieldFile.is_reference(legacy_individual.flex_fields["photo"])
+    assert legacy_household.flex_fields["consent_sign"].startswith("data:image/png;base64,")
+    assert "household" not in out.getvalue()
+
+
+def test_migrate_flex_files_start_pk_requires_an_explicit_model() -> None:
+    with pytest.raises(CommandError, match="--start-pk needs an explicit --model"):
+        call_command("migrate_flex_files", "--start-pk", "5")
+
+
+@pytest.fixture
+def other_legacy_individual(legacy_individual):
+    """A second legacy individual, created after the first so it sorts after it by pk."""
+    from testutils.factories import IndividualFactory
+
+    data_uri = "data:image/png;base64,%s" % b64encode(PHOTO).decode()
+    return IndividualFactory(flex_fields={"individual_id": "I-2", "photo": data_uri})
+
+
+def test_migrate_flex_files_limit_stops_early_with_a_resume_hint(legacy_individual, other_legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--model", "individual", "--limit", "1", stdout=out)
+
+    assert FlexFieldFile.objects.count() == 1
+    assert legacy_individual.flex_field_files.exists()
+    assert not other_legacy_individual.flex_field_files.exists()
+    assert (
+        "individual: the limit was reached, resume with --model individual --start-pk %d" % legacy_individual.pk
+        in out.getvalue()
+    )
+
+
+def test_migrate_flex_files_continue_on_error_converts_the_rest_and_reports_the_failure(
+    legacy_individual, other_legacy_individual, monkeypatch
+) -> None:
+    import country_workspace.management.commands.migrate_flex_files as module
+
+    original_write = module.write_flex_file
+
+    def flaky_write(record, field_name, content, mimetype=module.DEFAULT_MIMETYPE, filename=""):
+        if record.pk == legacy_individual.pk:
+            raise ValueError("boom")
+        return original_write(record, field_name, content, mimetype, filename)
+
+    monkeypatch.setattr(module, "write_flex_file", flaky_write)
+    out = StringIO()
+
+    with pytest.raises(CommandError, match=r"1 record\(s\) failed"):
+        call_command("migrate_flex_files", "--model", "individual", "--continue-on-error", stdout=out)
+
+    other_legacy_individual.refresh_from_db()
+    assert other_legacy_individual.flex_field_files.exists()
+    legacy_individual.refresh_from_db()
+    assert legacy_individual.flex_fields["photo"].startswith("data:image/png;base64,")
+    assert "failed 1" in out.getvalue()
+
+
+def test_migrate_flex_files_stops_at_the_first_failure_by_default(
+    legacy_individual, other_legacy_individual, monkeypatch
+) -> None:
+    import country_workspace.management.commands.migrate_flex_files as module
+
+    def flaky_write(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(module, "write_flex_file", flaky_write)
+    out = StringIO()
+
+    with pytest.raises(ValueError, match="boom"):
+        call_command("migrate_flex_files", "--model", "individual", stdout=out)
+
+    assert not FlexFieldFile.objects.exists()
+    assert (
+        "individual: #%s failed, resume with --model individual --start-pk %d"
+        % (legacy_individual.pk, legacy_individual.pk - 1)
+        in out.getvalue()
+    )
+
+
+def test_migrate_flex_files_no_lock_skips_the_concurrency_lock(legacy_individual) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", "--no-lock", stdout=out)
+
+    assert "individual: converted 1 record(s)" in out.getvalue()
+
+
+def test_migrate_flex_files_refuses_to_run_twice_at_once(legacy_individual) -> None:
+    from django.core.cache import cache
+
+    from country_workspace.management.commands.migrate_flex_files import LOCK_EXPIRE, LOCK_KEY
+
+    lock = cache.lock(LOCK_KEY, LOCK_EXPIRE)
+    lock.acquire(blocking=False)
+    try:
+        with pytest.raises(CommandError, match="another migrate_flex_files run is in progress"):
+            call_command("migrate_flex_files", stdout=StringIO())
+    finally:
+        lock.release()
+
+
+@pytest.fixture
+def individual_with_garbled_data_uri():
+    """A value that looks like a data-URI but does not decode as base64."""
+    from testutils.factories import IndividualFactory
+
+    return IndividualFactory(flex_fields={"individual_id": "I-3", "photo": "data:image/png;base64,not-base64!!"})
+
+
+def test_migrate_flex_files_skips_an_unreadable_data_uri(individual_with_garbled_data_uri) -> None:
+    out = StringIO()
+
+    call_command("migrate_flex_files", stdout=out)
+
+    individual_with_garbled_data_uri.refresh_from_db()
+    assert individual_with_garbled_data_uri.flex_fields["photo"] == "data:image/png;base64,not-base64!!"
+    assert not FlexFieldFile.objects.exists()
+    assert "individual: converted 0 record(s)" in out.getvalue()
+    assert "unreadable 1" in out.getvalue()
+
+
+def test_migrate_flex_files_reverse_skips_a_reference_without_a_row(legacy_individual) -> None:
+    call_command("migrate_flex_files", stdout=StringIO())
+    legacy_individual.refresh_from_db()
+    dangling = "flexfile:%s" % uuid4()
+    legacy_individual.flex_fields["extra"] = dangling
+    legacy_individual.save(update_fields=["flex_fields"])
+
+    out = StringIO()
+    call_command("migrate_flex_files", "--reverse", stdout=out)
+
+    legacy_individual.refresh_from_db()
+    assert legacy_individual.flex_fields["extra"] == dangling
+    assert "unreadable 1" in out.getvalue()
+
+
+def test_migrate_flex_files_reverse_drops_rows_of_a_deleted_owner() -> None:
+    """Rows left by a record deleted outside the cascade are swept on --reverse."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from country_workspace.models import Individual
+
+    orphan = FlexFieldFile.objects.create(
+        content_type=ContentType.objects.get_for_model(Individual),
+        object_id=999_999,
+        field_name="photo",
+        content=PHOTO,
+        mimetype="image/png",
+        size=len(PHOTO),
+        checksum="deadbeef",
+    )
+
+    dry_out = StringIO()
+    call_command("migrate_flex_files", "--reverse", "--model", "individual", "--dry-run", stdout=dry_out)
+    assert FlexFieldFile.objects.filter(pk=orphan.pk).exists()
+    assert "orphan row(s) dropped" in dry_out.getvalue()
+
+    out = StringIO()
+    call_command("migrate_flex_files", "--reverse", "--model", "individual", stdout=out)
+    assert not FlexFieldFile.objects.filter(pk=orphan.pk).exists()
+    assert "orphan row(s) dropped" in out.getvalue()

@@ -2,7 +2,9 @@ from typing import TYPE_CHECKING, Any
 
 from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
+from django import forms
 from django.contrib import messages
+from django.db import transaction
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
 from django.db.models import Model, QuerySet
@@ -25,7 +27,8 @@ from ...utils.imports import validate_alien_fields
 from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from ...utils.flex_fields import Base64ImageField, get_checker_fields
+from ...utils.flex_fields import get_checker_fields
+from ...utils.flex_files import FlexFileContent, attach_flex_files, flex_file_src
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -316,7 +319,7 @@ class BeneficiaryBaseAdmin(
         context["show_save_invalid"] = True
         context["checker_form"] = form
         context["has_change_permission"] = self.has_change_permission(request)
-        context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
+        context["has_file_field"] = any(isinstance(field, forms.FileField) for field in form.fields.values())
 
         return TemplateResponse(request, self.change_form_template, context)
 
@@ -328,13 +331,29 @@ class BeneficiaryBaseAdmin(
             form.add_error(None, STRUCTURAL_FIELD_LOCK_ERROR % {"fields": ", ".join(locked)})
             return False
 
-        obj.flex_fields = form.cleaned_data
-        self.save_model(request, obj, form, True)
+        with transaction.atomic():
+            obj.flex_fields = form.cleaned_data
+            attach_flex_files(obj, self._get_uploaded_files(form), update_raw_data=False, save=False)
+            self.save_model(request, obj, form, True)
         if form_valid:
             self.message_user(request, _("Record saved!"), messages.SUCCESS)
         else:
             self.message_user(request, _("Record saved but not validated"), messages.WARNING)
         return True
+
+    @staticmethod
+    def _get_uploaded_files(form: "FlexForm") -> dict[str, FlexFileContent]:
+        uploads = {}
+        for name, field in form.fields.items():
+            if not isinstance(field, forms.FileField) or name in form.errors:
+                continue
+            if uploaded := form.files.get(form.add_prefix(name)):
+                uploads[name] = FlexFileContent(
+                    content=uploaded.read(),
+                    mimetype=getattr(uploaded, "content_type", "") or "",
+                    filename=uploaded.name or "",
+                )
+        return uploads
 
     @staticmethod
     def _get_ordered_fields(dc: "DataChecker", form: "FlexForm") -> dict:
@@ -386,13 +405,21 @@ class BeneficiaryBaseAdmin(
                     old_value = prev.get(field_name, "")
                     new_value = entry.flex_fields.get(field_name, "")
                     if old_value != new_value:
-                        changes[field_name] = {"from": old_value, "to": new_value}
+                        changes[field_name] = {
+                            "from": old_value,
+                            "to": new_value,
+                            "from_src": flex_file_src(old_value),
+                            "to_src": flex_file_src(new_value),
+                        }
+                # changes made outside a request (imports, tasks, migrations) have no context
+                event_context = entry.pgh_context
+                user = event_context.metadata.get("user") if event_context else None
                 history.append(
                     {
                         "changes": changes,
                         "date": entry.pgh_created_at,
                         "pgh_label": entry.pgh_label,
-                        "user": entry.pgh_context.metadata["user"],
+                        "user": user or {"username": _("system")},
                     }
                 )
                 prev = entry.flex_fields

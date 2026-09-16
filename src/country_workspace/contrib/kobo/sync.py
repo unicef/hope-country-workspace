@@ -29,6 +29,7 @@ from country_workspace.models.household import (
 )
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
 from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
+from country_workspace.utils.flex_files import materialize_pending_files
 from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.import_flow import (
     build_import_processor,
@@ -221,6 +222,9 @@ def create_individuals(  # noqa: PLR0913
             )
             individuals.append(ImportedIndividual(individual=individual, fields=individual_fields))
     household.program.individuals.bulk_create([item.individual for item in individuals if item.individual.pk is None])
+    for item in individuals:
+        if item.created:
+            materialize_pending_files(item.individual, submission.files)
     return individuals
 
 
@@ -238,7 +242,7 @@ def create_household(
         household_mapping_id,
     )(raw_household_fields)
     household_fields["household_id"] = id_generator()
-    return cast(
+    household = cast(
         "Household",
         batch.program.households.create(
             batch=batch,
@@ -247,6 +251,8 @@ def create_household(
             raw_data=raw_household_fields,
         ),
     )
+    materialize_pending_files(household, submission.files)
+    return household
 
 
 class ImportResult(TypedDict):

@@ -1,12 +1,13 @@
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
+from io import BytesIO
 from typing import Any
 
 import pytest
+from openpyxl.drawing.image import Image as RDIImage
 from pytest_mock import MockerFixture
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.datasources.rdi.config import Config, Record, Sheet, SheetName
 from country_workspace.datasources.rdi.exceptions import (
     ColumnConfigurationError,
@@ -24,6 +25,7 @@ from country_workspace.datasources.rdi.processors import (
     is_empty_row,
     merge_images,
     normalize_row_structure,
+    pop_pending_files,
     process_beneficiaries,
     process_households,
     read_sheets,
@@ -32,6 +34,7 @@ from country_workspace.datasources.rdi.processors import (
 )
 from country_workspace.datasources.rdi.utils import date_to_iso_string, datetime_to_date
 from country_workspace.models import Batch, Household, Individual
+from country_workspace.utils.flex_files import FlexFileContent, pending_marker
 from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.workspaces.exceptions import BeneficiaryValidationError
 
@@ -877,48 +880,32 @@ def test_image_location(mocker: MockerFixture) -> None:
     assert result == (image.anchor._from.row, image.anchor._from.col)
 
 
-def test_image_content(mocker: MockerFixture) -> None:
-    image_module_mock = mocker.patch("country_workspace.datasources.rdi.processors.Image")
-    b64encode_mock = mocker.patch("country_workspace.datasources.rdi.processors.b64encode")
+def test_image_content_keeps_the_bytes_and_the_mimetype(png_bytes: bytes) -> None:
+    content = image_content(RDIImage(BytesIO(png_bytes)))
 
-    image = mocker.MagicMock()
-    result = image_content(image)
-
-    assert result == (image_module_mock.MIME.get.return_value, b64encode_mock.return_value.decode.return_value)
-    image_module_mock.open.assert_called_once_with(image.ref)
-    image_module_mock.MIME.get.assert_called_once_with(image_module_mock.open.return_value.format)
-    image.ref.seek.assert_called_once_with(0)
-    b64encode_mock.assert_called_once_with(image.ref.read.return_value)
+    assert content.content == png_bytes
+    assert content.mimetype == "image/png"
 
 
-def test_extract_images(mocker: MockerFixture) -> None:
-    load_workbook_mock = mocker.patch("country_workspace.datasources.rdi.processors.load_workbook")
-    image_location_mock = mocker.patch("country_workspace.datasources.rdi.processors.image_location")
-    image_location_mock.return_value = (row := 1, column := 2)
-    image_content_mock = mocker.patch("country_workspace.datasources.rdi.processors.image_content")
-    image_content_mock.return_value = (content_type := "content/type", content := "content")
-    image = mocker.MagicMock()
-    load_workbook_mock.return_value.__getitem__.return_value._images = (image,)
+def test_extract_images_keys_files_by_data_row_and_column(workbook_with_image: str, png_bytes: bytes) -> None:
+    (images,) = extract_images(workbook_with_image, "first")
 
-    result = list(extract_images(filepath := "test", sheet_name := "first"))
-
-    assert result == [{row - 1: {column: VALUE_FORMAT.format(mimetype=content_type, content=content)}}]
-    load_workbook_mock.assert_called_once_with(filepath)
-    load_workbook_mock.return_value.__getitem__.assert_called_once_with(sheet_name)
-    image_location_mock.assert_called_once_with(image)
-    image_content_mock.assert_called_once_with(image)
+    assert images[0][0].content == png_bytes
+    assert images[0][0].mimetype == "image/png"
 
 
-def test_merge_images() -> None:
+def test_merge_images_replaces_the_cell_with_a_marker(photo_content: FlexFileContent) -> None:
     sheet = (
-        {(column := "column"): "value"},
-        second_row := {"column": "value"},
+        {(column := "photo"): "", "name": "Alice"},
+        second_row := {"photo": "", "name": "Bob"},
     )
-    sheet_images = {2: {0: (image_data := "IMAGE_DATA")}}
 
-    result = list(merge_images(sheet, sheet_images, start_at_row=2))
+    first, unchanged = merge_images(sheet, {2: {0: photo_content}}, start_at_row=2)
 
-    assert result == [{column: image_data}, second_row]
+    assert first[column] == pending_marker(column)
+    assert first["name"] == "Alice"
+    assert pop_pending_files(first) == {column: photo_content}
+    assert unchanged == second_row
 
 
 def test_read_sheets(mocker: MockerFixture, config: Config) -> None:
