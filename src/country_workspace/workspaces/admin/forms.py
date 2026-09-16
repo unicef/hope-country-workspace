@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
 from django import forms
-from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import BeneficiaryGroup, Program
@@ -51,15 +50,6 @@ class BulkUpdateImportForm(forms.Form):
                     "style": "background-color:var(--darkened-bg); color:var(--body-quiet-color); pointer-events:none;",
                 }
             )
-
-
-class ValidateMode(TextChoices):
-    NONE = "none", _("Skip validation — import data as is.")
-    CHECK_BEFORE = "check_before", _("Prevent import if data is not valid against data checker.")
-    CHECK_AND_FAIL_IF_ALIEN = (
-        "check_and_fail_if_alien",
-        _("Prevent import if data is invalid AND fail if an alien field is found."),
-    )
 
 
 class BaseImportForm(forms.Form):

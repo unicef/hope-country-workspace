@@ -6,10 +6,8 @@ from country_workspace.datasources.rdi.config import Config
 def config(request) -> Config:
     return {
         "batch_name": "batch_name",
-        "validate_mode": "none",
         "master_detail": request.param,
         "beneficiary_id_column": "beneficiary_id",
-        "send_to": "send_to",
         "household_id_column": "household_id",
         "household_label": "household_label",
         "people_prefix": "pp_",
