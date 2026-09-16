@@ -8,7 +8,9 @@ from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models import Individual
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.flex_files import (
+    DEFAULT_MIMETYPE,
     FlexFileContent,
+    as_data_uri,
     attach_flex_files,
     flex_file_src,
     materialize_pending_files,
@@ -59,6 +61,18 @@ def test_attach_flex_files_references_the_file_in_both_payloads(
 
 
 @pytest.mark.django_db
+def test_attach_flex_files_with_no_files_changes_nothing(record: Individual) -> None:
+    flex_fields_before = dict(record.flex_fields)
+
+    references = attach_flex_files(record, {})
+
+    assert references == {}
+    record.refresh_from_db()
+    assert record.flex_fields == flex_fields_before
+    assert not record.flex_field_files.exists()
+
+
+@pytest.mark.django_db
 def test_materialize_pending_files_replaces_every_marker_of_one_file(
     record_with_pending_photo: Individual, photo_content: FlexFileContent
 ) -> None:
@@ -69,6 +83,30 @@ def test_materialize_pending_files_replaces_every_marker_of_one_file(
     assert FlexFieldFile.is_reference(reference)
     assert record_with_pending_photo.raw_data["beneficiary_photo"] == reference
     assert record_with_pending_photo.flex_field_files.count() == 1
+
+
+@pytest.mark.django_db
+def test_materialize_pending_files_with_no_files_changes_nothing(record_with_pending_photo: Individual) -> None:
+    markers_before = dict(record_with_pending_photo.flex_fields)
+
+    references = materialize_pending_files(record_with_pending_photo, {})
+
+    assert references == {}
+    record_with_pending_photo.refresh_from_db()
+    assert record_with_pending_photo.flex_fields == markers_before
+    assert not record_with_pending_photo.flex_field_files.exists()
+
+
+@pytest.mark.django_db
+def test_materialize_pending_files_blanks_a_marker_whose_content_is_missing(
+    record_with_pending_photo: Individual, photo_content: FlexFileContent
+) -> None:
+    materialize_pending_files(record_with_pending_photo, {"another-key": photo_content})
+
+    record_with_pending_photo.refresh_from_db()
+    assert record_with_pending_photo.flex_fields["photo"] == ""
+    assert record_with_pending_photo.raw_data["beneficiary_photo"] == ""
+    assert not record_with_pending_photo.flex_field_files.exists()
 
 
 @pytest.mark.django_db
@@ -103,6 +141,24 @@ def test_prefetch_flex_files_resolves_without_further_queries(
         resolved = resolve_flex_files(prefetched)
 
     assert resolved["photo"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.django_db
+def test_as_data_uri_falls_back_to_the_default_mimetype_when_missing(
+    record: Individual, photo_content: FlexFileContent
+) -> None:
+    """A row saved without a mimetype (write_flex_file always fills one in) still renders."""
+    flex_file = FlexFieldFile.objects.create(
+        content_type=ContentType.objects.get_for_model(Individual),
+        object_id=record.pk,
+        field_name="photo",
+        content=photo_content.content,
+        mimetype="",
+        size=len(photo_content.content),
+        checksum="deadbeef",
+    )
+
+    assert as_data_uri(flex_file) == "data:%s;base64,%s" % (DEFAULT_MIMETYPE, b64encode(photo_content.content).decode())
 
 
 @pytest.mark.django_db
