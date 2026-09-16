@@ -180,7 +180,9 @@ def photo_program(office, photo_checker):
     return CountryProgramFactory(
         country_office=office,
         individual_checker=photo_checker,
-        individual_columns="id\nfamily_name\nphoto",
+        # "name" must come first: the changelist links its first column to the change form,
+        # and test_ind_change_form_attaches_an_uploaded_photo navigates via that link.
+        individual_columns="name\nid\nfamily_name\nphoto",
         beneficiary_group__master_detail=False,
     )
 

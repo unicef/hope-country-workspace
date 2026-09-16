@@ -61,9 +61,18 @@ def test_individual_history(app, individual: "CountryIndividual"):
 
 
 @pytest.fixture
-def individual_changed_without_a_request(individual: "CountryIndividual") -> "CountryIndividual":
-    """A change saved with no pghistory context, as imports, tasks and migrations do."""
-    individual.flex_fields = {"first_name": "Name 3"}
+def individual_changed_without_a_request() -> "CountryIndividual":
+    """A change saved with no pghistory context, as imports, tasks and migrations do.
+
+    This is deliberately independent of the `individual` fixture above: pghistory
+    sets its context id with `SET LOCAL`, which sticks for the rest of the test's
+    transaction once used. Reusing a context-tainted individual here would leak
+    "user #1" into this "no context" change instead of falling back to "system".
+    """
+    from testutils.factories import CountryIndividualFactory
+
+    individual = CountryIndividualFactory(household__batch__program__individual_checker__fields=["first_name"])
+    individual.flex_fields = {"first_name": "Name 1"}
     individual.save()
     return individual
 
@@ -79,7 +88,6 @@ def test_individual_history_falls_back_to_system_for_changes_without_a_user(
 
     assert res.status_code == 200
     pq = PyQuery(res.content)
-    # newest first: the change made outside pghistory.context is the first row
-    assert pq("table.history tbody tr td div.old_value")[0].text.strip() == "Name 2"
-    assert pq("table.history tbody tr td div.new_value")[0].text.strip() == "Name 3"
+    assert pq("table.history tbody tr td div.old_value")[0].text.strip() == ""
+    assert pq("table.history tbody tr td div.new_value")[0].text.strip() == "Name 1"
     assert pq("table.history tbody tr td")[0].text.strip() == "system"
