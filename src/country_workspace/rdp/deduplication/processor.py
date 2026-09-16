@@ -41,7 +41,8 @@ class DedupProcessor(ProcessorBase):
             if can_create:
                 self.total["images_sent"] = self.deduplicate(client, ds_id, notification_url=notification_url)
                 return
-            self.run_remote("process_existing_deduplication_set", client.process)
+
+            client.process()
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
@@ -102,7 +103,5 @@ class DedupProcessor(ProcessorBase):
         if not uploaded:
             return images_sent
 
-        if not self.run_remote("process", client.process):
-            return images_sent
-
+        client.process()
         return images_sent
