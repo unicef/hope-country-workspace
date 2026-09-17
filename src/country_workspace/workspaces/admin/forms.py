@@ -219,6 +219,7 @@ class PushThresholdForm(forms.Form):
             (PushThresholdType.PERCENT, "Percentage of RDP individuals"),
         ),
         initial=PushThresholdType.COUNT,
+        widget=forms.RadioSelect,
     )
     threshold_value = forms.DecimalField(
         min_value=0,
@@ -226,6 +227,10 @@ class PushThresholdForm(forms.Form):
         decimal_places=2,
         initial=0,
     )
+
+    def __init__(self, *args: Any, total_count: int, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.total_count = total_count
 
     def clean(self) -> dict[str, object]:
         """Validate the threshold according to its type."""
@@ -236,8 +241,11 @@ class PushThresholdForm(forms.Form):
         if not isinstance(value, Decimal):
             return cleaned
 
-        if threshold_type == PushThresholdType.COUNT and value != value.to_integral_value():
-            self.add_error("threshold_value", "The number of individuals must be a whole number.")
+        if threshold_type == PushThresholdType.COUNT:
+            if value != value.to_integral_value():
+                self.add_error("threshold_value", "The number of individuals must be a whole number.")
+            elif value > self.total_count:
+                self.add_error("threshold_value", f"Number cannot exceed {self.total_count}.")
         elif threshold_type == PushThresholdType.PERCENT and value > 100:
             self.add_error("threshold_value", "Percentage cannot exceed 100.")
 
