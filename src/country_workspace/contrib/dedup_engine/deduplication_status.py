@@ -1,8 +1,10 @@
 from enum import StrEnum
 from typing import Final, NamedTuple
+
 import sentry_sdk
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+
 from .factory import make_client
 
 
@@ -20,7 +22,12 @@ class DeduplicationSetState(StrEnum):
     REJECTED = "Rejected"
 
 
-PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.READY,)
+PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    DeduplicationSetState.READY,
+    DeduplicationSetState.ENCODED,
+    DeduplicationSetState.ENCODING_FAILED,
+    DeduplicationSetState.DEDUPLICATION_FAILED,
+)
 
 PUSHABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (DeduplicationSetState.DEDUPLICATED,)
 

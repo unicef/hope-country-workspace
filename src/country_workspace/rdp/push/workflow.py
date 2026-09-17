@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from decimal import Decimal
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -14,18 +15,20 @@ from country_workspace.models import AsyncJob, Rdp
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
-from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import (
     lock_rdp_for_update,
     qs_households,
     qs_individuals_by_pks,
     qs_individuals_for_push,
+    qs_individuals_for_rdp,
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
 from country_workspace.rdp.types import RdpWorkflowOutcome
 
+from .constants import PUSH_READY_CALLBACK_SALT
+from .policy import get_push_policy, threshold_exceeded
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
@@ -33,7 +36,7 @@ from .repository import (
     lock_rdp_push_attempt,
     rdp_for_push,
 )
-from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
+from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushThresholdType, PushWorkflowConfig
 
 
 def _build_push_ready_callback_url() -> str:
@@ -114,10 +117,25 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
     return None
 
 
+def check_push_threshold(
+    *,
+    rdp: Rdp,
+    threshold_type: PushThresholdType,
+    threshold_value: Decimal,
+) -> bool:
+    """Check whether marked RDP individuals exceed the selected threshold."""
+    return threshold_exceeded(
+        marked_count=rdp.duplicate_individuals.count(),
+        total_count=qs_individuals_for_rdp(rdp=rdp).count(),
+        threshold_type=threshold_type,
+        threshold_value=threshold_value,
+    )
+
+
 def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
     """Claim an RDP push by starting a new attempt."""
     rdp = rdp_for_push(pk=rdp_id)
-    check = get_rdp_policy(rdp).start_push_check()
+    check = get_push_policy(rdp).start_push_check()
     if not check.allowed:
         return check, None
 

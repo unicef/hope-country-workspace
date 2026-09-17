@@ -1,0 +1,67 @@
+{% extends "workspace/change_form.html" %}
+{% load i18n %}
+{% block page-title %}
+    &rsaquo; <a href="{{ change_url }}">RDP #{{ rdp.pk }}</a>
+    &rsaquo; {{ title }}
+{% endblock page-title %}
+{% block content %}
+    <div id="content">
+        <div id="content-main">
+            <div class="block px-5">
+                <h1 class="block text-2xl mb-5">
+                    {{ title }}
+                </h1>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-6 border-b pb-5">
+                        <p>
+                            <strong>{% translate "Marked individuals:" %}</strong>
+                            {{ marked_count }} {% translate "of" %} {{ total_count }}
+                            ({{ marked_percentage|floatformat:"-2" }}%)
+                        </p>
+                    </div>
+                    <div class="mb-6">
+                        {% if exceeded %}
+                            <p class="mb-4">
+                                {% translate "The selected threshold has been exceeded." %}
+                                {% translate "You can close this form or explicitly continue with all RDP beneficiaries." %}
+                            </p>
+                            <input type="hidden" name="threshold_type" value="{{ form.threshold_type.value }}" />
+                            <input type="hidden" name="threshold_value" value="{{ form.threshold_value.value }}" />
+                        {% else %}
+                            {{ form.non_field_errors }}
+                            <div class="form-row mb-8{% if form.threshold_type.errors %} errors{% endif %}">
+                                {{ form.threshold_type.errors }}
+                                <div class="mb-3">
+                                    {{ form.threshold_type.label_tag }}
+                                </div>
+                                {% for radio in form.threshold_type %}
+                                    <div class="mb-2">
+                                        {{ radio }}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-row mb-6{% if form.threshold_value.errors %} errors{% endif %}">
+                                {{ form.threshold_value.errors }}
+                                <div class="flex-container">
+                                    {{ form.threshold_value.label_tag }}
+                                    {{ form.threshold_value }}
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="submit-row">
+                        {% if exceeded %}
+                            <input type="hidden" name="decision" value="{{ decision_push }}" />
+                            <input type="submit" value="{% translate 'Push to HOPE' %}" class="default" />
+                        {% else %}
+                            <input type="hidden" name="decision" value="{{ decision_check }}" />
+                            <input type="submit" value="{% translate 'Continue' %}" class="default" />
+                        {% endif %}
+                        <a href="{{ change_url }}" class="closelink">{% translate "Close" %}</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

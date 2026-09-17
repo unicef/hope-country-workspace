@@ -1,5 +1,6 @@
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, cast
 
 from requests import Session
@@ -69,6 +70,17 @@ class Client:
         except RequestException as exc:
             raise self._err(operation, exc, getattr(exc, "response", None), error_cls=RemoteUnavailableError) from exc
 
+    def can_create_deduplication_set(self) -> bool:
+        def fetch() -> bool:
+            result = self.session.get(str(self.deduplication_set_group_endpoint.status), timeout=resource.TIMEOUT)
+            result.raise_for_status()
+            value = result.json()["can_create"]
+            if not isinstance(value, bool):
+                raise RemoteError("DedupEngine: status response has invalid can_create value")
+            return value
+
+        return self._request("can_create_deduplication_set", fetch)
+
     def create_deduplication_set(self, notification_url: str | None = None) -> response.CreatedDeduplicationSet:
         collection = resource.DeduplicationSetCollection(
             self.session,
@@ -88,17 +100,6 @@ class Client:
         created = cast("response.CreatedDeduplicationSet", result)
         self.deduplication_set_id = created.get("id") or self.deduplication_set_id
         return created
-
-    def can_create_deduplication_set(self) -> bool:
-        def fetch() -> bool:
-            result = self.session.get(str(self.deduplication_set_group_endpoint.status), timeout=resource.TIMEOUT)
-            result.raise_for_status()
-            value = result.json()["can_create"]
-            if not isinstance(value, bool):
-                raise RemoteError("DedupEngine: status response has invalid can_create value")
-            return value
-
-        return self._request("can_create_deduplication_set", fetch)
 
     def create_images(
         self,
@@ -126,6 +127,29 @@ class Client:
         params = {"encode_only": "true"} if encode_only else None
         self._request("process", lambda: action.call(params=params))
 
+    def retrieve_deduplication_set(self) -> response.DeduplicationSet:
+        item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
+        result = self._request("retrieve_deduplication_set", item.retrieve)
+        return cast("response.DeduplicationSet", result)
+
+    def retrieve_findings(self, *, excluded_status_codes: Collection[int] = ()) -> list[response.Finding]:
+        """Retrieve all findings except those with excluded status codes."""
+        collection = resource.FindingsCollection(self.session, self.deduplication_set_endpoint.findings)
+        findings: list[response.Finding] = []
+        page = 1
+
+        while True:
+            result = self._request(
+                "retrieve_findings",
+                partial(collection.list, params={"page": str(page)}),
+            )
+            findings.extend(
+                finding for finding in result["results"] if finding.get("status_code") not in excluded_status_codes
+            )
+            if result.get("next") is None:
+                return findings
+            page += 1
+
     def reject(self) -> None:
         action = resource.RejectDeduplicationSetAction(
             self.session,
@@ -139,11 +163,6 @@ class Client:
             self.deduplication_set_endpoint.approve,
         )
         self._request("approve", action.call)
-
-    def retrieve_deduplication_set(self) -> response.DeduplicationSet:
-        item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
-        result = self._request("retrieve_deduplication_set", item.retrieve)
-        return cast("response.DeduplicationSet", result)
 
     def get_deduplication_set_group_config(self) -> response.DeduplicationSetGroupConfig:
         item = resource.DeduplicationSetGroupConfigItem(

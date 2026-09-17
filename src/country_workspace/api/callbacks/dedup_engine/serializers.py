@@ -1,14 +1,14 @@
 from rest_framework import serializers
 
 
-class DeduplicationCallbackTokenSerializer(serializers.Serializer):
-    """Validate a signed DedupEngine callback payload."""
+class DedupEngineRdpCallbackPayloadSerializer(serializers.Serializer):
+    """Validate a signed DedupEngine RDP callback payload."""
 
     rdp_id = serializers.IntegerField(min_value=1)
-    job_id = serializers.IntegerField(min_value=1)
+    deduplication_set_id = serializers.UUIDField()
 
 
-class DeduplicationCallbackErrorSerializer(serializers.Serializer):
-    """Serialize a DedupEngine callback error response."""
+class DedupEngineRdpCallbackResponseSerializer(serializers.Serializer):
+    """Serialize a DedupEngine RDP callback response."""
 
-    detail = serializers.CharField()
+    synchronized = serializers.BooleanField()
