@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from decimal import Decimal
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -20,13 +21,14 @@ from country_workspace.rdp.repository import (
     qs_households,
     qs_individuals_by_pks,
     qs_individuals_for_push,
+    qs_individuals_for_rdp,
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
 from country_workspace.rdp.types import RdpWorkflowOutcome
 
 from .constants import PUSH_READY_CALLBACK_SALT
-from .policy import get_push_policy
+from .policy import get_push_policy, threshold_exceeded
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
@@ -34,7 +36,7 @@ from .repository import (
     lock_rdp_push_attempt,
     rdp_for_push,
 )
-from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
+from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushThresholdType, PushWorkflowConfig
 
 
 def _build_push_ready_callback_url() -> str:
@@ -113,6 +115,21 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
             return job
 
     return None
+
+
+def check_push_threshold(
+    *,
+    rdp: Rdp,
+    threshold_type: PushThresholdType,
+    threshold_value: Decimal,
+) -> bool:
+    """Check whether marked RDP individuals exceed the selected threshold."""
+    return threshold_exceeded(
+        marked_count=rdp.duplicate_individuals.count(),
+        total_count=qs_individuals_for_rdp(rdp=rdp).count(),
+        threshold_type=threshold_type,
+        threshold_value=threshold_value,
+    )
 
 
 def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:

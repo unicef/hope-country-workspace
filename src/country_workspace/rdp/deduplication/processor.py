@@ -12,7 +12,7 @@ from .constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
 
 
 class DedupProcessor(ProcessorBase):
-    """Dedup pipeline: create/upload/process or process an existing DE set."""
+    """Prepare DedupEngine sets, creating and uploading images when needed."""
 
     PREFIX = "Dedup"
 
@@ -21,7 +21,8 @@ class DedupProcessor(ProcessorBase):
         self.rdp = rdp
         self.group_reference_id = rdp.program.unicef_id
 
-    def run(self, notification_url: str | None = None) -> None:
+    def prepare(self, notification_url: str | None = None) -> None:
+        """Prepare a DedupEngine set for processing."""
         ds_id = self.rdp.deduplication_set_id
         self.total |= {
             "rdp_id": self.rdp.pk,
@@ -39,10 +40,9 @@ class DedupProcessor(ProcessorBase):
             if can_create is None:
                 return
             if can_create:
-                self.total["images_sent"] = self.deduplicate(client, ds_id, notification_url=notification_url)
-                return
-
-            client.process()
+                self.total["images_sent"] = self._create_and_upload_images(
+                    client, ds_id, notification_url=notification_url
+                )
 
     def _iter_images(self) -> Iterator[dict[str, str]]:
         """Yield DedupEngine images payload from RDP individuals."""
@@ -77,6 +77,7 @@ class DedupProcessor(ProcessorBase):
         return True
 
     def upload_images(self, client: Any) -> tuple[bool, int]:
+        """Upload images and return the number successfully submitted."""
         images_sent = 0
 
         for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE):
@@ -87,21 +88,16 @@ class DedupProcessor(ProcessorBase):
 
         if not images_sent:
             self.fail("create_images", "no images to deduplicate")
-            return False, images_sent
-
-        if not self.run_remote("ready", client.ready):
-            return False, images_sent
+            return False, 0
 
         return True, images_sent
 
-    def deduplicate(self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None) -> int:
-        """Create, upload, and process a DedupEngine set; return sent images count."""
+    def _create_and_upload_images(
+        self, client: Any, deduplication_set_id: UUID, notification_url: str | None = None
+    ) -> int:
+        """Create and populate a DedupEngine set."""
         if not self.create_deduplication_set(client, deduplication_set_id, notification_url=notification_url):
             return 0
 
         uploaded, images_sent = self.upload_images(client)
-        if not uploaded:
-            return images_sent
-
-        client.process()
-        return images_sent
+        return images_sent if uploaded else 0
