@@ -11,7 +11,7 @@ from django.contrib.admin import display, register
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -21,26 +21,30 @@ from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
 from country_workspace.rdp import (
     DedupEngineState,
+    PushThresholdType,
+    RdpActionPolicy,
+    get_deduplication_policy,
+    get_push_policy,
     cancel_existing_rdp_core,
+    check_push_threshold,
     claim_rdp_deduplication,
     claim_rdp_push,
     dedup_existing_rdp_core,
-    get_deduplication_policy,
-    get_push_policy,
     push_existing_rdp_core,
 )
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob
-from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
-from country_workspace.rdp.policy import RdpActionPolicy
+from country_workspace.rdp.exceptions import PushThresholdConfirmationError
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
+from .forms import PushThresholdForm
 from .hh_ind import SelectedProgramMixin
 
 
@@ -212,6 +216,98 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         return None if check.allowed else deny(check.reason or "Action is not allowed.")
 
+    def _render_push_threshold(
+        self,
+        request: HttpRequest,
+        obj: CountryRdp,
+        form: PushThresholdForm,
+        *,
+        exceeded: bool = False,
+    ) -> HttpResponse:
+        """Render the push threshold form or confirmation."""
+        title = _("Push threshold exceeded") if exceeded else _("Push to HOPE")
+        context = self.get_common_context(request, str(obj.pk), title=title)
+        context.update({"form": form, "change_url": self._change_url(obj), "exceeded": exceeded})
+        return render(request, "workspace/rdp/push_threshold.html", context)
+
+    def _push_with_threshold(self, request: HttpRequest, obj: CountryRdp) -> HttpResponse:
+        """Validate the threshold and handle the user's push decision."""
+        if response := self._deny_if_not_allowed(request, obj, get_push_policy, "start_push_check"):
+            return response
+
+        form = PushThresholdForm(request.POST if request.method == "POST" else None)
+        if request.method != "POST" or not form.is_valid():
+            return self._render_push_threshold(request, obj, form)
+
+        decision = request.POST.get("decision")
+        if decision not in {"check", "push"}:
+            messages.error(request, "Invalid push decision.")
+            return redirect(self._change_url(obj))
+
+        return self._schedule_push(request, obj, form=form, confirmed=decision == "push")
+
+    def _schedule_push(
+        self,
+        request: HttpRequest,
+        obj: CountryRdp,
+        *,
+        form: PushThresholdForm | None = None,
+        confirmed: bool = False,
+    ) -> HttpResponse:
+        """Check the threshold and schedule an allowed push."""
+        change_url = self._change_url(obj)
+
+        def require_confirmation(rdp: Rdp) -> None:
+            if (
+                form is not None
+                and not confirmed
+                and check_push_threshold(
+                    rdp=rdp,
+                    threshold_type=PushThresholdType(form.cleaned_data["threshold_type"]),
+                    threshold_value=form.cleaned_data["threshold_value"],
+                )
+            ):
+                raise PushThresholdConfirmationError
+
+        try:
+            with transaction.atomic():
+                check, locked = claim_rdp_push(rdp_id=obj.pk)
+                if not check.allowed or locked is None:
+                    messages.error(request, check.reason or "Action is not allowed.")
+                    return redirect(change_url)
+                require_confirmation(locked)
+                if locked.push_attempt_id is None:
+                    raise RuntimeError("RDP push attempt was not initialized.")
+
+                job = AsyncJob.objects.create(
+                    description="Prepare HOPE for RDP push",
+                    type=AsyncJob.JobType.TASK,
+                    owner=request.user,
+                    action=fqn(push_existing_rdp_core),
+                    program=locked.program,
+                    rdp=locked,
+                    config={
+                        "rdp_id": locked.pk,
+                        "push_attempt_id": str(locked.push_attempt_id),
+                        "rdi_id_to_reset": None if locked.hope_rdi_id == "N/A" else locked.hope_rdi_id,
+                    },
+                )
+                transaction.on_commit(job.queue)
+        except PushThresholdConfirmationError:
+            if form is None:
+                raise
+            return self._render_push_threshold(request, obj, form, exceeded=True)
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            messages.error(request, str(exc))
+            return redirect(change_url)
+        except RemoteError as exc:
+            messages.error(request, str(exc))
+            return redirect(change_url)
+
+        messages.success(request, "Push to HOPE task scheduled")
+        return redirect(change_url)
+
     @button(
         label="Deduplicate",
         change_form=True,
@@ -324,38 +420,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        try:
-            with transaction.atomic():
-                check, locked = claim_rdp_push(rdp_id=obj.pk)
-                if not check.allowed or locked is None:
-                    messages.error(request, check.reason or "Action is not allowed.")
-                    return redirect(self._change_url(obj))
-                if locked.push_attempt_id is None:
-                    raise RuntimeError("RDP push attempt was not initialized.")
-                job = AsyncJob.objects.create(
-                    description="Prepare HOPE for RDP push",
-                    type=AsyncJob.JobType.TASK,
-                    owner=request.user,
-                    action=fqn(push_existing_rdp_core),
-                    program=locked.program,
-                    rdp=locked,
-                    config={
-                        "rdp_id": locked.pk,
-                        "push_attempt_id": str(locked.push_attempt_id),
-                        "rdi_id_to_reset": None if locked.hope_rdi_id == "N/A" else locked.hope_rdi_id,
-                    },
-                )
-                transaction.on_commit(job.queue)
-        except RemoteUnavailableError as exc:
-            sentry_sdk.capture_exception(exc)
-            messages.error(request, str(exc))
-            return redirect(self._change_url(obj))
-        except RemoteError as exc:
-            messages.error(request, str(exc))
-            return redirect(self._change_url(obj))
+        if obj.program.biometric_deduplication_enabled:
+            return self._push_with_threshold(request, obj)
 
-        messages.success(request, "Push to HOPE task scheduled")
-        return redirect(self._change_url(obj))
+        return self._schedule_push(request, obj)
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:

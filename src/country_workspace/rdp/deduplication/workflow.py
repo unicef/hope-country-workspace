@@ -6,7 +6,7 @@ from django.core import signing
 from django.db import transaction
 from django.urls import reverse
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState, make_dedup_client
+from country_workspace.contrib.dedup_engine import DeduplicationSetState, FindingStatusCode, make_dedup_client
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpOperationAction
@@ -41,6 +41,31 @@ def _build_dedup_callback_url(*, rdp_id: int, deduplication_set_id: UUID) -> str
 
 def _is_current_deduplication(rdp: Rdp, deduplication_set_id: UUID) -> bool:
     return rdp.status == Rdp.PushStatus.DEDUP_PENDING and rdp.deduplication_set_id == deduplication_set_id
+
+
+def _require_active_deduplication(rdp: Rdp, deduplication_set_id: UUID) -> None:
+    """Require the current deduplication to remain active and locked."""
+    if _is_current_deduplication(rdp, deduplication_set_id) and rdp.is_dedup_settings_locked:
+        return
+    raise RdpWorkflowError(
+        {
+            "errors": ["RDP: this deduplication job is no longer current."],
+            "rdp_id": rdp.pk,
+        }
+    )
+
+
+def _require_deduplication_input_count(rdp: Rdp, deduplication_set_id: UUID, images_sent: int) -> int:
+    """Resolve the uploaded or recorded deduplication input size."""
+    count = images_sent or get_deduplication_input_count(rdp, deduplication_set_id)
+    if count is None or count <= 0:
+        raise RdpWorkflowError(
+            {
+                "errors": ["RDP: deduplication input count is not available."],
+                "rdp_id": rdp.pk,
+            }
+        )
+    return count
 
 
 def _fail_current_deduplication(*, rdp_id: int, deduplication_set_id: UUID) -> bool:
@@ -81,18 +106,34 @@ def claim_rdp_deduplication(
     return ActionCheck(True), locked
 
 
+def get_deduplication_input_count(rdp: Rdp, deduplication_set_id: UUID) -> int | None:
+    """Return the recorded input size for a DedupEngine set."""
+    for entry in reversed(rdp.operation_log or []):
+        if entry.get("action") != RdpOperationAction.START_DEDUPLICATION:
+            continue
+
+        result = entry.get("result") or {}
+        if result.get("deduplication_set_id") != str(deduplication_set_id):
+            continue
+
+        count = result.get("dedup_input_count")
+        if type(count) is int and count > 0:
+            return count
+
+    return None
+
+
+def _raise_if_processor_errors(processor: DedupProcessor) -> None:
+    """Raise collected deduplication errors."""
+    if processor.has_errors:
+        raise RdpWorkflowError(processor.total)
+
+
 def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     rdp_id = job.config["rdp_id"]
     deduplication_set_id = UUID(job.config["deduplication_set_id"])
     rdp = rdp_for_dedup(pk=rdp_id)
-
-    if not _is_current_deduplication(rdp, deduplication_set_id) or not rdp.is_dedup_settings_locked:
-        raise RdpWorkflowError(
-            {
-                "errors": ["RDP: this deduplication job is no longer current."],
-                "rdp_id": rdp_id,
-            }
-        )
+    _require_active_deduplication(rdp, deduplication_set_id)
 
     try:
         with make_dedup_client(rdp.program.unicef_id) as client:
@@ -104,32 +145,44 @@ def dedup_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
     processor = DedupProcessor(rdp)
 
     try:
-        processor.run(
+        processor.prepare(
             notification_url=_build_dedup_callback_url(
                 rdp_id=rdp_id,
                 deduplication_set_id=deduplication_set_id,
             )
         )
+        _raise_if_processor_errors(processor)
+        input_count = _require_deduplication_input_count(rdp, deduplication_set_id, processor.total["images_sent"])
+        result: OperationLogResult = {
+            "images_sent": processor.total["images_sent"],
+            "dedup_input_count": input_count,
+            "dedup_settings": dedup_settings,
+            "deduplication_set_id": str(deduplication_set_id),
+        }
+
+        with transaction.atomic():
+            locked = lock_rdp_for_update(pk=rdp_id)
+            _require_active_deduplication(locked, deduplication_set_id)
+            append_rdp_operation_log(
+                rdp=locked,
+                action=RdpOperationAction.START_DEDUPLICATION,
+                result=result,
+            )
+
+        with make_dedup_client(
+            rdp.program.unicef_id,
+            deduplication_set_id=str(deduplication_set_id),
+        ) as client:
+            if processor.total["images_sent"]:
+                processor.run_remote("ready", client.ready)
+                _raise_if_processor_errors(processor)
+            client.process()
+
     except RemoteUnavailableError:
-        # The remote outcome is unknown and must be reconciled.
         raise
     except Exception:
         _fail_current_deduplication(rdp_id=rdp_id, deduplication_set_id=deduplication_set_id)
         raise
-
-    result: OperationLogResult = {
-        "images_sent": processor.total["images_sent"],
-        "dedup_settings": dedup_settings,
-        "deduplication_set_id": str(deduplication_set_id),
-    }
-
-    with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp_id)
-        append_rdp_operation_log(rdp=locked, action=RdpOperationAction.START_DEDUPLICATION, result=result)
-
-    if processor.has_errors:
-        _fail_current_deduplication(rdp_id=rdp_id, deduplication_set_id=deduplication_set_id)
-        raise RdpWorkflowError(processor.total)
 
     return {
         "rdp_id": rdp_id,
@@ -172,20 +225,26 @@ def sync_deduplication_result(*, rdp_id: int, deduplication_set_id: UUID) -> boo
         if type(findings_count) is not int or findings_count < 0:
             raise RemoteError(f"DedupEngine: invalid findings_count={findings_count!r}")
 
-        findings = client.retrieve_duplicate_findings()
+        findings = client.retrieve_findings(
+            excluded_status_codes={
+                FindingStatusCode.FILE_NOT_FOUND,
+                FindingStatusCode.GENERIC_ERROR,
+            }
+        )
 
-    duplicate_pks = {entry["reference_pk"] for finding in findings for entry in (finding["first"], finding["second"])}
-
-    local_duplicate_pks = list(
-        qs_individuals_for_rdp(rdp=rdp).filter(pk__in=duplicate_pks).values_list("pk", flat=True)
-    )
+    marked_pks = {
+        entry["reference_pk"]
+        for finding in findings
+        for entry in (finding["first"], finding["second"])
+        if entry["reference_pk"]
+    }
+    local_marked_pks = list(qs_individuals_for_rdp(rdp=rdp).filter(pk__in=marked_pks).values_list("pk", flat=True))
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
         if not _is_current_deduplication(locked, deduplication_set_id):
             return False
-
-        locked.duplicate_individuals.set(local_duplicate_pks)
+        locked.duplicate_individuals.set(local_marked_pks)
         locked.finish_deduplication(findings_count=findings_count)
 
     return True

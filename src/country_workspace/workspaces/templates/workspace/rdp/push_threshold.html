@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+    {% if exceeded %}
+        <p>
+            The selected threshold has been exceeded.
+            You can cancel this push or explicitly continue with all RDP beneficiaries.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="threshold_type" value="{{ form.threshold_type.value }}" />
+            <input type="hidden" name="threshold_value" value="{{ form.threshold_value.value }}" />
+            <button type="submit" name="decision" value="push">
+                Push
+            </button>
+            <a href="{{ change_url }}">Close</a>
+        </form>
+    {% else %}
+        <p>
+            Select the maximum acceptable number or percentage of marked individuals.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" name="decision" value="check">
+                Continue
+            </button>
+            <a href="{{ change_url }}">Close</a>
+        </form>
+    {% endif %}
+{% endblock %}
