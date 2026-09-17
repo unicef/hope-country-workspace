@@ -1,7 +1,9 @@
 import json
 from collections.abc import Callable
 from contextlib import suppress
-from typing import Any
+from decimal import Decimal
+from enum import StrEnum, auto
+from typing import Any, TYPE_CHECKING
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
@@ -28,6 +30,9 @@ from country_workspace.rdp import (
     DedupEngineState,
     PushThresholdType,
     RdpActionPolicy,
+    PushThresholdConfirmationError,
+    append_rdp_operation_log,
+    get_dedup_callback_base_url,
     get_deduplication_policy,
     get_push_policy,
     cancel_existing_rdp_core,
@@ -36,19 +41,29 @@ from country_workspace.rdp import (
     claim_rdp_push,
     dedup_existing_rdp_core,
     push_existing_rdp_core,
+    qs_individuals_for_rdp,
+    sync_deduplication_result,
 )
-from country_workspace.rdp.exceptions import PushThresholdConfirmationError
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
+
 from .filters import ChoiceFilter
 from .forms import PushThresholdForm
 from .hh_ind import SelectedProgramMixin
 
+if TYPE_CHECKING:
+    from country_workspace.rdp.types import OperationLogResult
+
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
+
+
+class PushDecision(StrEnum):
+    CHECK = auto()
+    PUSH = auto()
 
 
 def _is_visible(btn: StandardButton, policy_getter: PolicyGetter, action: str) -> bool:
@@ -226,8 +241,23 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     ) -> HttpResponse:
         """Render the push threshold form or confirmation."""
         title = _("Push threshold exceeded") if exceeded else _("Push to HOPE")
+        marked_count = obj.duplicate_individuals.count()
+        total_count = qs_individuals_for_rdp(rdp=obj).count()
+        marked_percentage = Decimal(marked_count) * 100 / total_count if total_count else Decimal(0)
         context = self.get_common_context(request, str(obj.pk), title=title)
-        context.update({"form": form, "change_url": self._change_url(obj), "exceeded": exceeded})
+        context.update(
+            {
+                "form": form,
+                "rdp": obj,
+                "change_url": self._change_url(obj),
+                "exceeded": exceeded,
+                "marked_count": marked_count,
+                "total_count": total_count,
+                "marked_percentage": marked_percentage,
+                "decision_check": PushDecision.CHECK.value,
+                "decision_push": PushDecision.PUSH.value,
+            }
+        )
         return render(request, "workspace/rdp/push_threshold.html", context)
 
     def _push_with_threshold(self, request: HttpRequest, obj: CountryRdp) -> HttpResponse:
@@ -235,16 +265,20 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if response := self._deny_if_not_allowed(request, obj, get_push_policy, "start_push_check"):
             return response
 
-        form = PushThresholdForm(request.POST if request.method == "POST" else None)
+        form = PushThresholdForm(
+            request.POST if request.method == "POST" else None,
+            total_count=qs_individuals_for_rdp(rdp=obj).count(),
+        )
+
         if request.method != "POST" or not form.is_valid():
             return self._render_push_threshold(request, obj, form)
 
         decision = request.POST.get("decision")
-        if decision not in {"check", "push"}:
+        if decision not in {PushDecision.CHECK, PushDecision.PUSH}:
             messages.error(request, "Invalid push decision.")
             return redirect(self._change_url(obj))
 
-        return self._schedule_push(request, obj, form=form, confirmed=decision == "push")
+        return self._schedule_push(request, obj, form=form, confirmed=decision == PushDecision.PUSH)
 
     def _schedule_push(
         self,
@@ -292,6 +326,17 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         "rdi_id_to_reset": None if locked.hope_rdi_id == "N/A" else locked.hope_rdi_id,
                     },
                 )
+                result: OperationLogResult = {
+                    "push_attempt_id": str(locked.push_attempt_id),
+                    "user_id": str(request.user.pk),
+                }
+                if form is not None:
+                    result.update(
+                        threshold_type=PushThresholdType(form.cleaned_data["threshold_type"]).value,
+                        threshold_value=str(form.cleaned_data["threshold_value"]),
+                        confirmed=confirmed,
+                    )
+                append_rdp_operation_log(rdp=locked, action=RdpOperationAction.PUSH_TO_HOPE, result=result)
                 transaction.on_commit(job.queue)
         except PushThresholdConfirmationError:
             if form is None:
@@ -321,6 +366,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
+
+        try:
+            get_dedup_callback_base_url()
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect(self._change_url(obj))
 
         try:
             policy = get_deduplication_policy(obj)
@@ -356,12 +407,53 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             messages.error(request, str(exc))
-            return redirect(self._change_url(obj))
         except RemoteError as exc:
             messages.error(request, str(exc))
+        else:
+            messages.success(request, "Dedup task scheduled")
+
+        return redirect(self._change_url(obj))
+
+    @button(
+        label="Sync deduplication result",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.deduplicate_rdp",
+        visible=lambda btn: bool(
+            (obj := btn.original) and obj.status == Rdp.PushStatus.DEDUP_PENDING and obj.deduplication_set_id
+        ),
+        html_attrs={"title": "Fetch the current deduplication result from DedupEngine."},
+    )
+    def sync_deduplication(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Synchronize this RDP with its DedupEngine set."""
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        if obj.status != Rdp.PushStatus.DEDUP_PENDING or (deduplication_set_id := obj.deduplication_set_id) is None:
+            messages.warning(request, "RDP is not awaiting deduplication.")
             return redirect(self._change_url(obj))
 
-        messages.success(request, "Dedup task scheduled")
+        try:
+            synchronized = sync_deduplication_result(rdp_id=obj.pk, deduplication_set_id=deduplication_set_id)
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            messages.error(request, str(exc))
+        except RemoteError as exc:
+            messages.error(request, str(exc))
+        else:
+            obj.refresh_from_db(fields=["status", "deduplication_set_id"])
+
+            if synchronized:
+                if obj.status == Rdp.PushStatus.FAILURE:
+                    messages.error(request, "Deduplication failed in DedupEngine. RDP marked as failed.")
+                else:
+                    messages.success(request, "Deduplication result synchronized.")
+            elif obj.status != Rdp.PushStatus.DEDUP_PENDING or obj.deduplication_set_id != deduplication_set_id:
+                messages.info(request, "RDP deduplication state has already changed.")
+            else:
+                messages.info(request, "Deduplication is still in progress.")
+
         return redirect(self._change_url(obj))
 
     @button(

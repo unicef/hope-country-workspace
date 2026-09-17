@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any
+from contextlib import suppress
 from uuid import UUID, uuid4
+from urllib.parse import urlsplit
 
 from constance import config
 from django.core import signing
@@ -36,7 +38,7 @@ def _build_dedup_callback_url(*, rdp_id: int, deduplication_set_id: UUID) -> str
         salt=DEDUP_CALLBACK_SALT,
     )
     path = reverse("api:callbacks:dedup-engine-rdp-state-changed", kwargs={"signed_token": token})
-    return f"{config.APP_BASE_URL.rstrip('/')}{path}"
+    return f"{get_dedup_callback_base_url()}{path}"
 
 
 def _is_current_deduplication(rdp: Rdp, deduplication_set_id: UUID) -> bool:
@@ -121,6 +123,19 @@ def get_deduplication_input_count(rdp: Rdp, deduplication_set_id: UUID) -> int |
             return count
 
     return None
+
+
+def get_dedup_callback_base_url() -> str:
+    """Return a validated base URL for DedupEngine callbacks."""
+    base_url = config.APP_BASE_URL.strip().rstrip("/")
+
+    with suppress(ValueError):
+        url = urlsplit(base_url)
+        if url.scheme in {"http", "https"} and url.hostname and not (url.query or url.fragment):
+            _ = url.port
+            return base_url
+
+    raise ValueError("APP_BASE_URL must be a valid absolute HTTP(S) URL.")
 
 
 def _raise_if_processor_errors(processor: DedupProcessor) -> None:
