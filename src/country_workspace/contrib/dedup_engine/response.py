@@ -27,7 +27,7 @@ class CreatedEncoding(TypedDict):
 
 
 class FindingEntry(TypedDict):
-    reference_pk: int
+    reference_pk: str
 
 
 class Finding(TypedDict):

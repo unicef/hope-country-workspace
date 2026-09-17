@@ -1,11 +1,14 @@
 from typing import TYPE_CHECKING, Any
+from decimal import Decimal
 
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import BeneficiaryGroup, Program
+from country_workspace.rdp.push.types import PushThresholdType
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
+
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -207,3 +210,35 @@ class CreateRDPForm(BaseActionForm):
     batch_name = forms.CharField(
         required=False, help_text="Label for this RDP creation. Defaults is the current date and time."
     )
+
+
+class PushThresholdForm(forms.Form):
+    threshold_type = forms.ChoiceField(
+        choices=(
+            (PushThresholdType.COUNT, "Number of marked individuals"),
+            (PushThresholdType.PERCENT, "Percentage of RDP individuals"),
+        ),
+        initial=PushThresholdType.COUNT,
+    )
+    threshold_value = forms.DecimalField(
+        min_value=0,
+        max_digits=12,
+        decimal_places=2,
+        initial=0,
+    )
+
+    def clean(self) -> dict[str, object]:
+        """Validate the threshold according to its type."""
+        cleaned = super().clean()
+        threshold_type = cleaned.get("threshold_type")
+        value = cleaned.get("threshold_value")
+
+        if not isinstance(value, Decimal):
+            return cleaned
+
+        if threshold_type == PushThresholdType.COUNT and value != value.to_integral_value():
+            self.add_error("threshold_value", "The number of individuals must be a whole number.")
+        elif threshold_type == PushThresholdType.PERCENT and value > 100:
+            self.add_error("threshold_value", "Percentage cannot exceed 100.")
+
+        return cleaned

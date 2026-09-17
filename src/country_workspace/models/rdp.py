@@ -34,8 +34,9 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
 
 
 class RdpOperationAction(models.TextChoices):
-    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
     APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+    PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
+    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
 
 
 class Rdp(BaseModel):

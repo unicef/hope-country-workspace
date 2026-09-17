@@ -9,6 +9,7 @@ from .deduplication_status import (
     get_deduplication_status,
 )
 from .factory import make_client as make_dedup_client
+from .schemas import FindingStatusCode
 
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "DedupClientStatus",
     "DedupResponseStatus",
     "DeduplicationSetState",
+    "FindingStatusCode",
     "get_deduplication_status",
     "make_dedup_client",
 ]
