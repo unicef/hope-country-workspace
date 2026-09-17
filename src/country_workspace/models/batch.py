@@ -17,6 +17,7 @@ class Batch(BaseModel):
         RDI = "RDI", "Rdi file"
         AURORA = "AURORA", "Aurora"
         KOBO = "KOBO", "Kobo"
+        ONA = "ONA", "ONA / INFORM"
 
     country_office = models.ForeignKey("Office", on_delete=models.CASCADE, related_name="%(class)ss")
     program = models.ForeignKey("Program", on_delete=models.CASCADE, related_name="%(class)ss")
