@@ -7,17 +7,6 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
-[manifest]
-constraints = [
-    { name = "jupyterlab", specifier = ">=4.5.10" },
-    { name = "mistune", specifier = ">=3.3.0" },
-    { name = "pip", specifier = ">=26.2.0" },
-    { name = "pymdown-extensions", specifier = ">=11.0.1" },
-    { name = "sqlparse", specifier = ">=0.6.0" },
-    { name = "tornado", specifier = ">=6.5.8" },
-    { name = "webob", specifier = ">=1.8.11" },
-]
-
 [[package]]
 name = "amqp"
 version = "5.3.1"
@@ -1730,7 +1719,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "phonenumbers", specifier = ">=9.0.8" },
-    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "pillow", specifier = ">=12.3" },
     { name = "pre-commit", specifier = ">=4.2" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "python-redis-lock", extras = ["django"], specifier = ">=4" },
