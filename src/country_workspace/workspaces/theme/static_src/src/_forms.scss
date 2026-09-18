@@ -1,4 +1,5 @@
 form {
+
   input[type="text"],
   input[type="number"],
   input[type="password"],
@@ -104,6 +105,14 @@ fieldset.module {
   min-width: 0;
   padding: 0;
 
+  >h2 {
+    @apply font-semibold;
+  }
+
+  .readonly {
+    @apply font-medium;
+  }
+
   .fieldBox {
     margin-right: 20px;
   }
@@ -145,9 +154,24 @@ fieldset.module {
       font-weight: 500;
     }
   }
+
+  &.content-only>.form-row>div>.flex-container {
+    display: block;
+
+    >label {
+      display: none;
+    }
+
+    >.readonly {
+      @apply font-normal;
+      margin: 0;
+    }
+  }
+
 }
 
 .beneficiary-form {
+
   input[type="text"],
   select {
     @apply min-w-full;

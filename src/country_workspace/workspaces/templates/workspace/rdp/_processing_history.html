@@ -1,0 +1,35 @@
+{% load i18n %}
+<div class="overflow-x-auto">
+    <table class="text-left">
+        <thead>
+            <tr>
+                <th scope="col" class="pb-2 pr-6">
+                    {% translate "Step" %}
+                </th>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Scheduled at" %}
+                </th>
+                <th scope="col" class="pb-2 whitespace-nowrap">
+                    {% translate "Status" %}
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td class="py-2 pr-6">
+                        <a href="{{ row.url }}" class="text-[var(--link-fg)] hover:underline">
+                            {{ row.step }}
+                        </a>
+                    </td>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.scheduled_at }}
+                    </td>
+                    <td class="py-2 whitespace-nowrap">
+                        {{ row.status }}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

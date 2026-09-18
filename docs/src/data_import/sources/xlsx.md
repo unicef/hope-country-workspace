@@ -20,6 +20,8 @@ Column names, value types, required fields, and validation rules depend on the c
 
 Row 1 must contain the column names. Beneficiary data normally starts on row 2.
 
+Fully empty rows are ignored during import, including rows that have no values but still contain cell formatting or styles.
+
 Set **First line** to the actual first data row when the workbook contains empty, explanatory, or other non-data rows after the header. For example, if rows 2-4 are empty and the first beneficiary record is on row 5, set **First line** to `5`.
 
 ### Record identifiers and Household membership

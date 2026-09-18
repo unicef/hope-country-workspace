@@ -53,7 +53,7 @@ def test_deduplicate_schedules_job(
 
     claim.assert_called_once_with(rdp_id=rdp.pk)
     create.assert_called_once_with(
-        description="Run Deduplication process on DedupEngine",
+        description="Queue RDP for deduplication in DedupEngine",
         type=rdp_admin_mod.AsyncJob.JobType.TASK,
         owner=mock_request.user,
         action=rdp_admin_mod.fqn(rdp_admin_mod.dedup_existing_rdp_core),
@@ -90,7 +90,7 @@ def test_push_schedules_preparation_job(
 
     claim.assert_called_once_with(rdp_id=rdp.pk)
     create.assert_called_once_with(
-        description="Prepare RDP for HOPE push",
+        description="Prepare HOPE for RDP push",
         type=rdp_admin_mod.AsyncJob.JobType.TASK,
         owner=mock_request.user,
         action=rdp_admin_mod.fqn(rdp_admin_mod.push_existing_rdp_core),
