@@ -5,13 +5,14 @@ from django.db.models import Q
 
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
+    REJECTABLE_DEDUPLICATION_SET_STATES,
     RUNNING_DEDUPLICATION_SET_STATES,
     DedupClientStatus,
     DedupResponseStatus,
     get_deduplication_status,
     make_dedup_client,
 )
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Program, Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 from country_workspace.rdp.policy import ActionCheck, RdpActionPolicy
@@ -59,13 +60,33 @@ class ProgramDedupSettingsPolicy:
     def update_dedup_settings_check(self) -> ActionCheck:
         if not self.program.biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
-        if self._has_blocking_rdp() or self._has_running_deduplication_set():
-            return ActionCheck(
-                False,
-                "Deduplication settings cannot be updated after a successful RDP "
-                "or while deduplication or push to HOPE is queued or running.",
-            )
+
+        try:
+            if (
+                self._has_blocking_rdp()
+                or self._has_running_deduplication_set()
+                or self._has_cancelled_set_awaiting_rejection()
+            ):
+                return ActionCheck(
+                    False,
+                    "Deduplication settings cannot be updated after a successful RDP "
+                    "or while deduplication, review, push to HOPE, or DedupEngine rejection is pending or running.",
+                )
+        except (RemoteError, RemoteUnavailableError):
+            return ActionCheck(False, "DedupEngine: could not verify the current state. Please try again later.")
+
         return ActionCheck(True)
+
+    def _has_cancelled_set_awaiting_rejection(self) -> bool:
+        """Check whether a cancelled RDP still has a rejectable DedupEngine set."""
+        rdps = Rdp.objects.filter(
+            program=self.program,
+            status=Rdp.PushStatus.CANCELLED,
+            deduplication_set_id__isnull=False,
+        ).select_related("program")
+        return any(
+            get_deduplication_policy(rdp).deduplication_set_state in REJECTABLE_DEDUPLICATION_SET_STATES for rdp in rdps
+        )
 
     def _has_blocking_rdp(self) -> bool:
         return (
@@ -73,7 +94,7 @@ class ProgramDedupSettingsPolicy:
             .filter(
                 Q(status=Rdp.PushStatus.SUCCESS)
                 | Q(status__in=NON_TERMINAL_RDP_STATUSES, is_dedup_settings_locked=True)
-                | Q(status=Rdp.PushStatus.PUSH_PENDING)
+                | Q(status__in=(Rdp.PushStatus.REVIEW_PENDING, Rdp.PushStatus.PUSH_PENDING))
             )
             .exists()
         )
