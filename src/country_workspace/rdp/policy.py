@@ -28,10 +28,10 @@ class RdpActionPolicy:
         return self.rdp.status in {self.rdp.PushStatus.PENDING, self.rdp.PushStatus.FAILURE}
 
     def is_cancel_visible(self) -> bool:
-        return self.is_open
+        return self.is_open or self.rdp.status == Rdp.PushStatus.REVIEW_PENDING
 
     def cancel_check(self) -> ActionCheck:
-        if not self.is_open:
+        if not self.is_cancel_visible():
             return ActionCheck(False, f"RDP: can not cancel in status={self.rdp.status}")
         return ActionCheck(True)
 

@@ -27,6 +27,16 @@ class PushPolicy(RdpActionPolicy):
     def push_check(self) -> ActionCheck:
         if not self.is_open:
             return ActionCheck(False, f"RDP: can not push in status={self.rdp.status}")
+        return self._deduplication_push_check()
+
+    def review_push_check(self) -> ActionCheck:
+        if self.rdp.status != Rdp.PushStatus.REVIEW_PENDING:
+            return ActionCheck(False, f"RDP: can not push from review in status={self.rdp.status}")
+        if self.rdp.is_dedup_settings_locked:
+            return ActionCheck(False, "RDP: can not push while deduplication is queued or running.")
+        return self._deduplication_push_check()
+
+    def _deduplication_push_check(self) -> ActionCheck:
         if not self.deduplication_policy.is_biometric_deduplication_enabled:
             return ActionCheck(True)
         if not self.deduplication_policy.has_deduplication_set_id:
