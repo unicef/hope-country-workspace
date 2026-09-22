@@ -5,8 +5,8 @@ from .deduplication.workflow import (
     get_dedup_callback_base_url,
     sync_deduplication_result,
 )
-from .exceptions import PushThresholdConfirmationError
-from .lifecycle import cancel_existing_rdp_core, claim_rdp_cancel, create_rdp_core, reset_rdp
+from .exceptions import PushThresholdConfirmationError, RdpWorkflowError
+from .lifecycle import cancel_existing_rdp_core, claim_rdp_cancel, claim_rdp_push_clean, create_rdp_core, reset_rdp
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
@@ -30,12 +30,14 @@ __all__ = [
     "PushThresholdConfirmationError",
     "PushThresholdType",
     "RdpActionPolicy",
+    "RdpWorkflowError",
     "append_rdp_operation_log",
     "cancel_existing_rdp_core",
     "check_push_threshold",
     "claim_rdp_cancel",
     "claim_rdp_deduplication",
     "claim_rdp_push",
+    "claim_rdp_push_clean",
     "claim_review_rdp_push",
     "create_rdp_core",
     "dedup_existing_rdp_core",

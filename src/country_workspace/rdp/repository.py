@@ -24,6 +24,16 @@ def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     return master_detail, list(beneficiaries.order_by("pk").values_list("pk", flat=True))
 
 
+def clean_rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
+    """Return selected beneficiary IDs excluding duplicates or affected households."""
+    master_detail, pks = rdp_selection(rdp=rdp)
+    if master_detail:
+        excluded = set(rdp.duplicate_individuals.filter(household_id__in=pks).values_list("household_id", flat=True))
+    else:
+        excluded = set(rdp.duplicate_individuals.filter(pk__in=pks).values_list("pk", flat=True))
+    return master_detail, [pk for pk in pks if pk not in excluded]
+
+
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
     """Return Households by ids, ordered by primary key, with prefetched members."""
     return (
