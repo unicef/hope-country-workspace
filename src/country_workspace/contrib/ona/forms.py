@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from constance import config as constance_config
@@ -6,6 +7,8 @@ from django import forms
 
 from country_workspace.models import Program
 from country_workspace.workspaces.admin.forms import BaseImportForm
+
+logger = logging.getLogger(__name__)
 
 
 def _as_list(value: Any) -> list[str]:
@@ -64,11 +67,13 @@ def get_approved_ona_forms() -> dict[str, dict[str, Any]]:
 
     try:
         parsed_config = json.loads(raw_config)
-    except json.JSONDecodeError as exc:
-        raise forms.ValidationError("ONA_APPROVED_FORMS must be valid JSON.") from exc
+    except json.JSONDecodeError:
+        logger.exception("ONA_APPROVED_FORMS must be valid JSON.")
+        return {}
 
     if not isinstance(parsed_config, dict):
-        raise forms.ValidationError("ONA_APPROVED_FORMS must be a JSON object.")
+        logger.error("ONA_APPROVED_FORMS must be a JSON object.")
+        return {}
 
     return {str(form_id): config for form_id, config in parsed_config.items() if isinstance(config, dict)}
 
