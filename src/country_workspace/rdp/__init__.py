@@ -1,3 +1,4 @@
+from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.policy import DedupEngineState, get_deduplication_policy, get_program_dedup_settings_policy
 from .deduplication.workflow import (
     claim_rdp_deduplication,
@@ -23,6 +24,8 @@ from .repository import append_rdp_operation_log, lock_rdp_for_update, qs_indivi
 from .types import CreateRdpConfig
 
 __all__ = [
+    "DEDUP_CALLBACK_MAX_AGE",
+    "DEDUP_CALLBACK_SALT",
     "PUSH_READY_CALLBACK_MAX_AGE",
     "PUSH_READY_CALLBACK_SALT",
     "CreateRdpConfig",
