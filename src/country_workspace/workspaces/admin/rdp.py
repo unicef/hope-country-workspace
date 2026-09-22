@@ -85,6 +85,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "hope_rdi_id",
         "dedup_engine_state",
         "deduplication_set_id",
+        "deduplication_findings_count",
+        "marked_individuals_count",
         "processing_history",
         "operation_log_display",
     )
@@ -98,8 +100,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
 
-        if obj and obj.program.biometric_deduplication_enabled:
-            fields = ["deduplication_set_id"]
+        if obj and (obj.program.biometric_deduplication_enabled or obj.deduplication_set_id is not None):
+            fields = ["deduplication_set_id", "deduplication_findings_count", "marked_individuals_count"]
             if obj.status in NON_TERMINAL_RDP_STATUSES:
                 fields.insert(0, "dedup_engine_state")
             fieldsets.append((_("Deduplication"), {"fields": fields}))
@@ -139,20 +141,25 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         }
         return super().change_view(request, object_id, form_url, extra_context)
 
+    @display(description=_("Marked individuals"))
+    def marked_individuals_count(self, obj: CountryRdp) -> int | str:
+        """Return the number of locally marked individuals for this RDP."""
+        return obj.duplicate_individuals.count() if obj.deduplication_findings_count is not None else "-"
+
     @display(description="")
     def processing_history(self, obj: CountryRdp) -> str:
         jobs = list(obj.jobs.order_by("datetime_created"))
         if not jobs:
-            return "—"
+            return "-"
 
         rows = [
             {
                 "url": reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
                 "step": job.description or _("Background job"),
                 "scheduled_at": (
-                    date_format(timezone.localtime(job.datetime_queued), "Y-m-d H:i:s") if job.datetime_queued else "—"
+                    date_format(timezone.localtime(job.datetime_queued), "Y-m-d H:i:s") if job.datetime_queued else "-"
                 ),
-                "status": job.task_status or "—",
+                "status": job.task_status or "-",
             }
             for job in jobs
         ]
@@ -163,15 +170,15 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def operation_log_display(self, obj: CountryRdp) -> str:
         """Return formatted RDP operation log."""
         if not obj.operation_log:
-            return "—"
+            return "-"
 
         rows = []
         for entry in obj.operation_log:
-            action = entry.get("action", "—")
+            action = entry.get("action", "-")
             with suppress(TypeError, ValueError):
                 action = RdpOperationAction(action).label
 
-            timestamp = entry.get("timestamp", "—")
+            timestamp = entry.get("timestamp", "-")
             if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
                 timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
 
@@ -445,6 +452,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     f"This RDP is linked to HOPE RDI {obj.hope_rdi_id}. "
                     "Confirm that it has been deleted manually in HOPE before continuing."
                 ),
+                template="workspace/admin_extra_buttons/confirm.html",
             )
 
         return apply_cancel(request)
@@ -553,9 +561,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:
         obj = btn.context["original"]
-        if obj.status == CountryRdp.PushStatus.SUCCESS:
-            btn.visible = False
-            return
         item = "countryhousehold" if obj.program.beneficiary_group.master_detail else "countryindividual"
         base = reverse(f"workspace:workspaces_{item}_changelist")
-        btn.href = f"{base}?rdp__exact={obj.pk}"
+        btn.href = f"{base}?rdp_id={obj.pk}"

@@ -1,4 +1,4 @@
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, cast
@@ -132,8 +132,8 @@ class Client:
         result = self._request("retrieve_deduplication_set", item.retrieve)
         return cast("response.DeduplicationSet", result)
 
-    def retrieve_findings(self, *, excluded_status_codes: Collection[int] = ()) -> list[response.Finding]:
-        """Retrieve all findings except those with excluded status codes."""
+    def retrieve_findings(self, *, status_code: int) -> list[response.Finding]:
+        """Retrieve findings with the requested status code."""
         collection = resource.FindingsCollection(self.session, self.deduplication_set_endpoint.findings)
         findings: list[response.Finding] = []
         page = 1
@@ -141,11 +141,9 @@ class Client:
         while True:
             result = self._request(
                 "retrieve_findings",
-                partial(collection.list, params={"page": str(page)}),
+                partial(collection.list, params={"page": str(page), "status_code": str(status_code)}),
             )
-            findings.extend(
-                finding for finding in result["results"] if finding.get("status_code") not in excluded_status_codes
-            )
+            findings.extend(finding for finding in result["results"] if finding.get("status_code") == status_code)
             if result.get("next") is None:
                 return findings
             page += 1

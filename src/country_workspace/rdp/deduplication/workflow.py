@@ -240,12 +240,7 @@ def sync_deduplication_result(*, rdp_id: int, deduplication_set_id: UUID) -> boo
         if type(findings_count) is not int or findings_count < 0:
             raise RemoteError(f"DedupEngine: invalid findings_count={findings_count!r}")
 
-        findings = client.retrieve_findings(
-            excluded_status_codes={
-                FindingStatusCode.FILE_NOT_FOUND,
-                FindingStatusCode.GENERIC_ERROR,
-            }
-        )
+        findings = client.retrieve_findings(status_code=FindingStatusCode.DEDUPLICATE_SUCCESS)
 
     marked_pks = {
         entry["reference_pk"]
