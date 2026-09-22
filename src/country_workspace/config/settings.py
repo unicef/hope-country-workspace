@@ -166,6 +166,16 @@ SELECT2_CACHE_BACKEND = "select2"
 
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
+SECURE_PROXY_SSL_HEADER = env("SECURE_PROXY_SSL_HEADER")
+SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT")
+SECURE_HSTS_SECONDS = env("SECURE_HSTS_SECONDS")
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env("SECURE_HSTS_INCLUDE_SUBDOMAINS")
+SECURE_HSTS_PRELOAD = env("SECURE_HSTS_PRELOAD")
+SECURE_CONTENT_TYPE_NOSNIFF = env("SECURE_CONTENT_TYPE_NOSNIFF")
+SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY")
+# The obsolete X-XSS-Protection header is deliberately NOT set, see
+# https://owasp.org/www-project-secure-headers/#x-xss-protection
+
 ROOT_URLCONF = "country_workspace.config.urls"
 WSGI_APPLICATION = "country_workspace.config.wsgi.application"
 
