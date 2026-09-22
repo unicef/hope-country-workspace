@@ -1,6 +1,7 @@
+import sentry_sdk
+
 from django.core import signing
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.renderers import JSONRenderer
 from rest_framework.request import Request
@@ -8,10 +9,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.rdp.deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
-from country_workspace.rdp.deduplication.workflow import sync_deduplication_result
+from country_workspace.rdp import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT, sync_deduplication_result
 
-from .serializers import DedupEngineRdpCallbackPayloadSerializer, DedupEngineRdpCallbackResponseSerializer
+from .responses import (
+    DEDUP_CALLBACK_RESPONSES,
+    dedup_callback_error_response,
+    dedup_callback_response,
+    dedup_callback_unavailable_response,
+    invalid_callback_token_response,
+)
+from .serializers import DedupEngineRdpCallbackPayloadSerializer
 
 
 class DedupEngineRdpStateChangedCallbackView(APIView):
@@ -24,10 +31,11 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
 
     @extend_schema(
         request=None,
-        responses={status.HTTP_200_OK: DedupEngineRdpCallbackResponseSerializer},
+        responses=DEDUP_CALLBACK_RESPONSES,
         tags=["callbacks"],
     )
     def get(self, request: Request, signed_token: str) -> Response:
+        """Synchronize the result identified by the signed URL token."""
         try:
             payload = signing.loads(
                 signed_token,
@@ -35,21 +43,22 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
                 max_age=DEDUP_CALLBACK_MAX_AGE,
             )
         except signing.BadSignature:
-            return Response({"detail": "Invalid callback token."}, status=status.HTTP_400_BAD_REQUEST)
+            return invalid_callback_token_response()
 
         serializer = DedupEngineRdpCallbackPayloadSerializer(data=payload)
         if not serializer.is_valid():
-            return Response({"detail": "Invalid callback token."}, status=status.HTTP_400_BAD_REQUEST)
+            return invalid_callback_token_response()
 
         try:
             synchronized = sync_deduplication_result(
                 rdp_id=serializer.validated_data["rdp_id"],
                 deduplication_set_id=serializer.validated_data["deduplication_set_id"],
             )
-        except (RemoteError, RemoteUnavailableError):
-            return Response(
-                {"detail": "Deduplication result could not be synchronized."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        except RemoteUnavailableError as exc:
+            sentry_sdk.capture_exception(exc)
+            return dedup_callback_unavailable_response()
+        except RemoteError as exc:
+            sentry_sdk.capture_exception(exc)
+            return dedup_callback_error_response()
 
-        return Response({"synchronized": synchronized}, status=status.HTTP_200_OK)
+        return dedup_callback_response(synchronized=synchronized)
