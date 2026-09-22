@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from .types import DedupCallbackCode
+
 
 class DedupEngineRdpCallbackPayloadSerializer(serializers.Serializer):
     """Validate a signed DedupEngine RDP callback payload."""
@@ -11,4 +13,11 @@ class DedupEngineRdpCallbackPayloadSerializer(serializers.Serializer):
 class DedupEngineRdpCallbackResponseSerializer(serializers.Serializer):
     """Serialize a DedupEngine RDP callback response."""
 
-    synchronized = serializers.BooleanField()
+    code = serializers.ChoiceField(choices=DedupCallbackCode)
+    detail = serializers.CharField()
+
+
+class DedupEngineRdpCallbackErrorSerializer(serializers.Serializer):
+    """Serialize a DedupEngine RDP callback error response."""
+
+    detail = serializers.CharField()

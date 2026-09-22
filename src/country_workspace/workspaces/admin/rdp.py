@@ -2,7 +2,6 @@ import json
 from collections.abc import Callable
 from contextlib import suppress
 from decimal import Decimal
-from enum import StrEnum, auto
 from typing import Any
 
 import sentry_sdk
@@ -55,11 +54,6 @@ from .hh_ind import SelectedProgramMixin
 
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
-
-
-class PushDecision(StrEnum):
-    CHECK = auto()
-    PUSH = auto()
 
 
 def _is_visible(btn: StandardButton, policy_getter: PolicyGetter, action: str) -> bool:
@@ -232,26 +226,20 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         request: HttpRequest,
         obj: CountryRdp,
         form: PushThresholdForm,
-        *,
-        exceeded: bool = False,
     ) -> HttpResponse:
-        """Render the push threshold form or confirmation."""
-        title = _("Push threshold exceeded") if exceeded else _("Push to HOPE")
+        """Render the push threshold form."""
         marked_count = obj.duplicate_individuals.count()
         total_count = qs_individuals_for_rdp(rdp=obj).count()
         marked_percentage = Decimal(marked_count) * 100 / total_count if total_count else Decimal(0)
-        context = self.get_common_context(request, str(obj.pk), title=title)
+        context = self.get_common_context(request, str(obj.pk), title=_("Push to HOPE"))
         context.update(
             {
                 "form": form,
                 "rdp": obj,
                 "change_url": self._change_url(obj),
-                "exceeded": exceeded,
                 "marked_count": marked_count,
                 "total_count": total_count,
                 "marked_percentage": marked_percentage,
-                "decision_check": PushDecision.CHECK.value,
-                "decision_push": PushDecision.PUSH.value,
             }
         )
         return render(request, "workspace/rdp/push_threshold.html", context)
@@ -268,10 +256,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         if request.method != "POST" or not form.is_valid():
             return self._render_push_threshold(request, obj, form)
-
-        if request.POST.get("decision") != PushDecision.CHECK:
-            messages.error(request, "Invalid push decision.")
-            return redirect(self._change_url(obj))
 
         return self._schedule_push(request, obj, form=form)
 
