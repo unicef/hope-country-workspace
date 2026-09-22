@@ -100,7 +100,7 @@ def test_iter_submissions_handles_pagination(last_id):
         assert "start=2" in mocked.calls[1].request.url
         assert "limit=2" in mocked.calls[1].request.url
         assert "sort=" in mocked.calls[1].request.url
-        assert "start=4" in mocked.calls[2].request.url
+        assert "start=3" in mocked.calls[2].request.url
         assert "limit=2" in mocked.calls[2].request.url
         assert "sort=" in mocked.calls[2].request.url
         assert len(mocked.calls) == 3

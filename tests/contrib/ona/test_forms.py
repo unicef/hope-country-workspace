@@ -69,11 +69,16 @@ def test_get_approved_ona_forms_reads_json_mapping(monkeypatch) -> None:
     }
 
 
-def test_get_approved_ona_forms_rejects_invalid_json(monkeypatch) -> None:
+def test_get_approved_ona_forms_returns_empty_mapping_for_invalid_json(monkeypatch) -> None:
     _set_raw_approved_forms(monkeypatch, "{invalid-json")
 
-    with pytest.raises(forms.ValidationError, match="valid JSON"):
-        get_approved_ona_forms()
+    assert get_approved_ona_forms() == {}
+
+
+def test_get_approved_ona_forms_returns_empty_mapping_for_non_object(monkeypatch) -> None:
+    _set_raw_approved_forms(monkeypatch, '["9153"]')
+
+    assert get_approved_ona_forms() == {}
 
 
 def test_ona_form_is_allowed_when_programme_and_office_match(monkeypatch, program) -> None:

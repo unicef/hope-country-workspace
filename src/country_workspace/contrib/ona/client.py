@@ -109,4 +109,4 @@ class OnaClient:
                 break
 
             yield from submissions
-            start += self.page_size
+            start += len(submissions)
