@@ -21,38 +21,57 @@ def async_job_factory():
 
 
 @pytest.mark.parametrize(
-    ("obj_attr", "expected"),
+    ("obj_attr", "status", "expected"),
     [
-        (None, ["name", "push_date", "status", "related_jobs", "operation_log_display"]),
-        (False, ["name", "push_date", "status", "related_jobs", "operation_log_display"]),
+        (None, None, ["name", "status", "push_date", "hope_rdi_id", "processing_history", "operation_log_display"]),
+        (False, None, ["name", "status", "push_date", "hope_rdi_id", "processing_history", "operation_log_display"]),
         (
             True,
+            CountryRdp.PushStatus.PENDING,
             [
                 "name",
-                "push_date",
                 "status",
+                "push_date",
+                "hope_rdi_id",
                 "dedup_engine_state",
                 "deduplication_set_id",
-                "related_jobs",
+                "processing_history",
+                "operation_log_display",
+            ],
+        ),
+        (
+            True,
+            CountryRdp.PushStatus.CANCELLED,
+            [
+                "name",
+                "status",
+                "push_date",
+                "hope_rdi_id",
+                "deduplication_set_id",
+                "processing_history",
                 "operation_log_display",
             ],
         ),
     ],
-    ids=["no_obj", "dedup_off", "dedup_on"],
+    ids=["no_obj", "dedup_off", "dedup_on", "dedup_terminal"],
 )
-def test_get_fields_and_readonly_fields(
+def test_get_fieldsets(
     admin_instance,
     mock_request,
     rdp: CountryRdp,
     obj_attr,
+    status,
     expected,
 ) -> None:
     obj = None if obj_attr is None else rdp
     if obj:
         obj.program.biometric_deduplication_enabled = obj_attr
+        if status:
+            obj.status = status
 
-    assert admin_instance.get_fields(mock_request, obj) == expected
-    assert admin_instance.get_readonly_fields(mock_request, obj) == expected
+    fields = [field for _, options in admin_instance.get_fieldsets(mock_request, obj) for field in options["fields"]]
+
+    assert fields == expected
 
 
 def test_permissions(admin_instance, mock_request, rdp: CountryRdp) -> None:
@@ -61,23 +80,16 @@ def test_permissions(admin_instance, mock_request, rdp: CountryRdp) -> None:
     assert admin_instance.has_delete_permission(mock_request, rdp) is False
 
 
-def test_get_common_context(admin_instance, mock_request, mocker: MockerFixture) -> None:
-    parent = mocker.patch.object(
-        rdp_admin_mod.WorkspaceModelAdmin,
-        "get_common_context",
-        return_value={"result": True},
-    )
+def test_change_view(admin_instance, mock_request, mocker: MockerFixture) -> None:
+    parent = mocker.patch.object(rdp_admin_mod.WorkspaceModelAdmin, "change_view", return_value="response")
 
-    result = admin_instance.get_common_context(mock_request, pk="1", extra="value")
+    result = admin_instance.change_view(mock_request, "1", extra_context={"extra": "value"})
 
-    assert result == {"result": True}
-    parent.assert_called_once_with(
-        mock_request,
-        "1",
-        extra="value",
-        modeladmin=admin_instance,
-        modeladmin_name="CountryRdpAdmin",
-    )
+    context = parent.call_args.args[3]
+    assert result == "response"
+    assert context["extra"] == "value"
+    assert "dedup_engine_state" in context["dynamic_field_help_texts"]
+    parent.assert_called_once_with(mock_request, "1", "", context)
 
 
 def test_get_queryset(admin_instance, mock_request, mocker: MockerFixture) -> None:
@@ -91,21 +103,27 @@ def test_get_queryset(admin_instance, mock_request, mocker: MockerFixture) -> No
     qs.select_related.return_value.filter.assert_called_once_with(program=state.program)
 
 
-def test_related_jobs(
+def test_processing_history(
     admin_instance,
     rdp: CountryRdp,
     async_job_factory,
     mocker: MockerFixture,
 ) -> None:
-    assert admin_instance.related_jobs(rdp) == "-"
+    assert admin_instance.processing_history(rdp) == "—"
 
-    job = async_job_factory(rdp=rdp, program=rdp.program)
+    job = async_job_factory(rdp=rdp, program=rdp.program, description="Test job", datetime_queued=None)
     mocker.patch.object(rdp_admin_mod, "reverse", return_value="/job-url")
+    render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
-    result = str(admin_instance.related_jobs(rdp))
+    assert admin_instance.processing_history(rdp) == "rendered"
 
-    assert "/job-url" in result
-    assert str(job) in result
+    row = render.call_args.args[1]["rows"][0]
+    assert row == {
+        "url": "/job-url",
+        "step": job.description,
+        "scheduled_at": "—",
+        "status": job.task_status or "—",
+    }
 
 
 def test_operation_log_display_empty(admin_instance, rdp: CountryRdp) -> None:
@@ -120,7 +138,7 @@ def test_operation_log_display_formats_entries(
     mocker: MockerFixture,
 ) -> None:
     date_format = mocker.patch.object(rdp_admin_mod, "date_format", return_value="formatted")
-    format_join = mocker.patch.object(rdp_admin_mod, "format_html_join", return_value="rendered")
+    render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
     rdp.operation_log = [
         {
@@ -134,11 +152,12 @@ def test_operation_log_display_formats_entries(
 
     assert admin_instance.operation_log_display(rdp) == "rendered"
 
-    rows = list(format_join.call_args.args[2])
-    assert rows[0] == (RdpOperationAction.START_DEDUPLICATION.label, "formatted", rows[0][2])
-    assert rows[0][2]
-    assert rows[1] == ("UNKNOWN", "bad", "")
-    assert rows[2] == ("—", "—", "")
+    rows = render.call_args.args[1]["rows"]
+    assert rows[0]["action"] == RdpOperationAction.START_DEDUPLICATION.label
+    assert rows[0]["timestamp"] == "formatted"
+    assert '"ok"' in rows[0]["result"]
+    assert rows[1] == {"action": "UNKNOWN", "timestamp": "bad", "result": ""}
+    assert rows[2] == {"action": "—", "timestamp": "—", "result": ""}
     date_format.assert_called_once()
 
 
