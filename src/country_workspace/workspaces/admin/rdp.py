@@ -30,12 +30,14 @@ from country_workspace.rdp import (
     DedupEngineState,
     PushThresholdType,
     RdpActionPolicy,
+    RdpWorkflowError,
     get_dedup_callback_base_url,
     get_deduplication_policy,
     get_push_policy,
     claim_rdp_cancel,
     claim_rdp_deduplication,
     claim_rdp_push,
+    claim_rdp_push_clean,
     claim_review_rdp_push,
     dedup_existing_rdp_core,
     qs_individuals_for_rdp,
@@ -311,7 +313,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(change_url)
 
     @button(
-        label="Deduplicate",
+        label="Start deduplication",
         change_form=True,
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
@@ -320,6 +322,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         html_attrs={"title": "Queue RDP for deduplication in DedupEngine."},
     )
     def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Queue this RDP for deduplication in DedupEngine."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
@@ -372,7 +375,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Sync deduplication result",
+        label="Check deduplication result",
         change_form=True,
         change_list=False,
         permission="country_workspace.deduplicate_rdp",
@@ -382,7 +385,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         html_attrs={"title": "Fetch the current deduplication result from DedupEngine."},
     )
     def sync_deduplication(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Synchronize this RDP with its DedupEngine set."""
+        """Fetch the current DedupEngine state and synchronize the result."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
@@ -414,7 +417,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Cancel",
+        label="Cancel RDP",
         change_form=True,
         change_list=False,
         permission="country_workspace.cancel_rdp",
@@ -472,6 +475,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Start a push to HOPE, checking the threshold when required."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
@@ -482,7 +486,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return self._schedule_push(request, obj)
 
     @button(
-        label="Push",
+        label="Push all to HOPE",
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
@@ -491,7 +495,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         html_attrs={"title": "Push all RDP beneficiaries despite exceeding the threshold."},
     )
     def push_review(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Push an RDP after explicit review approval."""
+        """Push all RDP beneficiaries after review approval."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
@@ -520,6 +524,46 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             request,
             schedule_push,
             message="The selected threshold was exceeded. Confirm that you want to push all RDP beneficiaries.",
+            template="workspace/admin_extra_buttons/confirm.html",
+        )
+
+    @button(
+        label="Create clean RDP",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.push_rdp_to_hope",
+        visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
+        html_attrs={"title": "Create a new RDP excluding duplicate beneficiaries."},
+    )
+    def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Cancel this RDP and create a new one without marked duplicates."""
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        def apply(_: HttpRequest) -> HttpResponse:
+            try:
+                check, clean_rdp = claim_rdp_push_clean(rdp_id=obj.pk, user_id=request.user.pk)
+            except RemoteUnavailableError as exc:
+                sentry_sdk.capture_exception(exc)
+                messages.error(request, str(exc))
+            except RemoteError as exc:
+                messages.error(request, str(exc))
+            except RdpWorkflowError as exc:
+                messages.error(request, "; ".join(exc.args[0]["errors"]))
+            else:
+                if check.allowed and clean_rdp is not None:
+                    messages.success(request, "Clean RDP created. DedupEngine rejection task scheduled.")
+                    return redirect(self._change_url(clean_rdp))
+                messages.error(request, check.reason or "Action is not allowed.")
+            return redirect(self._change_url(obj))
+
+        message = "Cancel this RDP and create a new one without duplicates? "
+        if obj.hope_rdi_id not in {None, "N/A"}:
+            message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
+        message += "The old DedupEngine set will be queued for rejection."
+        return confirm_action(
+            self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
         )
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
