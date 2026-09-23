@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from typing import Any, NotRequired, ReadOnly, TypedDict
-from enum import StrEnum, auto
 
 from country_workspace.rdp.types import SelectionConfig
 
@@ -23,8 +22,3 @@ class PushAttemptJobConfig(TypedDict):
 
 class PushPreparationJobConfig(PushAttemptJobConfig):
     rdi_id_to_reset: ReadOnly[str | None]
-
-
-class PushThresholdType(StrEnum):
-    COUNT = auto()
-    PERCENT = auto()

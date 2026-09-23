@@ -15,6 +15,7 @@ from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import (
@@ -38,7 +39,7 @@ from .repository import (
     lock_rdp_push_attempt,
     rdp_for_push,
 )
-from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushThresholdType, PushWorkflowConfig
+from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
 
 def _build_push_ready_callback_url() -> str:
@@ -122,7 +123,7 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
 def check_push_threshold(
     *,
     rdp: Rdp,
-    threshold_type: PushThresholdType,
+    threshold_type: ThresholdType,
     threshold_value: Decimal,
 ) -> bool:
     """Check whether marked RDP individuals exceed the selected threshold."""
@@ -170,7 +171,7 @@ def claim_rdp_push(
     rdp_id: int,
     *,
     user_id: int,
-    threshold: tuple[PushThresholdType, Decimal] | None = None,
+    threshold: tuple[ThresholdType, Decimal] | None = None,
 ) -> tuple[ActionCheck, Rdp | None]:
     """Start an RDP push or place it in review when the threshold is exceeded."""
     rdp = rdp_for_push(pk=rdp_id)

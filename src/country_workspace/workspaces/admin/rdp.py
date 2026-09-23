@@ -26,8 +26,9 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
 from country_workspace.rdp import (
+    BiometricDeduplicationConfigForm,
     DedupEngineState,
-    PushThresholdType,
+    ThresholdType,
     RdpActionPolicy,
     RdpWorkflowError,
     get_dedup_callback_base_url,
@@ -49,7 +50,6 @@ from country_workspace.workspaces.sites import workspace
 
 
 from .filters import ChoiceFilter
-from .forms import PushThresholdForm
 from .hh_ind import SelectedProgramMixin
 
 
@@ -232,7 +232,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         self,
         request: HttpRequest,
         obj: CountryRdp,
-        form: PushThresholdForm,
+        form: BiometricDeduplicationConfigForm,
     ) -> HttpResponse:
         """Render the push threshold form."""
         marked_count = obj.duplicate_individuals.count()
@@ -256,7 +256,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if response := self._deny_if_not_allowed(request, obj, get_push_policy, "start_push_check"):
             return response
 
-        form = PushThresholdForm(
+        form = BiometricDeduplicationConfigForm(
             request.POST if request.method == "POST" else None,
             total_count=qs_individuals_for_rdp(rdp=obj).count(),
         )
@@ -271,13 +271,13 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         request: HttpRequest,
         obj: CountryRdp,
         *,
-        form: PushThresholdForm | None = None,
+        form: BiometricDeduplicationConfigForm | None = None,
     ) -> HttpResponse:
         """Check the threshold and schedule an allowed push."""
         change_url = self._change_url(obj)
         threshold = (
             (
-                PushThresholdType(form.cleaned_data["threshold_type"]),
+                ThresholdType(form.cleaned_data["threshold_type"]),
                 form.cleaned_data["threshold_value"],
             )
             if form is not None

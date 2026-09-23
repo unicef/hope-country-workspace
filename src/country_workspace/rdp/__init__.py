@@ -1,5 +1,7 @@
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
+from .deduplication.forms import BiometricDeduplicationConfigForm
 from .deduplication.policy import DedupEngineState, get_deduplication_policy, get_program_dedup_settings_policy
+from .deduplication.types import ThresholdType
 from .deduplication.workflow import (
     claim_rdp_deduplication,
     dedup_existing_rdp_core,
@@ -11,7 +13,6 @@ from .lifecycle import cancel_existing_rdp_core, claim_rdp_cancel, claim_rdp_pus
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
-from .push.types import PushThresholdType
 from .push.workflow import (
     check_push_threshold,
     claim_rdp_push,
@@ -28,12 +29,13 @@ __all__ = [
     "DEDUP_CALLBACK_SALT",
     "PUSH_READY_CALLBACK_MAX_AGE",
     "PUSH_READY_CALLBACK_SALT",
+    "BiometricDeduplicationConfigForm",
     "CreateRdpConfig",
     "DedupEngineState",
     "PushThresholdConfirmationError",
-    "PushThresholdType",
     "RdpActionPolicy",
     "RdpWorkflowError",
+    "ThresholdType",
     "append_rdp_operation_log",
     "cancel_existing_rdp_core",
     "check_push_threshold",
