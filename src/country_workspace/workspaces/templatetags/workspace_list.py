@@ -24,6 +24,9 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
 
+from country_workspace.models.flex_file import FlexFieldFile
+from country_workspace.utils.flex_files import flex_file_src
+
 from .base import WorkspaceInclusionAdminNode
 from .workspace_urls import add_preserved_filters
 
@@ -82,11 +85,32 @@ def flex_field_label_for_field(column_name: str, model: "Model", model_admin: "M
     return column_name.replace("flex_fields__", ""), ""
 
 
+def flex_field_display(value: Any) -> Any:
+    """Render file values as a link, never as their raw reference."""
+    if src := flex_file_src(value):
+        return format_html('<a href="{}" target="_blank">{}</a>', src, _("image"))
+    return value
+
+
+@register.filter(name="flex_field_value")
+def flex_field_value(value: Any) -> Any:
+    """Render file values as a thumbnail linking to the full image, with its id."""
+    if not (src := flex_file_src(value)):
+        return value
+    image = format_html(
+        '<a href="{}" target="_blank"><img src="{}" style="max-height: 120px; width: auto" /></a>', src, src
+    )
+    # legacy inline images have no row to identify, and their value is the whole payload
+    if (file_id := FlexFieldFile.parse_reference(value)) is None:
+        return image
+    return format_html('{}<div class="text-xs text-gray-500">{}</div>', image, file_id)
+
+
 def flex_field_lookup_field(
     field_name: str, result: "CountryIndividual", model_admin: "ModelAdmin"
 ) -> tuple[Field, str, str]:
     dict_key = field_name.replace("flex_fields__", "")
-    f, attr, value = lookup_field(lambda o: o.flex_fields.get(dict_key), result, model_admin)
+    f, attr, value = lookup_field(lambda o: flex_field_display(o.flex_fields.get(dict_key)), result, model_admin)
     return f, attr, value
 
 

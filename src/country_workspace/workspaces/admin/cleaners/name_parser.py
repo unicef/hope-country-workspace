@@ -39,7 +39,7 @@ class NameParserForm(BaseActionForm):
         checker: "DataChecker" = kwargs.pop("checker")
         tenant: "Office" = kwargs.pop("tenant")
         super().__init__(*args, **kwargs)
-        choices = [("", "---")] + list(get_checker_fields(checker, with_fs_prefix=True))
+        choices = [("", "---")] + list(get_checker_fields(checker, with_fs_prefix=True, include_files=False))
         self.fields["source_field"].choices = choices
         self.fields["given_name_field"].choices = choices
         self.fields["middle_name_field"].choices = choices

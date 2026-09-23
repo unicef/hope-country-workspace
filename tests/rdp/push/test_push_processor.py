@@ -117,8 +117,8 @@ def test_run_with_restores_queryset(processor: PushProcessor, mocker: MockerFixt
     "method", ["_prepare_individuals_batch", "_prepare_people_batch"], ids=["individuals", "people"]
 )
 def test_prepare_individuals(processor: PushProcessor, mocker: MockerFixture, method: str) -> None:
-    first = mocker.Mock(id=1, originating_id="O1")
-    second = mocker.Mock(id=2, originating_id="O2")
+    first = mocker.Mock(id=1, originating_id="O1", flex_fields={})
+    second = mocker.Mock(id=2, originating_id="O2", flex_fields={})
     first.apply_grouping.return_value = {"name": "A"}
     second.apply_grouping.return_value = {"name": "B"}
     mocker.patch(f"{MOD}.serializer_for_program", return_value=lambda rows: rows)
@@ -135,7 +135,7 @@ def test_prepare_individuals(processor: PushProcessor, mocker: MockerFixture, me
 @pytest.mark.parametrize("prefetched", [True, False], ids=["prefetched", "related_manager"])
 def test_prepare_households(processor: PushProcessor, mocker: MockerFixture, prefetched: bool) -> None:
     member = mocker.Mock(id=2)
-    household = mocker.Mock(id=1, pk=1, originating_id="O1")
+    household = mocker.Mock(id=1, pk=1, originating_id="O1", flex_fields={})
     household.prefetched_members = [member] if prefetched else None
     household.members.values_list.return_value = [2]
     household.apply_grouping.return_value = {"role": 2, "empty": None}

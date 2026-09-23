@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Any
 
 
 class FlexFieldGroupingMixin:
@@ -19,7 +20,13 @@ class FlexFieldGroupingMixin:
 
         return grouping_info
 
-    def apply_grouping(self) -> dict[str, object | list[object]]:
+    def apply_grouping(self, flex_fields: dict[str, Any] | None = None) -> dict[str, object | list[object]]:
+        """Group flex values into the nested shape HOPE expects.
+
+        `flex_fields` lets callers group an already resolved payload, so that
+        file references are expanded before they end up in nested items.
+        """
+
         def present(x: object | None) -> bool:
             return x is not None and (not isinstance(x, str) or x.strip())
 
@@ -28,7 +35,7 @@ class FlexFieldGroupingMixin:
             return item | {"type": prefix.strip("_")} if item else None
 
         gi = self.get_grouping_info()
-        ff = dict(self.flex_fields)
+        ff = dict(self.flex_fields if flex_fields is None else flex_fields)
         grouped = {}
 
         for group, members in gi.items():
