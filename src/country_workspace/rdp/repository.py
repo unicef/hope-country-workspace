@@ -1,11 +1,12 @@
 from collections.abc import Iterable
+from uuid import UUID
 
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp
+from country_workspace.models import Rdp, RdpOperation
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
@@ -128,3 +129,13 @@ def append_rdp_operation_log(
 
     rdp.operation_log = [*(rdp.operation_log or []), entry]
     rdp.save(update_fields=["operation_log"])
+
+
+def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
+    """Return RDP operation locked for update."""
+    return RdpOperation.objects.select_for_update().select_related("rdp__program").get(pk=pk)
+
+
+def get_rdp_operation(*, pk: UUID) -> RdpOperation:
+    """Return an RDP operation with its RDP context."""
+    return RdpOperation.objects.select_related("rdp__program__beneficiary_group").get(pk=pk)

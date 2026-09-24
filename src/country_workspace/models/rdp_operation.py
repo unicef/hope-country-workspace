@@ -61,12 +61,6 @@ class RdpOperation(BaseModel):
         blank=True,
         help_text=_("Configuration captured when this operation was created."),
     )
-    flagged_individuals = models.ManyToManyField(
-        "Individual",
-        related_name="flagged_by_rdp_operations",
-        blank=True,
-        help_text=_("Individuals flagged by this operation."),
-    )
     error = models.JSONField(
         default=dict,
         blank=True,
