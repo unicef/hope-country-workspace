@@ -2,13 +2,17 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
+from uuid import UUID
 
 from django import forms
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
+from django.utils import timezone
 
-from country_workspace.models import Program, RdpOperation
+from country_workspace.models import Program, RdpOperation, RdpOperationFinding
 
 from .deduplication.forms import BiometricDeduplicationConfigForm
+from .repository import lock_rdp_operation_for_update
 from .types import CreateRdpOperationConfig, JSONValue
 
 
@@ -73,3 +77,55 @@ def get_validated_rdp_operation_configs(
         }
         for definition, form in operation_forms
     ]
+
+
+def claim_rdp_operation(operation_id: UUID) -> RdpOperation | None:
+    """Claim a pending or failed RDP operation for execution."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        if operation.status not in {RdpOperation.Status.PENDING, RdpOperation.Status.FAILURE}:
+            return None
+
+        operation.status = RdpOperation.Status.RUNNING
+        operation.attempt += 1
+        operation.error = {}
+        operation.started_at = timezone.now()
+        operation.finished_at = None
+        operation.save(update_fields=["status", "attempt", "error", "started_at", "finished_at"])
+
+    return operation
+
+
+def fail_rdp_operation(*, operation_id: UUID, error: dict[str, JSONValue]) -> bool:
+    """Mark a running RDP operation as failed."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        if operation.status != RdpOperation.Status.RUNNING:
+            return False
+
+        operation.status = RdpOperation.Status.FAILURE
+        operation.error = error
+        operation.finished_at = timezone.now()
+        operation.save(update_fields=["status", "error", "finished_at"])
+
+    return True
+
+
+def finish_rdp_operation(*, operation_id: UUID, findings: list[RdpOperationFinding]) -> bool:
+    """Replace findings and mark a running RDP operation as successful."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        if operation.status != RdpOperation.Status.RUNNING:
+            return False
+
+        operation.findings.all().delete()
+        for finding in findings:
+            finding.operation = operation
+        RdpOperationFinding.objects.bulk_create(findings)
+
+        operation.status = RdpOperation.Status.SUCCESS
+        operation.error = {}
+        operation.finished_at = timezone.now()
+        operation.save(update_fields=["status", "error", "finished_at"])
+
+    return True
