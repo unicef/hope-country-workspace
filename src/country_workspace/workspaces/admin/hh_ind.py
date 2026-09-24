@@ -97,9 +97,9 @@ class BeneficiaryBaseAdmin(
     def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
         _actions = super().get_actions(request)
         if (
-            (program := self.get_selected_program(request))
-            and program.beneficiary_group
-            and self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
+            not (program := self.get_selected_program(request))
+            or not program.beneficiary_group
+            or self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
             _actions.pop("create_rdp", None)
         return _actions

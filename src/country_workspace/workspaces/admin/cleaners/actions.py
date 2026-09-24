@@ -7,7 +7,13 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm, CreateRDPForm
-from country_workspace.rdp import CreateRdpConfig, create_rdp_core
+from country_workspace.rdp import (
+    CreateRdpConfig,
+    count_rdp_individuals,
+    create_rdp_core,
+    get_rdp_operation_forms,
+    get_validated_rdp_operation_configs,
+)
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
@@ -259,17 +265,33 @@ def create_rdp(
         return redirect(".")
 
     program = model_admin.get_selected_program(request)
+    master_detail = program.beneficiary_group.master_detail
+    selected_pks = queryset.values_list("pk", flat=True)
+    total_count = count_rdp_individuals(pks=selected_pks, master_detail=master_detail)
+    is_create = request.method == "POST" and "_create" in request.POST
+    data = request.POST if is_create else None
 
-    if request.method == "POST" and "_create" in request.POST:
-        form = CreateRDPForm(request.POST)
-        if form.is_valid():
+    form = CreateRDPForm(
+        data,
+        initial={
+            "action": request.POST.get("action", ""),
+            "select_across": request.POST.get("select_across", False),
+            "_selected_action": _post_selected_actions(request),
+        },
+    )
+    operation_forms = get_rdp_operation_forms(program=program, total_count=total_count, data=data)
+
+    if is_create:
+        operation_configs = get_validated_rdp_operation_configs(operation_forms)
+        if form.is_valid() and operation_configs is not None:
             config: CreateRdpConfig = {
-                "pks": list(queryset.values_list("pk", flat=True)),
-                "master_detail": program.beneficiary_group.master_detail,
+                "pks": list(selected_pks),
+                "master_detail": master_detail,
                 "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
                 "country_office_id": program.country_office.id,
                 "program_id": program.id,
                 "pushed_by_id": request.user.id,
+                "operations": operation_configs,
             }
             AsyncJob.objects.create(
                 description=create_rdp.short_description,
@@ -281,16 +303,10 @@ def create_rdp(
             ).queue()
             model_admin.message_user(request, "RDP creation scheduled", messages.SUCCESS)
             return redirect("workspace:workspaces_countryrdp_changelist")
-    else:
-        form = CreateRDPForm(
-            initial={
-                "action": request.POST.get("action", ""),
-                "select_across": request.POST.get("select_across", False),
-                "_selected_action": _post_selected_actions(request),
-            }
-        )
 
-    ctx = model_admin.get_common_context(request, title=create_rdp.short_description, form=form)
+    ctx = model_admin.get_common_context(
+        request, title=create_rdp.short_description, form=form, operation_forms=operation_forms
+    )
     return render(request, "workspace/actions/create_rdp.html", ctx)
 
 

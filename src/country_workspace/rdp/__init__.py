@@ -21,7 +21,12 @@ from .push.workflow import (
     handle_push_ready_callback,
     push_existing_rdp_core,
 )
-from .repository import append_rdp_operation_log, lock_rdp_for_update, qs_individuals_for_rdp
+from .operation import (
+    get_enabled_rdp_operation_definitions,
+    get_rdp_operation_forms,
+    get_validated_rdp_operation_configs,
+)
+from .repository import append_rdp_operation_log, count_rdp_individuals, lock_rdp_for_update, qs_individuals_for_rdp
 from .types import CreateRdpConfig
 
 __all__ = [
@@ -44,14 +49,18 @@ __all__ = [
     "claim_rdp_push",
     "claim_rdp_push_clean",
     "claim_review_rdp_push",
+    "count_rdp_individuals",
     "create_rdp_core",
     "dedup_existing_rdp_core",
     "fail_stuck_rdp_push",
     "get_dedup_callback_base_url",
     "get_deduplication_policy",
+    "get_enabled_rdp_operation_definitions",
     "get_program_dedup_settings_policy",
     "get_push_policy",
+    "get_rdp_operation_forms",
     "get_rdp_policy",
+    "get_validated_rdp_operation_configs",
     "handle_push_ready_callback",
     "lock_rdp_for_update",
     "push_existing_rdp_core",
