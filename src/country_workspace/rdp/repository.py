@@ -59,6 +59,12 @@ def qs_individuals_by_pks(pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     return CountryIndividual.objects.filter(pk__in=pks).order_by("id")
 
 
+def count_rdp_individuals(*, pks: Iterable[int], master_detail: bool) -> int:
+    """Return the number of individuals represented by an RDP selection."""
+    qs = qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
+    return qs.count()
+
+
 def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     """Return Individuals selected by the RDP household/individual links."""
     master_detail, pks = rdp_selection(rdp=rdp)

@@ -2,11 +2,7 @@ from typing import Any
 from strategy_field.utils import fqn
 from django.db import IntegrityError, transaction
 
-from country_workspace.contrib.dedup_engine import (
-    REJECTABLE_DEDUPLICATION_SET_STATES,
-    DeduplicationSetState,
-    make_dedup_client,
-)
+from country_workspace.contrib.dedup_engine import REJECTABLE_DEDUPLICATION_SET_STATES, DeduplicationSetState
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.models.rdp import RdpOperationAction
@@ -35,7 +31,7 @@ def _validate_rdp_creation(*, program: Program, config: CreateRdpConfig, exclude
 
 
 def _create_rdp(*, config: CreateRdpConfig) -> Rdp:
-    """Create a pending RDP with beneficiaries inside the caller's transaction."""
+    """Create a pending RDP with beneficiaries and configured operations."""
     rdp = Rdp.objects.create(
         country_office_id=config["country_office_id"],
         program_id=config["program_id"],
@@ -44,6 +40,11 @@ def _create_rdp(*, config: CreateRdpConfig) -> Rdp:
         status=Rdp.PushStatus.PENDING,
     )
     rdp.add_beneficiaries(config["pks"], config["master_detail"])
+    for operation in config["operations"]:
+        rdp.operations.create(
+            operation_type=operation["operation_type"],
+            config=operation["config"],
+        )
     return rdp
 
 
@@ -52,26 +53,16 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     config: CreateRdpConfig = job.config
     _validate_rdp_creation(program=job.program, config=config)
 
-    if job.program.biometric_deduplication_enabled:
-        try:
-            with make_dedup_client(job.program.unicef_id) as client:
-                if not client.can_create_deduplication_set():
-                    raise RdpWorkflowError(
-                        {"errors": ["DedupEngine: can not create deduplication set for this program."]}
-                    )
-        except (RemoteError, RemoteUnavailableError) as e:
-            raise RdpWorkflowError({"errors": [str(e)]}) from e
-
     try:
         with transaction.atomic():
             Program.objects.select_for_update().get(pk=config["program_id"])
             rdp = _create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
-    except IntegrityError as e:
+    except IntegrityError as exc:
         message = "RDP: can not create record"
-        if "uniq_non_terminal_rdp_per_program" in str(e):
+        if "uniq_non_terminal_rdp_per_program" in str(exc):
             message = "RDP: can not create while another RDP is unfinished"
-        raise RdpWorkflowError({"errors": [message]}) from e
+        raise RdpWorkflowError({"errors": [message]}) from exc
 
     return {"rdp_id": rdp.id}
 
@@ -202,6 +193,7 @@ def claim_rdp_push_clean(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp
         "pushed_by_id": user_id,
         "master_detail": master_detail,
         "pks": pks,
+        "operations": [],
     }
     try:
         with transaction.atomic():
