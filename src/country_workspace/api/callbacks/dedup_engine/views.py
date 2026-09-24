@@ -8,12 +8,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.rdp import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT, sync_deduplication_result
+from country_workspace.exceptions import RemoteUnavailableError
+from country_workspace.rdp import (
+    DEDUP_CALLBACK_MAX_AGE,
+    DEDUP_CALLBACK_SALT,
+    sync_biometric_deduplication_result,
+)
 
 from .responses import (
     DEDUP_CALLBACK_RESPONSES,
-    dedup_callback_error_response,
     dedup_callback_response,
     dedup_callback_unavailable_response,
     invalid_callback_token_response,
@@ -22,7 +25,7 @@ from .serializers import DedupEngineRdpCallbackPayloadSerializer
 
 
 class DedupEngineRdpStateChangedCallbackView(APIView):
-    """Synchronize an RDP after a DedupEngine state change."""
+    """Synchronize an RDP operation after a DedupEngine state change."""
 
     authentication_classes = ()
     permission_classes = (AllowAny,)
@@ -35,7 +38,7 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
         tags=["callbacks"],
     )
     def get(self, request: Request, signed_token: str) -> Response:
-        """Synchronize the result identified by the signed URL token."""
+        """Synchronize the operation identified by the signed URL token."""
         try:
             payload = signing.loads(
                 signed_token,
@@ -50,15 +53,11 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
             return invalid_callback_token_response()
 
         try:
-            synchronized = sync_deduplication_result(
-                rdp_id=serializer.validated_data["rdp_id"],
-                deduplication_set_id=serializer.validated_data["deduplication_set_id"],
+            synchronized = sync_biometric_deduplication_result(
+                operation_id=serializer.validated_data["operation_id"],
             )
         except RemoteUnavailableError as exc:
             sentry_sdk.capture_exception(exc)
             return dedup_callback_unavailable_response()
-        except RemoteError as exc:
-            sentry_sdk.capture_exception(exc)
-            return dedup_callback_error_response()
 
         return dedup_callback_response(synchronized=synchronized)

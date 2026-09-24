@@ -5,19 +5,14 @@ from rest_framework.response import Response
 from .serializers import DedupEngineRdpCallbackErrorSerializer, DedupEngineRdpCallbackResponseSerializer
 from .types import DedupCallbackCode
 
-
 DEDUP_CALLBACK_RESPONSES = {
     status.HTTP_200_OK: OpenApiResponse(
         response=DedupEngineRdpCallbackResponseSerializer,
-        description="The RDP was updated, or the callback required no changes.",
+        description="The RDP operation was updated, or the callback required no changes.",
     ),
     status.HTTP_400_BAD_REQUEST: OpenApiResponse(
         response=DedupEngineRdpCallbackErrorSerializer,
         description="The callback token is invalid or expired.",
-    ),
-    status.HTTP_502_BAD_GATEWAY: OpenApiResponse(
-        response=DedupEngineRdpCallbackErrorSerializer,
-        description="A valid deduplication result could not be retrieved.",
     ),
     status.HTTP_503_SERVICE_UNAVAILABLE: OpenApiResponse(
         response=DedupEngineRdpCallbackErrorSerializer,
@@ -46,18 +41,10 @@ def dedup_callback_response(*, synchronized: bool) -> Response:
     serializer = DedupEngineRdpCallbackResponseSerializer(
         {
             "code": DedupCallbackCode.UPDATED if synchronized else DedupCallbackCode.UNCHANGED,
-            "detail": "RDP deduplication state updated." if synchronized else "No RDP update required.",
+            "detail": "RDP operation updated." if synchronized else "No RDP operation update required.",
         }
     )
     return _callback_response(serializer.data, status_code=status.HTTP_200_OK)
-
-
-def dedup_callback_error_response() -> Response:
-    """Return a deduplication result retrieval error response."""
-    return _callback_response(
-        {"detail": "Could not retrieve a valid deduplication result."},
-        status_code=status.HTTP_502_BAD_GATEWAY,
-    )
 
 
 def dedup_callback_unavailable_response() -> Response:
