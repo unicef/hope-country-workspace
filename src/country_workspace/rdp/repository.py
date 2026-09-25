@@ -1,16 +1,18 @@
-from collections.abc import Iterable
-from uuid import UUID
-
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import Rdp, RdpOperation
-from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .types import OperationLogEntry, OperationLogResult
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .types import OperationLogEntry, OperationLogResult
+    from country_workspace.models.rdp import RdpOperationAction
+    from uuid import UUID
+    from collections.abc import Iterable
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:

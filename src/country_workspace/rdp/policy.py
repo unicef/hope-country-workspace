@@ -1,12 +1,15 @@
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.db.models import Q
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp
+from country_workspace.models import Rdp, RdpOperation
 
 from .exceptions import RdpWorkflowError
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass(slots=True, frozen=True)
@@ -33,6 +36,10 @@ class RdpActionPolicy:
     def cancel_check(self) -> ActionCheck:
         if not self.is_cancel_visible():
             return ActionCheck(False, f"RDP: can not cancel in status={self.rdp.status}")
+        if self.rdp.operations.filter(
+            status__in={RdpOperation.Status.PENDING, RdpOperation.Status.RUNNING},
+        ).exists():
+            return ActionCheck(False, "RDP: can not cancel while operations are pending or running.")
         return ActionCheck(True)
 
     def reset_check(self) -> ActionCheck:

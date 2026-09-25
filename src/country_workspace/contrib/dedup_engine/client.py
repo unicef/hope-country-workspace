@@ -132,6 +132,21 @@ class Client:
         result = self._request("retrieve_deduplication_set", item.retrieve)
         return cast("response.DeduplicationSet", result)
 
+    def retrieve_deduplication_set_or_none(self) -> response.DeduplicationSet | None:
+        """Retrieve the deduplication set if it exists."""
+        item = resource.DeduplicationSetItem(self.session, self.deduplication_set_endpoint)
+
+        def retrieve() -> response.DeduplicationSet | None:
+            try:
+                result = item.retrieve()
+            except HTTPError as exc:
+                if getattr(exc.response, "status_code", None) == 404:
+                    return None
+                raise
+            return cast("response.DeduplicationSet", result)
+
+        return self._request("retrieve_deduplication_set", retrieve)
+
     def retrieve_findings(self) -> list[response.Finding]:
         """Retrieve all findings."""
         collection = resource.FindingsCollection(self.session, self.deduplication_set_endpoint.findings)

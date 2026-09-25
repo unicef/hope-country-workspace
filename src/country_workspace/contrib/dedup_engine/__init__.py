@@ -1,4 +1,5 @@
 from .deduplication_status import (
+    NON_BLOCKING_DEDUPLICATION_SET_STATES,
     PROCESSABLE_DEDUPLICATION_SET_STATES,
     PUSHABLE_DEDUPLICATION_SET_STATES,
     REJECTABLE_DEDUPLICATION_SET_STATES,
@@ -7,11 +8,13 @@ from .deduplication_status import (
     DedupResponseStatus,
     DeduplicationSetState,
     get_deduplication_status,
+    retrieve_deduplication_set_state,
 )
 from .factory import make_client as make_dedup_client
 from .schemas import SYSTEM_ERROR_STATUS_CODES, FindingStatusCode
 
 __all__ = [
+    "NON_BLOCKING_DEDUPLICATION_SET_STATES",
     "PROCESSABLE_DEDUPLICATION_SET_STATES",
     "PUSHABLE_DEDUPLICATION_SET_STATES",
     "REJECTABLE_DEDUPLICATION_SET_STATES",
@@ -23,4 +26,5 @@ __all__ = [
     "FindingStatusCode",
     "get_deduplication_status",
     "make_dedup_client",
+    "retrieve_deduplication_set_state",
 ]

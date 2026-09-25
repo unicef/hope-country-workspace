@@ -1,47 +1,35 @@
 import json
 from collections.abc import Callable
 from contextlib import suppress
-from decimal import Decimal
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
-from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db import transaction
-from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext_lazy as _
-from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import Rdp
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
 from country_workspace.rdp import (
-    BiometricDeduplicationConfigForm,
     DedupEngineState,
-    ThresholdType,
     RdpActionPolicy,
     RdpWorkflowError,
-    get_dedup_callback_base_url,
     get_deduplication_policy,
     get_push_policy,
+    get_rdp_policy,
     claim_rdp_cancel,
-    claim_rdp_deduplication,
     claim_rdp_push,
     claim_rdp_push_clean,
     claim_review_rdp_push,
-    dedup_existing_rdp_core,
-    qs_individuals_for_rdp,
-    sync_deduplication_result,
 )
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryRdp
@@ -51,6 +39,11 @@ from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest, HttpResponse
+    from django.db.models import QuerySet
+    from admin_extra_buttons.buttons import LinkButton, StandardButton
 
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
@@ -228,182 +221,16 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         return None if check.allowed else deny(check.reason or "Action is not allowed.")
 
-    def _render_push_threshold(
-        self,
-        request: HttpRequest,
-        obj: CountryRdp,
-        form: BiometricDeduplicationConfigForm,
-    ) -> HttpResponse:
-        """Render the push threshold form."""
-        marked_count = obj.duplicate_individuals.count()
-        total_count = qs_individuals_for_rdp(rdp=obj).count()
-        marked_percentage = Decimal(marked_count) * 100 / total_count if total_count else Decimal(0)
-        context = self.get_common_context(request, str(obj.pk), title=_("Push to HOPE"))
-        context.update(
-            {
-                "form": form,
-                "rdp": obj,
-                "change_url": self._change_url(obj),
-                "marked_count": marked_count,
-                "total_count": total_count,
-                "marked_percentage": marked_percentage,
-            }
-        )
-        return render(request, "workspace/rdp/push_threshold.html", context)
-
-    def _push_with_threshold(self, request: HttpRequest, obj: CountryRdp) -> HttpResponse:
-        """Validate the threshold and handle the initial push request."""
-        if response := self._deny_if_not_allowed(request, obj, get_push_policy, "start_push_check"):
-            return response
-
-        form = BiometricDeduplicationConfigForm(
-            request.POST if request.method == "POST" else None,
-            total_count=qs_individuals_for_rdp(rdp=obj).count(),
-        )
-
-        if request.method != "POST" or not form.is_valid():
-            return self._render_push_threshold(request, obj, form)
-
-        return self._schedule_push(request, obj, form=form)
-
-    def _schedule_push(
-        self,
-        request: HttpRequest,
-        obj: CountryRdp,
-        *,
-        form: BiometricDeduplicationConfigForm | None = None,
-    ) -> HttpResponse:
-        """Check the threshold and schedule an allowed push."""
-        change_url = self._change_url(obj)
-        threshold = (
-            (
-                ThresholdType(form.cleaned_data["threshold_type"]),
-                form.cleaned_data["threshold_value"],
-            )
-            if form is not None
-            else None
-        )
-
-        try:
-            check, locked = claim_rdp_push(rdp_id=obj.pk, user_id=request.user.pk, threshold=threshold)
-        except RemoteUnavailableError as exc:
-            sentry_sdk.capture_exception(exc)
-            messages.error(request, str(exc))
-            return redirect(change_url)
-        except RemoteError as exc:
-            messages.error(request, str(exc))
-            return redirect(change_url)
+    def _schedule_push(self, request: HttpRequest, obj: CountryRdp) -> HttpResponse:
+        """Schedule an allowed push."""
+        check, locked = claim_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
 
         if not check.allowed or locked is None:
             messages.error(request, check.reason or "Action is not allowed.")
         elif locked.status == Rdp.PushStatus.REVIEW_PENDING:
-            messages.warning(request, "The selected threshold was exceeded. Review this RDP before pushing.")
+            messages.warning(request, "The configured threshold was exceeded. Review this RDP before pushing.")
         else:
             messages.success(request, "Push to HOPE task scheduled")
-
-        return redirect(change_url)
-
-    @button(
-        label="Start deduplication",
-        change_form=True,
-        change_list=False,
-        permission="country_workspace.deduplicate_rdp",
-        visible=lambda btn: _is_visible(btn, get_deduplication_policy, "is_deduplicate_visible"),
-        enabled=lambda btn: _is_allowed(btn, get_deduplication_policy, "claim_deduplication_check"),
-        html_attrs={"title": "Queue RDP for deduplication in DedupEngine."},
-    )
-    def deduplicate(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Queue this RDP for deduplication in DedupEngine."""
-        if (obj := self.get_object(request, pk)) is None:
-            messages.error(request, "RDP not found")
-            return redirect("workspace:workspaces_countryrdp_changelist")
-
-        try:
-            get_dedup_callback_base_url()
-        except ValueError as exc:
-            messages.error(request, str(exc))
-            return redirect(self._change_url(obj))
-
-        try:
-            policy = get_deduplication_policy(obj)
-            check = policy.claim_deduplication_check()
-            if not check.allowed:
-                messages.error(request, check.reason or "Action is not allowed.")
-                return redirect(self._change_url(obj))
-            can_create_deduplication_set = policy.can_create_deduplication_set
-            with transaction.atomic():
-                check, locked = claim_rdp_deduplication(
-                    rdp_id=obj.pk,
-                    can_create_deduplication_set=can_create_deduplication_set,
-                    expected_deduplication_set_id=obj.deduplication_set_id,
-                )
-                if not check.allowed or locked is None:
-                    messages.error(request, check.reason or "Action is not allowed.")
-                    return redirect(self._change_url(obj))
-                if (deduplication_set_id := locked.deduplication_set_id) is None:
-                    raise RuntimeError("RDP deduplication set was not initialized.")
-                job = AsyncJob.objects.create(
-                    description="Queue RDP for deduplication in DedupEngine",
-                    type=AsyncJob.JobType.TASK,
-                    owner=request.user,
-                    action=fqn(dedup_existing_rdp_core),
-                    program=locked.program,
-                    rdp=locked,
-                    config={
-                        "rdp_id": locked.pk,
-                        "deduplication_set_id": str(deduplication_set_id),
-                    },
-                )
-                transaction.on_commit(job.queue)
-        except RemoteUnavailableError as exc:
-            sentry_sdk.capture_exception(exc)
-            messages.error(request, str(exc))
-        except RemoteError as exc:
-            messages.error(request, str(exc))
-        else:
-            messages.success(request, "Dedup task scheduled")
-
-        return redirect(self._change_url(obj))
-
-    @button(
-        label="Check deduplication result",
-        change_form=True,
-        change_list=False,
-        permission="country_workspace.deduplicate_rdp",
-        visible=lambda btn: bool(
-            (obj := btn.original) and obj.status == Rdp.PushStatus.DEDUP_PENDING and obj.deduplication_set_id
-        ),
-        html_attrs={"title": "Fetch the current deduplication result from DedupEngine."},
-    )
-    def sync_deduplication(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Fetch the current DedupEngine state and synchronize the result."""
-        if (obj := self.get_object(request, pk)) is None:
-            messages.error(request, "RDP not found")
-            return redirect("workspace:workspaces_countryrdp_changelist")
-
-        if obj.status != Rdp.PushStatus.DEDUP_PENDING or (deduplication_set_id := obj.deduplication_set_id) is None:
-            messages.warning(request, "RDP is not awaiting deduplication.")
-            return redirect(self._change_url(obj))
-
-        try:
-            synchronized = sync_deduplication_result(rdp_id=obj.pk, deduplication_set_id=deduplication_set_id)
-        except RemoteUnavailableError as exc:
-            sentry_sdk.capture_exception(exc)
-            messages.error(request, str(exc))
-        except RemoteError as exc:
-            messages.error(request, str(exc))
-        else:
-            obj.refresh_from_db(fields=["status", "deduplication_set_id"])
-
-            if synchronized:
-                if obj.status == Rdp.PushStatus.FAILURE:
-                    messages.error(request, "Deduplication failed in DedupEngine. RDP marked as failed.")
-                else:
-                    messages.success(request, "Deduplication result synchronized.")
-            elif obj.status != Rdp.PushStatus.DEDUP_PENDING or obj.deduplication_set_id != deduplication_set_id:
-                messages.info(request, "RDP deduplication state has already changed.")
-            else:
-                messages.info(request, "Deduplication is still in progress.")
 
         return redirect(self._change_url(obj))
 
@@ -412,8 +239,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.cancel_rdp",
-        visible=lambda btn: _is_visible(btn, get_deduplication_policy, "is_cancel_visible"),
-        enabled=lambda btn: _is_allowed(btn, get_deduplication_policy, "cancel_check"),
+        visible=lambda btn: _is_visible(btn, get_rdp_policy, "is_cancel_visible"),
+        enabled=lambda btn: _is_allowed(btn, get_rdp_policy, "cancel_check"),
         html_attrs={"title": "Cancel this RDP."},
     )
     def cancel(self, request: HttpRequest, pk: str) -> HttpResponse:
@@ -422,7 +249,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        if response := self._deny_if_not_allowed(request, obj, get_deduplication_policy, "cancel_check"):
+        if response := self._deny_if_not_allowed(request, obj, get_rdp_policy, "cancel_check"):
             return response
 
         def apply_cancel(_: HttpRequest) -> HttpResponse:
@@ -463,17 +290,14 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
         visible=lambda btn: _is_visible(btn, get_push_policy, "is_push_visible"),
-        enabled=lambda btn: _is_allowed(btn, get_push_policy, "start_push_check"),
+        enabled=lambda btn: _is_allowed(btn, get_push_policy, "push_check"),
         html_attrs={"title": "Push beneficiaries to HOPE."},
     )
     def push(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Start a push to HOPE, checking the threshold when required."""
+        """Start a push to HOPE."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
-
-        if obj.program.biometric_deduplication_enabled:
-            return self._push_with_threshold(request, obj)
 
         return self._schedule_push(request, obj)
 
@@ -496,18 +320,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return response
 
         def schedule_push(_: HttpRequest) -> HttpResponse:
-            try:
-                check, locked = claim_review_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
-            except RemoteUnavailableError as exc:
-                sentry_sdk.capture_exception(exc)
-                messages.error(request, str(exc))
-            except RemoteError as exc:
-                messages.error(request, str(exc))
+            check, locked = claim_review_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
+
+            if check.allowed and locked is not None:
+                messages.success(request, "Push to HOPE task scheduled")
             else:
-                if check.allowed and locked is not None:
-                    messages.success(request, "Push to HOPE task scheduled")
-                else:
-                    messages.error(request, check.reason or "Action is not allowed.")
+                messages.error(request, check.reason or "Action is not allowed.")
 
             return redirect(self._change_url(obj))
 
@@ -515,7 +333,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             self,
             request,
             schedule_push,
-            message="The selected threshold was exceeded. Confirm that you want to push all RDP beneficiaries.",
+            message="The configured threshold was exceeded. Confirm that you want to push all RDP beneficiaries.",
             template="workspace/admin_extra_buttons/confirm.html",
         )
 
