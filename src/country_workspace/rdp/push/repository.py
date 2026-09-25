@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from django.db import transaction
 
 from country_workspace.models import AsyncJob, Program, Rdp
-from .types import Serializer
 
 if TYPE_CHECKING:
+    from .types import Serializer
+    from uuid import UUID
     from .types import PushAttemptJobConfig
 
 

@@ -1,15 +1,18 @@
-from collections.abc import Iterable
-
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models import Rdp, RdpOperation
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .types import OperationLogEntry, OperationLogResult
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .types import OperationLogEntry, OperationLogResult
+    from country_workspace.models.rdp import RdpOperationAction
+    from uuid import UUID
+    from collections.abc import Iterable
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -22,6 +25,16 @@ def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     master_detail = rdp.program.beneficiary_group.master_detail
     beneficiaries = rdp.households if master_detail else rdp.individuals
     return master_detail, list(beneficiaries.order_by("pk").values_list("pk", flat=True))
+
+
+def clean_rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
+    """Return selected beneficiary IDs excluding duplicates or affected households."""
+    master_detail, pks = rdp_selection(rdp=rdp)
+    if master_detail:
+        excluded = set(rdp.duplicate_individuals.filter(household_id__in=pks).values_list("household_id", flat=True))
+    else:
+        excluded = set(rdp.duplicate_individuals.filter(pk__in=pks).values_list("pk", flat=True))
+    return master_detail, [pk for pk in pks if pk not in excluded]
 
 
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
@@ -47,6 +60,12 @@ def qs_individuals_by_household_pks(hh_pks: Iterable[int]) -> QuerySet[CountryIn
 def qs_individuals_by_pks(pks: Iterable[int]) -> QuerySet[CountryIndividual]:
     """Return Individuals filtered by primary keys; ordered by primary key."""
     return CountryIndividual.objects.filter(pk__in=pks).order_by("id")
+
+
+def count_rdp_individuals(*, pks: Iterable[int], master_detail: bool) -> int:
+    """Return the number of individuals represented by an RDP selection."""
+    qs = qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
+    return qs.count()
 
 
 def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
@@ -112,3 +131,13 @@ def append_rdp_operation_log(
 
     rdp.operation_log = [*(rdp.operation_log or []), entry]
     rdp.save(update_fields=["operation_log"])
+
+
+def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
+    """Return RDP operation locked for update."""
+    return RdpOperation.objects.select_for_update().select_related("rdp__program").get(pk=pk)
+
+
+def get_rdp_operation(*, pk: UUID) -> RdpOperation:
+    """Return an RDP operation with its RDP context."""
+    return RdpOperation.objects.select_related("rdp__program__beneficiary_group").get(pk=pk)

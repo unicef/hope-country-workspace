@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from django.contrib.admin.utils import quote
 from django.contrib.admin.views.main import ChangeList as DjangoChangeList
@@ -25,7 +26,7 @@ class WorkspaceChangeList(DjangoChangeList):
 
     def url_for_result(self, result: "ResultList") -> str:
         pk = getattr(result, self.pk_attname)
-        return reverse(
+        url = reverse(
             "%s:%s_%s_change"
             % (
                 self.model_admin.admin_site.namespace,
@@ -35,6 +36,9 @@ class WorkspaceChangeList(DjangoChangeList):
             args=(quote(pk),),
             current_app=self.model_admin.admin_site.name,
         )
+        if self.opts.model_name in {"countryhousehold", "countryindividual"} and (rdp_id := self.params.get("rdp_id")):
+            return f"{url}?{urlencode({'rdp_id': rdp_id})}"
+        return url
 
 
 class FlexFieldsChangeList(WorkspaceChangeList):

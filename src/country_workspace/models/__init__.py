@@ -10,6 +10,8 @@ from .office import Office
 from .program import Program
 from .rdi import Rdi
 from .rdp import Rdp
+from .rdp_operation import RdpOperation
+from .rdp_operation_finding import RdpOperationFinding
 from .role import UserRole
 from .sync import SyncLog
 from .transformer import Transformer
@@ -30,6 +32,8 @@ __all__ = [
     "Program",
     "Rdi",
     "Rdp",
+    "RdpOperation",
+    "RdpOperationFinding",
     "SyncLog",
     "Transformer",
     "User",
