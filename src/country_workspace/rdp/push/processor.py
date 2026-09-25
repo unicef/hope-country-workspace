@@ -1,20 +1,22 @@
-from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from functools import cached_property
 from itertools import batched
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, map_members, map_role_value
-from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.processor import ProcessorBase
 from country_workspace.rdp.validation import preflight_errors
 from .repository import serializer_for_program
-from .types import PushWorkflowConfig, Serializer
+
+if TYPE_CHECKING:
+    from .types import PushWorkflowConfig, Serializer
+    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+    from django.db.models import QuerySet
+    from collections.abc import Callable, Iterable, Iterator
 
 
 class PushProcessor(ProcessorBase):

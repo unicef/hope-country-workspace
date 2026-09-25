@@ -1,19 +1,22 @@
 import json
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, cast, TYPE_CHECKING
 from uuid import UUID
+from strategy_field.utils import fqn
 
-from django import forms
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
 
-from country_workspace.models import Program, RdpOperation, RdpOperationFinding
+from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation, RdpOperationFinding
 
 from .deduplication.forms import BiometricDeduplicationConfigForm
-from .repository import lock_rdp_operation_for_update
-from .types import CreateRdpOperationConfig, JSONValue
+from .repository import lock_rdp_for_update, lock_rdp_operation_for_update
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from django import forms
+    from .types import CreateRdpOperationConfig, JSONValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +86,12 @@ def claim_rdp_operation(operation_id: UUID) -> RdpOperation | None:
     """Claim a pending or failed RDP operation for execution."""
     with transaction.atomic():
         operation = lock_rdp_operation_for_update(pk=operation_id)
-        if operation.status not in {RdpOperation.Status.PENDING, RdpOperation.Status.FAILURE}:
+        rdp = lock_rdp_for_update(pk=operation.rdp_id)
+
+        if rdp.status != Rdp.PushStatus.PENDING or operation.status not in {
+            RdpOperation.Status.PENDING,
+            RdpOperation.Status.FAILURE,
+        }:
             return None
 
         operation.status = RdpOperation.Status.RUNNING
@@ -129,3 +137,36 @@ def finish_rdp_operation(*, operation_id: UUID, findings: list[RdpOperationFindi
         operation.save(update_fields=["status", "error", "finished_at"])
 
     return True
+
+
+def schedule_rdp_operation(*, operation: RdpOperation, owner_id: int) -> AsyncJob:
+    """Create and queue an RDP operation job after commit."""
+    job = AsyncJob.objects.create(
+        description=f"Run RDP operation: {RdpOperation.Type(operation.operation_type).label}",
+        type=AsyncJob.JobType.TASK,
+        owner_id=owner_id,
+        action=fqn(run_rdp_operation_core),
+        program_id=operation.rdp.program_id,
+        rdp_id=operation.rdp_id,
+        config={"operation_id": str(operation.id)},
+    )
+    transaction.on_commit(job.queue)
+    return job
+
+
+def run_rdp_operation_core(job: AsyncJob) -> dict[str, JSONValue]:
+    """Run the RDP operation referenced by an async job."""
+    operation_id = UUID(job.config["operation_id"])
+    if (operation := claim_rdp_operation(operation_id)) is None:
+        return {"operation_id": str(operation_id), "started": False}
+
+    if operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+        from .deduplication.workflow import run_biometric_deduplication
+
+        run_biometric_deduplication(operation)
+    else:
+        message = f"Unsupported RDP operation type: {operation.operation_type!r}"
+        fail_rdp_operation(operation_id=operation.id, error={"message": message})
+        raise ValueError(message)
+
+    return {"operation_id": str(operation.id), "started": True}

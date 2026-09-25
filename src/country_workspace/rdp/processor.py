@@ -1,7 +1,9 @@
-from collections.abc import Callable, Sequence
-from typing import Any, Final, NamedTuple
+from typing import Any, Final, NamedTuple, TYPE_CHECKING
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 
 class ErrorConfig(NamedTuple):

@@ -1,14 +1,20 @@
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from strategy_field.utils import fqn
 from django.db import IntegrityError, transaction
 
-from country_workspace.contrib.dedup_engine import REJECTABLE_DEDUPLICATION_SET_STATES, DeduplicationSetState
+from country_workspace.contrib.dedup_engine import (
+    NON_BLOCKING_DEDUPLICATION_SET_STATES,
+    REJECTABLE_DEDUPLICATION_SET_STATES,
+    DeduplicationSetState,
+    retrieve_deduplication_set_state,
+)
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Program, Rdp
+from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.rdp.deduplication.operations import reject_deduplication_set
 from country_workspace.rdp.deduplication.policy import get_deduplication_policy
 from .exceptions import RdpWorkflowError
+from .operation import schedule_rdp_operation
 from .policy import ActionCheck, get_rdp_policy
 from .repository import (
     append_rdp_operation_log,
@@ -16,8 +22,10 @@ from .repository import (
     lock_rdp_for_update,
     set_rdp_beneficiaries_removed,
 )
-from .types import CreateRdpConfig
 from .validation import preflight_errors
+
+if TYPE_CHECKING:
+    from .types import CreateRdpConfig
 
 
 def _validate_rdp_creation(*, program: Program, config: CreateRdpConfig, exclude_rdp_ids: tuple[int, ...] = ()) -> None:
@@ -49,7 +57,7 @@ def _create_rdp(*, config: CreateRdpConfig) -> Rdp:
 
 
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Create an RDP for the selected beneficiaries after passing preflight checks."""
+    """Create an RDP and schedule its configured operations."""
     config: CreateRdpConfig = job.config
     _validate_rdp_creation(program=job.program, config=config)
 
@@ -58,6 +66,10 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
             Program.objects.select_for_update().get(pk=config["program_id"])
             rdp = _create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
+
+            for operation in rdp.operations.all():
+                schedule_rdp_operation(operation=operation, owner_id=config["pushed_by_id"])
+
     except IntegrityError as exc:
         message = "RDP: can not create record"
         if "uniq_non_terminal_rdp_per_program" in str(exc):
@@ -86,17 +98,27 @@ def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
     rdp = Rdp.objects.select_related("program").get(pk=job.config["rdp_id"])
     deduplication_set_id = job.config["deduplication_set_id"]
 
-    if rdp.status != Rdp.PushStatus.CANCELLED or str(rdp.deduplication_set_id) != deduplication_set_id:
+    belongs_to_rdp = (
+        str(rdp.deduplication_set_id) == deduplication_set_id
+        or rdp.operations.filter(
+            pk=deduplication_set_id,
+            operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        ).exists()
+    )
+    if rdp.status != Rdp.PushStatus.CANCELLED or not belongs_to_rdp:
         raise RdpWorkflowError({"errors": ["RDP: this cancellation job is no longer current."]})
 
     try:
-        state = get_deduplication_policy(rdp).deduplication_set_state
+        state = retrieve_deduplication_set_state(
+            group_reference_id=rdp.program.unicef_id,
+            deduplication_set_id=deduplication_set_id,
+        )
         if state in REJECTABLE_DEDUPLICATION_SET_STATES:
             reject_deduplication_set(
                 group_reference_id=rdp.program.unicef_id,
                 deduplication_set_id=deduplication_set_id,
             )
-        elif state != DeduplicationSetState.REJECTED:
+        elif state not in {None, DeduplicationSetState.REJECTED}:
             raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
     except (RemoteError, RemoteUnavailableError) as exc:
         raise RdpWorkflowError({"errors": [str(exc)]}) from exc
@@ -119,19 +141,48 @@ def _schedule_rejection_job(*, rdp: Rdp, user_id: int, deduplication_set_id: str
     return job
 
 
+def _deduplication_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
+    """Check whether the RDP DedupEngine set must be rejected on cancellation."""
+    operation = rdp.operations.filter(
+        operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+    ).first()
+    deduplication_set_id = str(operation.id) if operation else None
+
+    if deduplication_set_id is None and rdp.deduplication_set_id:
+        deduplication_set_id = str(rdp.deduplication_set_id)
+
+    if deduplication_set_id is None:
+        return ActionCheck(True), None
+
+    state = retrieve_deduplication_set_state(
+        group_reference_id=rdp.program.unicef_id,
+        deduplication_set_id=deduplication_set_id,
+    )
+    if state == DeduplicationSetState.DEDUPLICATED:
+        return ActionCheck(True), deduplication_set_id
+    if state is None or state in NON_BLOCKING_DEDUPLICATION_SET_STATES:
+        return ActionCheck(True), None
+
+    return (
+        ActionCheck(False, f"DedupEngine: can not cancel with deduplication set in state={state!r}."),
+        None,
+    )
+
+
 def claim_rdp_cancel(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     """Cancel an RDP and schedule DedupEngine cleanup when required."""
     rdp = Rdp.objects.select_related("program").get(pk=rdp_id)
-    policy = get_deduplication_policy(rdp)
-    if not (check := policy.cancel_check()).allowed:
+
+    if not (check := get_rdp_policy(rdp).cancel_check()).allowed:
         return check, False
 
-    needs_rejection = bool(
-        rdp.deduplication_set_id and policy.deduplication_set_state in REJECTABLE_DEDUPLICATION_SET_STATES
-    )
+    rejection_check, rejection_set_id = _deduplication_rejection_check(rdp)
+    if not rejection_check.allowed:
+        return rejection_check, False
 
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
+
         if not (check := get_rdp_policy(locked).cancel_check()).allowed:
             return check, False
         if locked.is_dedup_settings_locked:
@@ -153,14 +204,18 @@ def claim_rdp_cancel(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
                     "decision": "CANCEL",
                     "user_id": str(user_id),
                     "outcome": Rdp.PushStatus.CANCELLED,
-                    "deduplication_set_rejection": "queued" if needs_rejection else "not_required",
+                    "deduplication_set_rejection": "queued" if rejection_set_id else "not_required",
                 },
             )
 
-        if needs_rejection:
-            _schedule_rejection_job(rdp=locked, user_id=user_id, deduplication_set_id=str(locked.deduplication_set_id))
+        if rejection_set_id:
+            _schedule_rejection_job(
+                rdp=locked,
+                user_id=user_id,
+                deduplication_set_id=rejection_set_id,
+            )
 
-    return ActionCheck(True), needs_rejection
+    return ActionCheck(True), rejection_set_id is not None
 
 
 def _check_push_clean_preconditions(rdp: Rdp) -> ActionCheck:

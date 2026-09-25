@@ -22,6 +22,14 @@ class DeduplicationSetState(StrEnum):
     REJECTED = "Rejected"
 
 
+NON_BLOCKING_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
+    DeduplicationSetState.ENCODING_FAILED,
+    DeduplicationSetState.DEDUPLICATION_FAILED,
+    DeduplicationSetState.APPROVED,
+    DeduplicationSetState.REJECTED,
+)
+
+
 PROCESSABLE_DEDUPLICATION_SET_STATES: Final[tuple[DeduplicationSetState, ...]] = (
     DeduplicationSetState.READY,
     DeduplicationSetState.ENCODED,
@@ -83,3 +91,18 @@ def get_deduplication_status(
         deduplication_set_status=state,
         findings_count=findings_count,
     )
+
+
+def retrieve_deduplication_set_state(
+    group_reference_id: str,
+    deduplication_set_id: str,
+) -> DeduplicationSetState | None:
+    """Return the current DedupEngine set state if it exists."""
+    with make_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
+        if (payload := client.retrieve_deduplication_set_or_none()) is None:
+            return None
+
+    try:
+        return DeduplicationSetState(payload["state"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RemoteError(f"DedupEngine: malformed deduplication set response: {payload}") from exc
