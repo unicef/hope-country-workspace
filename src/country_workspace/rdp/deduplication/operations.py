@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from uuid import UUID
 
 from django.db import transaction
 
@@ -10,6 +9,7 @@ from country_workspace.models.rdp import RdpOperationAction
 from country_workspace.rdp.repository import lock_rdp_for_update, append_rdp_operation_log
 
 if TYPE_CHECKING:
+    from uuid import UUID
     from country_workspace.rdp.types import OperationLogResult
 
 
