@@ -933,6 +933,15 @@ def test_get_fullname_key_key_does_not_exist() -> None:
     assert get_fullname_key(()) is None
 
 
+def test_get_fullname_key_prefers_full_name_over_full_name_latin() -> None:
+    # `full_name_latin` must never be used as Individual.name.
+    assert get_fullname_key(("full_name_latin", "full_name")) == "full_name"
+
+
+def test_get_fullname_key_ignores_full_name_latin_when_only_key() -> None:
+    assert get_fullname_key(("full_name_latin",)) is None
+
+
 def test_filter_kobo_sys_fields() -> None:
     data = {
         "kobo_sys__foo": "ui_value",

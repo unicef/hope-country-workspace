@@ -141,6 +141,27 @@ def test_widget_get_queryset_with_batch_filter(batch: Batch, individual: Individ
 
 
 @pytest.mark.django_db
+def test_widget_filter_queryset_matches_full_name_latin(batch: Batch, individual: Individual) -> None:
+    # Charset-agnostic search: the widget must also match individuals by their Latin name, not
+    # just their (local-script) `name`.
+    individual.flex_fields = {**individual.flex_fields, "full_name_latin": "Zvezdana Petrovic"}
+    individual.save(update_fields=["flex_fields"])
+
+    widget = BeneficiarySelect2Widget(batch_id=batch.id)
+    results = widget.filter_queryset(request=None, term="Zvezdana")
+
+    assert individual in results
+
+
+@pytest.mark.django_db
+def test_widget_filter_queryset_still_matches_by_name(batch: Batch, individual: Individual) -> None:
+    widget = BeneficiarySelect2Widget(batch_id=batch.id)
+    results = widget.filter_queryset(request=None, term=individual.name)
+
+    assert individual in results
+
+
+@pytest.mark.django_db
 def test_widget_get_queryset_includes_program_wide_external_collectors(
     office: Office, program: Program, batch: Batch, individual: Individual
 ) -> None:

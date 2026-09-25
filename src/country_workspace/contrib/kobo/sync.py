@@ -160,7 +160,12 @@ def build_individual_processor(
 
 
 def get_fullname_key(individual: Iterable[str]) -> str | None:
-    return next((key for key in individual if key.startswith("full_name")), None)
+    keys = tuple(individual)
+    if "full_name" in keys:
+        return "full_name"
+    # `full_name_latin` (and similar *_latin variants) must never be used as Individual.name:
+    # it holds the Latin spelling, not the display name.
+    return next((key for key in keys if key.startswith("full_name") and not key.endswith("_latin")), None)
 
 
 @dataclass(frozen=True)

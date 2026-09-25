@@ -168,6 +168,7 @@ def individual(batch):
             "mobile_number": "P123",
             "mobile_financial_institution": "FI123",
             "mobile_money": True,
+            "full_name_latin": "Zara Kowalski",
         },
     )
 
@@ -187,3 +188,7 @@ def test_apply_grouping_with_documents_and_accounts(individual: "CountryIndividu
 
     assert result["accounts"][0]["number"] == individual.flex_fields["mobile_number"]
     assert result["accounts"][0]["financial_institution"] == individual.flex_fields["mobile_financial_institution"]
+
+    # `*_latin` fields are not part of any grouped fieldset (documents/accounts), so they must
+    # flow through to the push payload unchanged, at the top level, like any other flat field.
+    assert result["full_name_latin"] == "Zara Kowalski"
