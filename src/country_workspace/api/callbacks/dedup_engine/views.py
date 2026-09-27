@@ -1,5 +1,3 @@
-import sentry_sdk
-
 from django.core import signing
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
@@ -8,7 +6,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from country_workspace.exceptions import RemoteUnavailableError
 from country_workspace.rdp import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
@@ -18,7 +15,6 @@ from country_workspace.rdp import (
 from .responses import (
     DEDUP_CALLBACK_RESPONSES,
     dedup_callback_response,
-    dedup_callback_unavailable_response,
     invalid_callback_token_response,
 )
 from .serializers import DedupEngineRdpCallbackPayloadSerializer
@@ -52,12 +48,8 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
         if not serializer.is_valid():
             return invalid_callback_token_response()
 
-        try:
-            synchronized = sync_biometric_deduplication_result(
+        return dedup_callback_response(
+            synchronized=sync_biometric_deduplication_result(
                 operation_id=serializer.validated_data["operation_id"],
             )
-        except RemoteUnavailableError as exc:
-            sentry_sdk.capture_exception(exc)
-            return dedup_callback_unavailable_response()
-
-        return dedup_callback_response(synchronized=synchronized)
+        )

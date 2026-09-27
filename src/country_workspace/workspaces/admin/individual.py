@@ -6,7 +6,15 @@ from django.db.models import BooleanField, Exists, Model, OuterRef, QuerySet, Va
 from django.http import HttpRequest
 from django.utils.html import format_html
 
-from country_workspace.models import Rdp
+from country_workspace.models import RdpOperation
+from country_workspace.rdp import (
+    biometric_operation_for_rdp,
+    qs_biometric_duplicate_individuals,
+    qs_successful_biometric_duplicate_individuals,
+    qs_successful_biometric_operations,
+)
+
+
 from ...state import state
 from ..models import CountryHousehold, CountryIndividual
 from ..sites import workspace
@@ -72,7 +80,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             return format_html('{}<br><small class="text-muted">{}</small>', obj.name, latin)
         return obj.name
 
-    def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryIndividual]":
+    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryIndividual]:
         qs = (
             super()
             .get_queryset(request)
@@ -82,23 +90,24 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         if not show_duplicate_columns(request):
             return qs
 
-        marked = Rdp.duplicate_individuals.through.objects.filter(individual_id=OuterRef("pk"))
         if rdp := get_rdp_context(request):
-            marked = marked.filter(rdp_id=rdp.pk)
-            result_available = Value(rdp.deduplication_findings_count is not None, output_field=BooleanField())
+            operation = biometric_operation_for_rdp(rdp=rdp)
+            duplicates = qs_biometric_duplicate_individuals(operation=operation) if operation else qs.none()
+            result_available = Value(
+                operation is not None and operation.status == RdpOperation.Status.SUCCESS,
+                output_field=BooleanField(),
+            )
         else:
-            marked = marked.filter(rdp__program=state.program, rdp__deduplication_findings_count__isnull=False)
-            completed = Rdp.objects.filter(program=state.program, deduplication_findings_count__isnull=False)
+            duplicates = qs_successful_biometric_duplicate_individuals(program=state.program)
+            completed = qs_successful_biometric_operations().filter(rdp__program=state.program)
             if state.program.is_master_detail:
-                marked = marked.filter(rdp__households__pk=OuterRef("household_id"))
-                completed = completed.filter(households__pk=OuterRef("household_id"))
+                completed = completed.filter(rdp__households__pk=OuterRef("household_id"))
             else:
-                marked = marked.filter(rdp__individuals__pk=OuterRef("pk"))
-                completed = completed.filter(individuals__pk=OuterRef("pk"))
+                completed = completed.filter(rdp__individuals__pk=OuterRef("pk"))
             result_available = Exists(completed)
 
         return qs.annotate(
-            _is_duplicate=Exists(marked),
+            _is_duplicate=Exists(duplicates.filter(pk=OuterRef("pk"))),
             _result_available=result_available,
         )
 

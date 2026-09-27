@@ -13,12 +13,12 @@ from django.utils.translation import gettext_lazy as _
 from country_workspace.admin.filters import IsValidFilter
 from country_workspace.admin.job import FailedFilter
 from country_workspace.models import Batch, Household, Rdp
+from country_workspace.rdp import biometric_operation_for_rdp
 from country_workspace.state import state
 
 if TYPE_CHECKING:
     from django.contrib.admin import ModelAdmin
     from django.db.models import Model, QuerySet
-
     from country_workspace.types import Beneficiary
 
 
@@ -196,8 +196,6 @@ class DuplicateFilter(WorkspaceSimpleComboFilter):
     def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
         if self.value() not in {"marked", "unmarked"}:
             return queryset
-        if (rdp := get_rdp_context(request)) and rdp.deduplication_findings_count is None:
-            return queryset.none()
         if issubclass(queryset.model, Household):
             if self.value() == "marked":
                 return queryset.filter(_result_available=True, _duplicate_member_count__gt=0)
@@ -206,11 +204,9 @@ class DuplicateFilter(WorkspaceSimpleComboFilter):
 
 
 def show_duplicate_columns(request: HttpRequest) -> bool:
-    """Show duplicate results for biometric programs and historical biometric RDPs."""
-    return bool(
-        state.program
-        and (
-            state.program.biometric_deduplication_enabled
-            or ((rdp := get_rdp_context(request)) and rdp.deduplication_set_id is not None)
-        )
-    )
+    """Show duplicate results when biometric deduplication applies."""
+    if not state.program:
+        return False
+    if rdp := get_rdp_context(request):
+        return biometric_operation_for_rdp(rdp=rdp) is not None
+    return state.program.biometric_deduplication_enabled

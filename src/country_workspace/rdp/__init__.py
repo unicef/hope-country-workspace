@@ -1,10 +1,16 @@
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.forms import BiometricDeduplicationConfigForm
-from .deduplication.policy import DedupEngineState, get_deduplication_policy, get_program_dedup_settings_policy
+from .deduplication.policy import get_program_dedup_settings_policy
 from .deduplication.types import ThresholdType
-from .deduplication.workflow import get_dedup_callback_base_url
+from .deduplication.repository import (
+    biometric_operation_for_rdp,
+    qs_biometric_duplicate_individuals,
+    qs_successful_biometric_operations,
+    qs_successful_biometric_duplicate_individuals,
+)
+from .deduplication.workflow import get_dedup_callback_base_url, sync_biometric_deduplication_result
 from .exceptions import PushThresholdConfirmationError, RdpWorkflowError
-from .lifecycle import cancel_existing_rdp_core, claim_rdp_cancel, claim_rdp_push_clean, create_rdp_core, reset_rdp
+from .lifecycle import cancel_existing_rdp_core, claim_rdp_cancel, create_clean_rdp, create_rdp_core, reset_rdp
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
@@ -19,8 +25,15 @@ from .operation import (
     get_enabled_rdp_operation_definitions,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
+    retry_failed_rdp_operations,
 )
-from .repository import append_rdp_operation_log, count_rdp_individuals, lock_rdp_for_update, qs_individuals_for_rdp
+from .repository import (
+    append_rdp_log,
+    count_rdp_individuals,
+    failed_rdp_operations,
+    lock_rdp_for_update,
+    qs_individuals_for_rdp,
+)
 from .types import CreateRdpConfig
 
 __all__ = [
@@ -30,22 +43,22 @@ __all__ = [
     "PUSH_READY_CALLBACK_SALT",
     "BiometricDeduplicationConfigForm",
     "CreateRdpConfig",
-    "DedupEngineState",
     "PushThresholdConfirmationError",
     "RdpActionPolicy",
     "RdpWorkflowError",
     "ThresholdType",
-    "append_rdp_operation_log",
+    "append_rdp_log",
+    "biometric_operation_for_rdp",
     "cancel_existing_rdp_core",
     "claim_rdp_cancel",
     "claim_rdp_push",
-    "claim_rdp_push_clean",
     "claim_review_rdp_push",
     "count_rdp_individuals",
+    "create_clean_rdp",
     "create_rdp_core",
     "fail_stuck_rdp_push",
+    "failed_rdp_operations",
     "get_dedup_callback_base_url",
-    "get_deduplication_policy",
     "get_enabled_rdp_operation_definitions",
     "get_program_dedup_settings_policy",
     "get_push_policy",
@@ -55,6 +68,11 @@ __all__ = [
     "handle_push_ready_callback",
     "lock_rdp_for_update",
     "push_existing_rdp_core",
+    "qs_biometric_duplicate_individuals",
     "qs_individuals_for_rdp",
+    "qs_successful_biometric_duplicate_individuals",
+    "qs_successful_biometric_operations",
     "reset_rdp",
+    "retry_failed_rdp_operations",
+    "sync_biometric_deduplication_result",
 ]

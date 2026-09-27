@@ -4,12 +4,19 @@ from urllib.parse import urlencode
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from django.contrib.admin import display, register
-from django.db.models import BooleanField, Count, Exists, F, IntegerField, OuterRef, Q, Value
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
+from django.db.models import BooleanField, Count, Exists, IntegerField, OuterRef, Q, Value
 
-from country_workspace.models import Rdp
+from country_workspace.models import Individual, RdpOperation
+from country_workspace.rdp import (
+    biometric_operation_for_rdp,
+    qs_biometric_duplicate_individuals,
+    qs_successful_biometric_duplicate_individuals,
+    qs_successful_biometric_operations,
+)
+
 from ...state import state
 from ..models import CountryHousehold
 from ..sites import workspace
@@ -68,31 +75,33 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         )
         if not show_duplicate_columns(request):
             return qs
+
         rdp = get_rdp_context(request)
-        marked = (
-            Q(members__duplicate_rdps__pk=rdp.pk)
-            if rdp
-            else Q(
-                members__removed=False,
-                members__duplicate_rdps__program=state.program,
-                members__duplicate_rdps__households__pk=F("pk"),
-                members__duplicate_rdps__deduplication_findings_count__isnull=False,
+        if rdp:
+            operation = biometric_operation_for_rdp(rdp=rdp)
+            duplicates = (
+                qs_biometric_duplicate_individuals(operation=operation) if operation else Individual.objects.none()
             )
-        )
-        checked = Rdp.objects.filter(
-            households__pk=OuterRef("pk"), program=state.program, deduplication_findings_count__isnull=False
-        )
-        member_count = (
-            Count("members", distinct=True)
-            if rdp
-            else Count("members", filter=Q(members__removed=False), distinct=True)
-        )
-        result_available = (
-            Value(rdp.deduplication_findings_count is not None, output_field=BooleanField()) if rdp else Exists(checked)
-        )
+            duplicate_members = Q(members__in=duplicates)
+            member_count = Count("members", distinct=True)
+            result_available = Value(
+                operation is not None and operation.status == RdpOperation.Status.SUCCESS,
+                output_field=BooleanField(),
+            )
+        else:
+            duplicates = qs_successful_biometric_duplicate_individuals(program=state.program)
+            duplicate_members = Q(members__removed=False, members__in=duplicates)
+            member_count = Count("members", filter=Q(members__removed=False), distinct=True)
+            result_available = Exists(
+                qs_successful_biometric_operations().filter(
+                    rdp__program=state.program,
+                    rdp__households__pk=OuterRef("pk"),
+                )
+            )
+
         return qs.annotate(
             _member_count=member_count,
-            _duplicate_member_count=Count("members", filter=marked, distinct=True),
+            _duplicate_member_count=Count("members", filter=duplicate_members, distinct=True),
             _result_available=result_available,
             _selected_rdp_id=Value(rdp.pk if rdp else None, output_field=IntegerField()),
         )

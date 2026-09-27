@@ -1,6 +1,7 @@
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from constance import config
 from django.core import signing
@@ -13,25 +14,22 @@ from country_workspace.contrib.dedup_engine import (
     FindingStatusCode,
     make_dedup_client,
 )
+from country_workspace.contrib.dedup_engine.client import Client
+from country_workspace.contrib.dedup_engine.response import Finding
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.operation import fail_rdp_operation, finish_rdp_operation
 from country_workspace.rdp.repository import (
+    fail_rdp_operation,
+    finish_rdp_operation,
     get_rdp_operation,
     qs_individuals_by_pks,
     qs_individuals_for_rdp,
 )
+from country_workspace.rdp.types import JSONValue
 
 from .constants import DEDUP_CALLBACK_SALT
 from .processor import BiometricDedupProcessor
-
-
-if TYPE_CHECKING:
-    from uuid import UUID
-    from country_workspace.contrib.dedup_engine.client import Client
-    from country_workspace.contrib.dedup_engine.response import Finding
-    from country_workspace.rdp.types import JSONValue
 
 
 def get_dedup_callback_base_url() -> str:
@@ -204,9 +202,7 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
                 findings=_build_biometric_findings(operation, findings),
             )
 
-    except RemoteUnavailableError:
-        raise
-    except RemoteError as exc:
+    except (RemoteError, RemoteUnavailableError) as exc:
         return fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})
     else:
         return result
@@ -269,11 +265,7 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
         operation.rdp.program.unicef_id,
         deduplication_set_id=str(operation.id),
     ) as client:
-        try:
-            state = _prepare_biometric_set(client=client, operation=operation)
-        except Exception as exc:
-            fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})
-            raise
+        state = _prepare_biometric_set(client=client, operation=operation)
 
         if state == DeduplicationSetState.DEDUPLICATED:
             sync_biometric_deduplication_result(operation_id=operation.id)
@@ -286,14 +278,8 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
             return
 
         if state not in PROCESSABLE_DEDUPLICATION_SET_STATES:
-            message = f"DedupEngine: can not process deduplication set in state={state.value!r}."
-            fail_rdp_operation(operation_id=operation.id, error={"message": message})
-            raise RdpWorkflowError({"errors": [message]})
+            raise RdpWorkflowError(
+                {"errors": [f"DedupEngine: can not process deduplication set in state={state.value!r}."]}
+            )
 
-        try:
-            client.process()
-        except RemoteUnavailableError:
-            raise
-        except Exception as exc:
-            fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})
-            raise
+        client.process()

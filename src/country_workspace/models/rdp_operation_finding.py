@@ -31,7 +31,7 @@ class RdpOperationFinding(BaseModel):
     related_individual = models.ForeignKey(
         "Individual",
         on_delete=models.CASCADE,
-        related_name="+",
+        related_name="related_rdp_operation_findings",
         null=True,
         blank=True,
         help_text=_("Related individual for findings involving another record."),
