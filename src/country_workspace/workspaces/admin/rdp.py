@@ -1,7 +1,8 @@
 import json
 from collections.abc import Callable
 from contextlib import suppress
-from typing import Any, TYPE_CHECKING
+from datetime import datetime
+from typing import Any
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
@@ -17,19 +18,21 @@ from django.utils.translation import gettext_lazy as _
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp
-from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES, RdpOperationAction
+from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models.rdp import RdpLogEntryType, RdpPushStatus
 from country_workspace.rdp import (
-    DedupEngineState,
     RdpActionPolicy,
     RdpWorkflowError,
-    get_deduplication_policy,
-    get_push_policy,
-    get_rdp_policy,
+    biometric_operation_for_rdp,
     claim_rdp_cancel,
     claim_rdp_push,
-    claim_rdp_push_clean,
+    create_clean_rdp as create_clean_rdp_workflow,
     claim_review_rdp_push,
+    failed_rdp_operations,
+    get_push_policy,
+    get_rdp_policy,
+    qs_biometric_duplicate_individuals,
+    retry_failed_rdp_operations,
 )
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryRdp
@@ -39,11 +42,9 @@ from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
-
-if TYPE_CHECKING:
-    from django.http import HttpRequest, HttpResponse
-    from django.db.models import QuerySet
-    from admin_extra_buttons.buttons import LinkButton, StandardButton
+from django.http import HttpRequest, HttpResponse
+from django.db.models import QuerySet
+from admin_extra_buttons.buttons import LinkButton, StandardButton
 
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
@@ -65,24 +66,34 @@ def _is_allowed(btn: StandardButton, policy_getter: PolicyGetter, action: str) -
         return False
 
 
+def _has_failed_operations(btn: StandardButton) -> bool:
+    return bool(
+        (obj := btn.original) and obj.status == RdpPushStatus.PENDING and failed_rdp_operations(rdp_id=obj.pk).exists()
+    )
+
+
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "push_date", "status", "deduplication_set_id")
+    list_display = ("name", "push_date", "status")
     list_filter = (("status", ChoiceFilter),)
-    search_fields = ("name", "deduplication_set_id")
+    search_fields = ("name",)
     ordering = ("-push_date",)
     readonly_fields = (
         "name",
         "status",
         "push_date",
         "hope_rdi_id",
-        "dedup_engine_state",
-        "deduplication_set_id",
-        "deduplication_findings_count",
+        "operations_display",
+        "biometric_findings_count",
         "marked_individuals_count",
         "processing_history",
         "operation_log_display",
     )
+
+    @staticmethod
+    def _format_datetime(value: datetime | None) -> str:
+        """Format an admin datetime."""
+        return date_format(timezone.localtime(value), "Y-m-d H:i:s") if value else "-"
 
     def get_fieldsets(
         self,
@@ -93,16 +104,21 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
 
-        if obj and (obj.program.biometric_deduplication_enabled or obj.deduplication_set_id is not None):
-            fields = ["deduplication_set_id", "deduplication_findings_count", "marked_individuals_count"]
-            if obj.status in NON_TERMINAL_RDP_STATUSES:
-                fields.insert(0, "dedup_engine_state")
-            fieldsets.append((_("Deduplication"), {"fields": fields}))
+        if obj and obj.operations.exists():
+            fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
+
+        if obj and biometric_operation_for_rdp(rdp=obj):
+            fieldsets.append(
+                (
+                    _("Deduplication"),
+                    {"fields": ("biometric_findings_count", "marked_individuals_count")},
+                )
+            )
 
         fieldsets.extend(
             [
                 (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
-                (_("Operation log"), {"fields": ("operation_log_display",), "classes": ("content-only",)}),
+                (_("RDP log"), {"fields": ("operation_log_display",), "classes": ("content-only",)}),
             ]
         )
         return fieldsets
@@ -119,25 +135,25 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
-    def change_view(
-        self,
-        request: HttpRequest,
-        object_id: str,
-        form_url: str = "",
-        extra_context: dict[str, Any] | None = None,
-    ) -> HttpResponse:
-        extra_context = {
-            **(extra_context or {}),
-            "dynamic_field_help_texts": {
-                "dedup_engine_state": _("Current deduplication state reported by DedupEngine for this RDP."),
-            },
-        }
-        return super().change_view(request, object_id, form_url, extra_context)
+    @display(description="")
+    def operations_display(self, obj: CountryRdp) -> str:
+        """Return RDP operation execution details."""
+        operations = list(obj.operations.order_by("operation_type"))
+        if not operations:
+            return "-"
 
-    @display(description=_("Marked individuals"))
-    def marked_individuals_count(self, obj: CountryRdp) -> int | str:
-        """Return the number of locally marked individuals for this RDP."""
-        return obj.duplicate_individuals.count() if obj.deduplication_findings_count is not None else "-"
+        rows = [
+            {
+                "type": operation.get_operation_type_display(),
+                "status": operation.get_status_display(),
+                "attempts": operation.attempt,
+                "started_at": self._format_datetime(operation.started_at),
+                "finished_at": self._format_datetime(operation.finished_at),
+                "error": str(operation.error.get("message") or "-"),
+            }
+            for operation in operations
+        ]
+        return render_to_string("workspace/rdp/_operations.html", {"rows": rows})
 
     @display(description="")
     def processing_history(self, obj: CountryRdp) -> str:
@@ -149,9 +165,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             {
                 "url": reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
                 "step": job.description or _("Background job"),
-                "scheduled_at": (
-                    date_format(timezone.localtime(job.datetime_queued), "Y-m-d H:i:s") if job.datetime_queued else "-"
-                ),
+                "scheduled_at": self._format_datetime(job.datetime_queued),
                 "status": job.task_status or "-",
             }
             for job in jobs
@@ -169,7 +183,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         for entry in obj.operation_log:
             action = entry.get("action", "-")
             with suppress(TypeError, ValueError):
-                action = RdpOperationAction(action).label
+                action = RdpLogEntryType(action).label
 
             timestamp = entry.get("timestamp", "-")
             if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
@@ -186,13 +200,21 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         return render_to_string("workspace/rdp/_operation_log.html", {"rows": rows})
 
-    def dedup_engine_state(self, obj: CountryRdp) -> str:
-        try:
-            return str(get_deduplication_policy(obj).dedup_engine_state())
-        except RemoteUnavailableError:
-            return str(DedupEngineState.unavailable())
-        except RemoteError as exc:
-            return str(exc)
+    @display(description=_("Findings"))
+    def biometric_findings_count(self, obj: CountryRdp) -> int | str:
+        """Return the number of biometric findings."""
+        operation = biometric_operation_for_rdp(rdp=obj)
+        if operation is None or operation.status != RdpOperation.Status.SUCCESS:
+            return "-"
+        return operation.findings.count()
+
+    @display(description=_("Marked individuals"))
+    def marked_individuals_count(self, obj: CountryRdp) -> int | str:
+        """Return the number of locally marked duplicate individuals."""
+        operation = biometric_operation_for_rdp(rdp=obj)
+        if operation is None or operation.status != RdpOperation.Status.SUCCESS:
+            return "-"
+        return qs_biometric_duplicate_individuals(operation=operation).count()
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -285,6 +307,28 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return apply_cancel(request)
 
     @button(
+        label="Retry failed operations",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.create_rdp",
+        visible=_has_failed_operations,
+        html_attrs={"title": "Retry failed RDP operations."},
+    )
+    def retry_failed_operations(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Retry failed RDP operations."""
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        count = retry_failed_rdp_operations(rdp_id=obj.pk, owner_id=request.user.pk)
+        if count:
+            messages.success(request, f"{count} failed operation(s) scheduled for retry.")
+        else:
+            messages.warning(request, "No failed operations available for retry.")
+
+        return redirect(self._change_url(obj))
+
+    @button(
         label="Push to HOPE",
         change_form=True,
         change_list=False,
@@ -343,17 +387,17 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
         visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
-        html_attrs={"title": "Create a new RDP excluding duplicate beneficiaries."},
+        html_attrs={"title": "Create a new RDP excluding beneficiaries affected by biometric findings."},
     )
     def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Cancel this RDP and create a new one without marked duplicates."""
+        """Cancel this RDP and create a new one without beneficiaries affected by biometric findings."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         def apply(_: HttpRequest) -> HttpResponse:
             try:
-                check, clean_rdp = claim_rdp_push_clean(rdp_id=obj.pk, user_id=request.user.pk)
+                check, clean_rdp = create_clean_rdp_workflow(rdp_id=obj.pk, user_id=request.user.pk)
             except RemoteUnavailableError as exc:
                 sentry_sdk.capture_exception(exc)
                 messages.error(request, str(exc))
@@ -368,7 +412,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 messages.error(request, check.reason or "Action is not allowed.")
             return redirect(self._change_url(obj))
 
-        message = "Cancel this RDP and create a new one without duplicates? "
+        message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
         if obj.hope_rdi_id not in {None, "N/A"}:
             message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
         message += "The old DedupEngine set will be queued for rejection."

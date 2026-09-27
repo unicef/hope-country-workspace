@@ -33,11 +33,9 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
 )
 
 
-class RdpOperationAction(models.TextChoices):
-    APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
+class RdpLogEntryType(models.TextChoices):
     PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
     REVIEW_DECISION = "REVIEW_DECISION", _("Review decision")
-    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
 
 
 class Rdp(BaseModel):
@@ -132,7 +130,6 @@ class Rdp(BaseModel):
         permissions = [
             ("cancel_rdp", _("Can cancel RDP")),
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
-            ("deduplicate_rdp", _("Can run RDP deduplication")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
             ("reset_rdp", _("Can reset RDP")),
         ]
@@ -155,36 +152,12 @@ class Rdp(BaseModel):
         beneficiaries = "households" if is_household else "individuals"
         getattr(self, beneficiaries).set(pks)
 
-    def start_deduplication(self) -> None:
-        """Start deduplication on an already-locked RDP."""
-        self.status = self.PushStatus.DEDUP_PENDING
-        self.deduplication_findings_count = None
-        self.is_dedup_settings_locked = True
-        self.save(update_fields=["status", "deduplication_findings_count", "is_dedup_settings_locked"])
-
-    def finish_deduplication(self, *, findings_count: int) -> None:
-        """Finish deduplication successfully on an already-locked RDP."""
-        if findings_count < 0:
-            raise ValueError(f"Invalid deduplication findings count: {findings_count}")
-        self.status = self.PushStatus.PENDING
-        self.deduplication_findings_count = findings_count
-        self.is_dedup_settings_locked = False
-        self.save(update_fields=["status", "deduplication_findings_count", "is_dedup_settings_locked"])
-
-    def fail_deduplication(self) -> None:
-        """Fail deduplication on an already-locked RDP."""
-        self.status = self.PushStatus.FAILURE
-        self.deduplication_findings_count = None
-        self.is_dedup_settings_locked = False
-        self.save(update_fields=["status", "deduplication_findings_count", "is_dedup_settings_locked"])
-
     def start_push_attempt(self) -> UUID:
         """Start a new push attempt on an already-locked RDP."""
         push_attempt_id = uuid4()
         self.status = self.PushStatus.PUSH_PENDING
         self.push_attempt_id = push_attempt_id
-        self.is_dedup_settings_locked = False
-        self.save(update_fields=["status", "push_attempt_id", "is_dedup_settings_locked"])
+        self.save(update_fields=["status", "push_attempt_id"])
         return push_attempt_id
 
     def finish_push_attempt(self, *, status: RdpPushStatus, hope_rdi_id: str) -> None:
@@ -200,6 +173,5 @@ class Rdp(BaseModel):
         """Mark an already-locked RDP as cancelled."""
         self.status = self.PushStatus.CANCELLED
         self.hope_rdi_id = self.hope_rdi_id or "N/A"
-        self.is_dedup_settings_locked = False
         self.push_attempt_id = None
-        self.save(update_fields=["status", "hope_rdi_id", "is_dedup_settings_locked", "push_attempt_id"])
+        self.save(update_fields=["status", "hope_rdi_id", "push_attempt_id"])

@@ -32,7 +32,6 @@ class RdpAdmin(BaseModelAdmin):
         "push_date",
         "status",
         "hope_rdi_id",
-        "deduplication_set_id",
         "operation_log",
         "related_job",
     )

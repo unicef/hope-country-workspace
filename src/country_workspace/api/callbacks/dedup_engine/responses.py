@@ -14,10 +14,6 @@ DEDUP_CALLBACK_RESPONSES = {
         response=DedupEngineRdpCallbackErrorSerializer,
         description="The callback token is invalid or expired.",
     ),
-    status.HTTP_503_SERVICE_UNAVAILABLE: OpenApiResponse(
-        response=DedupEngineRdpCallbackErrorSerializer,
-        description="Deduplication result synchronization is temporarily unavailable.",
-    ),
     status.HTTP_500_INTERNAL_SERVER_ERROR: OpenApiResponse(
         description="The callback could not be processed.",
     ),
@@ -45,11 +41,3 @@ def dedup_callback_response(*, synchronized: bool) -> Response:
         }
     )
     return _callback_response(serializer.data, status_code=status.HTTP_200_OK)
-
-
-def dedup_callback_unavailable_response() -> Response:
-    """Return a deduplication synchronization unavailable response."""
-    return _callback_response(
-        {"detail": "Deduplication result synchronization is temporarily unavailable."},
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-    )

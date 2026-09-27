@@ -1,6 +1,7 @@
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from functools import partial
-from typing import Any, TYPE_CHECKING
+from typing import Any
 from uuid import UUID
 
 from constance import config
@@ -11,18 +12,19 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedError, RdiResetResult
 from country_workspace.models import AsyncJob, Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
-from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.operation import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.deduplication.repository import (
     biometric_operation_for_rdp,
+    has_biometric_image_issues,
     qs_biometric_duplicate_individuals,
 )
 from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import (
-    append_rdp_operation_log,
+    append_rdp_log,
     lock_rdp_for_update,
     qs_households,
     qs_individuals_by_pks,
@@ -41,10 +43,7 @@ from .repository import (
     get_or_create_rdp_push_data_job,
     lock_rdp_push_attempt,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-    from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
+from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
 
 def _build_push_ready_callback_url() -> str:
@@ -147,14 +146,14 @@ def _schedule_push_preparation(*, rdp: Rdp, user_id: int) -> None:
 
 
 def claim_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | None]:
-    """Start an RDP push or place it in review when the threshold is exceeded."""
+    """Start an RDP push or place it in review when required."""
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
         if not (check := get_push_policy(locked).push_check()).allowed:
             return check, None
 
         result: OperationLogResult = {"user_id": str(user_id)}
-        exceeded = False
+        review_required = False
 
         if operation := biometric_operation_for_rdp(rdp=locked):
             threshold_type = ThresholdType(operation.config["threshold_type"])
@@ -165,7 +164,8 @@ def claim_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | Non
             if total_count == 0:
                 return ActionCheck(False, "RDP: no individuals available for push."), None
 
-            exceeded = threshold_exceeded(
+            has_image_issues = has_biometric_image_issues(operation=operation)
+            review_required = has_image_issues or threshold_exceeded(
                 marked_count=marked_count,
                 total_count=total_count,
                 threshold_type=threshold_type,
@@ -177,18 +177,19 @@ def claim_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | Non
                 marked_count=marked_count,
                 total_count=total_count,
                 marked_percentage=str(Decimal(marked_count) * 100 / total_count),
+                has_image_issues=has_image_issues,
             )
 
-        if exceeded:
+        if review_required:
             locked.status = Rdp.PushStatus.REVIEW_PENDING
             locked.save(update_fields=["status"])
         else:
             result["push_attempt_id"] = str(locked.start_push_attempt())
 
         result["outcome"] = locked.status
-        append_rdp_operation_log(rdp=locked, action=RdpOperationAction.PUSH_TO_HOPE, result=result)
+        append_rdp_log(rdp=locked, entry_type=RdpLogEntryType.PUSH_TO_HOPE, result=result)
 
-        if not exceeded:
+        if not review_required:
             _schedule_push_preparation(rdp=locked, user_id=user_id)
 
     return ActionCheck(True), locked
@@ -202,9 +203,9 @@ def claim_review_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rd
             return check, None
 
         push_attempt_id = locked.start_push_attempt()
-        append_rdp_operation_log(
+        append_rdp_log(
             rdp=locked,
-            action=RdpOperationAction.PUSH_TO_HOPE,
+            entry_type=RdpLogEntryType.PUSH_TO_HOPE,
             result={
                 "user_id": str(user_id),
                 "decision": "PUSH",
@@ -346,9 +347,8 @@ def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_
         transaction.on_commit(
             partial(
                 approve_deduplication_set_after_successful_push,
-                rdp_id=rdp_id,
+                operation_id=operation.id if operation else None,
                 group_reference_id=rdp.program.unicef_id,
-                deduplication_set_id=operation.id if operation else None,
             ),
             robust=True,
         )
@@ -417,9 +417,8 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
             transaction.on_commit(
                 partial(
                     approve_deduplication_set_after_successful_push,
-                    rdp_id=rdp_id,
+                    operation_id=operation.id if operation else None,
                     group_reference_id=locked.program.unicef_id,
-                    deduplication_set_id=operation.id if operation else None,
                 ),
                 robust=True,
             )

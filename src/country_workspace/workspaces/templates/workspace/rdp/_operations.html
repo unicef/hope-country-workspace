@@ -1,0 +1,51 @@
+{% load i18n %}
+<div class="overflow-x-auto">
+    <table class="text-left">
+        <thead>
+            <tr>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Type" %}
+                </th>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Status" %}
+                </th>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Attempts" %}
+                </th>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Started" %}
+                </th>
+                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
+                    {% translate "Finished" %}
+                </th>
+                <th scope="col" class="pb-2">
+                    {% translate "Error" %}
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.type }}
+                    </td>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.status }}
+                    </td>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.attempts }}
+                    </td>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.started_at }}
+                    </td>
+                    <td class="py-2 pr-6 whitespace-nowrap">
+                        {{ row.finished_at }}
+                    </td>
+                    <td class="py-2">
+                        {{ row.error }}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

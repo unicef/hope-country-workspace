@@ -1,18 +1,21 @@
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from django.db import transaction
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from typing import TYPE_CHECKING
+from .types import JSONValue, OperationLogResult
 
 if TYPE_CHECKING:
-    from .types import OperationLogEntry, OperationLogResult
-    from country_workspace.models.rdp import RdpOperationAction
-    from uuid import UUID
-    from collections.abc import Iterable
+    from .types import OperationLogEntry
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -25,16 +28,6 @@ def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     master_detail = rdp.program.beneficiary_group.master_detail
     beneficiaries = rdp.households if master_detail else rdp.individuals
     return master_detail, list(beneficiaries.order_by("pk").values_list("pk", flat=True))
-
-
-def clean_rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
-    """Return selected beneficiary IDs excluding duplicates or affected households."""
-    master_detail, pks = rdp_selection(rdp=rdp)
-    if master_detail:
-        excluded = set(rdp.duplicate_individuals.filter(household_id__in=pks).values_list("household_id", flat=True))
-    else:
-        excluded = set(rdp.duplicate_individuals.filter(pk__in=pks).values_list("pk", flat=True))
-    return master_detail, [pk for pk in pks if pk not in excluded]
 
 
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
@@ -84,6 +77,7 @@ def collector_pks_by_household_pks(hh_pks: Iterable[int]) -> set[int]:
         )
         .values_list("_primary", "_alternate")
     )
+
     pks: set[int] = set()
     for primary, alternate in rows:
         for ref in (primary, alternate):
@@ -93,12 +87,7 @@ def collector_pks_by_household_pks(hh_pks: Iterable[int]) -> set[int]:
 
 
 def qs_individuals_for_push(hh_pks: Iterable[int]) -> QuerySet[CountryIndividual]:
-    """Return household members plus external collectors referenced by role ref fields.
-
-    External collectors (relationship == NON_BENEFICIARY) have household=None and
-    are linked to households only through the primary/alternate collector role
-    reference fields, so they must be included explicitly to be pushed to HOPE.
-    """
+    """Return household members plus external collectors referenced by role ref fields."""
     hh_pks = list(hh_pks)
     return CountryIndividual.objects.filter(
         Q(household_id__in=hh_pks) | Q(pk__in=collector_pks_by_household_pks(hh_pks))
@@ -115,22 +104,42 @@ def set_rdp_beneficiaries_removed(*, rdp: Rdp, removed: bool) -> None:
         rdp.individuals.update(removed=removed)
 
 
-def append_rdp_operation_log(
+def append_rdp_log(
     *,
     rdp: Rdp,
-    action: RdpOperationAction,
+    entry_type: RdpLogEntryType,
     result: OperationLogResult | None = None,
 ) -> None:
-    """Append an operation log entry to the RDP."""
+    """Append a log entry to an RDP."""
     entry: OperationLogEntry = {
         "timestamp": timezone.now().isoformat(),
-        "action": action.value,
+        "action": entry_type.value,
     }
     if result is not None:
         entry["result"] = result
 
     rdp.operation_log = [*(rdp.operation_log or []), entry]
     rdp.save(update_fields=["operation_log"])
+
+
+def append_rdp_operation_log(
+    *,
+    operation_id: UUID,
+    action: str,
+    result: OperationLogResult | None = None,
+) -> None:
+    """Append a log entry to an RDP operation."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        entry: OperationLogEntry = {
+            "timestamp": timezone.now().isoformat(),
+            "action": action,
+        }
+        if result is not None:
+            entry["result"] = result
+
+        operation.log = [*(operation.log or []), entry]
+        operation.save(update_fields=["log"])
 
 
 def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
@@ -141,3 +150,68 @@ def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
 def get_rdp_operation(*, pk: UUID) -> RdpOperation:
     """Return an RDP operation with its RDP context."""
     return RdpOperation.objects.select_related("rdp__program__beneficiary_group").get(pk=pk)
+
+
+def claim_rdp_operation(operation_id: UUID) -> RdpOperation | None:
+    """Claim a pending or failed RDP operation for execution."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        rdp = lock_rdp_for_update(pk=operation.rdp_id)
+
+        if rdp.status != Rdp.PushStatus.PENDING or operation.status not in {
+            RdpOperation.Status.PENDING,
+            RdpOperation.Status.FAILURE,
+        }:
+            return None
+
+        operation.status = RdpOperation.Status.RUNNING
+        operation.attempt += 1
+        operation.error = {}
+        operation.started_at = timezone.now()
+        operation.finished_at = None
+        operation.save(update_fields=["status", "attempt", "error", "started_at", "finished_at"])
+
+    return operation
+
+
+def fail_rdp_operation(*, operation_id: UUID, error: dict[str, JSONValue]) -> bool:
+    """Mark a running RDP operation as failed."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        if operation.status != RdpOperation.Status.RUNNING:
+            return False
+
+        operation.status = RdpOperation.Status.FAILURE
+        operation.error = error
+        operation.finished_at = timezone.now()
+        operation.save(update_fields=["status", "error", "finished_at"])
+
+    return True
+
+
+def finish_rdp_operation(*, operation_id: UUID, findings: list[RdpOperationFinding]) -> bool:
+    """Replace findings and mark a running RDP operation as successful."""
+    with transaction.atomic():
+        operation = lock_rdp_operation_for_update(pk=operation_id)
+        if operation.status != RdpOperation.Status.RUNNING:
+            return False
+
+        operation.findings.all().delete()
+        for finding in findings:
+            finding.operation = operation
+        RdpOperationFinding.objects.bulk_create(findings)
+
+        operation.status = RdpOperation.Status.SUCCESS
+        operation.error = {}
+        operation.finished_at = timezone.now()
+        operation.save(update_fields=["status", "error", "finished_at"])
+
+    return True
+
+
+def failed_rdp_operations(*, rdp_id: int) -> QuerySet[RdpOperation]:
+    """Return failed operations for an RDP."""
+    return RdpOperation.objects.filter(
+        rdp_id=rdp_id,
+        status=RdpOperation.Status.FAILURE,
+    )
