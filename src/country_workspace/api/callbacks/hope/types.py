@@ -1,6 +1,6 @@
-from enum import StrEnum
+from enum import StrEnum, auto
 
 
 class PushReadyCallbackCode(StrEnum):
-    QUEUED = "queued"
-    IGNORED = "ignored"
+    SCHEDULED = auto()
+    IGNORED = auto()

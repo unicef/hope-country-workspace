@@ -38,19 +38,19 @@ def invalid_callback_token_response() -> Response:
     )
 
 
-def push_ready_callback_response(*, rdp_id: int, push_attempt_id: UUID, queued: bool) -> Response:
+def push_ready_callback_response(*, rdp_id: int, push_attempt_id: UUID, scheduled: bool) -> Response:
     """Return a HOPE push-ready callback response."""
     serializer = HopeRdpPushReadyCallbackResponseSerializer(
         {
             "rdp_id": rdp_id,
             "push_attempt_id": push_attempt_id,
-            "code": PushReadyCallbackCode.QUEUED if queued else PushReadyCallbackCode.IGNORED,
-            "detail": "Data-push job scheduled." if queued else "Callback already handled or no longer current.",
+            "code": PushReadyCallbackCode.SCHEDULED if scheduled else PushReadyCallbackCode.IGNORED,
+            "detail": "Data-push job scheduled." if scheduled else "Callback already handled or no longer current.",
         }
     )
     response = Response(
         serializer.data,
-        status=status.HTTP_202_ACCEPTED if queued else status.HTTP_200_OK,
+        status=status.HTTP_202_ACCEPTED if scheduled else status.HTTP_200_OK,
     )
     response["Cache-Control"] = "no-store"
     return response

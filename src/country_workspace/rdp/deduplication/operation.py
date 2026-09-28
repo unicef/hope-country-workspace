@@ -3,7 +3,7 @@ from uuid import UUID
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.rdp.repository import append_rdp_operation_log
+from country_workspace.rdp.operations.repository import append_rdp_operation_log
 
 from .types import DeduplicationLogAction
 

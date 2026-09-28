@@ -1,18 +1,16 @@
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
-from uuid import UUID
 
-from django.db import transaction
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models import Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .types import JSONValue, OperationLogResult
+from .types import CreateRdpConfig, OperationLogResult
 
 if TYPE_CHECKING:
     from .types import OperationLogEntry
@@ -28,6 +26,21 @@ def rdp_selection(*, rdp: Rdp) -> tuple[bool, list[int]]:
     master_detail = rdp.program.beneficiary_group.master_detail
     beneficiaries = rdp.households if master_detail else rdp.individuals
     return master_detail, list(beneficiaries.order_by("pk").values_list("pk", flat=True))
+
+
+def create_rdp(*, config: CreateRdpConfig) -> Rdp:
+    """Create an RDP with its beneficiaries and configured operations."""
+    rdp = Rdp.objects.create(
+        country_office_id=config["country_office_id"],
+        program_id=config["program_id"],
+        name=config["batch_name"],
+        pushed_by_id=config["pushed_by_id"],
+        status=Rdp.PushStatus.PENDING,
+    )
+    rdp.add_beneficiaries(config["pks"], config["master_detail"])
+    for operation in config["operations"]:
+        rdp.operations.create(operation_type=operation["operation_type"], config=operation["config"])
+    return rdp
 
 
 def qs_households(*, pks: Iterable[int]) -> QuerySet[CountryHousehold]:
@@ -120,98 +133,3 @@ def append_rdp_log(
 
     rdp.operation_log = [*(rdp.operation_log or []), entry]
     rdp.save(update_fields=["operation_log"])
-
-
-def append_rdp_operation_log(
-    *,
-    operation_id: UUID,
-    action: str,
-    result: OperationLogResult | None = None,
-) -> None:
-    """Append a log entry to an RDP operation."""
-    with transaction.atomic():
-        operation = lock_rdp_operation_for_update(pk=operation_id)
-        entry: OperationLogEntry = {
-            "timestamp": timezone.now().isoformat(),
-            "action": action,
-        }
-        if result is not None:
-            entry["result"] = result
-
-        operation.log = [*(operation.log or []), entry]
-        operation.save(update_fields=["log"])
-
-
-def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
-    """Return RDP operation locked for update."""
-    return RdpOperation.objects.select_for_update().select_related("rdp__program").get(pk=pk)
-
-
-def get_rdp_operation(*, pk: UUID) -> RdpOperation:
-    """Return an RDP operation with its RDP context."""
-    return RdpOperation.objects.select_related("rdp__program__beneficiary_group").get(pk=pk)
-
-
-def claim_rdp_operation(operation_id: UUID) -> RdpOperation | None:
-    """Claim a pending or failed RDP operation for execution."""
-    with transaction.atomic():
-        operation = lock_rdp_operation_for_update(pk=operation_id)
-        rdp = lock_rdp_for_update(pk=operation.rdp_id)
-
-        if rdp.status != Rdp.PushStatus.PENDING or operation.status not in {
-            RdpOperation.Status.PENDING,
-            RdpOperation.Status.FAILURE,
-        }:
-            return None
-
-        operation.status = RdpOperation.Status.RUNNING
-        operation.attempt += 1
-        operation.error = {}
-        operation.started_at = timezone.now()
-        operation.finished_at = None
-        operation.save(update_fields=["status", "attempt", "error", "started_at", "finished_at"])
-
-    return operation
-
-
-def fail_rdp_operation(*, operation_id: UUID, error: dict[str, JSONValue]) -> bool:
-    """Mark a running RDP operation as failed."""
-    with transaction.atomic():
-        operation = lock_rdp_operation_for_update(pk=operation_id)
-        if operation.status != RdpOperation.Status.RUNNING:
-            return False
-
-        operation.status = RdpOperation.Status.FAILURE
-        operation.error = error
-        operation.finished_at = timezone.now()
-        operation.save(update_fields=["status", "error", "finished_at"])
-
-    return True
-
-
-def finish_rdp_operation(*, operation_id: UUID, findings: list[RdpOperationFinding]) -> bool:
-    """Replace findings and mark a running RDP operation as successful."""
-    with transaction.atomic():
-        operation = lock_rdp_operation_for_update(pk=operation_id)
-        if operation.status != RdpOperation.Status.RUNNING:
-            return False
-
-        operation.findings.all().delete()
-        for finding in findings:
-            finding.operation = operation
-        RdpOperationFinding.objects.bulk_create(findings)
-
-        operation.status = RdpOperation.Status.SUCCESS
-        operation.error = {}
-        operation.finished_at = timezone.now()
-        operation.save(update_fields=["status", "error", "finished_at"])
-
-    return True
-
-
-def failed_rdp_operations(*, rdp_id: int) -> QuerySet[RdpOperation]:
-    """Return failed operations for an RDP."""
-    return RdpOperation.objects.filter(
-        rdp_id=rdp_id,
-        status=RdpOperation.Status.FAILURE,
-    )

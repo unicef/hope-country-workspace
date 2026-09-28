@@ -2,34 +2,36 @@ from contextlib import suppress
 from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID
+from strategy_field.utils import fqn
 
 from constance import config
 from django.core import signing
+from django.db import transaction
 from django.urls import reverse
 
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
+    REJECTABLE_DEDUPLICATION_SET_STATES,
     SYSTEM_ERROR_STATUS_CODES,
     DeduplicationSetState,
     FindingStatusCode,
     make_dedup_client,
+    retrieve_deduplication_set_state,
 )
 from country_workspace.contrib.dedup_engine.client import Client
 from country_workspace.contrib.dedup_engine.response import Finding
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import RdpOperation, RdpOperationFinding
+from country_workspace.models import AsyncJob, Rdp, RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.repository import (
-    fail_rdp_operation,
-    finish_rdp_operation,
-    get_rdp_operation,
-    qs_individuals_by_pks,
-    qs_individuals_for_rdp,
-)
+from country_workspace.rdp.operations.completion import complete_rdp_operation
+from country_workspace.rdp.operations.repository import fail_rdp_operation, get_rdp_operation
+from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
 from .constants import DEDUP_CALLBACK_SALT
+from .operation import reject_deduplication_set
 from .processor import BiometricDedupProcessor
+from .repository import biometric_operation_for_rdp, rdp_for_dedup
 
 
 def get_dedup_callback_base_url() -> str:
@@ -197,8 +199,8 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
                 },
             )
         else:
-            result = finish_rdp_operation(
-                operation_id=operation.id,
+            result = complete_rdp_operation(
+                operation=operation,
                 findings=_build_biometric_findings(operation, findings),
             )
 
@@ -283,3 +285,50 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
             )
 
         client.process()
+
+
+def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
+    """Reject the DedupEngine set belonging to a cancelled RDP."""
+    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
+    deduplication_set_id = job.config["deduplication_set_id"]
+    operation = biometric_operation_for_rdp(rdp=rdp)
+
+    if rdp.status != Rdp.PushStatus.CANCELLED or operation is None or str(operation.id) != deduplication_set_id:
+        raise RdpWorkflowError({"errors": ["RDP: this cancellation job is no longer current."]})
+
+    try:
+        state = retrieve_deduplication_set_state(
+            group_reference_id=rdp.program.unicef_id,
+            deduplication_set_id=deduplication_set_id,
+        )
+        if state in REJECTABLE_DEDUPLICATION_SET_STATES:
+            reject_deduplication_set(
+                group_reference_id=rdp.program.unicef_id,
+                deduplication_set_id=deduplication_set_id,
+            )
+        elif state not in {None, DeduplicationSetState.REJECTED}:
+            raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
+    except (RemoteError, RemoteUnavailableError) as exc:
+        raise RdpWorkflowError({"errors": [str(exc)]}) from exc
+
+    return {"rdp_id": rdp.pk}
+
+
+def schedule_cancelled_rdp_set_rejection(
+    *,
+    rdp: Rdp,
+    user_id: int,
+    deduplication_set_id: str,
+) -> AsyncJob:
+    """Schedule DedupEngine cleanup for a cancelled RDP."""
+    job = AsyncJob.objects.create(
+        description="Reject cancelled RDP deduplication set",
+        type=AsyncJob.JobType.TASK,
+        owner_id=user_id,
+        action=fqn(reject_cancelled_rdp_set_core),
+        program_id=rdp.program_id,
+        rdp=rdp,
+        config={"rdp_id": rdp.pk, "deduplication_set_id": deduplication_set_id},
+    )
+    transaction.on_commit(job.queue, robust=True)
+    return job
