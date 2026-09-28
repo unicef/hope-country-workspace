@@ -1,7 +1,6 @@
 from typing import Any
 
 from django.db import IntegrityError, transaction
-from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import (
     NON_BLOCKING_DEDUPLICATION_SET_STATES,
@@ -9,19 +8,20 @@ from country_workspace.contrib.dedup_engine import (
     DeduplicationSetState,
     retrieve_deduplication_set_state,
 )
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
-from country_workspace.rdp.deduplication.operation import reject_deduplication_set
-from country_workspace.rdp.deduplication.repository import (
+from .deduplication.repository import (
     biometric_clean_rdp_selection,
     biometric_operation_for_rdp,
 )
+from .deduplication.workflow import schedule_cancelled_rdp_set_rejection
 from .exceptions import RdpWorkflowError
-from .operation import schedule_rdp_operation
+from .operations.workflow import schedule_rdp_operation
 from .policy import ActionCheck, get_rdp_policy
+from .push.workflow import schedule_rdp_push_evaluation
 from .repository import (
     append_rdp_log,
+    create_rdp,
     lock_rdp_for_update,
     set_rdp_beneficiaries_removed,
 )
@@ -39,43 +39,29 @@ def _validate_rdp_creation(*, program: Program, config: CreateRdpConfig, exclude
         raise RdpWorkflowError({"errors": errors})
 
 
-def _create_rdp(*, config: CreateRdpConfig) -> Rdp:
-    """Create a pending RDP with beneficiaries and configured operations."""
-    rdp = Rdp.objects.create(
-        country_office_id=config["country_office_id"],
-        program_id=config["program_id"],
-        name=config["batch_name"],
-        pushed_by_id=config["pushed_by_id"],
-        status=Rdp.PushStatus.PENDING,
+def _rdp_creation_error(exc: IntegrityError) -> RdpWorkflowError:
+    """Convert an RDP creation integrity error to a workflow error."""
+    message = (
+        "RDP: can not create while another RDP is unfinished"
+        if "uniq_non_terminal_rdp_per_program" in str(exc)
+        else "RDP: can not create record"
     )
-    rdp.add_beneficiaries(config["pks"], config["master_detail"])
-    for operation in config["operations"]:
-        rdp.operations.create(
-            operation_type=operation["operation_type"],
-            config=operation["config"],
-        )
-    return rdp
+    return RdpWorkflowError({"errors": [message]})
 
 
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Create an RDP and schedule its configured operations."""
+    """Create an RDP and schedule its processing."""
     config: CreateRdpConfig = job.config
     _validate_rdp_creation(program=job.program, config=config)
 
     try:
         with transaction.atomic():
             Program.objects.select_for_update().get(pk=config["program_id"])
-            rdp = _create_rdp(config=config)
+            rdp = create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
-
-            for operation in rdp.operations.all():
-                schedule_rdp_operation(operation=operation, owner_id=config["pushed_by_id"])
-
+            _schedule_rdp_processing(rdp=rdp)
     except IntegrityError as exc:
-        message = "RDP: can not create record"
-        if "uniq_non_terminal_rdp_per_program" in str(exc):
-            message = "RDP: can not create while another RDP is unfinished"
-        raise RdpWorkflowError({"errors": [message]}) from exc
+        raise _rdp_creation_error(exc) from exc
 
     return {"rdp_id": rdp.id}
 
@@ -94,46 +80,13 @@ def reset_rdp(*, rdp_id: int) -> ActionCheck:
     return ActionCheck(True)
 
 
-def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject the DedupEngine set belonging to a cancelled RDP."""
-    rdp = Rdp.objects.select_related("program").get(pk=job.config["rdp_id"])
-    deduplication_set_id = job.config["deduplication_set_id"]
-    operation = biometric_operation_for_rdp(rdp=rdp)
-
-    if rdp.status != Rdp.PushStatus.CANCELLED or operation is None or str(operation.id) != deduplication_set_id:
-        raise RdpWorkflowError({"errors": ["RDP: this cancellation job is no longer current."]})
-
-    try:
-        state = retrieve_deduplication_set_state(
-            group_reference_id=rdp.program.unicef_id,
-            deduplication_set_id=deduplication_set_id,
-        )
-        if state in REJECTABLE_DEDUPLICATION_SET_STATES:
-            reject_deduplication_set(
-                group_reference_id=rdp.program.unicef_id,
-                deduplication_set_id=deduplication_set_id,
-            )
-        elif state not in {None, DeduplicationSetState.REJECTED}:
-            raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
-    except (RemoteError, RemoteUnavailableError) as exc:
-        raise RdpWorkflowError({"errors": [str(exc)]}) from exc
-
-    return {"rdp_id": rdp.pk, "deduplication_set_rejected": True}
-
-
-def _schedule_rejection_job(*, rdp: Rdp, user_id: int, deduplication_set_id: str) -> AsyncJob:
-    """Create and queue a DedupEngine rejection job after commit."""
-    job = AsyncJob.objects.create(
-        description="Reject cancelled RDP deduplication set",
-        type=AsyncJob.JobType.TASK,
-        owner_id=user_id,
-        action=fqn(reject_cancelled_rdp_set_core),
-        program_id=rdp.program_id,
-        rdp=rdp,
-        config={"rdp_id": rdp.pk, "deduplication_set_id": deduplication_set_id},
-    )
-    transaction.on_commit(job.queue)
-    return job
+def _schedule_rdp_processing(*, rdp: Rdp) -> None:
+    """Schedule RDP operations or push evaluation when none are configured."""
+    if operations := list(rdp.operations.all()):
+        for operation in operations:
+            schedule_rdp_operation(operation=operation, owner_id=rdp.pushed_by_id)
+    else:
+        schedule_rdp_push_evaluation(rdp=rdp)
 
 
 def _biometric_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
@@ -158,7 +111,7 @@ def _biometric_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
     )
 
 
-def claim_rdp_cancel(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
+def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     """Cancel an RDP and schedule DedupEngine cleanup when required."""
     rdp = Rdp.objects.select_related("program").get(pk=rdp_id)
 
@@ -186,12 +139,12 @@ def claim_rdp_cancel(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
                     "decision": "CANCEL",
                     "user_id": str(user_id),
                     "outcome": Rdp.PushStatus.CANCELLED,
-                    "deduplication_set_rejection": "queued" if rejection_set_id else "not_required",
+                    "deduplication_set_rejection": "scheduled" if rejection_set_id else "not_required",
                 },
             )
 
         if rejection_set_id:
-            _schedule_rejection_job(
+            schedule_cancelled_rdp_set_rejection(
                 rdp=locked,
                 user_id=user_id,
                 deduplication_set_id=rejection_set_id,
@@ -222,7 +175,7 @@ def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
 
 
 def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | None]:
-    """Replace a reviewed RDP with a clean pending RDP and queue old-set rejection."""
+    """Replace a reviewed RDP with a clean pending RDP and schedule old-set rejection."""
     rdp = Rdp.objects.select_related("program__beneficiary_group", "program__country_office").get(pk=rdp_id)
 
     check, operation = _clean_rdp_check(rdp)
@@ -252,7 +205,6 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
             locked_operation = biometric_operation_for_rdp(rdp=locked)
             if (
                 locked_operation is None
-                or locked_operation.id != operation.id
                 or locked_operation.status != RdpOperation.Status.SUCCESS
                 or biometric_clean_rdp_selection(operation=locked_operation) != (master_detail, pks)
             ):
@@ -260,8 +212,9 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
 
             _validate_rdp_creation(program=locked.program, config=config, exclude_rdp_ids=(rdp_id,))
             locked.mark_cancelled()
-            clean_rdp = _create_rdp(config=config)
-            job = _schedule_rejection_job(
+            clean_rdp = create_rdp(config=config)
+            _schedule_rdp_processing(rdp=clean_rdp)
+            job = schedule_cancelled_rdp_set_rejection(
                 rdp=locked,
                 user_id=user_id,
                 deduplication_set_id=str(locked_operation.id),
@@ -273,15 +226,12 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
                     "decision": "PUSH_CLEAN",
                     "user_id": str(user_id),
                     "new_rdp_id": clean_rdp.pk,
-                    "deduplication_set_rejection": "queued",
+                    "deduplication_set_rejection": "scheduled",
                     "rejection_job_id": job.pk,
                 },
             )
     except IntegrityError as exc:
-        message = "RDP: can not create record"
-        if "uniq_non_terminal_rdp_per_program" in str(exc):
-            message = "RDP: can not create while another RDP is unfinished"
-        raise RdpWorkflowError({"errors": [message]}) from exc
+        raise _rdp_creation_error(exc) from exc
 
     return ActionCheck(True), clean_rdp
 
@@ -292,6 +242,6 @@ def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
         raise RdpWorkflowError({"errors": ["RDP: cancellation job owner is not set."]})
 
     rdp_id = job.config["rdp_id"]
-    check, rejection_queued = claim_rdp_cancel(rdp_id=rdp_id, user_id=job.owner_id)
+    check, rejection_scheduled = cancel_rdp(rdp_id=rdp_id, user_id=job.owner_id)
     check.require()
-    return {"rdp_id": rdp_id, "deduplication_set_rejection_queued": rejection_queued}
+    return {"rdp_id": rdp_id, "deduplication_set_rejection_scheduled": rejection_scheduled}

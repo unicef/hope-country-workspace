@@ -19,13 +19,12 @@ from django.utils.translation import gettext_lazy as _
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
-from country_workspace.models.rdp import RdpLogEntryType, RdpPushStatus
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
     RdpActionPolicy,
     RdpWorkflowError,
     biometric_operation_for_rdp,
-    claim_rdp_cancel,
-    claim_rdp_push,
+    cancel_rdp,
     create_clean_rdp as create_clean_rdp_workflow,
     claim_review_rdp_push,
     failed_rdp_operations,
@@ -33,6 +32,7 @@ from country_workspace.rdp import (
     get_rdp_policy,
     qs_biometric_duplicate_individuals,
     retry_failed_rdp_operations,
+    retry_rdp_push,
 )
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryRdp
@@ -68,7 +68,7 @@ def _is_allowed(btn: StandardButton, policy_getter: PolicyGetter, action: str) -
 
 def _has_failed_operations(btn: StandardButton) -> bool:
     return bool(
-        (obj := btn.original) and obj.status == RdpPushStatus.PENDING and failed_rdp_operations(rdp_id=obj.pk).exists()
+        (obj := btn.original) and obj.status == Rdp.PushStatus.PENDING and failed_rdp_operations(rdp_id=obj.pk).exists()
     )
 
 
@@ -243,19 +243,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         return None if check.allowed else deny(check.reason or "Action is not allowed.")
 
-    def _schedule_push(self, request: HttpRequest, obj: CountryRdp) -> HttpResponse:
-        """Schedule an allowed push."""
-        check, locked = claim_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
-
-        if not check.allowed or locked is None:
-            messages.error(request, check.reason or "Action is not allowed.")
-        elif locked.status == Rdp.PushStatus.REVIEW_PENDING:
-            messages.warning(request, "The configured threshold was exceeded. Review this RDP before pushing.")
-        else:
-            messages.success(request, "Push to HOPE task scheduled")
-
-        return redirect(self._change_url(obj))
-
     @button(
         label="Cancel RDP",
         change_form=True,
@@ -276,7 +263,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         def apply_cancel(_: HttpRequest) -> HttpResponse:
             try:
-                check, rejection_queued = claim_rdp_cancel(rdp_id=obj.pk, user_id=request.user.pk)
+                check, rejection_scheduled = cancel_rdp(rdp_id=obj.pk, user_id=request.user.pk)
             except RemoteUnavailableError as exc:
                 sentry_sdk.capture_exception(exc)
                 messages.error(request, str(exc))
@@ -285,7 +272,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             else:
                 if not check.allowed:
                     messages.error(request, check.reason or "Action is not allowed.")
-                elif rejection_queued:
+                elif rejection_scheduled:
                     messages.success(request, "RDP cancelled. DedupEngine rejection task scheduled.")
                 else:
                     messages.success(request, "RDP cancelled.")
@@ -329,23 +316,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return redirect(self._change_url(obj))
 
     @button(
-        label="Push to HOPE",
-        change_form=True,
-        change_list=False,
-        permission="country_workspace.push_rdp_to_hope",
-        visible=lambda btn: _is_visible(btn, get_push_policy, "is_push_visible"),
-        enabled=lambda btn: _is_allowed(btn, get_push_policy, "push_check"),
-        html_attrs={"title": "Push beneficiaries to HOPE."},
-    )
-    def push(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Start a push to HOPE."""
-        if (obj := self.get_object(request, pk)) is None:
-            messages.error(request, "RDP not found")
-            return redirect("workspace:workspaces_countryrdp_changelist")
-
-        return self._schedule_push(request, obj)
-
-    @button(
         label="Push all to HOPE",
         change_form=True,
         change_list=False,
@@ -382,6 +352,29 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         )
 
     @button(
+        label="Retry push to HOPE",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.push_rdp_to_hope",
+        visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.FAILURE),
+        enabled=lambda btn: _is_allowed(btn, get_push_policy, "retry_push_check"),
+        html_attrs={"title": "Retry the failed push to HOPE."},
+    )
+    def retry_push(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Retry a failed RDP push to HOPE."""
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        check, rdp = retry_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
+        if check.allowed and rdp is not None:
+            messages.success(request, "Push to HOPE retry scheduled.")
+        else:
+            messages.error(request, check.reason or "Action is not allowed.")
+
+        return redirect(self._change_url(obj))
+
+    @button(
         label="Create clean RDP",
         change_form=True,
         change_list=False,
@@ -415,7 +408,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
         if obj.hope_rdi_id not in {None, "N/A"}:
             message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
-        message += "The old DedupEngine set will be queued for rejection."
+        message += "The old DedupEngine set will be scheduled for rejection."
         return confirm_action(
             self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
         )

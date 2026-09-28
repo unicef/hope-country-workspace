@@ -13,7 +13,7 @@ class SelectionConfig(TypedDict):
 
 class RdpWorkflowOutcome(StrEnum):
     AWAITING_PUSH_READY_CALLBACK = auto()
-    DATA_PUSH_QUEUED = auto()
+    DATA_PUSH_SCHEDULED = auto()
     DATA_PUSH_SKIPPED = auto()
 
 

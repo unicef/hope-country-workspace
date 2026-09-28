@@ -16,7 +16,6 @@ def get_rdp_status_choices() -> list[tuple[str, str]]:
 
 class RdpPushStatus(models.TextChoices):
     PENDING = "PENDING", _("Pending")
-    DEDUP_PENDING = "DEDUP_PENDING", _("Awaiting deduplication")
     REVIEW_PENDING = "REVIEW_PENDING", _("Awaiting review")
     PUSH_PENDING = "PUSH_PENDING", _("Push in progress")
     SUCCESS = "SUCCESS", _("Success")
@@ -27,7 +26,6 @@ class RdpPushStatus(models.TextChoices):
 NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
     RdpPushStatus.PENDING,
     RdpPushStatus.FAILURE,
-    RdpPushStatus.DEDUP_PENDING,
     RdpPushStatus.REVIEW_PENDING,
     RdpPushStatus.PUSH_PENDING,
 )
@@ -35,6 +33,7 @@ NON_TERMINAL_RDP_STATUSES: Final[tuple[RdpPushStatus, ...]] = (
 
 class RdpLogEntryType(models.TextChoices):
     PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
+    REVIEW_REQUIRED = "REVIEW_REQUIRED", _("Review required")
     REVIEW_DECISION = "REVIEW_DECISION", _("Review decision")
 
 
@@ -71,26 +70,6 @@ class Rdp(BaseModel):
         help_text=_("Date and time when this RDP was created."),
     )
     pushed_by = models.ForeignKey(User, on_delete=models.CASCADE, help_text=_("User who initiated this RDP."))
-    deduplication_set_id = models.UUIDField(
-        blank=True,
-        null=True,
-        help_text=_("Unique identifier of the deduplication set created in DedupEngine for this RDP."),
-    )
-    deduplication_findings_count = models.PositiveIntegerField(
-        null=True,
-        editable=False,
-        help_text=_("Number of duplicate findings reported by DedupEngine for this RDP."),
-    )
-    duplicate_individuals = models.ManyToManyField(
-        "Individual",
-        related_name="duplicate_rdps",
-        blank=True,
-        help_text=_("Individuals marked as duplicates by DedupEngine for this RDP."),
-    )
-    is_dedup_settings_locked = models.BooleanField(
-        default=False,
-        help_text=_("Whether program-level deduplication settings are locked while this RDP is being deduplicated."),
-    )
     push_attempt_id = models.UUIDField(
         null=True,
         editable=False,
