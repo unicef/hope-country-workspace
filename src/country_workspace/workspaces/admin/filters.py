@@ -189,22 +189,75 @@ class DuplicateFilter(WorkspaceSimpleComboFilter):
     parameter_name = "duplicates"
 
     def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        if issubclass(model_admin.model, Household):
-            return [("marked", _("With duplicate members")), ("unmarked", _("Without marked members"))]
-        return [("marked", _("Marked")), ("unmarked", _("Not marked"))]
+        return [
+            ("with", _("With duplicates")),
+            ("without", _("Without duplicates")),
+        ]
 
     def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() not in {"marked", "unmarked"}:
-            return queryset
-        if issubclass(queryset.model, Household):
-            if self.value() == "marked":
-                return queryset.filter(_result_available=True, _duplicate_member_count__gt=0)
+        if self.value() == "with":
+            return queryset.filter(_result_available=True, _is_duplicate=True)
+        if self.value() == "without":
+            return queryset.filter(_result_available=True, _is_duplicate=False)
+        return queryset
+
+
+class ImageIssueFilter(WorkspaceSimpleComboFilter):
+    title = _("Image issues")
+    parameter_name = "image_issues"
+
+    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
+        return [
+            ("with", _("With image issues")),
+            ("without", _("Without image issues")),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
+        if self.value() == "with":
+            return queryset.filter(_result_available=True, _has_image_issue=True)
+        if self.value() == "without":
+            return queryset.filter(_result_available=True, _has_image_issue=False)
+        return queryset
+
+
+class DuplicateMembersFilter(WorkspaceSimpleComboFilter):
+    title = _("Duplicate members")
+    parameter_name = "duplicate_members"
+
+    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
+        return [
+            ("with", _("With duplicate members")),
+            ("without", _("Without duplicate members")),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
+        if self.value() == "with":
+            return queryset.filter(_result_available=True, _duplicate_member_count__gt=0)
+        if self.value() == "without":
             return queryset.filter(_result_available=True, _duplicate_member_count=0)
-        return queryset.filter(_result_available=True, _is_duplicate=self.value() == "marked")
+        return queryset
 
 
-def show_duplicate_columns(request: HttpRequest) -> bool:
-    """Show duplicate results when biometric deduplication applies."""
+class ImageIssueMembersFilter(WorkspaceSimpleComboFilter):
+    title = _("Image issue members")
+    parameter_name = "image_issue_members"
+
+    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
+        return [
+            ("with", _("With image issue members")),
+            ("without", _("Without image issue members")),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
+        if self.value() == "with":
+            return queryset.filter(_result_available=True, _image_issue_member_count__gt=0)
+        if self.value() == "without":
+            return queryset.filter(_result_available=True, _image_issue_member_count=0)
+        return queryset
+
+
+def show_biometric_columns(request: HttpRequest) -> bool:
+    """Show biometric results when biometric deduplication applies."""
     if not state.program:
         return False
     if rdp := get_rdp_context(request):

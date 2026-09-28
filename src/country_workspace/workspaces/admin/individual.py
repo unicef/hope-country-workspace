@@ -2,16 +2,14 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from django.contrib.admin import AdminSite, display, register
-from django.db.models import BooleanField, Exists, Model, OuterRef, QuerySet, Value
+from django.db.models import Model, QuerySet
 from django.http import HttpRequest
+from django.urls import reverse
 from django.utils.html import format_html
 
-from country_workspace.models import RdpOperation
 from country_workspace.rdp import (
-    biometric_operation_for_rdp,
-    qs_biometric_duplicate_individuals,
-    qs_successful_biometric_duplicate_individuals,
-    qs_successful_biometric_operations,
+    annotate_biometric_individuals,
+    biometric_findings_for_individual,
 )
 
 
@@ -22,12 +20,13 @@ from .filters import (
     CWLinkedAutoCompleteFilter,
     DuplicateFilter,
     HouseholdFilter,
+    ImageIssueFilter,
     MultiValueFilter,
     RdpContextFilter,
     WIsValidFilter,
     WJsonFieldFilter,
     get_rdp_context,
-    show_duplicate_columns,
+    show_biometric_columns,
 )
 from .hh_ind import BeneficiaryBaseAdmin
 
@@ -63,14 +62,17 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
 
     def get_list_filter(self, request: HttpRequest) -> list[Any]:
         filters = list(super().get_list_filter(request))
-        if show_duplicate_columns(request):
-            filters.append(DuplicateFilter)
+        if show_biometric_columns(request):
+            filters.extend((DuplicateFilter, ImageIssueFilter))
         return filters
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         columns = ["name_with_latin" if col == "name" else col for col in super().get_list_display(request)]
-        if show_duplicate_columns(request) and "is_duplicate" not in columns:
-            columns.append("is_duplicate")
+        if show_biometric_columns(request):
+            if "is_duplicate" not in columns:
+                columns.append("is_duplicate")
+            if "has_image_issue" not in columns:
+                columns.append("has_image_issue")
         return columns
 
     @display(description="Name", ordering="name")
@@ -87,34 +89,21 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
-        if not show_duplicate_columns(request):
-            return qs
-
-        if rdp := get_rdp_context(request):
-            operation = biometric_operation_for_rdp(rdp=rdp)
-            duplicates = qs_biometric_duplicate_individuals(operation=operation) if operation else qs.none()
-            result_available = Value(
-                operation is not None and operation.status == RdpOperation.Status.SUCCESS,
-                output_field=BooleanField(),
-            )
-        else:
-            duplicates = qs_successful_biometric_duplicate_individuals(program=state.program)
-            completed = qs_successful_biometric_operations().filter(rdp__program=state.program)
-            if state.program.is_master_detail:
-                completed = completed.filter(rdp__households__pk=OuterRef("household_id"))
-            else:
-                completed = completed.filter(rdp__individuals__pk=OuterRef("pk"))
-            result_available = Exists(completed)
-
-        return qs.annotate(
-            _is_duplicate=Exists(duplicates.filter(pk=OuterRef("pk"))),
-            _result_available=result_available,
+        return (
+            annotate_biometric_individuals(qs, program=state.program, rdp=get_rdp_context(request))
+            if show_biometric_columns(request)
+            else qs
         )
 
     @display(description="Duplicate", boolean=True)
     def is_duplicate(self, obj: CountryIndividual) -> bool | None:
-        """Display the duplicate marker for the selected RDP or any past RDP."""
+        """Display whether the individual has a duplicate finding."""
         return obj._is_duplicate if getattr(obj, "_result_available", False) else None
+
+    @display(description="Image issue", boolean=True)
+    def has_image_issue(self, obj: CountryIndividual) -> bool | None:
+        """Display whether the individual has an image issue."""
+        return obj._has_image_issue if getattr(obj, "_result_available", False) else None
 
     def get_selected_household(
         self,
@@ -135,4 +124,25 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         kwargs["selected_household"] = self.get_selected_household(request)
-        return super().get_common_context(request, pk, **kwargs)
+        context = super().get_common_context(request, pk, **kwargs)
+        original = context["original"]
+        context["dedup_duplicates"] = None
+        context["dedup_image_issues"] = None
+
+        if original is None or not getattr(original, "_result_available", False):
+            return context
+
+        duplicate_pks, image_issues = biometric_findings_for_individual(
+            individual=original,
+            rdp=get_rdp_context(request),
+        )
+
+        context["dedup_duplicates"] = [
+            {
+                "pk": duplicate_pk,
+                "url": reverse("workspace:workspaces_countryindividual_change", args=[duplicate_pk]),
+            }
+            for duplicate_pk in duplicate_pks
+        ]
+        context["dedup_image_issues"] = image_issues
+        return context
