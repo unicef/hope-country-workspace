@@ -64,6 +64,7 @@ INSTALLED_APPS = (
     "country_workspace.contrib.hope.apps.Config",
     "country_workspace.contrib.aurora.apps.Config",
     "country_workspace.contrib.kobo.apps.Config",
+    "country_workspace.contrib.ona.apps.Config",
     *env("EXTRA_APPS"),
 )
 
