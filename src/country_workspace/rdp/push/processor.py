@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from functools import cached_property
 from itertools import batched
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
@@ -11,12 +11,10 @@ from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.processor import ProcessorBase
 from country_workspace.rdp.validation import preflight_errors
 from .repository import serializer_for_program
-
-if TYPE_CHECKING:
-    from .types import PushWorkflowConfig, Serializer
-    from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
-    from django.db.models import QuerySet
-    from collections.abc import Callable, Iterable, Iterator
+from .types import PushWorkflowConfig, Serializer
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+from django.db.models import QuerySet
+from collections.abc import Callable, Iterable, Iterator
 
 
 class PushProcessor(ProcessorBase):

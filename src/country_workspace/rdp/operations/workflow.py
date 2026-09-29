@@ -7,7 +7,6 @@ from country_workspace.models import AsyncJob, Rdp, RdpOperation
 from country_workspace.rdp.repository import lock_rdp_for_update
 from country_workspace.rdp.types import JSONValue
 
-from .definitions import RDP_OPERATION_DEFINITIONS
 from .repository import claim_rdp_operation, fail_rdp_operation, failed_rdp_operations
 
 
@@ -16,6 +15,8 @@ def run_rdp_operation_core(job: AsyncJob) -> dict[str, JSONValue]:
     operation_id = UUID(job.config["operation_id"])
     if (operation := claim_rdp_operation(operation_id)) is None:
         return {"operation_id": str(operation_id), "started": False}
+
+    from .definitions import RDP_OPERATION_DEFINITIONS
 
     if (definition := RDP_OPERATION_DEFINITIONS.get(operation.operation_type)) is None:
         message = f"Unsupported RDP operation type: {operation.operation_type!r}"
@@ -58,3 +59,9 @@ def retry_failed_rdp_operations(*, rdp_id: int, owner_id: int) -> int:
             schedule_rdp_operation(operation=operation, owner_id=owner_id)
 
     return len(operations)
+
+
+def schedule_rdp_operations(*, rdp: Rdp) -> None:
+    """Schedule all configured RDP operations."""
+    for operation in rdp.operations.all():
+        schedule_rdp_operation(operation=operation, owner_id=rdp.pushed_by_id)

@@ -15,8 +15,9 @@ from .deduplication.repository import (
     biometric_operation_for_rdp,
 )
 from .deduplication.workflow import schedule_cancelled_rdp_set_rejection
+from .deduplication.types import ThresholdType
 from .exceptions import RdpWorkflowError
-from .operations.workflow import schedule_rdp_operation
+from .operations.workflow import schedule_rdp_operations
 from .policy import ActionCheck, get_rdp_policy
 from .push.workflow import schedule_rdp_push_evaluation
 from .repository import (
@@ -26,7 +27,7 @@ from .repository import (
     set_rdp_beneficiaries_removed,
 )
 from .validation import preflight_errors
-from .types import CreateRdpConfig
+from .types import CreateRdpConfig, CreateRdpOperationConfig, JSONValue
 
 
 def _validate_rdp_creation(*, program: Program, config: CreateRdpConfig, exclude_rdp_ids: tuple[int, ...] = ()) -> None:
@@ -82,9 +83,8 @@ def reset_rdp(*, rdp_id: int) -> ActionCheck:
 
 def _schedule_rdp_processing(*, rdp: Rdp) -> None:
     """Schedule RDP operations or push evaluation when none are configured."""
-    if operations := list(rdp.operations.all()):
-        for operation in operations:
-            schedule_rdp_operation(operation=operation, owner_id=rdp.pushed_by_id)
+    if rdp.operations.exists():
+        schedule_rdp_operations(rdp=rdp)
     else:
         schedule_rdp_push_evaluation(rdp=rdp)
 
@@ -174,6 +174,22 @@ def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
     return ActionCheck(True), operation
 
 
+def _clean_rdp_operation_configs(rdp: Rdp) -> list[CreateRdpOperationConfig]:
+    """Return operation configs for a clean replacement RDP."""
+    configs: list[CreateRdpOperationConfig] = []
+    for operation in rdp.operations.order_by("operation_type"):
+        config: dict[str, JSONValue] = dict(operation.config)
+        if operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+            config.update(threshold_type=ThresholdType.COUNT.value, threshold_value="0")
+        configs.append(
+            {
+                "operation_type": operation.operation_type,
+                "config": config,
+            }
+        )
+    return configs
+
+
 def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | None]:
     """Replace a reviewed RDP with a clean pending RDP and schedule old-set rejection."""
     rdp = Rdp.objects.select_related("program__beneficiary_group", "program__country_office").get(pk=rdp_id)
@@ -186,41 +202,44 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
     if not pks:
         return ActionCheck(False, "RDP: no beneficiaries remain after removing biometric findings."), None
 
-    config: CreateRdpConfig = {
-        "batch_name": f"{(rdp.name or str(rdp))[:249]} clean",
-        "country_office_id": rdp.country_office_id,
-        "program_id": rdp.program_id,
-        "pushed_by_id": user_id,
-        "master_detail": master_detail,
-        "pks": pks,
-        "operations": [],
-    }
     try:
         with transaction.atomic():
             Program.objects.select_for_update().get(pk=rdp.program_id)
-            locked = lock_rdp_for_update(pk=rdp_id)
-            if locked.status != Rdp.PushStatus.REVIEW_PENDING:
-                return ActionCheck(False, f"RDP: can not create clean RDP in status={locked.status}"), None
+            rdp = lock_rdp_for_update(pk=rdp_id)
 
-            locked_operation = biometric_operation_for_rdp(rdp=locked)
+            if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
+                return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
+
+            operation = biometric_operation_for_rdp(rdp=rdp)
             if (
-                locked_operation is None
-                or locked_operation.status != RdpOperation.Status.SUCCESS
-                or biometric_clean_rdp_selection(operation=locked_operation) != (master_detail, pks)
+                operation is None
+                or operation.status != RdpOperation.Status.SUCCESS
+                or biometric_clean_rdp_selection(operation=operation) != (master_detail, pks)
             ):
                 return ActionCheck(False, "RDP: biometric result or selection has changed. Please retry."), None
 
-            _validate_rdp_creation(program=locked.program, config=config, exclude_rdp_ids=(rdp_id,))
-            locked.mark_cancelled()
+            config: CreateRdpConfig = {
+                "batch_name": f"{(rdp.name or str(rdp))[:249]} clean",
+                "country_office_id": rdp.country_office_id,
+                "program_id": rdp.program_id,
+                "pushed_by_id": user_id,
+                "master_detail": master_detail,
+                "pks": pks,
+                "operations": _clean_rdp_operation_configs(rdp),
+            }
+
+            _validate_rdp_creation(program=rdp.program, config=config, exclude_rdp_ids=(rdp_id,))
+            rdp.mark_cancelled()
             clean_rdp = create_rdp(config=config)
-            _schedule_rdp_processing(rdp=clean_rdp)
+
             job = schedule_cancelled_rdp_set_rejection(
-                rdp=locked,
+                rdp=rdp,
                 user_id=user_id,
-                deduplication_set_id=str(locked_operation.id),
+                deduplication_set_id=str(operation.id),
+                clean_rdp_id=clean_rdp.pk,
             )
             append_rdp_log(
-                rdp=locked,
+                rdp=rdp,
                 entry_type=RdpLogEntryType.REVIEW_DECISION,
                 result={
                     "decision": "PUSH_CLEAN",
