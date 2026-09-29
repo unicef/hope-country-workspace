@@ -25,6 +25,7 @@ from country_workspace.models import AsyncJob, Rdp, RdpOperation, RdpOperationFi
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.completion import complete_rdp_operation
 from country_workspace.rdp.operations.repository import fail_rdp_operation, get_rdp_operation
+from country_workspace.rdp.operations.workflow import schedule_rdp_operations
 from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
@@ -288,7 +289,7 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
 
 
 def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject the DedupEngine set belonging to a cancelled RDP."""
+    """Reject a cancelled RDP set and continue its clean replacement when configured."""
     rdp = rdp_for_dedup(pk=job.config["rdp_id"])
     deduplication_set_id = job.config["deduplication_set_id"]
     operation = biometric_operation_for_rdp(rdp=rdp)
@@ -311,6 +312,12 @@ def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
     except (RemoteError, RemoteUnavailableError) as exc:
         raise RdpWorkflowError({"errors": [str(exc)]}) from exc
 
+    if clean_rdp_id := job.config.get("clean_rdp_id"):
+        clean_rdp = Rdp.objects.get(pk=clean_rdp_id, program_id=rdp.program_id)
+        if clean_rdp.status != Rdp.PushStatus.PENDING:
+            raise RdpWorkflowError({"errors": ["RDP: clean replacement is no longer pending."]})
+        schedule_rdp_operations(rdp=clean_rdp)
+
     return {"rdp_id": rdp.pk}
 
 
@@ -319,8 +326,16 @@ def schedule_cancelled_rdp_set_rejection(
     rdp: Rdp,
     user_id: int,
     deduplication_set_id: str,
+    clean_rdp_id: int | None = None,
 ) -> AsyncJob:
     """Schedule DedupEngine cleanup for a cancelled RDP."""
+    config = {
+        "rdp_id": rdp.pk,
+        "deduplication_set_id": deduplication_set_id,
+    }
+    if clean_rdp_id is not None:
+        config["clean_rdp_id"] = clean_rdp_id
+
     job = AsyncJob.objects.create(
         description="Reject cancelled RDP deduplication set",
         type=AsyncJob.JobType.TASK,
@@ -328,7 +343,8 @@ def schedule_cancelled_rdp_set_rejection(
         action=fqn(reject_cancelled_rdp_set_core),
         program_id=rdp.program_id,
         rdp=rdp,
-        config={"rdp_id": rdp.pk, "deduplication_set_id": deduplication_set_id},
+        config=config,
     )
     transaction.on_commit(job.queue, robust=True)
+
     return job

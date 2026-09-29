@@ -61,22 +61,27 @@ def _build_push_ready_callback_token(*, rdp_id: int, push_attempt_id: UUID) -> s
     )
 
 
+def _country_workspace_id_for_rdp(rdp: Rdp) -> str:
+    """Return the stable HOPE workspace identifier for an RDP."""
+    if operation := biometric_operation_for_rdp(rdp=rdp):
+        return str(operation.id)
+    return f"rdp-{rdp.pk}"
+
+
 def _workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflowConfig:
     """Build push workflow config for an existing RDP."""
     master_detail, pks = rdp_selection(rdp=rdp)
     program = rdp.program
-    config: PushWorkflowConfig = {
+    return {
         "batch_name": rdp.name or str(rdp),
         "co_slug": program.country_office.slug,
+        "country_workspace_id": _country_workspace_id_for_rdp(rdp),
         "imported_by_email": imported_by_email,
         "master_detail": master_detail,
         "pks": pks,
         "program_hope_id": program.hope_id,
-        "rdp_id": rdp.id,
+        "rdp_id": rdp.pk,
     }
-    if operation := biometric_operation_for_rdp(rdp=rdp):
-        config["country_workspace_id"] = str(operation.id)
-    return config
 
 
 def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str | None) -> None:

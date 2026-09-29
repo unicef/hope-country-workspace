@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.db.models import Q
@@ -6,10 +7,6 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
 
 from .exceptions import RdpWorkflowError
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 @dataclass(slots=True, frozen=True)
