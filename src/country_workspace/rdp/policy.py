@@ -1,9 +1,7 @@
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.db.models import Q
 
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
 
 from .exceptions import RdpWorkflowError
@@ -57,10 +55,3 @@ def get_rdp_policy(rdp: Rdp) -> RdpActionPolicy:
         policy = RdpActionPolicy(rdp)
         rdp._rdp_policy = policy
     return policy
-
-
-def require_policy_check(check: Callable[[], ActionCheck]) -> None:
-    try:
-        check().require()
-    except (RemoteError, RemoteUnavailableError) as exc:
-        raise RdpWorkflowError({"errors": [str(exc)]}) from exc

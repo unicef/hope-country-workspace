@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine import DedupClientStatus, DedupResponseStatus, DeduplicationSetState
 from country_workspace.models import AsyncJob, Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.deduplication.constants import DEDUP_CALLBACK_SALT
 from country_workspace.rdp.deduplication.workflow import (
     _build_dedup_callback_url,
@@ -199,7 +199,7 @@ def test_dedup_existing_rdp(job, rdp, mocker: MockerFixture, has_errors: bool) -
 
     locked = mocker.MagicMock()
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=locked)
-    append_log = mocker.patch(f"{MOD}.append_rdp_operation_log")
+    append_log = mocker.patch(f"{MOD}.append_rdp_log")
     release = mocker.patch(f"{MOD}.release_rdp_dedup_settings_lock")
 
     if has_errors:
@@ -210,7 +210,7 @@ def test_dedup_existing_rdp(job, rdp, mocker: MockerFixture, has_errors: bool) -
 
     append_log.assert_called_once_with(
         rdp=locked,
-        action=RdpOperationAction.START_DEDUPLICATION,
+        action=RdpLogEntryType.START_DEDUPLICATION,
         result={
             "images_sent": 3,
             "dedup_settings": {"threshold": 10},

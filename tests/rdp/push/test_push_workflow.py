@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,6 +9,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.rdi import HopeRdiResetUnconfirmedError, RdiResetResult
 from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
@@ -18,11 +20,13 @@ from country_workspace.rdp.push.workflow import (
     _push_data_steps,
     _schedule_push_data,
     _workflow_config_for_rdp,
-    claim_rdp_push,
+    evaluate_rdp_for_push,
+    claim_review_rdp_push,
     handle_push_ready_callback,
     push_existing_rdp_core,
     push_rdp_data_core,
 )
+from country_workspace.rdp.push.types import ThresholdType
 from country_workspace.rdp.types import RdpWorkflowOutcome
 
 MOD = "country_workspace.rdp.push.workflow"
@@ -242,48 +246,299 @@ def test_schedule_push_data_ignores_stale_attempt(rdp: Rdp, push_attempt_id: UUI
     get_job.assert_not_called()
 
 
-def test_claim_rdp_push_policy_denied(rdp: Rdp, mocker: MockerFixture) -> None:
-    policy = mocker.MagicMock()
+def test_evaluate_rdp_for_push_policy_denied(rdp: Rdp, mocker: MockerFixture) -> None:
+    """Reject a failed preliminary policy check without locking or queueing."""
+    policy = mocker.Mock()
     policy.start_push_check.return_value = ActionCheck(False, "blocked")
-    mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
-    mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
+    mocker.patch(f"{MOD}.get_push_policy", return_value=policy)
     lock = mocker.patch(f"{MOD}.lock_rdp_for_update")
 
-    check, locked = claim_rdp_push(rdp_id=rdp.pk)
+    check, claimed = evaluate_rdp_for_push(rdp_id=rdp.pk, user_id=rdp.pushed_by_id)
 
-    assert check.allowed is False
-    assert locked is None
+    assert check == ActionCheck(False, "blocked")
+    assert claimed is None
     lock.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("status", "dedup_locked", "allowed"),
     [
         (Rdp.PushStatus.PENDING, False, True),
         (Rdp.PushStatus.FAILURE, False, True),
         (Rdp.PushStatus.PUSH_PENDING, False, False),
         (Rdp.PushStatus.PENDING, True, False),
         (Rdp.PushStatus.SUCCESS, False, False),
+        (Rdp.PushStatus.REVIEW_PENDING, False, False),
     ],
-    ids=["pending", "failure", "already_pending", "dedup_locked", "terminal"],
+    ids=["pending", "failure", "already_pending", "dedup_locked", "terminal", "review"],
 )
-def test_claim_rdp_push_rechecks_locked_rdp(rdp: Rdp, mocker: MockerFixture, case) -> None:
-    status, dedup_locked, allowed = case
+def test_evaluate_rdp_for_push_rechecks_locked_rdp(
+    rdp: Rdp,
+    mocker: MockerFixture,
+    status: str,
+    dedup_locked: bool,
+    allowed: bool,
+) -> None:
+    """Validate current local state under the lock rather than relying on an earlier read."""
+    rdp.program.biometric_deduplication_enabled = False
     rdp.status = status
     rdp.is_dedup_settings_locked = dedup_locked
-
-    policy = mocker.MagicMock()
-    policy.start_push_check.return_value = ActionCheck(True)
+    if status == Rdp.PushStatus.PUSH_PENDING:
+        rdp.push_attempt_id = uuid4()
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            start_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
     mocker.patch(f"{MOD}.rdp_for_push", return_value=rdp)
-    mocker.patch(f"{MOD}.get_rdp_policy", return_value=policy)
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
-    start = mocker.patch.object(rdp, "start_push_attempt")
+    schedule = mocker.patch(f"{MOD}._schedule_push_preparation")
 
-    check, claimed = claim_rdp_push(rdp_id=rdp.pk)
+    check, claimed = evaluate_rdp_for_push(rdp_id=rdp.pk, user_id=rdp.pushed_by_id)
 
     assert check.allowed is allowed
     assert (claimed is rdp) is allowed
-    assert start.called is allowed
+    assert schedule.called is allowed
+
+
+@pytest.fixture
+def biometric_rdp(user) -> Rdp:
+    """Prepare a fixed selection: three people, two marked as duplicates."""
+    from testutils.factories import CountryIndividualFactory, CountryProgramFactory, CountryRdpFactory
+
+    program = CountryProgramFactory(beneficiary_group__master_detail=False, biometric_deduplication_enabled=True)
+    people = [CountryIndividualFactory(batch__program=program, household=None) for _ in range(3)]
+    rdp = CountryRdpFactory(
+        program=program,
+        pushed_by=user,
+        status=Rdp.PushStatus.PENDING,
+        hope_rdi_id=None,
+        deduplication_set_id=uuid4(),
+        deduplication_findings_count=99,
+    )
+    rdp.individuals.set(people)
+    rdp.duplicate_individuals.set(people[:2])
+    return rdp
+
+
+@pytest.mark.parametrize(
+    ("threshold_type", "value", "review"),
+    [
+        (ThresholdType.COUNT, "0", True),
+        (ThresholdType.COUNT, "1", True),
+        (ThresholdType.COUNT, "2", False),
+        (ThresholdType.PERCENT, "50", True),
+        (ThresholdType.PERCENT, "66.66", True),
+        (ThresholdType.PERCENT, "66.67", False),
+    ],
+)
+def test_evaluate_rdp_for_push_threshold(
+    biometric_rdp: Rdp,
+    mocker: MockerFixture,
+    django_capture_on_commit_callbacks,
+    threshold_type: ThresholdType,
+    value: str,
+    review: bool,
+) -> None:
+    """Persist review without a push attempt, or queue exactly one preparation task."""
+    rdp = biometric_rdp
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            start_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+    queue = mocker.patch.object(AsyncJob, "queue")
+    hope = mocker.patch(f"{MOD}.HopeApi")
+
+    with django_capture_on_commit_callbacks(execute=True) as callbacks:
+        check, claimed = evaluate_rdp_for_push(
+            rdp.pk,
+            user_id=rdp.pushed_by_id,
+            threshold=(threshold_type, Decimal(value)),
+        )
+
+    rdp.refresh_from_db()
+    assert check.allowed is True
+    assert claimed is not None
+    assert rdp.status == (Rdp.PushStatus.REVIEW_PENDING if review else Rdp.PushStatus.PUSH_PENDING)
+    assert (rdp.push_attempt_id is None) is review
+    jobs = list(AsyncJob.objects.filter(rdp=rdp))
+    assert len(jobs) == (0 if review else 1)
+    assert len(callbacks) == (0 if review else 1)
+    assert queue.call_count == (0 if review else 1)
+    hope.assert_not_called()
+    if jobs:
+        assert jobs[0].config["push_attempt_id"] == str(rdp.push_attempt_id)
+    assert len(rdp.operation_log) == 1
+    assert rdp.operation_log[0]["action"] == RdpLogEntryType.PUSH_TO_HOPE
+    result = rdp.operation_log[0]["result"]
+    assert result["marked_count"] == 2
+    assert result["total_count"] == 3
+    assert result["marked_percentage"] == str(Decimal(200) / 3)
+    assert result["threshold_type"] == threshold_type.value
+    assert result["threshold_value"] == value
+    assert result["outcome"] == rdp.status
+    assert ("push_attempt_id" in result) is not review
+
+
+def test_evaluate_rdp_for_push_requires_threshold(biometric_rdp: Rdp, mocker: MockerFixture) -> None:
+    """Biometric programmes cannot bypass the threshold decision."""
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            start_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+    lock = mocker.patch(f"{MOD}.lock_rdp_for_update")
+
+    check, claimed = evaluate_rdp_for_push(biometric_rdp.pk, user_id=biometric_rdp.pushed_by_id)
+
+    assert not check.allowed
+    assert claimed is None
+    lock.assert_not_called()
+    assert not AsyncJob.objects.filter(rdp=biometric_rdp).exists()
+
+
+def test_evaluate_rdp_for_push_empty_selection(biometric_rdp: Rdp, mocker: MockerFixture) -> None:
+    """Refuse an empty selection without dividing by zero or creating a job."""
+    rdp = biometric_rdp
+    rdp.individuals.clear()
+    rdp.duplicate_individuals.clear()
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            start_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+
+    check, claimed = evaluate_rdp_for_push(
+        rdp.pk,
+        user_id=rdp.pushed_by_id,
+        threshold=(ThresholdType.PERCENT, Decimal(0)),
+    )
+
+    rdp.refresh_from_db()
+    assert not check.allowed
+    assert claimed is None
+    assert rdp.status == Rdp.PushStatus.PENDING
+    assert not AsyncJob.objects.filter(rdp=rdp).exists()
+    assert rdp.operation_log == []
+
+
+def test_claim_review_rdp_push(biometric_rdp: Rdp, mocker: MockerFixture, django_capture_on_commit_callbacks) -> None:
+    """Explicit approval starts one push without evaluating the threshold again."""
+    rdp = biometric_rdp
+    policy = mocker.Mock()
+    policy.start_push_check.return_value = ActionCheck(True)
+    policy.review_push_check.return_value = ActionCheck(True)
+    mocker.patch(f"{MOD}.get_push_policy", return_value=policy)
+    queue = mocker.patch.object(AsyncJob, "queue")
+    from country_workspace.rdp.push import workflow as workflow_module
+
+    threshold = mocker.spy(workflow_module, "threshold_exceeded")
+
+    with django_capture_on_commit_callbacks(execute=True) as callbacks:
+        check, _ = evaluate_rdp_for_push(
+            rdp.pk,
+            user_id=rdp.pushed_by_id,
+            threshold=(ThresholdType.COUNT, Decimal(0)),
+        )
+        assert check.allowed
+        review_check, claimed = claim_review_rdp_push(rdp.pk, user_id=rdp.pushed_by_id)
+
+    rdp.refresh_from_db()
+    assert review_check.allowed
+    assert claimed is not None
+    assert rdp.status == Rdp.PushStatus.PUSH_PENDING
+    assert rdp.push_attempt_id is not None
+    assert threshold.call_count == 1
+    assert queue.call_count == 1
+    assert len(callbacks) == 1
+    assert AsyncJob.objects.filter(rdp=rdp).count() == 1
+    assert len(rdp.operation_log) == 2
+    assert rdp.operation_log[-1]["result"]["decision"] == "PUSH"
+    assert rdp.operation_log[-1]["result"]["override"] is True
+    assert rdp.operation_log[-1]["result"]["push_attempt_id"] == str(rdp.push_attempt_id)
+
+
+@pytest.mark.parametrize("stale", ["status", "deduplication_set_id", "deduplication_findings_count", "locked"])
+def test_claim_review_rdp_push_rechecks_locked_rdp(
+    biometric_rdp: Rdp,
+    mocker: MockerFixture,
+    stale: str,
+) -> None:
+    """Reject a changed review decision before scheduling a push."""
+    rdp = biometric_rdp
+    rdp.status = Rdp.PushStatus.REVIEW_PENDING
+    rdp.save(update_fields=["status"])
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            review_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+    from country_workspace.rdp.repository import lock_rdp_for_update as original_lock
+
+    def altered_lock(*, pk: int) -> Rdp:
+        locked = original_lock(pk=pk)
+        if stale == "status":
+            locked.status = Rdp.PushStatus.CANCELLED
+        elif stale == "locked":
+            locked.is_dedup_settings_locked = True
+        elif stale == "deduplication_set_id":
+            locked.deduplication_set_id = uuid4()
+        else:
+            locked.deduplication_findings_count = 100
+        return locked
+
+    mocker.patch(f"{MOD}.lock_rdp_for_update", side_effect=altered_lock)
+    schedule = mocker.patch(f"{MOD}._schedule_push_preparation")
+
+    check, claimed = claim_review_rdp_push(rdp.pk, user_id=rdp.pushed_by_id)
+
+    rdp.refresh_from_db()
+    assert not check.allowed
+    assert claimed is None
+    assert rdp.status == Rdp.PushStatus.REVIEW_PENDING
+    assert rdp.push_attempt_id is None
+    assert rdp.operation_log == []
+    schedule.assert_not_called()
+
+
+def test_review_cannot_be_pushed_twice(biometric_rdp: Rdp, mocker: MockerFixture) -> None:
+    """A review decision is consumed once even if the caller repeats the request."""
+    rdp = biometric_rdp
+    rdp.status = Rdp.PushStatus.REVIEW_PENDING
+    rdp.save(update_fields=["status"])
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            review_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+    queue = mocker.patch.object(AsyncJob, "queue")
+
+    assert claim_review_rdp_push(rdp.pk, user_id=rdp.pushed_by_id)[0].allowed
+    check, claimed = claim_review_rdp_push(rdp.pk, user_id=rdp.pushed_by_id)
+
+    assert not check.allowed
+    assert claimed is None
+    assert AsyncJob.objects.filter(rdp=rdp).count() == 1
+    queue.assert_not_called()
 
 
 @pytest.mark.parametrize("scheduled", [True, False], ids=["queued", "skipped"])
@@ -610,3 +865,45 @@ def test_push_preparation_finishes_success_when_rdi_is_already_merged(
 
     schedule.assert_not_called()
     completed.assert_not_called()
+
+
+@pytest.mark.parametrize("first", ["cancel", "push"])
+def test_push_cancel_interleavings(rdp: Rdp, mocker: MockerFixture, first: str) -> None:
+    """Only the first serialized decision may change the RDP or create its job."""
+    from country_workspace.rdp.lifecycle import claim_rdp_cancel
+
+    rdp.program.biometric_deduplication_enabled = False
+    rdp.program.save(update_fields=["biometric_deduplication_enabled"])
+    mocker.patch(
+        f"{MOD}.get_push_policy",
+        return_value=mocker.Mock(
+            start_push_check=mocker.Mock(
+                return_value=ActionCheck(True),
+            )
+        ),
+    )
+    mocker.patch(
+        "country_workspace.rdp.lifecycle.get_deduplication_policy",
+        return_value=mocker.Mock(cancel_check=mocker.Mock(return_value=ActionCheck(True))),
+    )
+    queue = mocker.patch.object(AsyncJob, "queue")
+
+    if first == "cancel":
+        assert claim_rdp_cancel(rdp.pk, user_id=rdp.pushed_by_id)[0].allowed
+        check, claimed = evaluate_rdp_for_push(rdp.pk, user_id=rdp.pushed_by_id)
+        assert not check.allowed
+        assert claimed is None
+        expected = Rdp.PushStatus.CANCELLED
+        expected_jobs = 0
+    else:
+        assert evaluate_rdp_for_push(rdp.pk, user_id=rdp.pushed_by_id)[0].allowed
+        check, rejected = claim_rdp_cancel(rdp.pk, user_id=rdp.pushed_by_id)
+        assert not check.allowed
+        assert rejected is False
+        expected = Rdp.PushStatus.PUSH_PENDING
+        expected_jobs = 1
+
+    rdp.refresh_from_db()
+    assert rdp.status == expected
+    assert AsyncJob.objects.filter(rdp=rdp).count() == expected_jobs
+    queue.assert_not_called()

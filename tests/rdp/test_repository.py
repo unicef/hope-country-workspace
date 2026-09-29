@@ -2,9 +2,9 @@ import pytest
 from django.db import transaction
 
 from country_workspace.models import Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.repository import (
-    append_rdp_operation_log,
+    append_rdp_log,
     collector_pks_by_household_pks,
     lock_rdp_for_update,
     qs_households,
@@ -181,13 +181,13 @@ def test_qs_individuals_for_push_includes_members_and_referenced_collectors() ->
 
 
 @pytest.mark.parametrize("full", [False, True], ids=["minimal", "full"])
-def test_append_rdp_operation_log(rdp: Rdp, full: bool) -> None:
+def test_append_rdp_log(rdp: Rdp, full: bool) -> None:
     existing = [{"action": "EXISTING"}] if full else None
     rdp.operation_log = existing
 
-    append_rdp_operation_log(
+    append_rdp_log(
         rdp=rdp,
-        action=RdpOperationAction.START_DEDUPLICATION,
+        action=RdpLogEntryType.START_DEDUPLICATION,
         result={"ok": True} if full else None,
     )
 
@@ -195,6 +195,6 @@ def test_append_rdp_operation_log(rdp: Rdp, full: bool) -> None:
     entry = rdp.operation_log[-1]
 
     assert rdp.operation_log[:-1] == (existing or [])
-    assert entry["action"] == RdpOperationAction.START_DEDUPLICATION.value
+    assert entry["action"] == RdpLogEntryType.START_DEDUPLICATION.value
     assert entry["timestamp"]
     assert ("result" in entry) is full
