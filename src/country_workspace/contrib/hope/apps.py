@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 
 from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, CountryChoice
+from .latin_names import LatinNameField
 from .lookups import FinancialInstitutionChoice
 from .phone_numbers import PhoneNumberField
 from .beneficiary_reference import BeneficiaryReferenceModelChoiceField
@@ -34,6 +35,7 @@ class Config(AppConfig):
         field_registry.register(ChoiceFieldWithEmptyDisplay)
         field_registry.register(ObservedDisabilityChoice)
         field_registry.register(CustomMultipleChoiceField)
+        field_registry.register(LatinNameField)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry

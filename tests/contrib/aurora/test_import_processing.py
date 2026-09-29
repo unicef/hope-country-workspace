@@ -711,6 +711,25 @@ def test_flatten_top2_prefixed(data: dict[str, Any], expected: dict[str, Any]) -
             True,
             id="keeps_existing",
         ),
+        pytest.param(
+            {"given_name": "Ada", "family_name": "Lovelace", "full_name_latin": "Ada Lovelace"},
+            {
+                "given_name": "Ada",
+                "family_name": "Lovelace",
+                "full_name_latin": "Ada Lovelace",
+                "full_name": "Ada Lovelace",
+            },
+            False,
+            id="full_name_latin_is_untouched_and_not_used_as_source",
+        ),
+        pytest.param(
+            # No transliteration/derivation: `*_latin` fields must never be used to build
+            # `full_name`, and `full_name_latin` must never be invented.
+            {"given_name_latin": "Ada", "family_name_latin": "Lovelace"},
+            {"given_name_latin": "Ada", "family_name_latin": "Lovelace"},
+            True,
+            id="latin_only_fields_are_not_used_for_full_name",
+        ),
     ],
 )
 def test_make_full_name(row: dict[str, Any], expected: dict[str, Any], same_object: bool) -> None:

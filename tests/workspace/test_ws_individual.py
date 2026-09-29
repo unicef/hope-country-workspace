@@ -66,6 +66,32 @@ def test_ind_change(app: "DjangoTestApp", individual: "CountryIndividual") -> No
         assert res.status_code == 302, res.location
 
 
+def test_ind_change_form_shows_latin_name_under_name(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    individual.flex_fields = {**individual.flex_fields, "full_name_latin": "Zvezdana Petrovic"}
+    individual.save(update_fields=["flex_fields"])
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+        res = res.click(individual.name)
+
+        assert res.status_code == 200, res.location
+        assert "Zvezdana Petrovic" in res.text
+
+
+def test_ind_change_form_hides_latin_name_when_absent(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    individual.flex_fields = {k: v for k, v in individual.flex_fields.items() if k != "full_name_latin"}
+    individual.save(update_fields=["flex_fields"])
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+        res = res.click(individual.name)
+
+        assert res.status_code == 200, res.location
+        assert "text-muted" not in res.text
+
+
 def test_ind_validate(app: "DjangoTestApp", force_migrated_records, individual: "CountryIndividual") -> None:
     individual.flex_fields = {}
     individual.save()
@@ -89,3 +115,42 @@ def test_ind_changelist(app: "DjangoTestApp", individual: "CountryIndividual") -
         # filter by program
         res = app.get(url)
         assert res.status_code == 200, res.location
+
+
+def test_ind_changelist_shows_latin_name_under_name(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    individual.flex_fields = {**individual.flex_fields, "full_name_latin": "Zvezdana Petrovic"}
+    individual.save(update_fields=["flex_fields"])
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+
+        assert res.status_code == 200, res.location
+        assert individual.name in res.text
+        assert "Zvezdana Petrovic" in res.text
+
+
+def test_ind_changelist_hides_latin_name_when_absent(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    individual.flex_fields = {k: v for k, v in individual.flex_fields.items() if k != "full_name_latin"}
+    individual.save(update_fields=["flex_fields"])
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+
+        assert res.status_code == 200, res.location
+        assert individual.name in res.text
+
+
+def test_ind_changelist_search_by_latin_name(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    # Charset-agnostic search: matching on the Latin spelling must find the individual, even
+    # when the term does not appear in the (local-script) `name`.
+    individual.flex_fields = {**individual.flex_fields, "full_name_latin": "Zvezdana Petrovic"}
+    individual.save(update_fields=["flex_fields"])
+
+    url = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url, params={"q": "Zvezdana"})
+
+        assert res.status_code == 200, res.location
+        assert individual.name in res.text

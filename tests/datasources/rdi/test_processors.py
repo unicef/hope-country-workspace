@@ -262,8 +262,12 @@ def test_normalize_row_structure_prefix_handling(row: Record, prefix: str | None
     [
         ({"full_name": "John"}, "full_name"),
         ({"age": 30}, None),
+        # `full_name_latin` must never be picked as the display-name column, even when it
+        # appears before `full_name` in the row, or when it is the only "full*name*" column.
+        ({"full_name_latin": "John", "full_name": "Jovan"}, "full_name"),
+        ({"full_name_latin": "John"}, None),
     ],
-    ids=["full_name", "no_name"],
+    ids=["full_name", "no_name", "full_name_latin_and_full_name", "only_full_name_latin"],
 )
 def test_normalize_row_structure_name_column_detection(row: Record, expected_name_column: str | None) -> None:
     _, name_column = normalize_row_structure(row)

@@ -1,9 +1,10 @@
 from typing import Any
 from urllib.parse import parse_qs
 
-from django.contrib.admin import AdminSite, register
+from django.contrib.admin import AdminSite, display, register
 from django.db.models import Model, QuerySet
 from django.http import HttpRequest
+from django.utils.html import format_html
 
 from ...state import state
 from ..models import CountryHousehold, CountryIndividual
@@ -14,7 +15,8 @@ from .hh_ind import BeneficiaryBaseAdmin
 
 @register(CountryIndividual, site=workspace)
 class CountryIndividualAdmin(BeneficiaryBaseAdmin):
-    search_fields = ("name", "id")
+    # Charset-agnostic search: matches the local-script name OR its Latin spelling.
+    search_fields = ("name", "id", "flex_fields__full_name_latin")
 
     list_filter = (
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
@@ -38,6 +40,18 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     def __init__(self, model: Model, admin_site: "AdminSite") -> None:
         self._selected_household = None
         super().__init__(model, admin_site)
+
+    def get_list_display(self, request: HttpRequest) -> list[str]:
+        # Show the Latin spelling in small text underneath the name, wherever "name" would
+        # otherwise be shown, without requiring every program to reconfigure its columns.
+        return ["name_with_latin" if col == "name" else col for col in super().get_list_display(request)]
+
+    @display(description="Name", ordering="name")
+    def name_with_latin(self, obj: CountryIndividual) -> str:
+        latin = (obj.flex_fields or {}).get("full_name_latin")
+        if latin:
+            return format_html('{}<br><small class="text-muted">{}</small>', obj.name, latin)
+        return obj.name
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryHousehold]":
         return (

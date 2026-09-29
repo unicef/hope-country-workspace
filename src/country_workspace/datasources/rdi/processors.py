@@ -90,7 +90,15 @@ def get_value(row: Record, column_name: str) -> Any:
 def normalize_row_structure(row: Record, people_prefix: str | None = None) -> tuple[Record, str | None]:
     if people_prefix:
         row = {k.removeprefix(people_prefix): v for k, v in row.items()}
-    name_column = next((key for key in row if key.startswith("full") and "name" in key), None)
+    if "full_name" in row:
+        name_column = "full_name"
+    else:
+        # `full_name_latin` (and similar *_latin variants) must never be used as Individual.name:
+        # it holds the Latin spelling, not the display name.
+        name_column = next(
+            (key for key in row if key.startswith("full") and "name" in key and not key.endswith("_latin")),
+            None,
+        )
     return row, name_column
 
 

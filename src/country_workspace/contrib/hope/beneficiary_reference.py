@@ -23,7 +23,8 @@ _KW_BY_VIEW = {
 
 
 class BeneficiarySelect2Widget(ModelSelect2Widget):
-    search_fields = ["name__icontains"]
+    # Charset-agnostic search: matches the local-script name OR its Latin spelling.
+    search_fields = ["name__icontains", "flex_fields__full_name_latin__icontains"]
 
     def __init__(
         self,
