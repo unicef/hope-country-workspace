@@ -99,6 +99,13 @@ CONFIG: "dict[str, ConfigItem]" = {
     ),
     "CSRF_COOKIE_SECURE": (bool, True, False, True, setting("csrf-cookie-secure")),
     "SESSION_COOKIE_AGE": (int, 86400, 86400, False, setting("std-setting-SESSION_COOKIE_AGE")),
+    "SESSION_COOKIE_SECURE": (
+        bool,
+        True,
+        False,
+        False,
+        setting("session-cookie-secure"),
+    ),
     "SESSION_EXPIRE_AT_BROWSER_CLOSE": (
         bool,
         False,
