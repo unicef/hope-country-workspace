@@ -396,6 +396,7 @@ def _finish_successful_push(*, rdp: Rdp, hope_rdi_id: str) -> None:
     set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
     rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
 
+    # TODO(Vitali): Use Bitcaster to retry DedupEngine approval after a successful HOPE push.
     transaction.on_commit(
         partial(
             approve_deduplication_set_after_successful_push,
