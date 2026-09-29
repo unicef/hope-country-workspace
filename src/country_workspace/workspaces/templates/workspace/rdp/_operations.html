@@ -1,51 +1,112 @@
 {% load i18n %}
-<div class="overflow-x-auto">
-    <table class="text-left">
-        <thead>
-            <tr>
-                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
-                    {% translate "Type" %}
-                </th>
-                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
-                    {% translate "Status" %}
-                </th>
-                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
-                    {% translate "Attempts" %}
-                </th>
-                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
-                    {% translate "Started" %}
-                </th>
-                <th scope="col" class="pb-2 pr-6 whitespace-nowrap">
-                    {% translate "Finished" %}
-                </th>
-                <th scope="col" class="pb-2">
-                    {% translate "Error" %}
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-                <tr>
-                    <td class="py-2 pr-6 whitespace-nowrap">
-                        {{ row.type }}
-                    </td>
-                    <td class="py-2 pr-6 whitespace-nowrap">
-                        {{ row.status }}
-                    </td>
-                    <td class="py-2 pr-6 whitespace-nowrap">
-                        {{ row.attempts }}
-                    </td>
-                    <td class="py-2 pr-6 whitespace-nowrap">
-                        {{ row.started_at }}
-                    </td>
-                    <td class="py-2 pr-6 whitespace-nowrap">
-                        {{ row.finished_at }}
-                    </td>
-                    <td class="py-2">
-                        {{ row.error }}
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="space-y-6">
+    {% for row in rows %}
+        <div>
+            <h3 class="text-lg font-medium mb-3">
+                {{ row.type }}
+            </h3>
+            <table class="text-left">
+                <tbody>
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Status" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.status }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Correlation ID" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.id }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Started" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.started_at }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Finished" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.finished_at }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Attempts" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.attempts }}
+                        </td>
+                    </tr>
+                    {% if row.findings is not None %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Findings" %}
+                            </th>
+                            <td class="py-2">
+                                {{ row.findings }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Marked individuals" %}
+                            </th>
+                            <td class="py-2">
+                                {{ row.marked_individuals }}
+                            </td>
+                        </tr>
+                    {% endif %}
+                    {% if row.config %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Config" %}
+                            </th>
+                            <td class="py-2">
+                                <details>
+                                    <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
+                                        {% translate "Show config" %}
+                                    </summary>
+                                    <pre class="mt-2 overflow-x-auto">{{ row.config }}</pre>
+                                </details>
+                            </td>
+                        </tr>
+                    {% endif %}
+                    {% if row.error %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Error" %}
+                            </th>
+                            <td class="py-2">
+                                <details>
+                                    <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
+                                        {% translate "Show error" %}
+                                    </summary>
+                                    <pre class="mt-2 overflow-x-auto">{{ row.error }}</pre>
+                                </details>
+                            </td>
+                        </tr>
+                    {% endif %}
+                    {% if row.log %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Log" %}
+                            </th>
+                            <td class="py-2">
+                                {% include "workspace/rdp/_log.html" with rows=row.log only %}
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    {% endfor %}
 </div>

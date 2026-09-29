@@ -6,8 +6,11 @@ from typing import Any
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
+from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
+from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
@@ -23,7 +26,6 @@ from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
     RdpActionPolicy,
     RdpWorkflowError,
-    biometric_operation_for_rdp,
     cancel_rdp,
     create_clean_rdp as create_clean_rdp_workflow,
     claim_review_rdp_push,
@@ -39,12 +41,8 @@ from country_workspace.workspaces.models import CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
-
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
-from django.http import HttpRequest, HttpResponse
-from django.db.models import QuerySet
-from admin_extra_buttons.buttons import LinkButton, StandardButton
 
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
@@ -84,16 +82,28 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "push_date",
         "hope_rdi_id",
         "operations_display",
-        "biometric_findings_count",
-        "marked_individuals_count",
         "processing_history",
-        "operation_log_display",
+        "rdp_log_display",
     )
 
     @staticmethod
     def _format_datetime(value: datetime | None) -> str:
         """Format an admin datetime."""
         return date_format(timezone.localtime(value), "Y-m-d H:i:s") if value else "-"
+
+    @staticmethod
+    def _format_log_entry(entry: dict[str, Any], *, action: str | None = None) -> dict[str, str]:
+        """Format a log entry for display."""
+        timestamp = entry.get("timestamp", "-")
+        if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
+            timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
+
+        result = entry.get("result")
+        return {
+            "action": action if action is not None else str(entry.get("action", "-")),
+            "timestamp": str(timestamp),
+            "result": json.dumps(result, indent=2, ensure_ascii=False) if result else "",
+        }
 
     def get_fieldsets(
         self,
@@ -103,22 +113,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         fieldsets = [
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
-
         if obj and obj.operations.exists():
             fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
-
-        if obj and biometric_operation_for_rdp(rdp=obj):
-            fieldsets.append(
-                (
-                    _("Deduplication"),
-                    {"fields": ("biometric_findings_count", "marked_individuals_count")},
-                )
-            )
-
         fieldsets.extend(
             [
                 (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
-                (_("RDP log"), {"fields": ("operation_log_display",), "classes": ("content-only",)}),
+                (_("RDP log"), {"fields": ("rdp_log_display",), "classes": ("content-only",)}),
             ]
         )
         return fieldsets
@@ -141,18 +141,29 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         operations = list(obj.operations.order_by("operation_type"))
         if not operations:
             return "-"
-
-        rows = [
-            {
-                "type": operation.get_operation_type_display(),
-                "status": operation.get_status_display(),
-                "attempts": operation.attempt,
-                "started_at": self._format_datetime(operation.started_at),
-                "finished_at": self._format_datetime(operation.finished_at),
-                "error": str(operation.error.get("message") or "-"),
-            }
-            for operation in operations
-        ]
+        rows = []
+        for operation in operations:
+            successful = operation.status == RdpOperation.Status.SUCCESS
+            biometric = operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION
+            rows.append(
+                {
+                    "id": str(operation.id),
+                    "type": operation.get_operation_type_display(),
+                    "status": operation.get_status_display(),
+                    "attempts": operation.attempt,
+                    "started_at": self._format_datetime(operation.started_at),
+                    "finished_at": self._format_datetime(operation.finished_at),
+                    "config": json.dumps(operation.config, indent=2, ensure_ascii=False) if operation.config else "",
+                    "error": json.dumps(operation.error, indent=2, ensure_ascii=False) if operation.error else "",
+                    "log": [self._format_log_entry(entry) for entry in operation.log],
+                    "findings": operation.findings.count() if biometric and successful else None,
+                    "marked_individuals": (
+                        qs_biometric_duplicate_individuals(operation=operation).count()
+                        if biometric and successful
+                        else None
+                    ),
+                }
+            )
         return render_to_string("workspace/rdp/_operations.html", {"rows": rows})
 
     @display(description="")
@@ -174,47 +185,16 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return render_to_string("workspace/rdp/_processing_history.html", {"rows": rows})
 
     @display(description="")
-    def operation_log_display(self, obj: CountryRdp) -> str:
-        """Return formatted RDP operation log."""
-        if not obj.operation_log:
-            return "-"
-
+    def rdp_log_display(self, obj: CountryRdp) -> str:
+        """Return the formatted RDP log."""
         rows = []
         for entry in obj.operation_log:
             action = entry.get("action", "-")
             with suppress(TypeError, ValueError):
                 action = RdpLogEntryType(action).label
+            rows.append(self._format_log_entry(entry, action=str(action)))
 
-            timestamp = entry.get("timestamp", "-")
-            if isinstance(timestamp, str) and (dt := parse_datetime(timestamp)):
-                timestamp = date_format(timezone.localtime(dt), "Y-m-d H:i:s")
-
-            result = entry.get("result")
-            rows.append(
-                {
-                    "action": action,
-                    "timestamp": timestamp,
-                    "result": json.dumps(result, indent=2, ensure_ascii=False) if result else "",
-                }
-            )
-
-        return render_to_string("workspace/rdp/_operation_log.html", {"rows": rows})
-
-    @display(description=_("Findings"))
-    def biometric_findings_count(self, obj: CountryRdp) -> int | str:
-        """Return the number of biometric findings."""
-        operation = biometric_operation_for_rdp(rdp=obj)
-        if operation is None or operation.status != RdpOperation.Status.SUCCESS:
-            return "-"
-        return operation.findings.count()
-
-    @display(description=_("Marked individuals"))
-    def marked_individuals_count(self, obj: CountryRdp) -> int | str:
-        """Return the number of locally marked duplicate individuals."""
-        operation = biometric_operation_for_rdp(rdp=obj)
-        if operation is None or operation.status != RdpOperation.Status.SUCCESS:
-            return "-"
-        return qs_biometric_duplicate_individuals(operation=operation).count()
+        return render_to_string("workspace/rdp/_log.html", {"rows": rows}) if rows else "-"
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -334,9 +314,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return response
 
         def schedule_push(_: HttpRequest) -> HttpResponse:
-            check, locked = claim_review_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
+            check, rdp = claim_review_rdp_push(rdp_id=obj.pk, user_id=request.user.pk)
 
-            if check.allowed and locked is not None:
+            if check.allowed and rdp is not None:
                 messages.success(request, "Push to HOPE task scheduled")
             else:
                 messages.error(request, check.reason or "Action is not allowed.")

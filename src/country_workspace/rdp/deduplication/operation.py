@@ -11,12 +11,6 @@ if TYPE_CHECKING:
     from country_workspace.rdp.types import OperationLogResult
 
 
-def reject_deduplication_set(*, group_reference_id: str, deduplication_set_id: str) -> None:
-    """Reject a Dedup Engine deduplication set."""
-    with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
-        client.reject()
-
-
 def approve_deduplication_set_after_successful_push(
     *,
     operation_id: UUID | None,
@@ -40,4 +34,28 @@ def approve_deduplication_set_after_successful_push(
         operation_id=operation_id,
         action=DeduplicationLogAction.APPROVE_SET,
         result=result,
+    )
+
+
+def reject_deduplication_set(
+    *,
+    operation_id: UUID,
+    group_reference_id: str,
+) -> None:
+    """Reject and record a DedupEngine deduplication set."""
+    try:
+        with make_dedup_client(group_reference_id, deduplication_set_id=str(operation_id)) as client:
+            client.reject()
+    except (RemoteError, RemoteUnavailableError) as exc:
+        append_rdp_operation_log(
+            operation_id=operation_id,
+            action=DeduplicationLogAction.REJECT_SET,
+            result={"success": False, "error": str(exc)},
+        )
+        raise
+
+    append_rdp_operation_log(
+        operation_id=operation_id,
+        action=DeduplicationLogAction.REJECT_SET,
+        result={"success": True},
     )

@@ -285,6 +285,7 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
                 {"errors": [f"DedupEngine: can not process deduplication set in state={state.value!r}."]}
             )
 
+        # TODO(Vitali): Use Bitcaster to recover RUNNING operations when DedupEngine callback delivery fails.
         client.process()
 
 
@@ -304,8 +305,8 @@ def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
         )
         if state in REJECTABLE_DEDUPLICATION_SET_STATES:
             reject_deduplication_set(
+                operation_id=operation.id,
                 group_reference_id=rdp.program.unicef_id,
-                deduplication_set_id=deduplication_set_id,
             )
         elif state not in {None, DeduplicationSetState.REJECTED}:
             raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
