@@ -66,6 +66,13 @@ def has_biometric_image_issues(*, operation: RdpOperation) -> bool:
     return operation.findings.filter(finding_type__in=BIOMETRIC_IMAGE_ISSUE_FINDING_TYPES).exists()
 
 
+def biometric_findings_count(*, operation: RdpOperation) -> int:
+    """Return the number of biometric findings that would create HOPE tickets."""
+    return operation.findings.filter(
+        finding_type__in=BIOMETRIC_AFFECTING_FINDING_TYPES,
+    ).count()
+
+
 def biometric_clean_rdp_selection(*, operation: RdpOperation) -> tuple[bool, list[int]]:
     """Return the RDP selection excluding beneficiaries affected by biometric findings."""
     master_detail, pks = rdp_selection(rdp=operation.rdp)

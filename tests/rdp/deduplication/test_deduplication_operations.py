@@ -4,8 +4,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models.rdp import RdpOperationAction
-from country_workspace.rdp.deduplication.operations import (
+from country_workspace.models.rdp import RdpLogEntryType
+from country_workspace.rdp.deduplication.actions import (
     approve_deduplication_set_after_successful_push,
     reject_deduplication_set,
 )
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.django_db
 
 def test_approve_deduplication_set_without_set(mocker: MockerFixture) -> None:
     make_client = mocker.patch(f"{MOD}.make_dedup_client")
-    append_log = mocker.patch(f"{MOD}.append_rdp_operation_log")
+    append_log = mocker.patch(f"{MOD}.append_rdp_log")
 
     approve_deduplication_set_after_successful_push(
         rdp_id=1,
@@ -46,7 +46,7 @@ def test_approve_deduplication_set(mocker: MockerFixture, error: Exception | Non
 
     rdp = mocker.MagicMock()
     mocker.patch(f"{MOD}.lock_rdp_for_update", return_value=rdp)
-    append_log = mocker.patch(f"{MOD}.append_rdp_operation_log")
+    append_log = mocker.patch(f"{MOD}.append_rdp_log")
 
     approve_deduplication_set_after_successful_push(
         rdp_id=1,
@@ -58,7 +58,7 @@ def test_approve_deduplication_set(mocker: MockerFixture, error: Exception | Non
     client.approve.assert_called_once_with()
     append_log.assert_called_once_with(
         rdp=rdp,
-        action=RdpOperationAction.APPROVE_DEDUPLICATION_SET,
+        action=RdpLogEntryType.APPROVE_DEDUPLICATION_SET,
         result={
             "deduplication_set_id": str(deduplication_set_id),
             "success": error is None,

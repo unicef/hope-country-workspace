@@ -10,6 +10,9 @@ from testutils.perms import user_grant_permissions
 from testutils.utils import select_office
 
 from country_workspace.state import state
+from country_workspace.workspaces.admin import household as household_admin_mod
+from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
+from country_workspace.workspaces.admin.household import CountryHouseholdAdmin
 
 if TYPE_CHECKING:
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
@@ -91,6 +94,13 @@ def household(program):
             "country_origin": "",
         },
     )
+
+
+@pytest.fixture
+def household_admin(mocker: MockerFixture) -> CountryHouseholdAdmin:
+    from country_workspace.workspaces.models import CountryHousehold
+
+    return CountryHouseholdAdmin(CountryHousehold, mocker.MagicMock())
 
 
 @pytest.fixture
@@ -268,3 +278,116 @@ def test_hh_initial_field(app: "CWTestApp", hh_with_check_initial: "CountryHouse
         value_expected = form_hh["flex_field-field_to_check_initial"].value
 
     assert value == value_expected
+
+
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (True, {"duplicate_members", "image_issue_members"}),
+        (False, set()),
+    ],
+)
+def test_biometric_columns_visibility(
+    household_admin: CountryHouseholdAdmin,
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+    expected: set[str],
+) -> None:
+    request = rf.get("/")
+    mocker.patch.object(BeneficiaryBaseAdmin, "get_list_display", return_value=["name"])
+    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+
+    columns = set(household_admin.get_list_display(request))
+
+    assert expected <= columns
+    if not visible:
+        assert not {"duplicate_members", "image_issue_members"} & columns
+
+
+@pytest.mark.parametrize("method", ["duplicate_members", "image_issue_members"])
+def test_biometric_member_count_unavailable(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+    method: str,
+) -> None:
+    household._result_available = False
+
+    assert getattr(household_admin, method)(household) == "-"
+
+
+def test_duplicate_members_without_duplicates(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+) -> None:
+    household._result_available = True
+    household._duplicate_member_count = 0
+    household._member_count = 5
+
+    assert household_admin.duplicate_members(household) == "0/5"
+
+
+def test_duplicate_members_link_preserves_rdp_context(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+    mocker: MockerFixture,
+) -> None:
+    household._result_available = True
+    household._duplicate_member_count = 2
+    household._member_count = 5
+    household._selected_rdp_id = 17
+    mocker.patch.object(household_admin_mod, "reverse", return_value="/individuals")
+
+    result = str(household_admin.duplicate_members(household))
+
+    assert "2/5" in result
+    assert f"household__exact={household.pk}" in result
+    assert "duplicates=with" in result
+    assert "rdp_id=17" in result
+
+
+def test_image_issue_members(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+) -> None:
+    household._result_available = True
+    household._image_issue_member_count = 2
+    household._member_count = 5
+
+    assert household_admin.image_issue_members(household) == "2/5"
+
+
+def test_common_context_includes_biometric_counts(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+    rf,
+    mocker: MockerFixture,
+) -> None:
+    household._result_available = True
+    household._member_count = 5
+    household._duplicate_member_count = 2
+    household._image_issue_member_count = 1
+    mocker.patch.object(BeneficiaryBaseAdmin, "get_common_context", return_value={"original": household})
+
+    context = household_admin.get_common_context(rf.get("/"))
+
+    assert context["dedup_member_count"] == 5
+    assert context["dedup_duplicate_member_count"] == 2
+    assert context["dedup_image_issue_member_count"] == 1
+
+
+def test_members_link_preserves_rdp_context(
+    household_admin: CountryHouseholdAdmin,
+    household: "CountryHousehold",
+    mocker: MockerFixture,
+) -> None:
+    household._selected_rdp_id = 17
+    state.program = household.program
+    mocker.patch.object(household_admin_mod, "reverse", return_value="/individuals")
+    button = mocker.MagicMock()
+    button.context = {"original": household}
+
+    household_admin.members.func(household_admin, button)
+
+    assert f"household__exact={household.pk}" in button.href
+    assert "rdp_id=17" in button.href

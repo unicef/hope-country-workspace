@@ -1,10 +1,14 @@
 from typing import TYPE_CHECKING
 
 import pytest
+from pytest_mock import MockerFixture
 from django.urls import reverse
 from testutils.utils import select_office
 
 from country_workspace.state import state
+from country_workspace.workspaces.admin import individual as individual_admin_mod
+from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
+from country_workspace.workspaces.admin.individual import CountryIndividualAdmin
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -43,6 +47,13 @@ def individual(program):
     return CountryIndividualFactory(
         household__batch__program=program, household__batch__country_office=program.country_office
     )
+
+
+@pytest.fixture
+def individual_admin(mocker: MockerFixture) -> CountryIndividualAdmin:
+    from country_workspace.workspaces.models import CountryIndividual
+
+    return CountryIndividualAdmin(CountryIndividual, mocker.MagicMock())
 
 
 @pytest.fixture
@@ -154,3 +165,151 @@ def test_ind_changelist_search_by_latin_name(app: "DjangoTestApp", individual: "
 
         assert res.status_code == 200, res.location
         assert individual.name in res.text
+
+
+@pytest.mark.parametrize(
+    ("available", "value", "expected"),
+    [
+        (False, True, None),
+        (True, True, True),
+        (True, False, False),
+    ],
+)
+def test_is_duplicate(
+    individual_admin: CountryIndividualAdmin,
+    individual: "CountryIndividual",
+    available: bool,
+    value: bool,
+    expected: bool | None,
+) -> None:
+    individual._result_available = available
+    individual._is_duplicate = value
+
+    assert individual_admin.is_duplicate(individual) is expected
+
+
+@pytest.mark.parametrize(
+    ("available", "value", "expected"),
+    [
+        (False, True, None),
+        (True, True, True),
+        (True, False, False),
+    ],
+)
+def test_has_image_issue(
+    individual_admin: CountryIndividualAdmin,
+    individual: "CountryIndividual",
+    available: bool,
+    value: bool,
+    expected: bool | None,
+) -> None:
+    individual._result_available = available
+    individual._has_image_issue = value
+
+    assert individual_admin.has_image_issue(individual) is expected
+
+
+def test_common_context_without_biometric_result(
+    individual_admin: CountryIndividualAdmin,
+    individual: "CountryIndividual",
+    rf,
+    mocker: MockerFixture,
+) -> None:
+    individual._result_available = False
+    mocker.patch.object(
+        BeneficiaryBaseAdmin,
+        "get_common_context",
+        return_value={"original": individual},
+    )
+    findings = mocker.patch.object(individual_admin_mod, "biometric_findings_for_individual")
+
+    context = individual_admin.get_common_context(rf.get("/"))
+
+    assert context["dedup_duplicates"] is None
+    assert context["dedup_image_issues"] is None
+    findings.assert_not_called()
+
+
+def test_common_context_with_biometric_result(
+    individual_admin: CountryIndividualAdmin,
+    individual: "CountryIndividual",
+    rf,
+    mocker: MockerFixture,
+) -> None:
+    individual._result_available = True
+    mocker.patch.object(
+        BeneficiaryBaseAdmin,
+        "get_common_context",
+        return_value={"original": individual},
+    )
+    mocker.patch.object(individual_admin, "get_selected_household", return_value=individual.household)
+    mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=None)
+    findings = mocker.patch.object(
+        individual_admin_mod,
+        "biometric_findings_for_individual",
+        return_value=([11, 22], ["BAD_IMAGE_QUALITY"]),
+    )
+    reverse = mocker.patch.object(
+        individual_admin_mod,
+        "reverse",
+        side_effect=lambda _name, args: f"/individuals/{args[0]}/",
+    )
+
+    context = individual_admin.get_common_context(rf.get("/"))
+
+    assert context["dedup_duplicates"] == [
+        {"pk": 11, "url": "/individuals/11/"},
+        {"pk": 22, "url": "/individuals/22/"},
+    ]
+    assert context["dedup_image_issues"] == ["BAD_IMAGE_QUALITY"]
+    findings.assert_called_once_with(individual=individual, rdp=None)
+    assert reverse.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (True, {"is_duplicate", "has_image_issue"}),
+        (False, set()),
+    ],
+)
+def test_biometric_columns_visibility(
+    individual_admin: CountryIndividualAdmin,
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+    expected: set[str],
+) -> None:
+    mocker.patch.object(BeneficiaryBaseAdmin, "get_list_display", return_value=["name"])
+    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+
+    columns = set(individual_admin.get_list_display(rf.get("/")))
+
+    assert expected <= columns
+    if not visible:
+        assert not {"is_duplicate", "has_image_issue"} & columns
+
+
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (True, {"DuplicateFilter", "ImageIssueFilter"}),
+        (False, set()),
+    ],
+)
+def test_biometric_filters_visibility(
+    individual_admin: CountryIndividualAdmin,
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+    expected: set[str],
+) -> None:
+    mocker.patch.object(BeneficiaryBaseAdmin, "get_list_filter", return_value=[])
+    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+
+    filters = individual_admin.get_list_filter(rf.get("/"))
+    names = {filter_.__name__ for filter_ in filters if isinstance(filter_, type)}
+
+    assert expected <= names
+    if not visible:
+        assert not {"DuplicateFilter", "ImageIssueFilter"} & names

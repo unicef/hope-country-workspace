@@ -14,11 +14,10 @@ from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedE
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
-from country_workspace.rdp.deduplication.operation import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.actions import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.deduplication.repository import (
+    biometric_findings_count,
     biometric_operation_for_rdp,
-    has_biometric_image_issues,
-    qs_biometric_duplicate_individuals,
 )
 from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
@@ -151,44 +150,53 @@ def _schedule_push_preparation(*, rdp: Rdp, user_id: int) -> None:
     transaction.on_commit(job.queue, robust=True)
 
 
-def evaluate_rdp_for_push(*, rdp_id: int) -> Rdp | None:
+def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
     """Evaluate a pending RDP for review or push."""
     with transaction.atomic():
         rdp = lock_rdp_for_update(pk=rdp_id)
+
         if rdp.status != Rdp.PushStatus.PENDING:
-            return None
+            return {
+                "evaluated": False,
+                "reason": "RDP is no longer pending.",
+                "outcome": rdp.status,
+            }
+
         if has_incomplete_rdp_operations(rdp_id=rdp.pk):
-            return None
+            return {
+                "evaluated": False,
+                "reason": "Not all RDP operations completed successfully.",
+                "outcome": rdp.status,
+            }
 
         result: OperationLogResult = {}
-        review_required = False
+        threshold_is_exceeded = False
 
         if operation := biometric_operation_for_rdp(rdp=rdp):
             threshold_type = ThresholdType(operation.config["threshold_type"])
             threshold_value = Decimal(str(operation.config["threshold_value"]))
-            marked_count = qs_biometric_duplicate_individuals(operation=operation).count()
-            total_count = qs_individuals_for_rdp(rdp=rdp).count()
+            findings_count = biometric_findings_count(operation=operation)
+            individuals_count = qs_individuals_for_rdp(rdp=rdp).count()
 
-            if total_count == 0:
+            if individuals_count == 0:
                 raise RdpWorkflowError({"errors": ["RDP: no individuals available for push."]})
 
-            has_image_issues = has_biometric_image_issues(operation=operation)
-            review_required = has_image_issues or threshold_exceeded(
-                marked_count=marked_count,
-                total_count=total_count,
+            threshold_is_exceeded = threshold_exceeded(
+                findings_count=findings_count,
+                total_count=individuals_count,
                 threshold_type=threshold_type,
                 threshold_value=threshold_value,
             )
             result.update(
                 threshold_type=threshold_type.value,
                 threshold_value=str(threshold_value),
-                marked_count=marked_count,
-                total_count=total_count,
-                marked_percentage=str(Decimal(marked_count) * 100 / total_count),
-                has_image_issues=has_image_issues,
+                findings_count=findings_count,
+                individuals_count=individuals_count,
+                findings_rate=f"{Decimal(findings_count) * 100 / individuals_count:.2f}",
+                threshold_exceeded=threshold_is_exceeded,
             )
 
-        if review_required:
+        if threshold_is_exceeded:
             rdp.status = Rdp.PushStatus.REVIEW_PENDING
             rdp.save(update_fields=["status"])
             entry_type = RdpLogEntryType.REVIEW_REQUIRED
@@ -199,19 +207,16 @@ def evaluate_rdp_for_push(*, rdp_id: int) -> Rdp | None:
         result["outcome"] = rdp.status
         append_rdp_log(rdp=rdp, entry_type=entry_type, result=result)
 
-        if not review_required:
+        if not threshold_is_exceeded:
             _schedule_push_preparation(rdp=rdp, user_id=rdp.pushed_by_id)
 
-    return rdp
+    return {"evaluated": True, **result}
 
 
 def evaluate_rdp_for_push_core(job: AsyncJob) -> dict[str, Any]:
     """Evaluate an RDP for push after processing completes."""
     rdp_id = job.config["rdp_id"]
-    return {
-        "rdp_id": rdp_id,
-        "evaluated": evaluate_rdp_for_push(rdp_id=rdp_id) is not None,
-    }
+    return {"rdp_id": rdp_id, **evaluate_rdp_for_push(rdp_id=rdp_id)}
 
 
 def schedule_rdp_push_evaluation(*, rdp: Rdp) -> AsyncJob:

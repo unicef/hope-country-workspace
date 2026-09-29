@@ -9,8 +9,8 @@ from .types import ThresholdType
 class BiometricDeduplicationConfigForm(forms.Form):
     threshold_type = forms.ChoiceField(
         choices=(
-            (ThresholdType.COUNT, "Number of duplicate individuals"),
-            (ThresholdType.PERCENT, "Percentage of RDP individuals"),
+            (ThresholdType.COUNT, "Number of findings"),
+            (ThresholdType.PERCENT, "Findings per 100 RDP individuals"),
         ),
         initial=ThresholdType.COUNT,
         widget=forms.RadioSelect,
@@ -27,15 +27,7 @@ class BiometricDeduplicationConfigForm(forms.Form):
         threshold_type = cleaned.get("threshold_type")
         value = cleaned.get("threshold_value")
 
-        if not isinstance(value, Decimal):
-            return cleaned
-
-        if threshold_type == ThresholdType.COUNT:
-            if value != value.to_integral_value():
-                self.add_error("threshold_value", "The number of individuals must be a whole number.")
-            elif value > self.total_count:
-                self.add_error("threshold_value", f"Number cannot exceed {self.total_count}.")
-        elif threshold_type == ThresholdType.PERCENT and value > 100:
-            self.add_error("threshold_value", "Percentage cannot exceed 100.")
+        if threshold_type == ThresholdType.COUNT and isinstance(value, Decimal) and value != value.to_integral_value():
+            self.add_error("threshold_value", "The number of findings must be a whole number.")
 
         return cleaned

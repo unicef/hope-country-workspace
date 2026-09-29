@@ -11,7 +11,7 @@ from .deduplication.repository import (
     qs_successful_biometric_operations,
 )
 from .deduplication.workflow import get_dedup_callback_base_url, sync_biometric_deduplication_result
-from .exceptions import PushThresholdConfirmationError, RdpWorkflowError
+from .exceptions import RdpWorkflowError
 from .lifecycle import cancel_existing_rdp_core, cancel_rdp, create_clean_rdp, create_rdp_core, reset_rdp
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
@@ -45,7 +45,6 @@ __all__ = [
     "PUSH_READY_CALLBACK_SALT",
     "BiometricDeduplicationConfigForm",
     "CreateRdpConfig",
-    "PushThresholdConfirmationError",
     "RdpActionPolicy",
     "RdpWorkflowError",
     "ThresholdType",
