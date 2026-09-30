@@ -1,15 +1,12 @@
-from typing import TYPE_CHECKING
 from itertools import batched
+from collections.abc import Iterator
 
+from country_workspace.models import Rdp
+from country_workspace.contrib.dedup_engine.client import Client
+from country_workspace.contrib.dedup_engine.request import CreateEncoding
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 
 from .constants import IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from country_workspace.models import Rdp
-    from country_workspace.contrib.dedup_engine.client import Client
-    from country_workspace.contrib.dedup_engine.request import CreateEncoding
 
 
 class BiometricDedupProcessor:

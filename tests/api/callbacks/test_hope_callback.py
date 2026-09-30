@@ -24,20 +24,20 @@ def callback_url() -> tuple[str, UUID, str]:
     return reverse(VIEW_NAME), push_attempt_id, token
 
 
-@pytest.mark.parametrize("queued", [True, False])
+@pytest.mark.parametrize("scheduled", [True, False])
 def test_push_ready_callback(
     client: Client,
     mocker: MockerFixture,
     callback_url: tuple[str, UUID, str],
-    queued: bool,
+    scheduled: bool,
 ) -> None:
     url, push_attempt_id, token = callback_url
-    handler = mocker.patch.object(views, "handle_push_ready_callback", return_value=queued)
+    handler = mocker.patch.object(views, "handle_push_ready_callback", return_value=scheduled)
 
     response = client.post(url, data={"signed_token": token}, content_type="application/json")
 
-    assert response.status_code == (status.HTTP_202_ACCEPTED if queued else status.HTTP_200_OK)
-    assert response.json()["code"] == ("queued" if queued else "ignored")
+    assert response.status_code == (status.HTTP_202_ACCEPTED if scheduled else status.HTTP_200_OK)
+    assert response.json()["code"] == ("scheduled" if scheduled else "ignored")
     assert response.json()["rdp_id"] == 1
     assert response.json()["push_attempt_id"] == str(push_attempt_id)
     assert "no-store" in response["Cache-Control"]

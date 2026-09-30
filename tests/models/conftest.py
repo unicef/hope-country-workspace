@@ -208,3 +208,20 @@ def ind_no_checker(batch_no_checker):
 
     hh = CountryHouseholdFactory(batch=batch_no_checker, individuals=0)
     return CountryIndividualFactory(batch=batch_no_checker, household=hh)
+
+
+@pytest.fixture
+def rdp(user):
+    from testutils.factories import CountryRdpFactory
+
+    return CountryRdpFactory(pushed_by=user)
+
+
+@pytest.fixture
+def rdp_operation(rdp):
+    from country_workspace.models import RdpOperation
+
+    return RdpOperation.objects.create(
+        rdp=rdp,
+        operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+    )

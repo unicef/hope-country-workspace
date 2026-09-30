@@ -313,3 +313,37 @@ def test_biometric_filters_visibility(
     assert expected <= names
     if not visible:
         assert not {"DuplicateFilter", "ImageIssueFilter"} & names
+
+
+@pytest.mark.parametrize("visible", [True, False], ids=["biometric", "plain"])
+def test_queryset_biometric_annotations(
+    individual_admin: CountryIndividualAdmin,
+    program,
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+) -> None:
+    state.program = program
+    queryset = mocker.MagicMock()
+    base = mocker.patch.object(BeneficiaryBaseAdmin, "get_queryset", return_value=queryset)
+    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+    rdp = mocker.Mock()
+    get_rdp = mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
+    annotate = mocker.patch.object(
+        individual_admin_mod,
+        "annotate_biometric_individuals",
+        return_value=mocker.sentinel.annotated,
+    )
+
+    result = individual_admin.get_queryset(rf.get("/"))
+    filtered = queryset.select_related.return_value.filter.return_value
+
+    base.assert_called_once()
+    if visible:
+        assert result is mocker.sentinel.annotated
+        annotate.assert_called_once_with(filtered, program=program, rdp=rdp)
+        get_rdp.assert_called_once()
+    else:
+        assert result is filtered
+        annotate.assert_not_called()
+        get_rdp.assert_not_called()

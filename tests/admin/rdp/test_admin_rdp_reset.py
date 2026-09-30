@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 from django.urls import reverse
@@ -45,14 +44,14 @@ def records(rdp: Rdp):
 
 
 @pytest.fixture
-def confirm_reset(mocker: MockerFixture) -> MagicMock:
+def confirm_reset(mocker: MockerFixture):
     return mocker.patch(
         "country_workspace.admin.rdp.confirm_action",
         side_effect=lambda _admin, request, action, *_args, **_kwargs: action(request),
     )
 
 
-def test_rdp_reset_success(app: "CWTestApp", rdp: Rdp, records, confirm_reset: MagicMock) -> None:
+def test_rdp_reset_success(app: "CWTestApp", rdp: Rdp, records, confirm_reset) -> None:
     app.post(reverse("admin:country_workspace_rdp_reset", args=[rdp.pk]))
 
     household, individual = records
@@ -71,7 +70,7 @@ def test_rdp_reset_rejects_non_success_status(
     app: "CWTestApp",
     rdp: Rdp,
     records,
-    confirm_reset: MagicMock,
+    confirm_reset,
 ) -> None:
     rdp.status = Rdp.PushStatus.PENDING
     rdp.save(update_fields=["status"])
@@ -95,7 +94,7 @@ def test_rdp_reset_rejects_non_latest_successful_rdp(
     app: "CWTestApp",
     rdp: Rdp,
     records,
-    confirm_reset: MagicMock,
+    confirm_reset,
 ) -> None:
     from testutils.factories import CountryRdpFactory
 

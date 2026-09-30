@@ -5,6 +5,7 @@ from country_workspace.contrib.dedup_engine.resource import (
     ActionMixin,
     ApproveDeduplicationSetAction,
     CreateMixin,
+    ListMixin,
     RetrieveMixin,
     UpdateMixin,
 )
@@ -32,6 +33,17 @@ def test_create_mixin_with_params(mocker: MockerFixture) -> None:
 
     session.post.assert_called_once_with(str(endpoint), json=body, params={"page": "1"}, timeout=TIMEOUT)
     session.post.return_value.raise_for_status.assert_called_once_with()
+
+
+def test_list_mixin(mocker: MockerFixture) -> None:
+    mixin = ListMixin()
+    mixin.endpoint = endpoint = mocker.Mock()
+    mixin.session = session = mocker.Mock()
+
+    assert mixin.list(params={"page": "2"}) == session.get.return_value.json.return_value
+
+    session.get.assert_called_once_with(str(endpoint), params={"page": "2"}, timeout=TIMEOUT)
+    session.get.return_value.raise_for_status.assert_called_once_with()
 
 
 def test_retrieve_mixin(mocker: MockerFixture) -> None:

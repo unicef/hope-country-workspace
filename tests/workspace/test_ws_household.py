@@ -305,6 +305,65 @@ def test_biometric_columns_visibility(
         assert not {"duplicate_members", "image_issue_members"} & columns
 
 
+@pytest.mark.parametrize(
+    ("visible", "expected"),
+    [
+        (True, {"DuplicateMembersFilter", "ImageIssueMembersFilter"}),
+        (False, set()),
+    ],
+)
+def test_biometric_filters_visibility(
+    household_admin: CountryHouseholdAdmin,
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+    expected: set[str],
+) -> None:
+    mocker.patch.object(BeneficiaryBaseAdmin, "get_list_filter", return_value=[])
+    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+
+    filters = household_admin.get_list_filter(rf.get("/"))
+    names = {filter_.__name__ for filter_ in filters if isinstance(filter_, type)}
+
+    assert expected <= names
+    if not visible:
+        assert not {"DuplicateMembersFilter", "ImageIssueMembersFilter"} & names
+
+
+@pytest.mark.parametrize("visible", [True, False], ids=["biometric", "plain"])
+def test_queryset_biometric_annotations(
+    household_admin: CountryHouseholdAdmin,
+    program: "CountryProgram",
+    rf,
+    mocker: MockerFixture,
+    visible: bool,
+) -> None:
+    state.program = program
+    queryset = mocker.MagicMock()
+    base = mocker.patch.object(BeneficiaryBaseAdmin, "get_queryset", return_value=queryset)
+    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+    rdp = mocker.Mock()
+    get_rdp = mocker.patch.object(household_admin_mod, "get_rdp_context", return_value=rdp)
+    annotate = mocker.patch.object(
+        household_admin_mod,
+        "annotate_biometric_households",
+        return_value=mocker.sentinel.annotated,
+    )
+
+    result = household_admin.get_queryset(rf.get("/"))
+    filtered = queryset.select_related.return_value.filter.return_value
+
+    base.assert_called_once()
+    if visible:
+        assert result is mocker.sentinel.annotated
+        annotate.assert_called_once_with(filtered, program=program, rdp=rdp)
+        get_rdp.assert_called_once()
+    else:
+        assert result is filtered
+        annotate.assert_not_called()
+        get_rdp.assert_not_called()
+
+
 @pytest.mark.parametrize("method", ["duplicate_members", "image_issue_members"])
 def test_biometric_member_count_unavailable(
     household_admin: CountryHouseholdAdmin,

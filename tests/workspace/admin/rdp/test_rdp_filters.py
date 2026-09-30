@@ -21,9 +21,9 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def biometric_operation(rdp: CountryRdp) -> RdpOperation:
-    from testutils.factories import RdpOperationFactory
+    from testutils.factories import BiometricRdpOperationFactory
 
-    return RdpOperationFactory(rdp=rdp)
+    return BiometricRdpOperationFactory(rdp=rdp)
 
 
 @pytest.fixture
