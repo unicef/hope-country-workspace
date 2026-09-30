@@ -10,6 +10,7 @@ from country_workspace.contrib.dedup_engine.endpoint import (
     DeduplicationSetGroupStatus,
     DeduplicationSets,
     Endpoint,
+    Findings,
     Images,
     Process,
     Ready,
@@ -97,12 +98,15 @@ def test_deduplication_set_endpoints() -> None:
     process = endpoint.process
     reject = endpoint.reject
     approve = endpoint.approve
+    findings = endpoint.findings
 
     assert images.url == "https://example.com/deduplication_sets/set-id/images"
     assert ready.url == "https://example.com/deduplication_sets/set-id/ready"
     assert process.url == "https://example.com/deduplication_sets/set-id/process"
     assert reject.url == "https://example.com/deduplication_sets/set-id/reject"
     assert approve.url == "https://example.com/deduplication_sets/set-id/approve"
+    assert findings.url == "https://example.com/deduplication_sets/set-id/findings"
+    assert isinstance(findings, Findings)
 
     assert isinstance(images, Images)
     assert isinstance(ready, Ready)

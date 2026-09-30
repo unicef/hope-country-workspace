@@ -156,3 +156,32 @@ def test_create_rdp_action_with_biometric_deduplication(
             },
         }
     ]
+
+
+def test_create_rdp_action_rejects_invalid_biometric_config(
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary: CountryHousehold | CountryIndividual,
+    queue,
+) -> None:
+    program.biometric_deduplication_enabled = True
+    program.save(update_fields=["biometric_deduplication_enabled"])
+
+    model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
+    url = reverse(f"workspace:workspaces_{model_name}_changelist")
+
+    with select_office(app, program.country_office, program):
+        form = app.get(url).forms["changelist-form"]
+        form.set("_selected_action", [str(beneficiary.pk)])
+        form["action"].select("create_rdp")
+
+        create_form = form.submit().forms["create-rdp-form"]
+        create_form["batch_name"] = "Test Batch"
+        create_form["biometric_deduplication-threshold_type"] = ThresholdType.COUNT
+        create_form["biometric_deduplication-threshold_value"] = "1.5"
+
+        response = create_form.submit("_create")
+
+    assert response.status_code == 200
+    assert program.jobs.count() == 0
+    queue.assert_not_called()

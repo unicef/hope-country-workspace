@@ -9,6 +9,13 @@ from .rdp import RdpFactory
 
 class RdpOperationFactory(AutoRegisterModelFactory):
     rdp = factory.SubFactory(RdpFactory)
+
+    class Meta:
+        model = RdpOperation
+        abstract = True
+
+
+class BiometricRdpOperationFactory(RdpOperationFactory):
     operation_type = RdpOperation.Type.BIOMETRIC_DEDUPLICATION
     config = factory.LazyFunction(
         lambda: {
@@ -16,6 +23,3 @@ class RdpOperationFactory(AutoRegisterModelFactory):
             "threshold_value": "0",
         }
     )
-
-    class Meta:
-        model = RdpOperation

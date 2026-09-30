@@ -15,21 +15,21 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def rdp_operation(rdp: CountryRdp) -> RdpOperation:
-    from testutils.factories import RdpOperationFactory
+def biometric_operation(rdp: CountryRdp) -> RdpOperation:
+    from testutils.factories import BiometricRdpOperationFactory
 
-    return RdpOperationFactory(rdp=rdp)
+    return BiometricRdpOperationFactory(rdp=rdp)
 
 
 @pytest.fixture
 def successful_biometric_operation(rdp: CountryRdp) -> RdpOperation:
-    from testutils.factories import RdpOperationFactory, RdpOperationFindingFactory
+    from testutils.factories import BiometricRdpOperationFactory, BiometricRdpOperationFindingFactory
 
-    operation = RdpOperationFactory(
+    operation = BiometricRdpOperationFactory(
         rdp=rdp,
         status=RdpOperation.Status.SUCCESS,
         attempt=2,
-        config={"threshold_type": "COUNT", "threshold_value": "3"},
+        config={"threshold_type": "count", "threshold_value": "3"},
         log=[
             {
                 "action": "APPROVE_DEDUPLICATION_SET",
@@ -38,15 +38,15 @@ def successful_biometric_operation(rdp: CountryRdp) -> RdpOperation:
             }
         ],
     )
-    RdpOperationFindingFactory(operation=operation)
+    BiometricRdpOperationFindingFactory(operation=operation)
     return operation
 
 
 @pytest.fixture
 def failed_biometric_operation(rdp: CountryRdp) -> RdpOperation:
-    from testutils.factories import RdpOperationFactory
+    from testutils.factories import BiometricRdpOperationFactory
 
-    return RdpOperationFactory(
+    return BiometricRdpOperationFactory(
         rdp=rdp,
         status=RdpOperation.Status.FAILURE,
         error={"code": "remote_error", "message": "Something failed"},
@@ -71,7 +71,7 @@ def test_get_fieldsets_with_operations(
     admin_instance,
     mock_request,
     rdp: CountryRdp,
-    rdp_operation: RdpOperation,
+    biometric_operation: RdpOperation,
 ) -> None:
     fields = [field for _, options in admin_instance.get_fieldsets(mock_request, rdp) for field in options["fields"]]
 
@@ -117,7 +117,7 @@ def test_operations_display_successful_biometric(
     assert row["attempts"] == 2
     assert row["findings"] == 1
     assert row["marked_individuals"] == 2
-    assert '"threshold_type": "COUNT"' in row["config"]
+    assert '"threshold_type": "count"' in row["config"]
     assert '"success": true' in row["log"][0]["result"]
     duplicates.assert_called_once_with(operation=successful_biometric_operation)
 
@@ -290,3 +290,37 @@ def test_deny_if_not_allowed(
         assert result == "response"
         assert message_fragment in error.call_args.args[1]
         redirect.assert_called_once_with("/change")
+
+
+@pytest.mark.parametrize(
+    ("status", "exists", "expected", "called"),
+    [
+        (None, True, False, False),
+        (CountryRdp.PushStatus.SUCCESS, True, False, False),
+        (CountryRdp.PushStatus.PENDING, False, False, True),
+        (CountryRdp.PushStatus.PENDING, True, True, True),
+    ],
+    ids=["no_object", "not_pending", "no_failures", "failed_operations"],
+)
+def test_has_failed_operations(
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+    status: str | None,
+    exists: bool,
+    expected: bool,
+    called: bool,
+) -> None:
+    obj = None if status is None else rdp
+    if obj:
+        obj.status = status
+
+    failed = mocker.patch.object(rdp_admin_mod, "failed_rdp_operations")
+    failed.return_value.exists.return_value = exists
+
+    result = rdp_admin_mod._has_failed_operations(mocker.MagicMock(original=obj))
+
+    assert result is expected
+    if called:
+        failed.assert_called_once_with(rdp_id=rdp.pk)
+    else:
+        failed.assert_not_called()
