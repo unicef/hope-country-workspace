@@ -1,69 +1,72 @@
 # Push to HOPE Core
 
-Pushing an **[RDP](index.md)** transfers its beneficiary records from Country Workspace to HOPE Core. Country Workspace sends the data as a Registration Data Import (RDI) in HOPE Core.
+Pushing an **[RDP](index.md)** transfers its beneficiary records from Country Workspace to HOPE Core as a Registration Data Import (RDI).
 
-## When push is available
-
-The **Push to HOPE** button is shown for RDPs in `PENDING` or `FAILURE` status.
-
-For Programs with biometric deduplication enabled, the associated Deduplication Set must be `Deduplicated` before the push can start.
-
-The button is disabled while deduplication is queued or running, or when the RDP does not satisfy the requirements for push.
+The push starts after the RDP finishes its required **[RDP operations](operations/index.md)** and does not require manual action when no review is needed.
 
 ## Start the push
 
-Open the RDP and click **Push to HOPE**.
+When the RDP is ready to continue, Country Workspace changes its status to `PUSH_PENDING` and starts preparing HOPE Core for the push.
 
-Country Workspace changes the RDP status to `PUSH_PENDING` and schedules a background job to prepare the push.
+If the RDP is in `REVIEW_PENDING`, the user can choose **Push all to HOPE** to continue with all beneficiaries despite the review threshold being exceeded.
 
-Before sending data, Country Workspace runs the RDP preflight checks again. If the checks fail, the RDP becomes `FAILURE`.
+```mermaid
+flowchart TD
+    A[Processing complete] --> B{Manual review required?}
+    B -->|No| C[PUSH_PENDING]
+    B -->|Yes| D[REVIEW_PENDING]
+    D -->|Push all to HOPE| C
+    C --> E[Prepare HOPE Core]
+    E --> F[Send beneficiary data]
+    F -->|Success| G[SUCCESS]
+    F -->|Failure| H[FAILURE]
+```
 
-When the RDP is ready to be sent, Country Workspace creates a new RDI in HOPE Core, sends the beneficiary data, and completes the RDI.
+See **[Lifecycle and statuses](lifecycle.md)** for the complete RDP state flow and **[Biometric deduplication](operations/deduplication.md#manual-review)** for biometric review decisions.
+
+## Prepare HOPE Core
+
+If the RDP is not linked to a previous HOPE RDI, Country Workspace can continue directly to the data push.
+
+If a previous HOPE RDI exists, Country Workspace first requests an RDI reset. The RDP remains `PUSH_PENDING` while waiting for HOPE when necessary.
+
+If the previous RDI no longer exists, processing continues with a new RDI. If HOPE reports that the previous RDI has already been merged, Country Workspace completes the RDP as `SUCCESS` without sending the beneficiary data again.
+
+If HOPE reports that the previous RDI merge is still in progress, the push changes to `FAILURE` and can be retried later.
+
+
+## Send beneficiary data
+
+Before sending data, Country Workspace runs the RDP preflight checks again. If the checks fail, the push changes to `FAILURE`.
+
+When the checks pass, Country Workspace creates a new RDI in HOPE Core, sends the beneficiary records, and completes the RDI.
 
 For household-based Programs, Individuals are sent before Households. For people-only Programs, People are sent directly.
 
-```mermaid
-flowchart LR
-    A[PENDING] -->|Push to HOPE| B[PUSH_PENDING]
-    C[FAILURE] -->|Retry push| B
-    B -->|Push succeeds| D[SUCCESS]
-    B -->|Push fails| C
-```
+See **[Create an RDP](create.md#before-creating-an-rdp)** for the checks applied to RDP records.
 
 ## Retry a failed push
 
-An RDP in `FAILURE` can be pushed again when the push requirements are satisfied.
+An RDP in `FAILURE` can be retried with **Retry push to HOPE**.
 
-If the RDP is linked to a previous HOPE RDI, Country Workspace first requests an RDI reset in HOPE before retrying the push. The RDP remains `PUSH_PENDING` while Country Workspace waits for HOPE when necessary.
+Retry starts a new push attempt and returns the RDP to `PUSH_PENDING`. If the RDP is linked to a previous HOPE RDI, Country Workspace performs the required RDI reset before sending the data again.
 
-If the previous RDI no longer exists in HOPE, the push continues with a new RDI. If HOPE reports that the previous RDI has already been merged, Country Workspace completes the RDP as `SUCCESS` without sending the beneficiary data again.
-
-A retry fails if HOPE reports that the previous RDI merge is still in progress.
-
-## Related jobs
-
-A push can create separate background jobs for push preparation and data transfer. **Related jobs** shows these jobs and their execution status.
-
-A successful preparation job does not necessarily mean that the push has finished. The RDP remains `PUSH_PENDING` while it is waiting for HOPE or while the data push is still running.
-
-Use the RDP **Status** to check the overall result of the push.
+See **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** if an active push remains in `PUSH_PENDING` and can no longer continue.
 
 ## Collectors
 
-When a selected Household references an Individual as Primary or Alternate Collector, Country Workspace includes that Individual in the push, whether or not the collector is a member of the Household.
+When a selected Household references an Individual as Primary or Alternate Collector, Country Workspace includes that Individual in the push whether or not the collector is a Household member.
 
-If several Households in the same RDP reference the same collector, that Individual is sent once. If the referencing Households are pushed in separate RDPs, the collector can be included in each push.
+If several Households in the same RDP reference the same collector, that Individual is sent once. A collector included only through these references is not marked as removed after a successful push.
 
-After a successful push, Individuals who are members of the selected Households are marked as removed. Collectors included only through Primary or Alternate Collector references are not marked as removed.
-
-See **[External collectors](../data_import/sources/kobo.md#external-collectors)** for source-specific information about collectors stored outside a Household.
+See **[External collectors](../data_import/sources/kobo.md#external-collectors)** for source-specific details.
 
 ## After a successful push
 
-After a successful push, Country Workspace stores the HOPE RDI ID and sets the RDP to `SUCCESS`.
+After a successful push, Country Workspace stores the HOPE RDI ID and changes the RDP to `SUCCESS`.
 
 For household-based Programs, the selected Households and their members are marked as removed. For people-only Programs, the selected People are marked as removed.
 
-For biometric RDPs, Country Workspace also attempts to approve the associated Deduplication Set in DedupEngine. The result is recorded in the **Operation log**. An approval failure does not change the RDP from `SUCCESS`.
+For biometric RDPs, Country Workspace also attempts to approve the associated Deduplication Set in DedupEngine. An approval failure is recorded but does not change the RDP from `SUCCESS`.
 
-See **[Lifecycle and statuses](lifecycle.md)** for RDP status transitions and **[RDP processing flow](processing.md)** for the detailed processing sequence.
+See **[Biometric deduplication](operations/deduplication.md)** for biometric processing and **[Troubleshooting](troubleshooting.md)** if the push does not complete as expected.
