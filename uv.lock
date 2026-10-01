@@ -1711,7 +1711,7 @@ requires-dist = [
     { name = "drf-spectacular", extras = ["sidecar"], specifier = ">=0.30" },
     { name = "dukpy", specifier = ">=0.5" },
     { name = "flower", specifier = ">=2.0.1" },
-    { name = "hope-flex-fields", specifier = ">=0.8.5" },
+    { name = "hope-flex-fields", git = "https://github.com/unicef/hope-flex-fields?rev=a4d50bd94d19f761c9b171461888a8a6c1c4a741" },
     { name = "hope-smart-export", specifier = ">=0.3" },
     { name = "hope-smart-import", specifier = ">=0.5" },
     { name = "notebook", specifier = ">=7.4.3" },
@@ -1775,8 +1775,8 @@ type-check = [
 
 [[package]]
 name = "hope-flex-fields"
-version = "0.8.5"
-source = { registry = "https://pypi.org/simple" }
+version = "0.9.2.dev1+ga4d50bd94"
+source = { git = "https://github.com/unicef/hope-flex-fields?rev=a4d50bd94d19f761c9b171461888a8a6c1c4a741#a4d50bd94d19f761c9b171461888a8a6c1c4a741" }
 dependencies = [
     { name = "deepdiff" },
     { name = "deprecation" },
@@ -1793,10 +1793,6 @@ dependencies = [
     { name = "python-calamine" },
     { name = "requests" },
     { name = "xlsxwriter" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/67/e1/2c1c86ef28d3c46c98a15be6477a0e27d3ba534b12cd64c4aa2c0247da19/hope_flex_fields-0.8.5.tar.gz", hash = "sha256:cdd1c7e821d76c79cf2b8d6188614e53eb946bb892dde0cc8385bfbdb1faf409", size = 237726, upload-time = "2026-07-10T10:04:54.422Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/0f/f6f10abdf3d17d86e603bb923b71f76fc5365bb01becd7298bbade769497/hope_flex_fields-0.8.5-py3-none-any.whl", hash = "sha256:7d67be656033c011c6c80426e88cd71981003154383a930716173b55c2158c60", size = 279260, upload-time = "2026-07-10T10:04:52.713Z" },
 ]
 
 [[package]]

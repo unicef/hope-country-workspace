@@ -26,6 +26,8 @@ Select the records and apply the desired action:
 
     Allows the user to define a regular expression and a substitution pattern for any field and apply it.
 
+Image and document fields are not offered by these actions. See **[Images and documents](images.md)**.
+
 ---
 
 ### Bulk Data Export, Offline Editing, and Reimport
@@ -33,6 +35,8 @@ Select the records and apply the desired action:
 Users can modify data in bulk by exporting records to a `.xlsx` file, making necessary changes outside the system, and then importing the updated file back.
 
 The `.xlsx` file contains two protected columns: `id` and `version`. **These columns should not be modified during regular editing**, as they are essential for correctly identifying and updating records.
+
+Image and document fields are left out of the exported file, and a column matching one of them is ignored on import. Use **[Import pictures](data_import/picture_import.md)** to update pictures in bulk.
 
 Additionally, the system includes a **concurrency control mechanism** to prevent accidental overwrites of updated data.
 
@@ -85,3 +89,4 @@ If any issues are detected, the affected fields turn red, and an explanatory err
 
 Allows the user to see the raw, unprocessed data of the selected record.
 This can be useful for debugging or reviewing the exact stored values before applying further modifications.
+Stored pictures are shown as thumbnails together with the identifier of the stored file.

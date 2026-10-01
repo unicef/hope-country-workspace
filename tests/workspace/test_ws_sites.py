@@ -1,9 +1,13 @@
 import pytest
+from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import PermissionDenied
 from django.test import RequestFactory
 from django.urls import reverse
 from django_celery_results.models import TaskResult
-from testutils.factories import AsyncJobFactory, ProgramFactory
+from testutils.factories import AsyncJobFactory, IndividualFactory, ProgramFactory
 
+from country_workspace.models.flex_file import FlexFieldFile
+from country_workspace.utils.flex_files import write_flex_file
 from country_workspace.workspaces.sites import workspace
 
 
@@ -48,6 +52,20 @@ def test_current_modeladmin_returns_none_for_unmapped_resolved_url(rf):
     """A URL that resolves but isn't in the lookup table returns ``None``."""
     request = rf.get(reverse("workspace:index"))
     assert workspace._current_modeladmin(request) is None
+
+
+@pytest.mark.django_db
+def test_flex_file_denies_a_user_without_view_permission(rf):
+    """A real admin is found for the owning model, but the caller has no perm on it."""
+    individual = IndividualFactory()
+    reference = write_flex_file(individual, "photo", b"content", "image/png")
+    flex_file_id = FlexFieldFile.parse_reference(reference)
+
+    request = rf.get("/+ff/%s/" % flex_file_id)
+    request.user = AnonymousUser()
+
+    with pytest.raises(PermissionDenied):
+        workspace.flex_file(request, str(flex_file_id))
 
 
 @pytest.mark.django_db

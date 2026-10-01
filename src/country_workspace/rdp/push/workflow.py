@@ -25,6 +25,7 @@ from country_workspace.rdp.repository import (
     set_rdp_beneficiaries_removed,
 )
 from country_workspace.rdp.types import RdpWorkflowOutcome
+from country_workspace.utils.flex_files import prefetch_flex_files
 
 from .processor import PushProcessor
 from .repository import (
@@ -232,11 +233,15 @@ def _push_data_steps(processor: PushProcessor, config: PushWorkflowConfig) -> It
 
     if config["master_detail"]:
         yield from (
-            partial(processor.run_with, qs_individuals_for_push(pks), processor.rdi_push_individuals),
-            partial(processor.run_with, qs_households(pks=pks), processor.rdi_push_households),
+            partial(
+                processor.run_with,
+                prefetch_flex_files(qs_individuals_for_push(pks)),
+                processor.rdi_push_individuals,
+            ),
+            partial(processor.run_with, prefetch_flex_files(qs_households(pks=pks)), processor.rdi_push_households),
         )
     else:
-        yield partial(processor.run_with, qs_individuals_by_pks(pks), processor.rdi_push_people)
+        yield partial(processor.run_with, prefetch_flex_files(qs_individuals_by_pks(pks)), processor.rdi_push_people)
 
     yield processor.rdi_complete
 
