@@ -12,6 +12,7 @@ from django.core.files.storage import storages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import HttpResponse
 from django.test import RequestFactory
+from hope_flex_fields.fields import FlexImageField
 from PIL import Image
 
 from country_workspace.models import AsyncJob
@@ -26,7 +27,6 @@ from country_workspace.workspaces.admin.batch.picture_import import (
 )
 from country_workspace.workspaces.admin.batch.reprocessing import reprocess_batch as reprocess_batch_task
 from country_workspace.workspaces.models import CountryBatch
-from country_workspace.utils.flex_fields import FlexImageField
 from country_workspace.utils.flex_files import FlexFileContent
 
 

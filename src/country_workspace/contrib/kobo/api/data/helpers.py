@@ -4,7 +4,9 @@ from typing import Any
 from requests import Response
 
 from country_workspace.contrib.kobo.api.data.submission import Submission
-from country_workspace.utils.flex_files import DEFAULT_MIMETYPE, FlexFileContent, pending_marker
+from hope_flex_fields.references import DEFAULT_MIMETYPE
+
+from country_workspace.utils.flex_files import FlexFileContent, pending_marker
 
 
 def filter_out_meta_data(data: dict[str, Any]) -> dict[str, Any]:

@@ -2,10 +2,11 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from hope_flex_fields.references import DEFAULT_MIMETYPE
 
 from country_workspace.contrib.kobo.api.data.helpers import download_attachments, filter_out_meta_data
 from country_workspace.contrib.kobo.api.data.submission import Submission
-from country_workspace.utils.flex_files import DEFAULT_MIMETYPE, pending_marker
+from country_workspace.utils.flex_files import pending_marker
 
 DOWNLOAD_URL = "https://kobo.example.org/attachment/1"
 PHOTO = b"\x89PNG\r\n\x1a\nphoto"
