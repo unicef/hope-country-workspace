@@ -23,9 +23,9 @@ from django.urls import NoReverseMatch
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
+from hope_flex_fields.references import flex_file_src
 
 from country_workspace.models.flex_file import FlexFieldFile
-from country_workspace.utils.flex_files import flex_file_src
 
 from .base import WorkspaceInclusionAdminNode
 from .workspace_urls import add_preserved_filters

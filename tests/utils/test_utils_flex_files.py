@@ -3,16 +3,15 @@ from base64 import b64encode
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
+from hope_flex_fields.references import DEFAULT_MIMETYPE, flex_file_src
 
 from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models import Individual
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.flex_files import (
-    DEFAULT_MIMETYPE,
     FlexFileContent,
     as_data_uri,
     attach_flex_files,
-    flex_file_src,
     materialize_pending_files,
     prefetch_flex_files,
     resolve_flex_files,

@@ -8,7 +8,7 @@ from uuid import UUID
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Prefetch
-from django.urls import reverse
+from hope_flex_fields.references import DATA_URI_FORMAT, DEFAULT_MIMETYPE
 
 from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models.flex_file import FlexFieldFile
@@ -19,11 +19,7 @@ if TYPE_CHECKING:
     from country_workspace.models.base import Validable
 
 
-DATA_URI_FORMAT = "data:{mimetype};base64,{content}"
-DATA_URI_PREFIX = "data:"
-DEFAULT_MIMETYPE = "application/octet-stream"
 PREFETCH_NAME = "flex_field_files"
-FLEX_FILE_URL_NAME = "workspace:flex_file"
 PENDING_PREFIX = "flexfile-pending:"
 
 
@@ -200,22 +196,6 @@ def prefetch_flex_files(queryset: "QuerySet[Any]") -> "QuerySet[Any]":
     return queryset.prefetch_related(
         Prefetch(PREFETCH_NAME, queryset=FlexFieldFile.objects.with_content()),
     )
-
-
-def _flex_file_url(reference: Any) -> str | None:
-    file_id = FlexFieldFile.parse_reference(reference)
-    if file_id is None:
-        return None
-    return reverse(FLEX_FILE_URL_NAME, args=[file_id])
-
-
-def flex_file_src(value: Any) -> str:
-    """Value usable as an `<img src>`, for references and legacy data-URIs alike."""
-    if url := _flex_file_url(value):
-        return url
-    if isinstance(value, str) and value.startswith(DATA_URI_PREFIX):
-        return value
-    return ""
 
 
 def _resolve_markers(

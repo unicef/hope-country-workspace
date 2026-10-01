@@ -1,14 +1,11 @@
-from base64 import b64encode
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any, Generator, Literal
+from typing import TYPE_CHECKING, Generator
 
 from django import forms
-from django.core.files.uploadedfile import UploadedFile
 
+import hope_flex_fields.fields
 from hope_flex_fields.models import DataChecker
-
-from country_workspace.utils.flex_files import DATA_URI_FORMAT, flex_file_src
 
 if TYPE_CHECKING:
     from country_workspace.models.base import Validable
@@ -46,58 +43,12 @@ def get_obj_checksum(obj: "Validable") -> str:
     return h.hexdigest()
 
 
-class FlexImageInput(forms.ClearableFileInput):
-    template_name = "workspace/flex_image_widget.html"
+class Base64ImageField(hope_flex_fields.fields.Base64ImageField):
+    """Deprecated: superseded by `hope_flex_fields.fields.FlexImageField`, kept for one release.
 
-    def is_initial(self, value: str | None) -> bool:
-        # we need to override this as base method looks for url
-        return bool(value)
-
-    def get_context(self, name: str, value: Any, attrs: dict[str, Any] | None) -> dict[str, Any]:
-        context = super().get_context(name, value, attrs)
-        context["widget"]["image_src"] = flex_file_src(value)
-        return context
-
-
-class FlexImageField(forms.ImageField):
-    """Image flex field whose value is a `FlexFieldFile` reference.
-
-    Uploads are validated here but written by the save layer, which is the only
-    place that has both the uploaded file and the record to attach it to.
+    Stored field definitions reference this class by its import path, so it stays
+    defined here rather than being an alias of the library class.
     """
-
-    widget = FlexImageInput
-
-    def clean(self, data: UploadedFile | Literal[False] | None, initial: str | None = None) -> str | None:
-        cleaned_data = super().clean(data, initial)
-        if not cleaned_data:
-            return ""
-        if hasattr(cleaned_data, "read"):
-            return initial or ""
-        return cleaned_data
-
-
-class Base64ImageInput(FlexImageInput):
-    """Deprecated: superseded by `FlexImageInput`, kept for one release.
-
-    It inherits the new rendering so that the field type swap and the data
-    migration can run in any order.
-    """
-
-
-class Base64ImageField(forms.ImageField):
-    """Deprecated: superseded by `FlexImageField`, kept for one release."""
-
-    widget = Base64ImageInput
-
-    def clean(self, data: UploadedFile | Literal[False] | None, initial: str | None = None) -> str | None:
-        if cleaned_data := super().clean(data, initial):
-            if hasattr(cleaned_data, "read"):
-                content = b64encode(cleaned_data.read()).decode()
-                return DATA_URI_FORMAT.format(mimetype=data.content_type, content=content)
-            return cleaned_data
-
-        return ""
 
 
 def split_options(value: str) -> list[str]:
