@@ -1,8 +1,8 @@
 nav:
   - Overview: index.md
   - Create an RDP: create.md
-  - Deduplication: deduplication.md
-  - Push to HOPE Core: push.md
+  - RDP operations: operations
   - Lifecycle and statuses: lifecycle.md
+  - Push to HOPE Core: push.md
   - Processing flow: processing.md
   - Troubleshooting: troubleshooting.md
