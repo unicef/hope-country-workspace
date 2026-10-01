@@ -245,6 +245,7 @@ from .fragments.constance import *  # noqa: E402, F403
 from .fragments.csp import *  # noqa: E402, F403
 from .fragments.debug_toolbar import *  # noqa: E402, F403
 from .fragments.flags import *  # noqa: E402, F403
+from .fragments.flex_fields import *  # noqa: E402, F403
 from .fragments.jsoneditor import *  # noqa: E402, F403
 from .fragments.kobo import *  # noqa: E402, F403
 from .fragments.rest_framework import *  # noqa: E402, F403

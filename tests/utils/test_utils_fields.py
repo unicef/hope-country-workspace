@@ -1,24 +1,26 @@
+from base64 import b64decode
 from io import BytesIO
 from unittest.mock import Mock, call
+from uuid import UUID
 
 import pytest
 from PIL import Image
+from concurrency.utils import fqn
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from hope_flex_fields.fields import FlexImageField
 from pytest_mock import MockerFixture
 
 
 from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
-    Base64ImageInput,
     Base64ImageField,
     ConsentSharingChoice,
-    FlexImageField,
-    FlexImageInput,
     split_options,
 )
-from country_workspace.utils.flex_files import DATA_URI_FORMAT
 
-REFERENCE = "flexfile:0f3b6a1e-2d0d-4a1e-9a4a-3f5a2d1c8b70"
+FILE_ID = UUID("0f3b6a1e-2d0d-4a1e-9a4a-3f5a2d1c8b70")
+REFERENCE = "flexfile:%s" % FILE_ID
 
 
 @pytest.fixture
@@ -50,66 +52,25 @@ def test_clean_field_names(mocker: MockerFixture) -> None:
     clean_field_name_mock.assert_called_once_with(key)
 
 
-@pytest.mark.parametrize("widget_class", [FlexImageInput, Base64ImageInput])
-@pytest.mark.parametrize("value", [None, "", "test"])
-def test_flex_image_input_treats_any_value_as_initial(value: str | None, widget_class: type) -> None:
-    assert widget_class().is_initial(value) == bool(value)
+def test_flex_image_widget_links_to_the_workspace_file_view() -> None:
+    context = FlexImageField().widget.get_context("photo", REFERENCE, None)
+
+    assert context["widget"]["image_src"] == reverse("workspace:flex_file", args=[FILE_ID])
 
 
-def test_flex_image_input_exposes_the_image_source() -> None:
-    context = FlexImageInput().get_context("photo", REFERENCE, None)
-
-    assert context["widget"]["image_src"].endswith("%s/" % REFERENCE.removeprefix("flexfile:"))
-
-
-def test_flex_image_field_keeps_the_stored_reference_when_nothing_is_uploaded() -> None:
-    assert FlexImageField(required=False).clean(None, REFERENCE) == REFERENCE
+def test_base64_image_field_keeps_its_stored_import_path() -> None:
+    """Field definitions saved before the library took the field over still name this path."""
+    assert fqn(Base64ImageField) == "country_workspace.utils.flex_fields.Base64ImageField"
 
 
-def test_flex_image_field_returns_empty_when_the_field_is_cleared() -> None:
-    assert FlexImageField(required=False).clean(False, REFERENCE) == ""
+def test_base64_image_field_still_encodes_the_upload_inline(png_upload: SimpleUploadedFile) -> None:
+    content = png_upload.read()
+    png_upload.seek(0)
 
+    cleaned = Base64ImageField(required=False).clean(png_upload, None)
 
-def test_flex_image_field_leaves_an_upload_to_the_save_layer(png_upload: SimpleUploadedFile) -> None:
-    """The upload is validated here, but only the save layer can write its row."""
-    assert FlexImageField(required=False).clean(png_upload, REFERENCE) == REFERENCE
-    assert FlexImageField(required=False).clean(png_upload, None) == ""
-
-
-def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    super_clean_mock.return_value = False
-    instance = Mock(spec=Base64ImageField)
-    initial_data = None
-
-    assert Base64ImageField.clean(instance, False, initial_data) == ""
-    super_clean_mock.assert_called_once_with(False, initial_data)
-
-
-def test_base64_image_field_content_is_encoded(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    b64encode_mock = mocker.patch("country_workspace.utils.flex_fields.b64encode")
-    b64encode_mock.return_value.decode.return_value = (data := "decoded")
-    file = SimpleUploadedFile("test.txt", content := b"test", content_type=(content_type := "text/plain"))
-    super_clean_mock.return_value = file
-    instance = Mock(spec=Base64ImageField)
-    initial_data = None
-
-    assert Base64ImageField.clean(instance, file, initial_data) == DATA_URI_FORMAT.format(
-        mimetype=content_type, content=data
-    )
-    super_clean_mock.assert_called_once_with(file, initial_data)
-    b64encode_mock.assert_called_once_with(content)
-
-
-def test_base64_image_field_content_is_unchanged(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    super_clean_mock.return_value = (initial_data := "initial_data")
-    instance = Mock(spec=Base64ImageField)
-    data = None
-
-    assert Base64ImageField.clean(instance, data, initial_data) == initial_data
-    super_clean_mock.assert_called_once_with(data, initial_data)
+    assert cleaned.startswith("data:image/png;base64,")
+    assert b64decode(cleaned.split(",", 1)[1]) == content
 
 
 @pytest.mark.parametrize(

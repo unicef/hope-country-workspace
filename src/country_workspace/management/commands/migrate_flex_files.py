@@ -15,12 +15,13 @@ from django.db import transaction
 from django.db.models import BinaryField, Func, Q, TextField, Value
 from django.db.models.functions import Cast
 from django.template.defaultfilters import filesizeformat
+from hope_flex_fields.references import DATA_URI_PREFIX, DEFAULT_MIMETYPE
 
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.flex_fields import FLEX_FILES_PREFIX, get_obj_checksum
-from country_workspace.utils.flex_files import DATA_URI_PREFIX, DEFAULT_MIMETYPE, as_data_uri, write_flex_file
+from country_workspace.utils.flex_files import as_data_uri, write_flex_file
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet

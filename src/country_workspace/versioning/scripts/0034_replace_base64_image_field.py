@@ -3,11 +3,12 @@ from concurrency.utils import fqn
 from django.db import transaction
 from django.db.models import Q
 from django.utils.text import slugify
+from hope_flex_fields.fields import FlexImageField
 from hope_flex_fields.models import FieldDefinition, FlexField
 from hope_flex_fields.registry import field_registry
 from packaging.version import Version
 
-from country_workspace.utils.flex_fields import Base64ImageField, FlexImageField
+from country_workspace.utils.flex_fields import Base64ImageField
 
 _script_for_version = Version("0.1.0")
 

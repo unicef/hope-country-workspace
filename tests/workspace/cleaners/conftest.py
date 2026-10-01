@@ -1,7 +1,6 @@
 import pytest
 from django import forms
-
-from country_workspace.utils.flex_fields import FlexImageField
+from hope_flex_fields.fields import FlexImageField
 
 
 @pytest.fixture

@@ -55,7 +55,7 @@ dependencies = [
   "drf-spectacular[sidecar]>=0.30",
   "dukpy>=0.5",
   "flower>=2.0.1",
-  "hope-flex-fields>=0.8.5",
+  "hope-flex-fields>=0.9.1",
   "hope-smart-export>=0.3",
   "hope-smart-import>=0.5",
   "notebook>=7.4.3",
@@ -131,6 +131,7 @@ build.targets.wheel.packages = [
 ]
 
 [tool.uv]
+sources.hope-flex-fields = { git = "https://github.com/unicef/hope-flex-fields", rev = "a4d50bd94d19f761c9b171461888a8a6c1c4a741" }
 package = true
 
 [tool.django-stubs]

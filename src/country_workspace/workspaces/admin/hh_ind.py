@@ -15,6 +15,7 @@ from django.template.defaultfilters import capfirst
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from hope_flex_fields.references import flex_file_src
 
 from ...cache.manager import cache_manager
 from ...state import state
@@ -29,7 +30,7 @@ from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, 
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
 from ...utils.flex_fields import get_checker_fields
-from ...utils.flex_files import FlexFileContent, attach_flex_files, flex_file_src
+from ...utils.flex_files import FlexFileContent, attach_flex_files
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
