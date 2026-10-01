@@ -20,7 +20,6 @@ class Config(AppConfig):
 
         from country_workspace.utils.flex_fields import (
             CustomMultipleChoiceField,
-            FlexImageField,
             ObservedDisabilityChoice,
         )
 
@@ -37,7 +36,6 @@ class Config(AppConfig):
         field_registry.register(ObservedDisabilityChoice)
         field_registry.register(CustomMultipleChoiceField)
         field_registry.register(LatinNameField)
-        field_registry.register(FlexImageField)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry

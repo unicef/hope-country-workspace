@@ -16,12 +16,12 @@ from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django_celery_results.models import TaskResult
+from hope_flex_fields.references import DEFAULT_MIMETYPE
 from smart_admin.autocomplete import SmartAutocompleteJsonView
 
 from ..models import AsyncJob
 from ..models.flex_file import FlexFieldFile
 from ..state import state
-from ..utils.flex_files import DEFAULT_MIMETYPE
 from .config import conf
 from .forms import SelectProgramForm, SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_program, get_selected_tenant, is_tenant_valid

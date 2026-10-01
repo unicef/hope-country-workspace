@@ -192,9 +192,8 @@ def test_ind_photo_of_an_unmanaged_owner_is_denied(
 def photo_checker():
     """A checker with one image field next to a required text field."""
     from django import forms
+    from hope_flex_fields.fields import FlexImageField
     from testutils.factories import DataCheckerFactory
-
-    from country_workspace.utils.flex_fields import FlexImageField
 
     return DataCheckerFactory(fields=[("photo", FlexImageField), ("family_name", forms.CharField)])
 

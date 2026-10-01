@@ -5,12 +5,10 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.translation import gettext as _
+from hope_flex_fields.references import format_reference, is_reference, parse_reference
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
-
-
-REFERENCE_PREFIX = "flexfile:"
 
 
 class FlexFieldFileQuerySet(models.QuerySet["FlexFieldFile"]):
@@ -57,7 +55,7 @@ class FlexFieldFile(models.Model):
 
     @property
     def reference(self) -> str:
-        return "%s%s" % (REFERENCE_PREFIX, self.pk)
+        return format_reference(self.pk)
 
     @property
     def content_bytes(self) -> bytes:
@@ -65,13 +63,8 @@ class FlexFieldFile(models.Model):
 
     @staticmethod
     def is_reference(value: object) -> bool:
-        return isinstance(value, str) and value.startswith(REFERENCE_PREFIX)
+        return is_reference(value)
 
-    @classmethod
-    def parse_reference(cls, value: object) -> UUID | None:
-        if not cls.is_reference(value):
-            return None
-        try:
-            return UUID(str(value).removeprefix(REFERENCE_PREFIX))
-        except ValueError:
-            return None
+    @staticmethod
+    def parse_reference(value: object) -> UUID | None:
+        return parse_reference(value)
