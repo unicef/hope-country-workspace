@@ -229,6 +229,7 @@ def schedule_rdp_push_evaluation(*, rdp: Rdp) -> AsyncJob:
         program_id=rdp.program_id,
         rdp=rdp,
         config={"rdp_id": rdp.pk},
+        repeatable=True,
     )
     transaction.on_commit(job.queue, robust=True)
     return job

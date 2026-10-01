@@ -271,7 +271,7 @@ def test_clean_rdp_operation_configs(review_pending_rdp: Rdp) -> None:
 
     BiometricRdpOperationFactory(
         rdp=review_pending_rdp,
-        config={"threshold_type": "percent", "threshold_value": "25", "other": "value"},
+        config={"threshold_type": "rate", "threshold_value": "25", "other": "value"},
     )
 
     [config] = lifecycle._clean_rdp_operation_configs(review_pending_rdp)

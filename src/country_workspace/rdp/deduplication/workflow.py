@@ -83,8 +83,7 @@ def _build_biometric_findings(
 ) -> list[RdpOperationFinding]:
     """Build local biometric findings from a successful DedupEngine result."""
     current_pks = set(qs_individuals_for_rdp(rdp=operation.rdp).values_list("pk", flat=True))
-    related_pks: set[int] = set()
-    result: list[RdpOperationFinding] = []
+    parsed: list[tuple[Finding, FindingStatusCode, int, int | None]] = []
 
     for finding in findings:
         status = _finding_status(finding)
@@ -92,37 +91,28 @@ def _build_biometric_findings(
         if individual_id not in current_pks:
             raise RemoteError(f"DedupEngine: Individual id={individual_id} is not part of the current RDP.")
 
-        related_individual_id = (
-            _finding_individual_id(finding, "second") if status == FindingStatusCode.DUPLICATE else None
-        )
-        if related_individual_id is not None:
-            related_pks.add(related_individual_id)
+        related_id = _finding_individual_id(finding, "second") if status == FindingStatusCode.DUPLICATE else None
+        parsed.append((finding, status, individual_id, related_id))
 
-        details = (
-            {"score": score}
+    related_pks = {related_id for _, _, _, related_id in parsed if related_id is not None}
+    local_related_pks = set(
+        qs_individuals_by_pks(related_pks)
+        .filter(batch__program_id=operation.rdp.program_id)
+        .values_list("pk", flat=True)
+    )
+
+    return [
+        RdpOperationFinding(
+            finding_type=status.name,
+            individual_id=individual_id,
+            related_individual_id=related_id if related_id in local_related_pks else None,
+            field_name="photo",
+            details={"score": score}
             if status == FindingStatusCode.DUPLICATE and (score := finding.get("score")) is not None
-            else {}
+            else {},
         )
-        result.append(
-            RdpOperationFinding(
-                finding_type=status.name,
-                individual_id=individual_id,
-                related_individual_id=related_individual_id,
-                field_name="photo",
-                details=details,
-            )
-        )
-
-    if missing_pks := related_pks - current_pks:
-        existing_pks = set(
-            qs_individuals_by_pks(missing_pks)
-            .filter(batch__program_id=operation.rdp.program_id)
-            .values_list("pk", flat=True)
-        )
-        if invalid_pks := missing_pks - existing_pks:
-            raise RemoteError(f"DedupEngine: invalid related Individual ids={sorted(invalid_pks)}.")
-
-    return result
+        for finding, status, individual_id, related_id in parsed
+    ]
 
 
 def _system_error_findings(findings: list[Finding]) -> list[dict[str, JSONValue]]:

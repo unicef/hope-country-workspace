@@ -7,9 +7,11 @@ from country_workspace.rdp.deduplication.types import ThresholdType
 @pytest.mark.parametrize(
     ("threshold_type", "value", "valid"),
     [
+        (ThresholdType.COUNT, "0", True),
         (ThresholdType.COUNT, "2", True),
         (ThresholdType.COUNT, "1.5", False),
-        (ThresholdType.PERCENT, "1.5", True),
+        (ThresholdType.RATE, "1.5", True),
+        (ThresholdType.RATE, "150", True),
     ],
 )
 def test_biometric_deduplication_config_form(

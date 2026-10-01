@@ -108,25 +108,26 @@ def test_build_biometric_findings_rejects_individual_outside_rdp(people_rdp) -> 
         )
 
 
-def test_build_biometric_findings_rejects_related_individual_from_other_program(people_rdp) -> None:
+def test_build_biometric_findings_ignores_related_individual_from_other_program(people_rdp) -> None:
     from testutils.factories import BiometricRdpOperationFactory, IndividualFactory, ProgramFactory
 
     rdp, individuals = people_rdp
     operation = BiometricRdpOperationFactory(rdp=rdp)
     related = IndividualFactory(household=None, batch__program=ProgramFactory())
 
-    with pytest.raises(RemoteError, match="invalid related Individual"):
-        workflow._build_biometric_findings(
-            operation,
-            [
-                {
-                    "first": {"reference_pk": str(individuals[0].pk)},
-                    "second": {"reference_pk": str(related.pk)},
-                    "status_code": FindingStatusCode.DUPLICATE,
-                    "updated_at": "",
-                }
-            ],
-        )
+    result = workflow._build_biometric_findings(
+        operation,
+        [
+            {
+                "first": {"reference_pk": str(individuals[0].pk)},
+                "second": {"reference_pk": str(related.pk)},
+                "status_code": FindingStatusCode.DUPLICATE,
+                "updated_at": "",
+            }
+        ],
+    )
+
+    assert result[0].related_individual_id is None
 
 
 @pytest.mark.parametrize(
