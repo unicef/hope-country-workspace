@@ -26,21 +26,17 @@ def qs_successful_biometric_operations() -> QuerySet[RdpOperation]:
 
 
 def qs_biometric_duplicate_individuals(*, operation: RdpOperation) -> QuerySet[Individual]:
-    """Return RDP individuals marked as biometric duplicates."""
-    return (
-        qs_individuals_for_rdp(rdp=operation.rdp)
-        .filter(
-            Q(
-                rdp_operation_findings__operation=operation,
-                rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
-            )
-            | Q(
-                related_rdp_operation_findings__operation=operation,
-                related_rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
-            )
+    """Return local individuals marked duplicate by a biometric operation."""
+    return Individual.objects.filter(
+        Q(
+            rdp_operation_findings__operation=operation,
+            rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
         )
-        .distinct()
-    )
+        | Q(
+            related_rdp_operation_findings__operation=operation,
+            related_rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
+        )
+    ).distinct()
 
 
 def qs_biometric_affected_individuals(*, operation: RdpOperation) -> QuerySet[Individual]:
@@ -96,23 +92,16 @@ def _qs_biometric_image_issue_individuals(*, operation: RdpOperation) -> QuerySe
 def _qs_successful_biometric_duplicate_individuals(*, program: Program) -> QuerySet[Individual]:
     """Return individuals marked duplicate by successful biometric operations."""
     operations = qs_successful_biometric_operations().filter(rdp__program=program)
-    direct = Q(
-        rdp_operation_findings__operation__in=operations,
-        rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
-    )
-    related = Q(
-        related_rdp_operation_findings__operation__in=operations,
-        related_rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
-    )
-
-    if program.is_master_detail:
-        direct &= Q(rdp_operation_findings__operation__rdp__households__pk=F("household_id"))
-        related &= Q(related_rdp_operation_findings__operation__rdp__households__pk=F("household_id"))
-    else:
-        direct &= Q(rdp_operation_findings__operation__rdp__individuals__pk=F("pk"))
-        related &= Q(related_rdp_operation_findings__operation__rdp__individuals__pk=F("pk"))
-
-    return Individual.objects.filter(direct | related).distinct()
+    return Individual.objects.filter(
+        Q(
+            rdp_operation_findings__operation__in=operations,
+            rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
+        )
+        | Q(
+            related_rdp_operation_findings__operation__in=operations,
+            related_rdp_operation_findings__finding_type=FindingStatusCode.DUPLICATE.name,
+        )
+    ).distinct()
 
 
 def _qs_successful_biometric_image_issue_individuals(*, program: Program) -> QuerySet[Individual]:
@@ -137,20 +126,9 @@ def biometric_findings_for_individual(
     rdp: Rdp | None = None,
 ) -> tuple[list[int], list[str]]:
     """Return duplicate counterparts and image issues for an individual."""
-    operations = qs_successful_biometric_operations()
-
+    operations = qs_successful_biometric_operations().filter(rdp__program=individual.program)
     if rdp:
         operations = operations.filter(rdp=rdp)
-    elif individual.program.is_master_detail:
-        operations = operations.filter(
-            rdp__program=individual.program,
-            rdp__households__pk=individual.household_id,
-        )
-    else:
-        operations = operations.filter(
-            rdp__program=individual.program,
-            rdp__individuals__pk=individual.pk,
-        )
 
     findings = RdpOperationFinding.objects.filter(operation__in=operations)
 
@@ -202,6 +180,11 @@ def annotate_biometric_households(
                 rdp__program=program,
                 rdp__households__pk=OuterRef("pk"),
             )
+        ) | Exists(
+            duplicates.filter(
+                household_id=OuterRef("pk"),
+                removed=False,
+            )
         )
 
     return qs.annotate(
@@ -239,7 +222,7 @@ def annotate_biometric_individuals(
             if program.is_master_detail
             else Q(rdp__individuals__pk=OuterRef("pk"))
         )
-        result_available = Exists(operations.filter(membership))
+        result_available = Exists(operations.filter(membership)) | Exists(duplicates.filter(pk=OuterRef("pk")))
 
     return qs.annotate(
         _is_duplicate=Exists(duplicates.filter(pk=OuterRef("pk"))),

@@ -41,9 +41,7 @@ def threshold_exceeded(
     if threshold_type == ThresholdType.COUNT:
         return Decimal(findings_count) > threshold_value
 
-    if threshold_type == ThresholdType.PERCENT:
-        if threshold_value > 100:
-            raise ValueError("Percentage threshold cannot exceed 100.")
+    if threshold_type == ThresholdType.RATE:
         return Decimal(findings_count) * 100 > threshold_value * total_count
 
     raise ValueError(f"Invalid threshold type: {threshold_type}")

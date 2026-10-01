@@ -1,8 +1,9 @@
+from typing import TYPE_CHECKING
+
 import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.rdp.operations import completion
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from country_workspace.models import RdpOperationFinding
@@ -31,23 +32,26 @@ def test_complete_rdp_operation_not_finished(
     schedule.assert_not_called()
 
 
-def test_complete_rdp_operation(
+@pytest.mark.parametrize("incomplete", [True, False])
+def test_complete_rdp_operation_schedules_evaluation_when_operations_complete(
     running_biometric_operation,
     mocker: MockerFixture,
+    incomplete: bool,
 ) -> None:
     findings: list[RdpOperationFinding] = []
     mocker.patch.object(completion, "finish_rdp_operation", return_value=True)
+    rdp = running_biometric_operation.rdp
+    lock = mocker.patch.object(completion, "lock_rdp_for_update", return_value=rdp)
+    mocker.patch.object(completion, "has_incomplete_rdp_operations", return_value=incomplete)
     schedule = mocker.patch.object(completion, "schedule_rdp_push_evaluation")
 
-    assert (
-        completion.complete_rdp_operation(
-            operation=running_biometric_operation,
-            findings=findings,
-        )
-        is True
+    assert completion.complete_rdp_operation(
+        operation=running_biometric_operation,
+        findings=findings,
     )
 
-    schedule.assert_called_once_with(rdp=running_biometric_operation.rdp)
+    lock.assert_called_once_with(pk=running_biometric_operation.rdp_id)
+    assert schedule.called is not incomplete
 
 
 def test_complete_rdp_operation_marks_failure_on_error(
@@ -55,6 +59,12 @@ def test_complete_rdp_operation_marks_failure_on_error(
     mocker: MockerFixture,
 ) -> None:
     mocker.patch.object(completion, "finish_rdp_operation", return_value=True)
+    mocker.patch.object(completion, "has_incomplete_rdp_operations", return_value=False)
+    mocker.patch.object(
+        completion,
+        "lock_rdp_for_update",
+        return_value=running_biometric_operation.rdp,
+    )
     mocker.patch.object(
         completion,
         "schedule_rdp_push_evaluation",

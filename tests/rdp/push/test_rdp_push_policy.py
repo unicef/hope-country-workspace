@@ -59,8 +59,10 @@ def test_get_push_policy_is_cached(rdp: Rdp) -> None:
     [
         (2, 10, ThresholdType.COUNT, Decimal(1), True),
         (1, 10, ThresholdType.COUNT, Decimal(1), False),
-        (2, 4, ThresholdType.PERCENT, Decimal(49), True),
-        (2, 4, ThresholdType.PERCENT, Decimal(50), False),
+        (2, 4, ThresholdType.RATE, Decimal(49), True),
+        (2, 4, ThresholdType.RATE, Decimal(50), False),
+        (15, 10, ThresholdType.RATE, Decimal(120), True),
+        (12, 10, ThresholdType.RATE, Decimal(120), False),
     ],
 )
 def test_threshold_exceeded(
@@ -87,7 +89,6 @@ def test_threshold_exceeded(
         (-1, 1, ThresholdType.COUNT, Decimal(0)),
         (0, 0, ThresholdType.COUNT, Decimal(0)),
         (0, 1, ThresholdType.COUNT, Decimal(-1)),
-        (0, 1, ThresholdType.PERCENT, Decimal(101)),
         (0, 1, cast("ThresholdType", "invalid"), Decimal(0)),
     ],
 )
@@ -97,7 +98,7 @@ def test_threshold_exceeded_rejects_invalid_input(
     threshold_type: ThresholdType,
     threshold_value: Decimal,
 ) -> None:
-    with pytest.raises(ValueError, match=r"Invalid|Percentage"):
+    with pytest.raises(ValueError, match=r"Invalid"):
         threshold_exceeded(
             findings_count=findings_count,
             total_count=total_count,

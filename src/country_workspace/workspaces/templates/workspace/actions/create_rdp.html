@@ -13,7 +13,22 @@
                             {{ definition.operation_type.label }}
                         </th>
                     </tr>
-                    {{ operation_form.as_table }}
+                    {% for field in operation_form %}
+                        <tr class="form-row{% if field.errors %} errors{% endif %}">
+                            <th>
+                                {{ field.label_tag }}
+                            </th>
+                            <td>
+                                {{ field.errors }}
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <div class="help">
+                                        {{ field.help_text|safe }}
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
                 {% endfor %}
             </table>
             <div class="submit-row">

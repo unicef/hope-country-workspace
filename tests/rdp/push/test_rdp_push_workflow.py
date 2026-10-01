@@ -328,6 +328,7 @@ def test_schedule_rdp_push_evaluation(
     assert workflow.schedule_rdp_push_evaluation(rdp=rdp) is job
 
     assert create.call_args.kwargs["config"] == {"rdp_id": rdp.pk}
+    assert create.call_args.kwargs["repeatable"] is True
     on_commit.assert_called_once_with(job.queue, robust=True)
 
 
