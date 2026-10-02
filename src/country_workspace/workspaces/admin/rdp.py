@@ -32,7 +32,7 @@ from country_workspace.rdp import (
     failed_rdp_operations,
     get_push_policy,
     get_rdp_policy,
-    qs_biometric_duplicate_individuals,
+    qs_biometric_affected_individuals,
     retry_failed_rdp_operations,
     retry_rdp_push,
 )
@@ -157,8 +157,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     "error": json.dumps(operation.error, indent=2, ensure_ascii=False) if operation.error else "",
                     "log": [self._format_log_entry(entry) for entry in operation.log],
                     "findings": operation.findings.count() if biometric and successful else None,
-                    "marked_individuals": (
-                        qs_biometric_duplicate_individuals(operation=operation).count()
+                    "affected_individuals": (
+                        qs_biometric_affected_individuals(operation=operation).count()
                         if biometric and successful
                         else None
                     ),
