@@ -65,7 +65,7 @@ dependencies = [
   "phonenumbers>=9.0.8",
   "pillow>=12.3",
   "pre-commit>=4.2",
-  "psycopg2-binary>=2.9.9",
+  "psycopg[binary]",
   "python-redis-lock[django]>=4",
   "redis",
   "scikit-learn>=1.7",
