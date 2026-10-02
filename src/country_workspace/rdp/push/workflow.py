@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from decimal import Decimal
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -11,27 +12,36 @@ from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedError, RdiResetResult
 from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
-from country_workspace.rdp.deduplication.operations import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.actions import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.repository import (
+    biometric_findings_count,
+    biometric_operation_for_rdp,
+)
+from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
-from country_workspace.rdp.push.constants import PUSH_READY_CALLBACK_SALT
+from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.repository import (
+    append_rdp_log,
     lock_rdp_for_update,
     qs_households,
     qs_individuals_by_pks,
     qs_individuals_for_push,
+    qs_individuals_for_rdp,
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
-from country_workspace.rdp.types import RdpWorkflowOutcome
+from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome
 
+from .constants import PUSH_READY_CALLBACK_SALT
+from .policy import get_push_policy, threshold_exceeded
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
     get_or_create_rdp_push_data_job,
     lock_rdp_push_attempt,
-    rdp_for_push,
 )
 from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
@@ -50,22 +60,27 @@ def _build_push_ready_callback_token(*, rdp_id: int, push_attempt_id: UUID) -> s
     )
 
 
+def _country_workspace_id_for_rdp(rdp: Rdp) -> str:
+    """Return the stable HOPE workspace identifier for an RDP."""
+    if operation := biometric_operation_for_rdp(rdp=rdp):
+        return str(operation.id)
+    return f"rdp-{rdp.pk}"
+
+
 def _workflow_config_for_rdp(*, rdp: Rdp, imported_by_email: str) -> PushWorkflowConfig:
     """Build push workflow config for an existing RDP."""
     master_detail, pks = rdp_selection(rdp=rdp)
     program = rdp.program
-    config: PushWorkflowConfig = {
+    return {
         "batch_name": rdp.name or str(rdp),
         "co_slug": program.country_office.slug,
+        "country_workspace_id": _country_workspace_id_for_rdp(rdp),
         "imported_by_email": imported_by_email,
         "master_detail": master_detail,
         "pks": pks,
         "program_hope_id": program.hope_id,
-        "rdp_id": rdp.id,
+        "rdp_id": rdp.pk,
     }
-    if program.biometric_deduplication_enabled and rdp.deduplication_set_id:
-        config["country_workspace_id"] = str(rdp.deduplication_set_id)
-    return config
 
 
 def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str | None) -> None:
@@ -93,7 +108,7 @@ def _fail_pending_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str |
 
 
 def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | None:
-    """Ensure data push is queued for the active attempt."""
+    """Ensure data push is scheduled for the active attempt."""
     with transaction.atomic():
         if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return None
@@ -108,28 +123,161 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
             rdp.save(update_fields=["hope_rdi_id"])
 
         if rdp.hope_rdi_id is None:
-            transaction.on_commit(job.queue)
+            transaction.on_commit(job.queue, robust=True)
             return job
 
     return None
 
 
-def claim_rdp_push(rdp_id: int) -> tuple[ActionCheck, Rdp | None]:
-    """Claim an RDP push by starting a new attempt."""
-    rdp = rdp_for_push(pk=rdp_id)
-    check = get_rdp_policy(rdp).start_push_check()
-    if not check.allowed:
-        return check, None
+def _schedule_push_preparation(*, rdp: Rdp, user_id: int) -> None:
+    """Create the push preparation job and queue it after commit."""
+    if rdp.push_attempt_id is None:
+        raise RuntimeError("RDP push attempt was not initialized.")
 
+    job = AsyncJob.objects.create(
+        description="Prepare HOPE for RDP push",
+        type=AsyncJob.JobType.TASK,
+        owner_id=user_id,
+        action=fqn(push_existing_rdp_core),
+        program_id=rdp.program_id,
+        rdp=rdp,
+        config={
+            "rdp_id": rdp.pk,
+            "push_attempt_id": str(rdp.push_attempt_id),
+            "rdi_id_to_reset": None if rdp.hope_rdi_id == "N/A" else rdp.hope_rdi_id,
+        },
+    )
+    transaction.on_commit(job.queue, robust=True)
+
+
+def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
+    """Evaluate a pending RDP for review or push."""
+    with transaction.atomic():
+        rdp = lock_rdp_for_update(pk=rdp_id)
+
+        if rdp.status != Rdp.PushStatus.PENDING:
+            return {
+                "evaluated": False,
+                "reason": "RDP is no longer pending.",
+                "outcome": rdp.status,
+            }
+
+        if has_incomplete_rdp_operations(rdp_id=rdp.pk):
+            return {
+                "evaluated": False,
+                "reason": "Not all RDP operations completed successfully.",
+                "outcome": rdp.status,
+            }
+
+        result: OperationLogResult = {}
+        threshold_is_exceeded = False
+
+        if operation := biometric_operation_for_rdp(rdp=rdp):
+            threshold_type = ThresholdType(operation.config["threshold_type"])
+            threshold_value = Decimal(str(operation.config["threshold_value"]))
+            findings_count = biometric_findings_count(operation=operation)
+            individuals_count = qs_individuals_for_rdp(rdp=rdp).count()
+
+            if individuals_count == 0:
+                raise RdpWorkflowError({"errors": ["RDP: no individuals available for push."]})
+
+            threshold_is_exceeded = threshold_exceeded(
+                findings_count=findings_count,
+                total_count=individuals_count,
+                threshold_type=threshold_type,
+                threshold_value=threshold_value,
+            )
+            result.update(
+                threshold_type=threshold_type.value,
+                threshold_value=str(threshold_value),
+                findings_count=findings_count,
+                individuals_count=individuals_count,
+                findings_rate=f"{Decimal(findings_count) * 100 / individuals_count:.2f}",
+                threshold_exceeded=threshold_is_exceeded,
+            )
+
+        if threshold_is_exceeded:
+            rdp.status = Rdp.PushStatus.REVIEW_PENDING
+            rdp.save(update_fields=["status"])
+            entry_type = RdpLogEntryType.REVIEW_REQUIRED
+        else:
+            result["push_attempt_id"] = str(rdp.start_push_attempt())
+            entry_type = RdpLogEntryType.PUSH_TO_HOPE
+
+        result["outcome"] = rdp.status
+        append_rdp_log(rdp=rdp, entry_type=entry_type, result=result)
+
+        if not threshold_is_exceeded:
+            _schedule_push_preparation(rdp=rdp, user_id=rdp.pushed_by_id)
+
+    return {"evaluated": True, **result}
+
+
+def evaluate_rdp_for_push_core(job: AsyncJob) -> dict[str, Any]:
+    """Evaluate an RDP for push after processing completes."""
+    rdp_id = job.config["rdp_id"]
+    return {"rdp_id": rdp_id, **evaluate_rdp_for_push(rdp_id=rdp_id)}
+
+
+def schedule_rdp_push_evaluation(*, rdp: Rdp) -> AsyncJob:
+    """Create and schedule an RDP push-evaluation job."""
+    job = AsyncJob.objects.create(
+        description="Evaluate RDP for push",
+        type=AsyncJob.JobType.TASK,
+        owner_id=rdp.pushed_by_id,
+        action=fqn(evaluate_rdp_for_push_core),
+        program_id=rdp.program_id,
+        rdp=rdp,
+        config={"rdp_id": rdp.pk},
+        repeatable=True,
+    )
+    transaction.on_commit(job.queue, robust=True)
+    return job
+
+
+def claim_review_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | None]:
+    """Start a push explicitly approved from review."""
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp_id)
-        if locked.status == Rdp.PushStatus.PUSH_PENDING:
-            return ActionCheck(False, "RDP: push to HOPE is already queued or running."), None
-        if locked.is_dedup_settings_locked:
-            return ActionCheck(False, "RDP: can not push while deduplication is queued or running."), None
-        if locked.status not in {Rdp.PushStatus.PENDING, Rdp.PushStatus.FAILURE}:
-            return ActionCheck(False, f"RDP: can not push in status={locked.status}"), None
-        locked.start_push_attempt()
+        if not (check := get_push_policy(locked).review_push_check()).allowed:
+            return check, None
+
+        push_attempt_id = locked.start_push_attempt()
+        append_rdp_log(
+            rdp=locked,
+            entry_type=RdpLogEntryType.PUSH_TO_HOPE,
+            result={
+                "user_id": str(user_id),
+                "decision": "PUSH",
+                "override": True,
+                "outcome": Rdp.PushStatus.PUSH_PENDING,
+                "push_attempt_id": str(push_attempt_id),
+            },
+        )
+        _schedule_push_preparation(rdp=locked, user_id=user_id)
+
+    return ActionCheck(True), locked
+
+
+def retry_rdp_push(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | None]:
+    """Retry a failed RDP push."""
+    with transaction.atomic():
+        locked = lock_rdp_for_update(pk=rdp_id)
+        if not (check := get_push_policy(locked).retry_push_check()).allowed:
+            return check, None
+
+        push_attempt_id = locked.start_push_attempt()
+        append_rdp_log(
+            rdp=locked,
+            entry_type=RdpLogEntryType.PUSH_TO_HOPE,
+            result={
+                "user_id": str(user_id),
+                "decision": "RETRY",
+                "outcome": Rdp.PushStatus.PUSH_PENDING,
+                "push_attempt_id": str(push_attempt_id),
+            },
+        )
+        _schedule_push_preparation(rdp=locked, user_id=user_id)
 
     return ActionCheck(True), locked
 
@@ -192,7 +340,7 @@ def push_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
             "rdp_id": rdp_id,
             "reset_result": reset_result.value if reset_result else None,
             "workflow_outcome": (
-                RdpWorkflowOutcome.DATA_PUSH_QUEUED if push_job else RdpWorkflowOutcome.DATA_PUSH_SKIPPED
+                RdpWorkflowOutcome.DATA_PUSH_SCHEDULED if push_job else RdpWorkflowOutcome.DATA_PUSH_SKIPPED
             ),
         }
 
@@ -247,30 +395,36 @@ def _raise_push_errors(processor: PushProcessor) -> None:
         raise RdpWorkflowError(processor.total)
 
 
+def _finish_successful_push(*, rdp: Rdp, hope_rdi_id: str) -> None:
+    """Finish a successful push for a locked RDP."""
+    operation = biometric_operation_for_rdp(rdp=rdp)
+
+    set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
+    rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
+
+    # TODO(Vitali): Use Bitcaster to retry DedupEngine approval after a successful HOPE push.
+    transaction.on_commit(
+        partial(
+            approve_deduplication_set_after_successful_push,
+            operation_id=operation.id if operation else None,
+            group_reference_id=rdp.program.unicef_id,
+        ),
+        robust=True,
+    )
+
+
 def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str) -> None:
     """Finish the active push when HOPE reports that the existing RDI is already merged."""
     with transaction.atomic():
         if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return
 
-        set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
-        rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
-        program_id = rdp.program_id
-
-        transaction.on_commit(
-            partial(
-                approve_deduplication_set_after_successful_push,
-                rdp_id=rdp_id,
-                group_reference_id=rdp.program.unicef_id,
-                deduplication_set_id=rdp.deduplication_set_id,
-            ),
-            robust=True,
-        )
+        _finish_successful_push(rdp=rdp, hope_rdi_id=hope_rdi_id)
 
     rdp_push_status_changed_signal.send_robust(
         sender=Rdp,
-        program_id=program_id,
-        rdp_id=rdp_id,
+        program_id=rdp.program_id,
+        rdp_id=rdp.pk,
         status=Rdp.PushStatus.SUCCESS,
     )
 
@@ -323,18 +477,7 @@ def push_rdp_data_core(job: AsyncJob) -> dict[str, Any]:
                 raise RuntimeError(
                     f"RDP: hope_rdi_id changed before completion: {locked.hope_rdi_id!r} != {new_rdi_id!r}"
                 )
-
-            set_rdp_beneficiaries_removed(rdp=locked, removed=True)
-            locked.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=new_rdi_id)
-            transaction.on_commit(
-                partial(
-                    approve_deduplication_set_after_successful_push,
-                    rdp_id=rdp_id,
-                    group_reference_id=locked.program.unicef_id,
-                    deduplication_set_id=locked.deduplication_set_id,
-                ),
-                robust=True,
-            )
+            _finish_successful_push(rdp=locked, hope_rdi_id=new_rdi_id)
 
         pushed_count = sum(processor.total.get(key, 0) for key in ("households", "individuals", "people"))
 

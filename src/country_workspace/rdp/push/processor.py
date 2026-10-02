@@ -1,29 +1,39 @@
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from functools import cached_property
 from itertools import batched
-from typing import Any
+from typing import Any, Final, NamedTuple
 
 from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, map_members, map_role_value
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.rdp.constants import PUSH_BATCH_SIZE
+from country_workspace.rdp.validation import preflight_errors
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from country_workspace.rdp.constants import PUSH_BATCH_SIZE
-from country_workspace.rdp.processor import ProcessorBase
-from country_workspace.rdp.validation import preflight_errors
 from .repository import serializer_for_program
 from .types import PushWorkflowConfig, Serializer
 
 
-class PushProcessor(ProcessorBase):
+class ErrorConfig(NamedTuple):
+    MAX_ERRORS: int = 300
+    MAX_ERROR_LEN: int = 2000
+    MAX_IDS_HINT: int = 5
+    MARKER: str = "… further errors truncated …"
+
+
+ERROR_CONFIG: Final[ErrorConfig] = ErrorConfig()
+
+
+class PushProcessor:
     """Push pipeline: validate, prepare, send and track results via Hope API."""
 
     PREFIX = "HopePush"
 
     def __init__(self, config: PushWorkflowConfig) -> None:
-        super().__init__()
+        self.total: dict[str, Any] = {"errors": []}
         self.api = HopeApi(co_slug=config["co_slug"])
         self.batch_name: str = config["batch_name"]
         self.hope_rdi_id: str | None = None
@@ -35,6 +45,83 @@ class PushProcessor(ProcessorBase):
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
+
+    @property
+    def has_errors(self) -> bool:
+        """Return True when at least one error was collected."""
+        return bool(self.total.get("errors"))
+
+    @staticmethod
+    def _ids_hint(ids: Sequence[int]) -> str:
+        """Return a short ids hint suitable for logs."""
+        limit = ERROR_CONFIG.MAX_IDS_HINT
+        if not ids:
+            return "[]"
+        if len(ids) <= limit:
+            return str(ids)
+        head = ", ".join(map(str, ids[:limit]))
+        return f"[{head}, …]"
+
+    def _err(self, msg: str) -> None:
+        """Append an error into total['errors']; truncate long text; cap the list with a marker."""
+        errors: list[str] = self.total["errors"]
+        if errors and errors[-1] == ERROR_CONFIG.MARKER:
+            return
+        if len(errors) >= ERROR_CONFIG.MAX_ERRORS - 1:
+            errors.append(ERROR_CONFIG.MARKER)
+            return
+        if len(msg) > ERROR_CONFIG.MAX_ERROR_LEN:
+            msg = f"{msg[: ERROR_CONFIG.MAX_ERROR_LEN - 1]}…"
+        errors.append(msg)
+
+    def _fmt_fail(
+        self,
+        subject: str,
+        msg: str,
+        *,
+        ids: Sequence[int] | None = None,
+        response: object | None = None,
+    ) -> str:
+        ids_part = f" ids={self._ids_hint(ids)}" if ids is not None else ""
+        line = f"{self.PREFIX}: {subject}: {msg}{ids_part}"
+        return f"{line}. Response: {response}" if response is not None else line
+
+    def fail(
+        self,
+        subject: str,
+        msg: str,
+        *,
+        ids: Sequence[int] | None = None,
+        response: object | None = None,
+    ) -> None:
+        self._err(self._fmt_fail(subject, msg, ids=ids, response=response))
+
+    def try_remote(
+        self,
+        subject: str,
+        fn: Callable[[], Any],
+        *,
+        ids: Sequence[int] | None = None,
+    ) -> Any | None:
+        try:
+            return fn()
+        except (RemoteError, RemoteUnavailableError) as e:
+            self.fail(subject, f"request failed. {e}", ids=ids)
+            return None
+
+    def run_remote(
+        self,
+        subject: str,
+        fn: Callable[[], object],
+        *,
+        ids: Sequence[int] | None = None,
+    ) -> bool:
+        try:
+            fn()
+        except (RemoteError, RemoteUnavailableError) as e:
+            self.fail(subject, f"request failed. {e}", ids=ids)
+            return False
+        return True
 
     @cached_property
     def serializer(self) -> Serializer:

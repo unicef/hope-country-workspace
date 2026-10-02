@@ -3,26 +3,30 @@ from django.urls import reverse
 from django_webtest import DjangoTestApp
 from django_webtest.pytest_plugin import MixinWithInstanceVariables
 from hope_flex_fields.models import DataChecker
+from pytest_mock import MockerFixture
 from strategy_field.utils import fqn
 
-from country_workspace.models import AsyncJob, Office
+from country_workspace.models import AsyncJob, Office, RdpOperation
 from country_workspace.rdp import create_rdp_core
+from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
-from testutils.factories import CountryHouseholdFactory, CountryProgramFactory, OfficeFactory, SuperUserFactory
 from testutils.utils import select_office
+
 
 pytestmark = [pytest.mark.admin, pytest.mark.smoke, pytest.mark.django_db]
 
 
 @pytest.fixture
 def office() -> Office:
-    co = OfficeFactory()
-    state.tenant = co
-    return co
+    from testutils.factories import OfficeFactory
+
+    office = OfficeFactory()
+    state.tenant = office
+    return office
 
 
-@pytest.fixture(params=[True, False], ids=["master_detail_true", "master_detail_false"])
+@pytest.fixture(params=[True, False], ids=["master_detail", "people"])
 def program(
     request: pytest.FixtureRequest,
     office: Office,
@@ -30,6 +34,8 @@ def program(
     household_checker: DataChecker,
     individual_checker: DataChecker,
 ) -> CountryProgram:
+    from testutils.factories import CountryProgramFactory
+
     return CountryProgramFactory(
         country_office=office,
         household_checker=household_checker,
@@ -41,54 +47,141 @@ def program(
 
 
 @pytest.fixture
-def beneficiary_instance(program: CountryProgram) -> tuple[CountryHousehold | CountryIndividual, str]:
-    from testutils.factories import CountryIndividualFactory
+def beneficiary(program: CountryProgram) -> CountryHousehold | CountryIndividual:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
 
-    hh = CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
-    hh.rdp.clear()
+    household = CountryHouseholdFactory(batch__program=program, batch__country_office=program.country_office)
+    household.rdp.clear()
 
     if program.beneficiary_group.master_detail:
-        return hh, "workspace:workspaces_countryhousehold_changelist"
+        return household
 
-    ind = hh.members.first() or CountryIndividualFactory(household=hh)
-    ind.rdp.clear()
-    return ind, "workspace:workspaces_countryindividual_changelist"
+    individual = household.members.first() or CountryIndividualFactory(household=household)
+    individual.rdp.clear()
+    return individual
 
 
 @pytest.fixture
 def app(django_app_factory: MixinWithInstanceVariables) -> DjangoTestApp:
-    django_app = django_app_factory(csrf_checks=False)
-    admin_user = SuperUserFactory(username="superuser")
-    django_app.set_user(admin_user)
-    django_app._user = admin_user
-    return django_app
+    from testutils.factories import SuperUserFactory
+
+    app = django_app_factory(csrf_checks=False)
+    app._user = SuperUserFactory(username="superuser")
+    app.set_user(app._user)
+    return app
 
 
-def test_create_rdp_action(app: DjangoTestApp, program: CountryProgram, beneficiary_instance, mocker) -> None:
-    queue = mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
-    beneficiary, url_name = beneficiary_instance
+@pytest.fixture
+def queue(mocker: MockerFixture):
+    return mocker.patch.object(AsyncJob, "queue", autospec=True, return_value=None)
+
+
+def create_rdp_job(
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary: CountryHousehold | CountryIndividual,
+) -> AsyncJob:
+    model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
+    url = reverse(f"workspace:workspaces_{model_name}_changelist")
 
     with select_office(app, program.country_office, program):
-        form = app.get(reverse(url_name)).forms["changelist-form"]
+        form = app.get(url).forms["changelist-form"]
         form.set("_selected_action", [str(beneficiary.pk)])
         form["action"].select("create_rdp")
 
         create_form = form.submit().forms["create-rdp-form"]
         create_form["batch_name"] = "Test Batch"
+        response = create_form.submit("_create")
 
-        assert create_form.submit("_create").status_code == 302
+    assert response.status_code == 302
+    return program.jobs.latest("pk")
 
-    job = program.jobs.latest("pk")
+
+def test_create_rdp_action(
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary: CountryHousehold | CountryIndividual,
+    queue,
+) -> None:
+    job = create_rdp_job(app, program, beneficiary)
 
     queue.assert_called_once()
     assert queue.call_args.args[0].pk == job.pk
     assert job.type == AsyncJob.JobType.TASK
     assert job.action == fqn(create_rdp_core)
     assert job.config == {
-        "batch_name": "Test Batch",
-        "master_detail": program.beneficiary_group.master_detail,
         "pks": [beneficiary.pk],
+        "master_detail": program.beneficiary_group.master_detail,
+        "batch_name": "Test Batch",
         "country_office_id": program.country_office.id,
         "program_id": program.id,
         "pushed_by_id": app._user.id,
+        "operations": [],
     }
+
+
+def test_create_rdp_action_with_biometric_deduplication(
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary: CountryHousehold | CountryIndividual,
+    queue,
+) -> None:
+    program.biometric_deduplication_enabled = True
+    program.save(update_fields=["biometric_deduplication_enabled"])
+
+    model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
+    url = reverse(f"workspace:workspaces_{model_name}_changelist")
+
+    with select_office(app, program.country_office, program):
+        form = app.get(url).forms["changelist-form"]
+        form.set("_selected_action", [str(beneficiary.pk)])
+        form["action"].select("create_rdp")
+
+        create_form = form.submit().forms["create-rdp-form"]
+        create_form["batch_name"] = "Test Batch"
+        create_form["biometric_deduplication-threshold_type"] = ThresholdType.COUNT
+        create_form["biometric_deduplication-threshold_value"] = "1"
+
+        response = create_form.submit("_create")
+
+    assert response.status_code == 302
+
+    job = program.jobs.latest("pk")
+    assert job.config["operations"] == [
+        {
+            "operation_type": RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+            "config": {
+                "threshold_type": ThresholdType.COUNT,
+                "threshold_value": "1",
+            },
+        }
+    ]
+
+
+def test_create_rdp_action_rejects_invalid_biometric_config(
+    app: DjangoTestApp,
+    program: CountryProgram,
+    beneficiary: CountryHousehold | CountryIndividual,
+    queue,
+) -> None:
+    program.biometric_deduplication_enabled = True
+    program.save(update_fields=["biometric_deduplication_enabled"])
+
+    model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
+    url = reverse(f"workspace:workspaces_{model_name}_changelist")
+
+    with select_office(app, program.country_office, program):
+        form = app.get(url).forms["changelist-form"]
+        form.set("_selected_action", [str(beneficiary.pk)])
+        form["action"].select("create_rdp")
+
+        create_form = form.submit().forms["create-rdp-form"]
+        create_form["batch_name"] = "Test Batch"
+        create_form["biometric_deduplication-threshold_type"] = ThresholdType.COUNT
+        create_form["biometric_deduplication-threshold_value"] = "1.5"
+
+        response = create_form.submit("_create")
+
+    assert response.status_code == 200
+    assert program.jobs.count() == 0
+    queue.assert_not_called()

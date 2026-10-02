@@ -382,3 +382,52 @@ def test_client_request_wraps_request_exception(
         client._request("op", fn)
 
     fn.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (404, None),
+        (503, RemoteUnavailableError),
+    ],
+    ids=["not_found", "unavailable"],
+)
+def test_client_retrieve_deduplication_set_or_none(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+    status_code: int,
+    expected: type[Exception] | None,
+) -> None:
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
+    response = mocker.MagicMock(status_code=status_code, text="error")
+    item_cls.return_value.retrieve.side_effect = HTTPError("boom", response=response)
+    client, _, _ = client_ctx
+
+    if expected is None:
+        assert client.retrieve_deduplication_set_or_none() is None
+    else:
+        with pytest.raises(expected):
+            client.retrieve_deduplication_set_or_none()
+
+
+def test_client_retrieve_findings(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.FindingsCollection")
+    collection_cls.return_value.list.side_effect = [
+        {"results": [{"id": 1}], "next": "page-2"},
+        {"results": [{"id": 2}], "next": None},
+    ]
+    client, session, api_root = client_ctx
+
+    assert client.retrieve_findings() == [{"id": 1}, {"id": 2}]
+
+    collection_cls.assert_called_once_with(
+        session,
+        api_root.deduplication_sets.deduplication_set.return_value.findings,
+    )
+    assert collection_cls.return_value.list.call_args_list == [
+        mocker.call(params={"page": "1"}),
+        mocker.call(params={"page": "2"}),
+    ]

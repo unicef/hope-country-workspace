@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+
 from django.db.models import Exists, OuterRef, QuerySet
 
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE

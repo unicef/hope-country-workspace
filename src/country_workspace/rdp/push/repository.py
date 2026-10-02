@@ -4,6 +4,7 @@ from uuid import UUID
 from django.db import transaction
 
 from country_workspace.models import AsyncJob, Program, Rdp
+
 from .types import Serializer
 
 if TYPE_CHECKING:
@@ -50,15 +51,6 @@ def lock_rdp_push_attempt(*, rdp_id: int, push_attempt_id: UUID) -> Rdp | None:
         )
         .first()
     )
-
-
-def rdp_for_push(*, pk: int) -> Rdp:
-    """Return RDP with relations required for push workflow."""
-    return Rdp.objects.select_related(
-        "program__country_office",
-        "program__beneficiary_group",
-        "pushed_by",
-    ).get(pk=pk)
 
 
 def serializer_for_program(hope_id: str) -> Serializer:

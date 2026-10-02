@@ -8,40 +8,55 @@ RDPs are created within the selected **[Program](../program.md)** in the **[Anal
 
 Make sure that the required **Office** and **Program** are selected and that the beneficiary records are ready for RDP processing.
 
-
 Country Workspace checks the selected records before creating the RDP. Creation is blocked when:
 
-* no beneficiaries are selected;
-* beneficiary records included in the RDP are invalid;
-* selected records are already linked to an unfinished or successful RDP;
-* another unfinished RDP already exists for the Program;
-* for a biometric Program, a new Deduplication Set cannot be created.
+- no beneficiaries are selected;
+- selected beneficiary records are invalid;
+- selected records are already linked to an unfinished or successful RDP;
+- another unfinished RDP already exists for the Program.
+
+## Configure RDP processing
+
+Select the beneficiary records and choose **Create RDP**.
+
+The creation page shows configuration for the RDP operations enabled for the selected Program.
+
+For example, when biometric deduplication is enabled, the form includes the biometric findings threshold used to decide whether manual review is required.
+
+See **[RDP operations](operations/index.md)** for the common operation flow and **[Biometric deduplication](operations/deduplication.md)** for biometric settings.
 
 ## Create the RDP
 
-Select the beneficiary records that should be processed together and choose **Create RDP**.
+After the configuration is confirmed, Country Workspace schedules RDP creation.
 
-Country Workspace performs the RDP preflight checks before saving the new RDP.
+Country Workspace runs the RDP preflight checks before saving the RDP.
 
-If the checks succeed, the RDP is created in `PENDING` status.
+If the checks succeed:
 
-If a check fails, the RDP is not created and Country Workspace displays the reason.
+- the RDP is created in `PENDING` status;
+- the selected beneficiaries are linked to it;
+- the configured operations are created;
+- RDP processing starts automatically.
+
+If a check fails, the RDP is not created and the failure is recorded in the background job.
 
 ```mermaid
 flowchart LR
     A[Select beneficiaries]
-        --> B[Create RDP]
-        --> C{Preflight checks pass?}
-    C -->|No| D[Show error]
-    C -->|Yes| E[Create RDP as PENDING]
+        --> B[Configure RDP]
+        --> C[Create RDP]
+        --> D{Preflight checks pass?}
+    D -->|No| E[Creation fails]
+    D -->|Yes| F[Create RDP as PENDING]
+    F --> G[Start processing]
 ```
 
 ## After creation
 
-A newly created RDP remains in `PENDING` and can proceed through the processing steps required for the selected Program.
+The RDP remains `PENDING` while its configured operations are being processed.
 
-Depending on the Program configuration, additional processing may be required before the RDP can be pushed to HOPE Core.
+When all required operations complete successfully, Country Workspace continues the RDP workflow and checks whether manual review is required.
 
-See **[RDP deduplication](deduplication.md)** for biometric deduplication and **[Push to HOPE Core](push.md)** for the push workflow.
+If no operations are configured, Country Workspace continues processing the RDP without waiting for an operation.
 
-For the complete RDP state flow, see **[Lifecycle and statuses](lifecycle.md)**.
+See **[RDP operations](operations/index.md)** for processing and **[Lifecycle and statuses](lifecycle.md)** for the RDP state flow.
