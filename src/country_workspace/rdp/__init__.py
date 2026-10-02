@@ -7,6 +7,7 @@ from .deduplication.repository import (
     annotate_biometric_individuals,
     biometric_findings_for_individual,
     biometric_operation_for_rdp,
+    qs_biometric_affected_individuals,
     qs_biometric_duplicate_individuals,
     qs_successful_biometric_operations,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "handle_push_ready_callback",
     "lock_rdp_for_update",
     "push_existing_rdp_core",
+    "qs_biometric_affected_individuals",
     "qs_biometric_duplicate_individuals",
     "qs_individuals_for_rdp",
     "qs_successful_biometric_operations",

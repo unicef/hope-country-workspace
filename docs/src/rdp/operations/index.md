@@ -49,6 +49,6 @@ Country Workspace continues the RDP workflow only after all configured operation
 
 The RDP page contains an **Operations** section for configured operations.
 
-For each operation, it shows the status, correlation ID, timing, number of attempts, configuration, errors, log, and any operation-specific results.
+For each operation, it shows the status, correlation ID, timing, number of attempts, configuration, last error, log, and any operation-specific results.
 
 See the documentation for each operation for details about its configuration and results.

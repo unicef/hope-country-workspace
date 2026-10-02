@@ -58,10 +58,10 @@
                         </tr>
                         <tr>
                             <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Marked individuals" %}
+                                {% translate "Affected individuals" %}
                             </th>
                             <td class="py-2">
-                                {{ row.marked_individuals }}
+                                {{ row.affected_individuals }}
                             </td>
                         </tr>
                     {% endif %}
@@ -83,12 +83,12 @@
                     {% if row.error %}
                         <tr>
                             <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Error" %}
+                                {% translate "Last error" %}
                             </th>
                             <td class="py-2">
                                 <details>
                                     <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
-                                        {% translate "Show error" %}
+                                        {% translate "Show last error" %}
                                     </summary>
                                     <pre class="mt-2 overflow-x-auto">{{ row.error }}</pre>
                                 </details>

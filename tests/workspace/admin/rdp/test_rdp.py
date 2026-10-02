@@ -105,8 +105,8 @@ def test_operations_display_successful_biometric(
     successful_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    duplicates = mocker.patch.object(rdp_admin_mod, "qs_biometric_duplicate_individuals")
-    duplicates.return_value.count.return_value = 2
+    affected = mocker.patch.object(rdp_admin_mod, "qs_biometric_affected_individuals")
+    affected.return_value.count.return_value = 2
     render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
     assert admin_instance.operations_display(successful_biometric_operation.rdp) == "rendered"
@@ -116,10 +116,10 @@ def test_operations_display_successful_biometric(
     assert row["status"] == successful_biometric_operation.get_status_display()
     assert row["attempts"] == 2
     assert row["findings"] == 1
-    assert row["marked_individuals"] == 2
+    assert row["affected_individuals"] == 2
     assert '"threshold_type": "count"' in row["config"]
     assert '"success": true' in row["log"][0]["result"]
-    duplicates.assert_called_once_with(operation=successful_biometric_operation)
+    affected.assert_called_once_with(operation=successful_biometric_operation)
 
 
 def test_operations_display_failed_biometric(
@@ -127,7 +127,7 @@ def test_operations_display_failed_biometric(
     failed_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    duplicates = mocker.patch.object(rdp_admin_mod, "qs_biometric_duplicate_individuals")
+    affected = mocker.patch.object(rdp_admin_mod, "qs_biometric_affected_individuals")
     render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
     admin_instance.operations_display(failed_biometric_operation.rdp)
@@ -135,8 +135,8 @@ def test_operations_display_failed_biometric(
     row = render.call_args.args[1]["rows"][0]
     assert '"code": "remote_error"' in row["error"]
     assert row["findings"] is None
-    assert row["marked_individuals"] is None
-    duplicates.assert_not_called()
+    assert row["affected_individuals"] is None
+    affected.assert_not_called()
 
 
 def test_processing_history_empty(admin_instance, rdp: CountryRdp) -> None:
