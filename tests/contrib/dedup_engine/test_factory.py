@@ -1,10 +1,19 @@
+import pytest
 from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine.factory import make_client
 
 
-def test_make_client(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(
+    ("kwargs", "max_retries"),
+    [
+        ({}, 3),
+        ({"max_retries": 0}, 0),
+    ],
+    ids=["default", "no_retries"],
+)
+def test_make_client(mocker: MockerFixture, kwargs: dict[str, int], max_retries: int) -> None:
     session_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Session")
     auth_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Auth")
     client_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Client")
@@ -19,15 +28,15 @@ def test_make_client(mocker: MockerFixture) -> None:
         DEDUP_API_URL=(url := "https://test.org"),
         DEDUP_API_TOKEN=(token := "token"),
     ):
-        with make_client(group_reference_id := "PROGRAM_ID", deduplication_set_id := "SET_ID") as client:
+        with make_client(group_reference_id := "PROGRAM_ID", deduplication_set_id := "SET_ID", **kwargs) as client:
             assert client is client_cls.return_value
 
     session_cls.assert_called_once_with()
     session = session_cls.return_value.__enter__.return_value
 
     assert adapter_cls.call_args_list == [
-        mocker.call(max_retries=3),
-        mocker.call(max_retries=3),
+        mocker.call(max_retries=max_retries),
+        mocker.call(max_retries=max_retries),
     ]
     assert session.mount.call_args_list == [
         mocker.call("https://", https_adapter),

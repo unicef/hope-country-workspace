@@ -177,12 +177,17 @@ class Client:
         )
         self._request("approve", action.call)
 
-    def get_deduplication_set_group_config(self) -> response.DeduplicationSetGroupConfig:
+    def get_deduplication_set_group_config(
+        self, *, timeout: tuple[int, int] = resource.TIMEOUT
+    ) -> response.DeduplicationSetGroupConfig:
         item = resource.DeduplicationSetGroupConfigItem(
             self.session,
             self.deduplication_set_group_endpoint.config,
         )
-        result = self._request("get_deduplication_set_group_config", item.retrieve)
+        result = self._request(
+            "get_deduplication_set_group_config",
+            partial(item.retrieve, timeout=timeout),
+        )
         return cast("response.DeduplicationSetGroupConfig", result)
 
     def post_deduplication_set_group_config(

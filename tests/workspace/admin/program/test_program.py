@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.http import HttpResponseRedirect, QueryDict
 from pytest_mock import MockerFixture
 
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.workspaces.admin import _import_data as import_data_mod
 from country_workspace.workspaces.admin import program as program_admin_mod
 from country_workspace.workspaces.admin._import_data import KOBO_IMPORT_JOB_DESCRIPTION
@@ -136,8 +136,10 @@ def test_get_dedup_settings(program_admin, mock_dedup_client, mocker: MockerFixt
 
     assert program_admin._get_dedup_settings(program) == {"threshold_1": 0.1}
 
-    make_client.assert_called_once_with(group_reference_id="prg-1")
-    client.get_deduplication_set_group_config.assert_called_once_with()
+    make_client.assert_called_once_with(group_reference_id="prg-1", max_retries=0)
+    client.get_deduplication_set_group_config.assert_called_once_with(
+        timeout=program_admin_mod.DEDUP_SETTINGS_FETCH_TIMEOUT
+    )
 
 
 def test_dedup_settings_disabled(program_admin, mocker: MockerFixture) -> None:
@@ -153,14 +155,15 @@ def test_dedup_settings_disabled(program_admin, mocker: MockerFixture) -> None:
     "case",
     [
         (RemoteError("boom"), "N/A"),
+        (RemoteUnavailableError("boom"), "N/A"),
         ({}, "-"),
         ({"threshold_1": 0.1}, "threshold_1"),
     ],
-    ids=["remote_error", "empty", "values"],
+    ids=["remote_error", "remote_unavailable", "empty", "values"],
 )
 def test_dedup_settings(program_admin, mocker: MockerFixture, case) -> None:
     settings, expected = case
-    kwargs = {"side_effect": settings} if isinstance(settings, RemoteError) else {"return_value": settings}
+    kwargs = {"side_effect": settings} if isinstance(settings, Exception) else {"return_value": settings}
     mocker.patch.object(program_admin, "_get_dedup_settings", **kwargs)
 
     result = program_admin.dedup_settings(program_admin._program)
@@ -183,14 +186,16 @@ def test_update_dedup_settings_blocked(
     assert response.url == "/program/1/change/"
 
 
+@pytest.mark.parametrize("exc", [RemoteError("boom"), RemoteUnavailableError("boom")])
 def test_update_dedup_settings_fetch_error(
     program_admin,
     mock_request,
     mock_dedup_settings_policy,
     mocker: MockerFixture,
+    exc: Exception,
 ) -> None:
     mock_dedup_settings_policy()
-    mocker.patch.object(program_admin, "_get_dedup_settings", side_effect=RemoteError("boom"))
+    mocker.patch.object(program_admin, "_get_dedup_settings", side_effect=exc)
     mocker.patch.object(program_admin_mod, "reverse", return_value="/program/1/change/")
 
     response = program_admin.update_dedup_settings.func(program_admin, mock_request, pk=str(program_admin._program.pk))

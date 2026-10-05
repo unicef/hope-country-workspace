@@ -31,8 +31,8 @@ class ListMixin[R]:
 
 
 class RetrieveMixin[R]:
-    def retrieve(self: GenericResource) -> R:
-        result = self.session.get(str(self.endpoint), timeout=TIMEOUT)
+    def retrieve(self: GenericResource, *, timeout: tuple[int, int] = TIMEOUT) -> R:
+        result = self.session.get(str(self.endpoint), timeout=timeout)
         result.raise_for_status()
         return result.json()
 

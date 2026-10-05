@@ -1,3 +1,4 @@
+import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine.resource import (
@@ -46,14 +47,26 @@ def test_list_mixin(mocker: MockerFixture) -> None:
     session.get.return_value.raise_for_status.assert_called_once_with()
 
 
-def test_retrieve_mixin(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(
+    ("kwargs", "timeout"),
+    [
+        ({}, TIMEOUT),
+        ({"timeout": (2, 3)}, (2, 3)),
+    ],
+    ids=["default", "custom"],
+)
+def test_retrieve_mixin(
+    mocker: MockerFixture,
+    kwargs: dict[str, tuple[int, int]],
+    timeout: tuple[int, int],
+) -> None:
     mixin = RetrieveMixin()
     mixin.endpoint = endpoint = mocker.Mock()
     mixin.session = session = mocker.Mock()
 
-    assert mixin.retrieve() == session.get.return_value.json.return_value
+    assert mixin.retrieve(**kwargs) == session.get.return_value.json.return_value
 
-    session.get.assert_called_once_with(str(endpoint), timeout=TIMEOUT)
+    session.get.assert_called_once_with(str(endpoint), timeout=timeout)
     session.get.return_value.raise_for_status.assert_called_once_with()
 
 
