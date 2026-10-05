@@ -13,16 +13,16 @@ It follows the same optional-action pattern as [RDP deduplication](rdp_lifecycle
 
 | Topic | Decision |
 | --- | --- |
-| Image access | Shared blob, same as DedupEngine: messages carry a **filename**, not bytes |
-| Documents | **One document per individual**. The wire payload is `filename` + `pattern` only |
+| Image access | Messages carry the image **content** (base64-encoded bytes) inline. No shared blob storage |
+| Documents | **One document per individual**. The wire payload is `content` + `pattern` only |
 | Individual stamps | **Out of scope.** Results are kept on the OCR run only |
 | Push to HOPE | OCR does **not** gate push |
 | Re-run | **Not allowed.** One OCR run per RDP |
 
 Hope Documents only needs an image and a search string. It does not know or care whether that string is a national ID or a passport number.
 
-Country Workspace resolves the image filename and the expected number locally (first populated document pair in `DOCUMENT_TYPES` order: `national_id`, then `national_passport`) and puts the number in `pattern`.
-Individuals with no image filename or no number are omitted and do not count toward `batch_total`.
+Country Workspace resolves the image content and the expected number locally (first populated document pair in `DOCUMENT_TYPES` order: `national_id`, then `national_passport`) and puts the number in `pattern`.
+Individuals with no image content or no number are omitted and do not count toward `batch_total`.
 
 ## Identifiers
 
@@ -44,7 +44,7 @@ Two routing keys. Each service owns its queue. Country Workspace must **not** bi
 | Direction | Routing key | Queue |
 | --- | --- | --- |
 | CW → Hope Documents | `ocr.request` | `hope_documents` |
-| Hope Documents → CW | `ocr.result` | `results` |
+| Hope Documents → CW | `ocr.result` | `ocr_results` |
 
 ### Request (`ocr.request`)
 
@@ -58,14 +58,15 @@ Two routing keys. Each service owns its queue. Country Workspace must **not** bi
   "documents": [
     {
       "individual_id": 456,
-      "filename": "media/…/456.jpg",
+      "content": "iVBORw0KGgo…",
       "pattern": "ID-987654"
     }
   ]
 }
 ```
 
-- `filename` is the shared-blob object key, same idea as DedupEngine `{reference_pk, filename}`.
+- `content` is the base64-encoded image bytes (the payload of the stored `data:<mime>;base64,…` flex-field value, without the `data:` prefix).
+- Keep batches small: every message carries the full image bytes (see the batch size below).
 - Batch size defaults to 10 (`IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE` / `PUSH_BATCH_SIZE`).
 - Do not publish an empty `documents` list. Drop `batch_total` to the number of non-empty batches **before** the first publish.
 
@@ -106,7 +107,6 @@ sequenceDiagram
     participant CW as Country Workspace
     participant RMQ as RabbitMQ
     participant HD as Hope Documents
-    participant Blob as Shared blob
 
     Analyst->>CW: RDP action "Run OCR"
     CW->>CW: Create OcrRun (correlation_id)
@@ -120,7 +120,7 @@ sequenceDiagram
         RMQ->>HD: consume ocr.request
         HD->>HD: Enqueue one Celery task for the batch, ack
         loop each document in the batch
-            HD->>Blob: Read filename
+            HD->>HD: Decode content
             HD->>HD: OCR (retry once on engine failure)
         end
         HD->>RMQ: ocr.result (same correlation_id, batch_id)
@@ -169,14 +169,14 @@ The stream listener validates the request, enqueues **one Celery task per batch*
 
 The Celery task processes documents **sequentially** inside the batch (no per-document fan-out in v1):
 
-1. Load the image from the shared blob by `filename`.
+1. Decode the image from `content`.
 2. Run OCR with `pattern` as the search string.
 3. On engine/IO failure: retry **once**. If it still fails, set that document `status: error` and continue the batch.
 4. When every document in the batch has a result, publish `ocr.result`.
 
 The stream listener must not wait on OCR. RabbitMQ redelivery can replay a whole batch; publishing a result with the same `batch_id` must be safe (CW dedups on consume).
 
-Hope Documents needs `streaming` installed, a listener on `ocr.request`, and read access to the same media account DedupEngine uses.
+Hope Documents needs `streaming` installed and a listener on `ocr.request`. It needs no storage access, since images arrive in the message.
 
 ### 4. Consume results (Country Workspace)
 
@@ -219,7 +219,7 @@ A counter-only design is not enough: a redelivered result would be counted twice
 ## Implementation order
 
 1. **Contract and routing** — `ocr.request` / `ocr.result`, streaming config on both services (replace the draft `cw.#` / `hope.*.*` bindings).
-2. **CW publish** — RDP action, `OcrRun`, `AsyncJob`, blob filenames, batched publish.
-3. **Hope Documents** — consume, shared-blob read, sequential OCR with one retry, publish `ocr.result`.
+2. **CW publish** — RDP action, `OcrRun`, `AsyncJob`, inline image content, batched publish.
+3. **Hope Documents** — consume, sequential OCR with one retry, publish `ocr.result`.
 4. **CW consume** — idempotent persist, mark `COMPLETED`.
 5. **Follow-ups** — timeout, Individual stamps, re-run, optional push gate.

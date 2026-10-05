@@ -54,7 +54,7 @@ case "$1" in
       ;;
     stream-listener)
       set -- tini -- "$@"
-      set -- gosu hope:unicef sh -c "stream configure --queues && exec stream listen -q results"
+      set -- gosu hope:unicef sh -c "stream configure --queues && exec stream listen -q ocr_results"
       ;;
 esac
 

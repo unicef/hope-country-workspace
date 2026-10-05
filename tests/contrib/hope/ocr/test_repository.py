@@ -1,8 +1,9 @@
 import pytest
 
-import country_workspace.storages as cw_storages
 from country_workspace.contrib.hope.ocr.repository import apply_ocr_batch_result, resolve_ocr_documents
 from country_workspace.models import OcrRun
+
+from .conftest import BASE64_CONTENT
 
 pytestmark = pytest.mark.django_db
 
@@ -16,8 +17,8 @@ def test_resolve_ocr_documents_yields_first_complete_document_type(rdp, make_ind
     doc = documents[0]
     assert doc["individual_id"] == ind.pk
     assert doc["pattern"] == "ID-123"
-    assert doc["filename"] == ind.hope_blob_key("national_id_image")
-    assert cw_storages.HOPE_STORAGE.exists(doc["filename"])
+    assert doc["content"] == BASE64_CONTENT
+    assert "filename" not in doc
 
 
 def test_resolve_ocr_documents_prefers_first_document_type_in_order(
@@ -42,8 +43,10 @@ def test_resolve_ocr_documents_prefers_first_document_type_in_order(
         {"national_id_document_number": "ID-123", "national_id_image": ""},
         {"national_id_document_number": "", "national_id_image": "data:image/png;base64,Zm9v"},
         {"national_id_document_number": "   ", "national_id_image": "data:image/png;base64,Zm9v"},
+        {"national_id_document_number": "ID-123", "national_id_image": "not-a-data-uri"},
+        {"national_id_document_number": "ID-123", "national_id_image": "data:image/png;base64,"},
     ],
-    ids=["nothing", "photo_missing", "number_missing", "number_blank"],
+    ids=["nothing", "photo_missing", "number_missing", "number_blank", "photo_not_data_uri", "photo_empty_payload"],
 )
 def test_resolve_ocr_documents_skips_incomplete_pairs(rdp, make_individual, flex_fields):
     make_individual(flex_fields)
