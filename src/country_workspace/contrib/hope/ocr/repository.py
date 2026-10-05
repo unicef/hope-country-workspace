@@ -8,11 +8,19 @@ from django.utils import timezone
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES, OCR_BATCH_SIZE
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.models import OcrRun, Rdp
-from country_workspace.services.hope_blob import image_field_names, sync_record_blobs
 
 from .config import OcrDocumentRequest
 
 logger = logging.getLogger(__name__)
+
+DATA_URI_BASE64_MARKER = ";base64,"
+
+
+def extract_base64_content(value: Any) -> str | None:
+    """Return the base64 payload of a ``data:<mime>;base64,<payload>`` flex-field value, else None."""
+    if not (isinstance(value, str) and value.startswith("data:") and DATA_URI_BASE64_MARKER in value):
+        return None
+    return value.partition(DATA_URI_BASE64_MARKER)[2] or None
 
 
 def rdp_for_ocr(*, pk: int) -> Rdp:
@@ -26,7 +34,6 @@ def resolve_ocr_documents(rdp: Rdp) -> Iterator[OcrDocumentRequest]:
     Individuals with no complete (image, number) pair are skipped and do not
     count toward batch_total, per docs/src/flows/rdp_ocr.md.
     """
-    image_fields = image_field_names(rdp.program.individual_checker)
     for ind in qs_individuals_for_rdp(rdp=rdp).iterator(chunk_size=OCR_BATCH_SIZE):
         for doc_type in DOCUMENT_TYPES:
             image_field = f"{doc_type}_image"
@@ -35,12 +42,10 @@ def resolve_ocr_documents(rdp: Rdp) -> Iterator[OcrDocumentRequest]:
             pattern = ind.flex_fields.get(number_field)
             if not (isinstance(pattern, str) and pattern.strip()):
                 continue
-            if not ind.flex_fields.get(image_field):
+            if (content := extract_base64_content(ind.flex_fields.get(image_field))) is None:
                 continue
 
-            paths = sync_record_blobs(ind, image_fields, only={image_field})
-            if filename := paths.get(image_field):
-                yield {"individual_id": ind.pk, "filename": filename, "pattern": pattern.strip()}
+            yield {"individual_id": ind.pk, "content": content, "pattern": pattern.strip()}
             break
 
 

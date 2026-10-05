@@ -95,7 +95,6 @@ def pytest_configure(config):
     os.environ["SECURE_HSTS_PRELOAD"] = "0"
     os.environ["FILE_STORAGE_DEFAULT"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
     os.environ["FILE_STORAGE_MEDIA"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/"
-    os.environ["FILE_STORAGE_HOPE"] = "django.core.files.storage.FileSystemStorage?location=./~tests/storage/hope"
     os.environ["LOGGING_LEVEL"] = "CRITICAL"
     os.environ.setdefault("SECRET_KEY", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")
     os.environ.setdefault("HOPE_API_TOKEN", "kugiugiuygiuygiuygiuhgiuhgiuhgiugiu")

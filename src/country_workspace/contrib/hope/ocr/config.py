@@ -3,7 +3,7 @@ from typing import NotRequired, ReadOnly, TypedDict
 
 class OcrDocumentRequest(TypedDict):
     individual_id: ReadOnly[int]
-    filename: ReadOnly[str]
+    content: ReadOnly[str]  # base64-encoded image bytes
     pattern: ReadOnly[str]
 
 
