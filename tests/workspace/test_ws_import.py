@@ -148,8 +148,7 @@ def program(
         beneficiary_group__master_detail=request.param,
     )
     project = ProjectFactory(program=program)
-    RegistrationFactory.create_batch(3, project=project, active=True)
-
+    RegistrationFactory(project=project, active=True, reference_pk=1)
     MappingImporterFactory(
         office=program.country_office,
         data_checker=program.get_checker_for(Individual),

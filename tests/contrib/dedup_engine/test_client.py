@@ -236,7 +236,7 @@ def test_client_retrieve_deduplication_set(
 
 
 @pytest.mark.parametrize(
-    ("client_method", "resource_method", "payload", "expected_args"),
+    ("client_method", "resource_method", "payload", "expected_args", "expected_kwargs"),
     [
         (
             "get_deduplication_set_group_config",
@@ -246,6 +246,7 @@ def test_client_retrieve_deduplication_set(
                 "duplicate_confidence_threshold": 0.2,
             },
             (),
+            {"timeout": resource.TIMEOUT},
         ),
         (
             "post_deduplication_set_group_config",
@@ -260,6 +261,7 @@ def test_client_retrieve_deduplication_set(
                     "duplicate_confidence_threshold": 0.7,
                 },
             ),
+            {},
         ),
     ],
     ids=["get_group_config", "post_group_config"],
@@ -271,6 +273,7 @@ def test_client_deduplication_set_group_config(
     resource_method: str,
     payload: dict[str, float],
     expected_args: tuple[dict[str, float], ...],
+    expected_kwargs: dict[str, tuple[int, int]],
 ) -> None:
     item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
     getattr(item_cls.return_value, resource_method).return_value = payload
@@ -284,7 +287,19 @@ def test_client_deduplication_set_group_config(
     group_endpoint = api_root.deduplication_set_groups.deduplication_set_group.return_value
     api_root.deduplication_set_groups.deduplication_set_group.assert_called_once_with("PROGRAM_ID")
     item_cls.assert_called_once_with(session, group_endpoint.config)
-    getattr(item_cls.return_value, resource_method).assert_called_once_with(*expected_args)
+    getattr(item_cls.return_value, resource_method).assert_called_once_with(*expected_args, **expected_kwargs)
+
+
+def test_client_get_deduplication_set_group_config_timeout(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
+    client, _, _ = client_ctx
+
+    client.get_deduplication_set_group_config(timeout=(2, 3))
+
+    item_cls.return_value.retrieve.assert_called_once_with(timeout=(2, 3))
 
 
 def test_client_requires_deduplication_set_id(mocker: MockerFixture) -> None:
@@ -382,3 +397,52 @@ def test_client_request_wraps_request_exception(
         client._request("op", fn)
 
     fn.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (404, None),
+        (503, RemoteUnavailableError),
+    ],
+    ids=["not_found", "unavailable"],
+)
+def test_client_retrieve_deduplication_set_or_none(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+    status_code: int,
+    expected: type[Exception] | None,
+) -> None:
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
+    response = mocker.MagicMock(status_code=status_code, text="error")
+    item_cls.return_value.retrieve.side_effect = HTTPError("boom", response=response)
+    client, _, _ = client_ctx
+
+    if expected is None:
+        assert client.retrieve_deduplication_set_or_none() is None
+    else:
+        with pytest.raises(expected):
+            client.retrieve_deduplication_set_or_none()
+
+
+def test_client_retrieve_findings(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.FindingsCollection")
+    collection_cls.return_value.list.side_effect = [
+        {"results": [{"id": 1}], "next": "page-2"},
+        {"results": [{"id": 2}], "next": None},
+    ]
+    client, session, api_root = client_ctx
+
+    assert client.retrieve_findings() == [{"id": 1}, {"id": 2}]
+
+    collection_cls.assert_called_once_with(
+        session,
+        api_root.deduplication_sets.deduplication_set.return_value.findings,
+    )
+    assert collection_cls.return_value.list.call_args_list == [
+        mocker.call(params={"page": "1"}),
+        mocker.call(params={"page": "2"}),
+    ]

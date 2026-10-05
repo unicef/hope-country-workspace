@@ -32,8 +32,11 @@
                     {% endif %}
                     {% if errors %}
                         <p class="errornote">
-                            {% blocktranslate count counter=errors|length %}Please correct the error below.{% plural %}
-                                Please correct the errors below.{% endblocktranslate %}
+                            {% blocktranslate count counter=errors|length %}
+                                Please correct the error below.
+                            {% plural %}
+                                Please correct the errors below.
+                            {% endblocktranslate %}
                         </p>
                         {{ adminform.form.non_field_errors }}
                     {% endif %}
@@ -52,8 +55,67 @@
                     {% block field_sets %}
                         <table class="min-w-full">
                             {% block pre_checker_form %}
+                                {% if dedup_member_count is not None %}
+                                    <tbody>
+                                        <tr>
+                                            <th {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {% translate "Duplicate members" %}
+                                            </th>
+                                            <td {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {{ dedup_duplicate_member_count }}/{{ dedup_member_count }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {% translate "Image issue members" %}
+                                            </th>
+                                            <td {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {{ dedup_image_issue_member_count }}/{{ dedup_member_count }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                {% endif %}
+                                {% if dedup_duplicates is not None or dedup_image_issues is not None %}
+                                    <tbody>
+                                        {% if dedup_duplicates is not None %}
+                                            <tr>
+                                                <th {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% translate "Duplicates" %}
+                                                </th>
+                                                <td {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% if dedup_duplicates %}
+                                                        {% for duplicate in dedup_duplicates %}
+                                                            <a href="{{ duplicate.url }}" class="hover:underline">
+                                                                {{ duplicate.pk }}
+                                                            </a>
+                                                            {% if not forloop.last %}
+                                                                ,
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                        {% if dedup_image_issues is not None %}
+                                            <tr>
+                                                <th {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% translate "Image issues" %}
+                                                </th>
+                                                <td {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% if dedup_image_issues %}
+                                                        {{ dedup_image_issues|join:", " }}
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    </tbody>
+                                {% endif %}
+                                {% include "workspace/includes/flex_field_form.html" with form=checker_form fields=original.flex_fields %}
                             {% endblock %}
-                            {% include "workspace/includes/flex_field_form.html" with form=checker_form fields=original.flex_fields %}
                         </table>
                     {% endblock field_sets %}
                     {% block after_related_objects %}
@@ -62,7 +124,7 @@
                         {% submit_row %}
                     {% endblock %}
                     {% block admin_change_form_document_ready %}
-                        <script id="django-admin-form-add-constants" src="{% static 'workspace/js/change_form.js' %}" {% if adminform and add %} data-model-name="{{ opts.model_name }}" {% endif %} async>
+                        <script id="django-admin-form-add-constants" src="{% static 'workspace/js/change_form.js' %}" {% if adminform and add %}data-model-name="{{ opts.model_name }}"{% endif %} async>
                         </script>
                     {% endblock admin_change_form_document_ready %}
                     {% prepopulated_fields_js %}

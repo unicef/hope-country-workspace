@@ -14,10 +14,12 @@ from .client import Client
 def make_client(
     group_reference_id: str,
     deduplication_set_id: str | None = None,
+    *,
+    max_retries: int = 3,
 ) -> Generator[Client, None, None]:
     with Session() as session:
-        session.mount("https://", HTTPAdapter(max_retries=3))
-        session.mount("http://", HTTPAdapter(max_retries=3))
+        session.mount("https://", HTTPAdapter(max_retries=max_retries))
+        session.mount("http://", HTTPAdapter(max_retries=max_retries))
         session.auth = Auth(config.DEDUP_API_TOKEN)
         api_root = APIRoot(config.DEDUP_API_URL)
         yield Client(

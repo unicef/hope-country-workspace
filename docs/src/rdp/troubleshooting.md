@@ -1,81 +1,57 @@
 # Troubleshooting
 
-This page covers common problems that can occur while creating, deduplicating, pushing, or cancelling an **[RDP](index.md)**.
+Use the RDP **Operations** and **Processing history** sections to identify where processing stopped.
 
-## What to check first
+For the normal workflow, see **[RDP processing flow](processing.md)** and **[Lifecycle and statuses](lifecycle.md)**.
 
-When an RDP does not proceed as expected, check **Status**, **Dedup engine state** for biometric RDPs, **Related jobs**, and **Operation log**.
+## Common problems
 
-See **[Statuses](lifecycle.md#statuses)** and **[Processing sequence](processing.md#processing-sequence)** for the overall workflow.
+| Problem | What to check |
+| --- | --- |
+| RDP creation failed | Open the failed **Create RDP** job in **Processing history** and check the preflight error. See **[Create an RDP](create.md)**. |
+| RDP remains `PENDING` | Check **Operations** first. If an operation failed, use **Retry failed operations**. If all operations are `SUCCESS`, check **Processing history** for the push evaluation. |
+| RDP is `REVIEW_PENDING` | This is not a processing failure. Review is required before continuing. See **[Manual review](operations/deduplication.md#manual-review)**. |
+| RDP is `FAILURE` | The HOPE push failed. Check **Processing history**, then use **Retry push to HOPE** when the cause is resolved. |
+| **Cancel RDP** is unavailable | **Cancel RDP** is available only for `PENDING`, `REVIEW_PENDING`, or `FAILURE`, and is blocked while an operation is `RUNNING`. See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**. |
 
-## RDP cannot be created
+## Operation failed
 
-Creation can be blocked when:
+An operation failure does not change the RDP to `FAILURE`; the RDP remains `PENDING`.
 
-- no beneficiaries are selected;
-- beneficiary records included in the RDP are invalid;
-- selected records are already linked to an unfinished or successful RDP;
-- another unfinished RDP already exists for the Program;
-- for a biometric Program, DedupEngine does not allow a new Deduplication Set.
+Check the operation error and log in the **Operations** section, then use **Retry failed operations**. The same operation is retried with its existing configuration.
 
-Review the displayed error and resolve the blocking condition.
+See **[RDP operations](operations/index.md#operation-statuses)** for the common operation lifecycle and **[Biometric deduplication](operations/deduplication.md#failed-biometric-operation)** for biometric failures.
 
-See **[Before creating an RDP](create.md#before-creating-an-rdp)**.
+## Push evaluation failed
 
-## Deduplicate button is unavailable
+If all configured operations are `SUCCESS` but the RDP remains `PENDING`, check **Processing history** for a failed **Evaluate RDP for push** job.
 
-The **Deduplicate** button is available only for biometric RDPs in `PENDING` or `FAILURE`.
+Authorized users can open the failed job and use **Queue** to run the push evaluation again.
 
-It is disabled while another deduplication operation is queued or running, or when DedupEngine does not allow processing to start. An existing Deduplication Set can be processed only in `Ready` state.
+See **[Operation results and review](processing.md#operation-results-and-review)** for where push evaluation fits into the normal flow.
 
-See **[When deduplication is available](deduplication.md#when-deduplication-is-available)**.
+## RDP remains in `PUSH_PENDING`
 
-## Deduplication does not complete
+`PUSH_PENDING` can be normal while Country Workspace prepares HOPE Core, waits for an RDI reset callback, or transfers beneficiary data.
 
-Check **Related jobs** for Country Workspace processing and **Dedup engine state** for processing in DedupEngine.
+Check **Processing history** before treating the push as stuck.
 
-A completed Country Workspace job does not mean that DedupEngine has finished processing the set.
+If the push can no longer continue, authorized staff can use **Fail stuck push** after confirming that the push preparation job is no longer running and that no HOPE callback is still expected.
 
-If the state is `Encoding failed` or `Deduplication failed`, the existing set cannot be processed again from Country Workspace while it remains in that state.
-
-If the state is `N/A`, check again after DedupEngine becomes available.
-
-See **[Dedup engine state](deduplication.md#dedup-engine-state)**.
-
-## Push to HOPE button is unavailable
-
-The **Push to HOPE** button is available only for RDPs in `PENDING` or `FAILURE`.
-
-The push cannot start while deduplication is queued or running. For biometric RDPs, the associated Deduplication Set must be `Deduplicated`.
-
-See **[When push is available](push.md#when-push-is-available)**.
+See **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** for the recovery conditions and next steps.
 
 ## Push failed
 
 A failed push changes the RDP to `FAILURE`.
 
-Check **Related jobs** for the failure reason. Preflight checks are repeated before data is sent, so changes to the RDP records after creation can also cause the push to fail.
+Check **Processing history** for the failed preparation or data-push job. If HOPE reports that a previous RDI merge is still in progress, retry after that merge completes.
 
-If a retry requires resetting a previous HOPE RDI, Country Workspace performs the reset as part of the retry. A retry fails while HOPE reports that the previous RDI merge is still in progress.
+Use **Retry push to HOPE** to start a new push attempt. See **[Retry a failed push](push.md#retry-a-failed-push)**.
 
-See **[Retry a failed push](push.md#retry-a-failed-push)**.
+## DedupEngine approval failed after a successful push
 
-## RDP remains in `PUSH_PENDING`
+For biometric RDPs, Country Workspace attempts to approve the Deduplication Set after the HOPE push succeeds.
 
-`PUSH_PENDING` means that a push attempt is still active. The RDP can remain in this state while the push is being prepared, while Country Workspace is waiting for HOPE after an RDI reset, or while data is being transferred.
-
-Check **Related jobs** before treating the push as stuck. If the expected HOPE response will no longer arrive, recovery by authorized staff may be required before the push can be retried.
-
-## Cancel button is unavailable
-
-The **Cancel** button is available only for RDPs in `PENDING` or `FAILURE` and is disabled while deduplication is queued or running.
-
-See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**.
-
-## RDP is `SUCCESS` but DedupEngine approval failed
-
-For biometric RDPs, DedupEngine approval happens after a successful push. An approval failure does not change the RDP from `SUCCESS`.
-
-Check the **Operation log** for the approval result. The HOPE push should not be retried because of an approval failure alone.
+An approval failure does not change the RDP from `SUCCESS`; the beneficiary data has already been pushed successfully. Do not retry the HOPE push for this reason alone.
 
 See **[After a successful push](push.md#after-a-successful-push)**.

@@ -53,10 +53,10 @@ class HopeRdpPushReadyCallbackView(APIView):
 
         rdp_id = serializer.validated_data["rdp_id"]
         push_attempt_id = serializer.validated_data["push_attempt_id"]
-        queued = handle_push_ready_callback(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
+        scheduled = handle_push_ready_callback(rdp_id=rdp_id, push_attempt_id=push_attempt_id)
 
         return push_ready_callback_response(
             rdp_id=rdp_id,
             push_attempt_id=push_attempt_id,
-            queued=queued,
+            scheduled=scheduled,
         )

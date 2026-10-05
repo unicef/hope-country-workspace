@@ -1,49 +1,60 @@
 # Registration Data Pushes
 
-A **Registration Data Push (RDP)** groups beneficiary records that are prepared and pushed from Country Workspace to HOPE Core.
+A **Registration Data Push (RDP)** groups beneficiary records that are processed and pushed from Country Workspace to HOPE Core.
 
 RDPs are managed within the selected **[Program](../program.md)** in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)**.
-
-For Programs with biometric deduplication enabled, deduplication is performed as a separate step before the RDP can be pushed.
 
 ## RDP workflow
 
 ```mermaid
 flowchart LR
-    A[Create RDP] --> B[RDP created]
-    B --> C{Biometric deduplication required?}
-    C -->|Yes| D[Run deduplication]
-    C -->|No| E[Push to HOPE Core]
-    D -->|Deduplicated| E
-    E -->|Failed| F[Retry push]
-    F --> E
-    B -.->|Cancel| G[Cancel RDP]
-    F -.->|Cancel| G
+    A[Create RDP] --> B[Run configured operations]
+    B --> C{Manual review required?}
+    C -->|No| D[Push to HOPE Core]
+    C -->|Yes| E[REVIEW_PENDING]
+    E -->|Push all| D
+    E -->|Create clean RDP| F[Create replacement RDP]
+    F --> B
+    E -->|Cancel| G[CANCELLED]
+    D -->|Success| H[SUCCESS]
+    D -->|Failure| I[FAILURE]
+    I -->|Retry push| D
 ```
-Creating an RDP starts the workflow. For biometric Programs, deduplication must complete successfully before the RDP can be pushed to HOPE Core.
 
-A failed push can be retried, and an open RDP can be cancelled when the cancellation requirements are satisfied.
+Creating an RDP starts its processing automatically.
 
-See **[Lifecycle and statuses](lifecycle.md)** for RDP statuses and transitions.
+Depending on the Program configuration, Country Workspace may run one or more **[RDP operations](operations/index.md)** before the RDP can be pushed to HOPE Core.
 
-## Before creating an RDP
+If manual review is required, the RDP moves to `REVIEW_PENDING`. The user can then push all beneficiaries, create a clean RDP, or cancel the RDP.
 
-Make sure that the required **Office** and **[Program](../program.md)** are selected and the beneficiary records are ready for processing.
+A failed push can be retried.
 
-Country Workspace performs additional checks before creating an RDP. See **[Create an RDP](create.md)** for the creation process and conditions that can prevent it.
+See **[Lifecycle and statuses](lifecycle.md)** for the complete RDP state flow.
 
-## Biometric deduplication
+## Create an RDP
 
-For Programs with biometric deduplication enabled, the RDP must be successfully deduplicated before it can be pushed to HOPE Core.
+Select the beneficiary records that should be processed together and use **Create RDP**.
 
-See **[RDP deduplication](deduplication.md)** for the deduplication workflow and **[Program](../program.md#deduplication-settings)** for deduplication settings.
+Country Workspace validates the selection, creates the RDP, and starts its configured processing.
+
+See **[Create an RDP](create.md)** for details.
+
+## RDP operations
+
+RDP operations are processing steps that run before the RDP can be pushed to HOPE Core.
+
+The operations enabled for an RDP depend on the Program configuration.
+
+Currently, **[biometric deduplication](operations/deduplication.md)** is supported.
+
+See **[RDP operations](operations/index.md)** for the common operation flow.
 
 ## Push to HOPE Core
 
-The push runs asynchronously and may include resetting an existing HOPE RDI before beneficiary data is sent.
+After processing is complete and the RDP is ready to continue, Country Workspace pushes its beneficiary records to HOPE Core.
 
-See **[Push to HOPE Core](push.md)** for the push workflow, retries, and successful completion.
+See **[Push to HOPE Core](push.md)** for the push workflow and retries.
 
 ## Troubleshooting
 
-See **[Troubleshooting](troubleshooting.md)** if an RDP cannot be created, deduplication fails, or a push does not complete as expected.
+See **[Troubleshooting](troubleshooting.md)** if RDP creation, processing, review, or push does not complete as expected.

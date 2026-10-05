@@ -3,8 +3,10 @@ from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine.deduplication_status import (
     DedupClientStatus,
+    DeduplicationSetState,
     DedupResponseStatus,
     get_deduplication_status,
+    retrieve_deduplication_set_state,
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
@@ -86,3 +88,44 @@ def test_get_deduplication_status_rejects_malformed_payload(dedup_status_client,
 
     with pytest.raises(RemoteError, match="malformed deduplication set status response"):
         get_deduplication_status("GROUP_ID", "SET_ID")
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (None, None),
+        ({"state": "Deduplicated"}, DeduplicationSetState.DEDUPLICATED),
+        ({"state": "Rejected"}, DeduplicationSetState.REJECTED),
+    ],
+)
+def test_retrieve_deduplication_set_state(
+    dedup_status_client,
+    payload: dict[str, str] | None,
+    expected: DeduplicationSetState | None,
+) -> None:
+    make_client, client = dedup_status_client
+    client.retrieve_deduplication_set_or_none.return_value = payload
+
+    assert retrieve_deduplication_set_state("GROUP_ID", "SET_ID") == expected
+
+    make_client.assert_called_once_with("GROUP_ID", deduplication_set_id="SET_ID")
+    client.retrieve_deduplication_set_or_none.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"state": None},
+        {"state": "Unknown"},
+    ],
+)
+def test_retrieve_deduplication_set_state_rejects_malformed_payload(
+    dedup_status_client,
+    payload: dict,
+) -> None:
+    _, client = dedup_status_client
+    client.retrieve_deduplication_set_or_none.return_value = payload
+
+    with pytest.raises(RemoteError, match="malformed deduplication set response"):
+        retrieve_deduplication_set_state("GROUP_ID", "SET_ID")

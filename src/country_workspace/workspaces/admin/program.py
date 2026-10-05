@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from admin_extra_buttons.api import button, choice, view
 from admin_extra_buttons.buttons import ChoiceButton
@@ -32,6 +32,8 @@ from ...models import AsyncJob
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
+
+DEDUP_SETTINGS_FETCH_TIMEOUT: Final[tuple[int, int]] = (2, 3)
 
 
 class SelectColumnsForm(forms.Form):
@@ -199,8 +201,8 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         return fieldsets
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
-        with make_dedup_client(group_reference_id=program.unicef_id) as client:
-            return client.get_deduplication_set_group_config()
+        with make_dedup_client(group_reference_id=program.unicef_id, max_retries=0) as client:
+            return client.get_deduplication_set_group_config(timeout=DEDUP_SETTINGS_FETCH_TIMEOUT)
 
     @display(description=_("Settings"))
     def dedup_settings(self, obj: CountryProgram) -> str:

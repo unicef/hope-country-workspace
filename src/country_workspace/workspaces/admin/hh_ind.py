@@ -20,7 +20,8 @@ from ._import_data import ImportDataMixin
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from ..permissions import can_import_program_data
-from ...models import Batch, Individual
+from ...models import Batch, Individual, Rdp
+from .filters import get_rdp_context
 from ...utils.imports import validate_alien_fields
 from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
@@ -96,9 +97,9 @@ class BeneficiaryBaseAdmin(
     def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
         _actions = super().get_actions(request)
         if (
-            (program := self.get_selected_program(request))
-            and program.beneficiary_group
-            and self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
+            not (program := self.get_selected_program(request))
+            or not program.beneficiary_group
+            or self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
             _actions.pop("create_rdp", None)
         return _actions
@@ -117,9 +118,6 @@ class BeneficiaryBaseAdmin(
 
     def has_create_rdp_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.create_rdp")
-
-    def has_push_rdp_to_hope_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("country_workspace.push_rdp_to_hope")
 
     def has_calculate_checksum_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.calculate_checksum")
@@ -140,11 +138,15 @@ class BeneficiaryBaseAdmin(
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if prg := self.get_selected_program(request):
-            return qs.filter(
-                batch__program=prg,
-                removed=False,
-                batch__status=Batch.BatchStatus.COMPLETE,
-            )
+            rdp = get_rdp_context(request)
+            qs = qs.filter(batch__program=prg, batch__status=Batch.BatchStatus.COMPLETE)
+            if ("rdp_id" in request.GET or "rdp__exact" in request.GET) and rdp is None:
+                return qs.none()
+            if rdp:
+                if issubclass(self.model, Individual) and rdp.program.is_master_detail:
+                    return qs.filter(household__rdp=rdp)
+                return qs.filter(rdp=rdp)
+            return qs.filter(removed=False)
         return qs.none()
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
@@ -265,6 +267,15 @@ class BeneficiaryBaseAdmin(
 
     def has_delete_permission(self, request: HttpRequest, obj: Model | None = None) -> bool:
         return False
+
+    def _is_historical_rdp(self, request: HttpRequest) -> bool:
+        """Identify a completed RDP opened for historical review."""
+        return bool((rdp := get_rdp_context(request)) and rdp.status == Rdp.PushStatus.SUCCESS)
+
+    def has_change_permission(self, request: HttpRequest, obj: Model | None = None) -> bool:
+        if (obj is not None and obj.removed) or self._is_historical_rdp(request):
+            return False
+        return super().has_change_permission(request, obj)
 
     def _changeform_view(
         self,

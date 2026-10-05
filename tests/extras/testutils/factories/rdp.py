@@ -18,8 +18,6 @@ class RdpFactory(AutoRegisterModelFactory):
     status = Rdp.PushStatus.PENDING
     hope_rdi_id = factory.Sequence(lambda n: f"hope-rdi-{n}")
     program = factory.SubFactory(ProgramFactory)
-    deduplication_set_id = None
-    is_dedup_settings_locked = False
     push_attempt_id = factory.LazyAttribute(lambda obj: uuid4() if obj.status == Rdp.PushStatus.PUSH_PENDING else None)
     operation_log = factory.LazyFunction(list)
 
