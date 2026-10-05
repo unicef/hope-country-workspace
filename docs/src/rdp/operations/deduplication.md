@@ -18,7 +18,9 @@ See **[Create an RDP](../create.md)** for the RDP creation flow.
 
 Biometric deduplication starts automatically after the RDP is created.
 
-Country Workspace creates or resumes the corresponding Deduplication Set in DedupEngine, uploads the available beneficiary photos when needed, and starts processing.
+Before creating a new Deduplication Set, Country Workspace checks that the RDP contains at least one beneficiary photo. If no photo is available, the operation fails before the set is created.
+
+Country Workspace then creates or resumes the corresponding Deduplication Set, uploads the available beneficiary photos when needed, and starts processing.
 
 The biometric operation remains `RUNNING` while DedupEngine processes the set. When processing completes, Country Workspace retrieves and stores the findings.
 
@@ -75,7 +77,7 @@ See **[RDP workflow](../index.md#rdp-workflow)** for how the replacement RDP ret
 
 ## Failed biometric operation
 
-If biometric processing fails for a technical reason, the operation changes to `FAILURE` while the RDP remains `PENDING`.
+If biometric processing cannot start or complete, the operation changes to `FAILURE` while the RDP remains `PENDING`.
 
 The failure reason is shown in the RDP **Operations** section. Use **Retry failed operations** to retry the failed operation.
 
@@ -83,6 +85,6 @@ See **[Operation statuses](index.md#operation-statuses)** for the common retry b
 
 ## Operation details
 
-The RDP **Operations** section shows the biometric operation status, correlation ID, timing, attempts, configuration, errors, and log. After successful processing, it also shows the number of findings and the number of Individuals marked as duplicates.
+The RDP **Operations** section shows the biometric operation status, correlation ID, timing, attempts, configuration, errors, and log. After successful processing, it also shows the number of findings and affected Individuals.
 
 See **[Operation details](index.md#operation-details)** for the common operation information.

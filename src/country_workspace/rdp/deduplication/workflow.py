@@ -217,6 +217,9 @@ def _get_or_create_biometric_set_state(
     if (payload := client.retrieve_deduplication_set_or_none()) is not None:
         return _deduplication_set_state(payload)
 
+    if not BiometricDedupProcessor(operation.rdp).has_images():
+        raise RdpWorkflowError({"errors": ["RDP: no biometric images to deduplicate."]})
+
     if not client.can_create_deduplication_set():
         raise RemoteError("DedupEngine: another deduplication set is active for this program.")
 

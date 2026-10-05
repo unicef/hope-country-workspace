@@ -25,21 +25,31 @@ def test_iter_images(rdp) -> None:
     ]
 
 
-def test_upload_images_batches(rdp, mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(("images", "expected"), [([], False), ([{"reference_pk": "1", "filename": "1.jpg"}], True)])
+def test_has_images(rdp, mocker: MockerFixture, images: list[dict[str, str]], expected: bool) -> None:
     processor = BiometricDedupProcessor(rdp)
-    images = [{"reference_pk": str(pk), "filename": f"{pk}.jpg"} for pk in range(21)]
+    mocker.patch.object(processor, "_iter_images", return_value=iter(images))
+
+    assert processor.has_images() is expected
+
+
+@pytest.mark.parametrize(
+    ("count", "expected_batches"),
+    [
+        (0, []),
+        (21, [10, 10, 1]),
+    ],
+)
+def test_upload_images(
+    rdp,
+    mocker: MockerFixture,
+    count: int,
+    expected_batches: list[int],
+) -> None:
+    processor = BiometricDedupProcessor(rdp)
+    images = [{"reference_pk": str(pk), "filename": f"{pk}.jpg"} for pk in range(count)]
     mocker.patch.object(processor, "_iter_images", return_value=iter(images))
     client = mocker.MagicMock()
 
-    assert processor.upload_images(client) == 21
-
-    assert [len(call.args[0]) for call in client.create_images.call_args_list] == [10, 10, 1]
-
-
-def test_upload_images_empty(rdp, mocker: MockerFixture) -> None:
-    processor = BiometricDedupProcessor(rdp)
-    mocker.patch.object(processor, "_iter_images", return_value=iter(()))
-    client = mocker.MagicMock()
-
-    assert processor.upload_images(client) == 0
-    client.create_images.assert_not_called()
+    assert processor.upload_images(client) == count
+    assert [len(call.args[0]) for call in client.create_images.call_args_list] == expected_batches

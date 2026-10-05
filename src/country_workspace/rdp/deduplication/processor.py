@@ -22,6 +22,10 @@ class BiometricDedupProcessor:
             if isinstance(photo, str) and (photo := photo.strip()):
                 yield {"reference_pk": str(pk), "filename": photo}
 
+    def has_images(self) -> bool:
+        """Return whether the RDP has at least one biometric image."""
+        return next(self._iter_images(), None) is not None
+
     def upload_images(self, client: Client) -> int:
         """Upload biometric images and return the number submitted."""
         images_sent = 0

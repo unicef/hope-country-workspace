@@ -293,14 +293,33 @@ def test_get_or_create_biometric_set_state_reuses_existing_set(
 ) -> None:
     client = mocker.MagicMock()
     client.retrieve_deduplication_set_or_none.return_value = {"state": DeduplicationSetState.READY}
+    processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
 
     assert (
         workflow._get_or_create_biometric_set_state(client=client, operation=biometric_operation)
         == DeduplicationSetState.READY
     )
 
+    processor.assert_not_called()
     client.can_create_deduplication_set.assert_not_called()
     client.create_deduplication_set.assert_not_called()
+
+
+def test_get_or_create_biometric_set_state_rejects_empty_images(
+    biometric_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    client = mocker.MagicMock()
+    client.retrieve_deduplication_set_or_none.return_value = None
+    processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
+    processor.return_value.has_images.return_value = False
+
+    with pytest.raises(RdpWorkflowError, match="no biometric images"):
+        workflow._get_or_create_biometric_set_state(client=client, operation=biometric_operation)
+
+    client.can_create_deduplication_set.assert_not_called()
+    client.create_deduplication_set.assert_not_called()
+    processor.return_value.has_images.assert_called_once_with()
 
 
 def test_get_or_create_biometric_set_state_rejects_active_set(
@@ -310,6 +329,8 @@ def test_get_or_create_biometric_set_state_rejects_active_set(
     client = mocker.MagicMock()
     client.retrieve_deduplication_set_or_none.return_value = None
     client.can_create_deduplication_set.return_value = False
+    processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
+    processor.return_value.has_images.return_value = True
 
     with pytest.raises(RemoteError, match="another deduplication set"):
         workflow._get_or_create_biometric_set_state(client=client, operation=biometric_operation)
@@ -328,6 +349,8 @@ def test_get_or_create_biometric_set_state_creates_set(
         "id": str(biometric_operation.id),
         "state": DeduplicationSetState.EMPTY,
     }
+    processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
+    processor.return_value.has_images.return_value = True
     callback_url = mocker.patch.object(
         workflow,
         "_build_dedup_operation_callback_url",
@@ -356,6 +379,8 @@ def test_get_or_create_biometric_set_state_rejects_id_mismatch(
         "id": str(uuid4()),
         "state": DeduplicationSetState.EMPTY,
     }
+    processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
+    processor.return_value.has_images.return_value = True
     mocker.patch.object(workflow, "_build_dedup_operation_callback_url", return_value="https://example.org/callback")
 
     with pytest.raises(RemoteError, match="id mismatch"):
@@ -405,6 +430,7 @@ def test_prepare_biometric_set_rejects_empty_images(
     biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
+    client = mocker.MagicMock()
     mocker.patch.object(
         workflow,
         "_get_or_create_biometric_set_state",
@@ -414,7 +440,9 @@ def test_prepare_biometric_set_rejects_empty_images(
     processor.return_value.upload_images.return_value = 0
 
     with pytest.raises(RdpWorkflowError, match="no biometric images"):
-        workflow._prepare_biometric_set(client=mocker.MagicMock(), operation=biometric_operation)
+        workflow._prepare_biometric_set(client=client, operation=biometric_operation)
+
+    client.ready.assert_not_called()
 
 
 @pytest.mark.parametrize(
