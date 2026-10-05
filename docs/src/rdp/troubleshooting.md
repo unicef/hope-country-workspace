@@ -12,7 +12,7 @@ For the normal workflow, see **[RDP processing flow](processing.md)** and **[Lif
 | RDP remains `PENDING` | Check **Operations** first. If an operation failed, use **Retry failed operations**. If all operations are `SUCCESS`, check **Processing history** for the push evaluation. |
 | RDP is `REVIEW_PENDING` | This is not a processing failure. Review is required before continuing. See **[Manual review](operations/deduplication.md#manual-review)**. |
 | RDP is `FAILURE` | The HOPE push failed. Check **Processing history**, then use **Retry push to HOPE** when the cause is resolved. |
-| **Cancel RDP** is unavailable | **Cancel RDP** is available only for `PENDING`, `REVIEW_PENDING`, or `FAILURE`, and is blocked while an operation is `PENDING` or `RUNNING`. See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**. |
+| **Cancel RDP** is unavailable | **Cancel RDP** is available only for `PENDING`, `REVIEW_PENDING`, or `FAILURE`, and is blocked while an operation is `RUNNING`. See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**. |
 
 ## Operation failed
 
@@ -26,7 +26,7 @@ See **[RDP operations](operations/index.md#operation-statuses)** for the common 
 
 If all configured operations are `SUCCESS` but the RDP remains `PENDING`, check **Processing history** for a failed **Evaluate RDP for push** job.
 
-Use **Retry push evaluation** to schedule the evaluation again. The action is available only when the RDP is still `PENDING`, all operations have completed successfully, and the latest push evaluation failed.
+Authorized users can open the failed job and use **Queue** to run the push evaluation again.
 
 See **[Operation results and review](processing.md#operation-results-and-review)** for where push evaluation fits into the normal flow.
 

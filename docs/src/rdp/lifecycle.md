@@ -78,9 +78,9 @@ See **[Push to HOPE Core](push.md)** for retrying a failed push and **[Troublesh
 
 **Cancel RDP** is available for RDPs in `PENDING`, `REVIEW_PENDING`, or `FAILURE`.
 
-Cancellation is blocked while an RDP operation is `PENDING` or `RUNNING`.
+Cancellation is blocked only while an RDP operation is `RUNNING`. Operations that have not started yet do not block cancellation.
 
-For biometric RDPs, Country Workspace also handles the associated DedupEngine set when required before completing the cancellation.
+For biometric RDPs, Country Workspace also schedules cleanup of the associated DedupEngine set when required.
 
 See **[RDP operations](operations/index.md#operation-statuses)** for operation statuses and **[Biometric deduplication](operations/deduplication.md)** for biometric processing.
 

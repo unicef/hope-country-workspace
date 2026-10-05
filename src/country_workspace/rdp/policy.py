@@ -31,10 +31,8 @@ class RdpActionPolicy:
     def cancel_check(self) -> ActionCheck:
         if not self.is_cancel_visible():
             return ActionCheck(False, f"RDP: can not cancel in status={self.rdp.status}")
-        if self.rdp.operations.filter(
-            status__in={RdpOperation.Status.PENDING, RdpOperation.Status.RUNNING},
-        ).exists():
-            return ActionCheck(False, "RDP: can not cancel while operations are pending or running.")
+        if self.rdp.operations.filter(status=RdpOperation.Status.RUNNING).exists():
+            return ActionCheck(False, "RDP: can not cancel while operations are running.")
         return ActionCheck(True)
 
     def reset_check(self) -> ActionCheck:

@@ -26,8 +26,10 @@ def test_action_check_require(allowed: bool) -> None:
         (Rdp.PushStatus.FAILURE, None, True),
         (Rdp.PushStatus.REVIEW_PENDING, None, True),
         (Rdp.PushStatus.SUCCESS, None, False),
-        (Rdp.PushStatus.PENDING, RdpOperation.Status.PENDING, False),
+        (Rdp.PushStatus.PENDING, RdpOperation.Status.PENDING, True),
+        (Rdp.PushStatus.PENDING, RdpOperation.Status.RUNNING, False),
         (Rdp.PushStatus.PENDING, RdpOperation.Status.SUCCESS, True),
+        (Rdp.PushStatus.PENDING, RdpOperation.Status.FAILURE, True),
     ],
 )
 def test_cancel_check(
