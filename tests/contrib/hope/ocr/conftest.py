@@ -9,18 +9,8 @@ from country_workspace.utils.flex_fields import Base64ImageField
 from country_workspace.workspaces.models import CountryRdp
 
 RAW_BYTES = b"fake-png-bytes"
-DATA_URI = f"data:image/png;base64,{base64.b64encode(RAW_BYTES).decode()}"
-
-
-@pytest.fixture(autouse=True)
-def hope_filesystem_storage(tmp_path, monkeypatch):
-    """Use local filesystem for HOPE blobs; avoids Azurite/.env Azure config in unit tests."""
-    from django.core.files.storage import FileSystemStorage
-
-    storage = FileSystemStorage(location=str(tmp_path / "hope"))
-    monkeypatch.setattr("country_workspace.services.hope_blob.HOPE_STORAGE", storage)
-    monkeypatch.setattr("country_workspace.storages.HOPE_STORAGE", storage)
-    return storage
+BASE64_CONTENT = base64.b64encode(RAW_BYTES).decode()
+DATA_URI = f"data:image/png;base64,{BASE64_CONTENT}"
 
 
 @pytest.fixture
