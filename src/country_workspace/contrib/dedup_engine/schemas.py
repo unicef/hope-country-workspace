@@ -23,9 +23,4 @@ class FindingStatusCode(IntEnum):
     GENERIC_ERROR = 500
 
 
-SYSTEM_ERROR_STATUS_CODES = frozenset(
-    {
-        FindingStatusCode.FILE_NOT_FOUND,
-        FindingStatusCode.GENERIC_ERROR,
-    }
-)
+SYSTEM_ERROR_STATUS_CODES = frozenset({FindingStatusCode.GENERIC_ERROR})

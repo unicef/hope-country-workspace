@@ -43,7 +43,9 @@ See **[RDP operations](index.md)** for the common operation lifecycle.
 
 ## Findings
 
-Biometric findings include duplicate people and image-related issues such as `NO_FACE_DETECTED`, `FACE_NOT_ACCEPTED`, `BAD_IMAGE_QUALITY`, and `MULTIPLE_FACES_DETECTED`.
+Biometric findings include duplicate people and image-related issues such as `FILE_NOT_FOUND`, `NO_FACE_DETECTED`, `FACE_NOT_ACCEPTED`, `BAD_IMAGE_QUALITY`, and `MULTIPLE_FACES_DETECTED`.
+
+Image-related findings do not fail the biometric operation; they are stored and included in the biometric findings threshold.
 
 For a duplicate finding, Country Workspace links the matching Individual when that Individual exists locally in the same Program. The match can be outside the current RDP.
 

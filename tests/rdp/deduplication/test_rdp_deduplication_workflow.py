@@ -201,22 +201,47 @@ def test_sync_ignores_unfinished_remote_state(
     assert workflow.sync_biometric_deduplication_result(operation_id=running_biometric_operation.id) is False
 
 
+@pytest.mark.parametrize(
+    "status",
+    [None, FindingStatusCode.FILE_NOT_FOUND],
+    ids=["no_findings", "file_not_found"],
+)
 def test_sync_completes_operation(
     running_biometric_operation: RdpOperation,
+    people_rdp,
     mocker: MockerFixture,
+    status: FindingStatusCode | None,
 ) -> None:
+    _, individuals = people_rdp
+    findings = (
+        []
+        if status is None
+        else [
+            {
+                "first": {"reference_pk": str(individuals[0].pk)},
+                "second": {"reference_pk": ""},
+                "status_code": status,
+                "updated_at": "",
+            }
+        ]
+    )
     mocker.patch.object(workflow, "get_rdp_operation", return_value=running_biometric_operation)
     make_client = mocker.patch.object(workflow, "make_dedup_client")
     client = make_client.return_value.__enter__.return_value
     client.retrieve_deduplication_set.return_value = {
         "state": DeduplicationSetState.DEDUPLICATED,
-        "findings_count": 0,
+        "findings_count": len(findings),
     }
-    client.retrieve_findings.return_value = []
+    client.retrieve_findings.return_value = findings
     complete = mocker.patch.object(workflow, "complete_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_deduplication_result(operation_id=running_biometric_operation.id) is True
-    complete.assert_called_once_with(operation=running_biometric_operation, findings=[])
+
+    complete.assert_called_once()
+    result = complete.call_args.kwargs["findings"]
+    assert [(finding.finding_type, finding.individual_id) for finding in result] == (
+        [] if status is None else [(status.name, individuals[0].pk)]
+    )
 
 
 def test_sync_fails_operation_for_system_error(
