@@ -9,7 +9,6 @@ from strategy_field.utils import fqn
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm, CreateRDPForm
 from country_workspace.rdp import (
     CreateRdpConfig,
-    count_rdp_individuals,
     create_rdp_core,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
@@ -267,7 +266,6 @@ def create_rdp(
     program = model_admin.get_selected_program(request)
     master_detail = program.beneficiary_group.master_detail
     selected_pks = queryset.values_list("pk", flat=True)
-    total_count = count_rdp_individuals(pks=selected_pks, master_detail=master_detail)
     is_create = request.method == "POST" and "_create" in request.POST
     data = request.POST if is_create else None
 
@@ -279,7 +277,7 @@ def create_rdp(
             "_selected_action": _post_selected_actions(request),
         },
     )
-    operation_forms = get_rdp_operation_forms(program=program, total_count=total_count, data=data)
+    operation_forms = get_rdp_operation_forms(program=program, data=data)
 
     if is_create:
         operation_configs = get_validated_rdp_operation_configs(operation_forms)

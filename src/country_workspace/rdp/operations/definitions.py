@@ -16,7 +16,6 @@ from country_workspace.rdp.types import CreateRdpOperationConfig, JSONValue
 class RdpOperationDefinition:
     operation_type: RdpOperation.Type
     config_form: type[forms.Form]
-    config_form_kwargs: Callable[[Program, int], dict[str, Any]]
     is_enabled: Callable[[Program], bool]
     runner: Callable[[RdpOperation], None]
 
@@ -25,7 +24,6 @@ RDP_OPERATION_DEFINITIONS: dict[RdpOperation.Type, RdpOperationDefinition] = {
     RdpOperation.Type.BIOMETRIC_DEDUPLICATION: RdpOperationDefinition(
         operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
         config_form=BiometricDeduplicationConfigForm,
-        config_form_kwargs=lambda _program, total_count: {"total_count": total_count},
         is_enabled=lambda program: program.biometric_deduplication_enabled,
         runner=run_biometric_deduplication,
     ),
@@ -40,18 +38,13 @@ def get_enabled_rdp_operation_definitions(program: Program) -> tuple[RdpOperatio
 def get_rdp_operation_forms(
     *,
     program: Program,
-    total_count: int,
     data: Any = None,
 ) -> list[tuple[RdpOperationDefinition, forms.Form]]:
     """Build enabled operation configuration forms."""
     return [
         (
             definition,
-            definition.config_form(
-                data,
-                prefix=definition.operation_type.value.lower(),
-                **definition.config_form_kwargs(program, total_count),
-            ),
+            definition.config_form(data, prefix=definition.operation_type.value.lower()),
         )
         for definition in get_enabled_rdp_operation_definitions(program)
     ]

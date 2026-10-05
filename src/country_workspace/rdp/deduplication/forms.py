@@ -1,5 +1,4 @@
 from decimal import Decimal
-from typing import Any
 
 from django import forms
 
@@ -25,10 +24,6 @@ class BiometricDeduplicationConfigForm(forms.Form):
             "The rate is measured as findings per 100 RDP individuals."
         ),
     )
-
-    def __init__(self, *args: Any, total_count: int, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.total_count = total_count
 
     def clean(self) -> dict[str, object]:
         """Validate the biometric deduplication threshold."""

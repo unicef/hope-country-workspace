@@ -24,7 +24,6 @@ def test_biometric_deduplication_config_form(
             "threshold_type": threshold_type,
             "threshold_value": value,
         },
-        total_count=1,
     )
 
     assert form.is_valid() is valid

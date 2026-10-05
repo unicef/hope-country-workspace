@@ -27,12 +27,11 @@ def test_get_enabled_rdp_operation_definitions(program, enabled: bool) -> None:
 def test_get_rdp_operation_forms(program) -> None:
     program.biometric_deduplication_enabled = True
 
-    [(definition, form)] = get_rdp_operation_forms(program=program, total_count=42)
+    [(definition, form)] = get_rdp_operation_forms(program=program)
 
     assert definition.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION
     assert isinstance(form, BiometricDeduplicationConfigForm)
     assert form.prefix == RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value.lower()
-    assert form.total_count == 42
 
 
 def test_get_validated_rdp_operation_configs(mocker: MockerFixture) -> None:
