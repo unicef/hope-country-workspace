@@ -17,7 +17,12 @@ def test_is_open_true_for_open_statuses(rdp, status):
 
 @pytest.mark.parametrize(
     "status",
-    [Rdp.PushStatus.SUCCESS, Rdp.PushStatus.CANCELLED, Rdp.PushStatus.DEDUP_PENDING],
+    [
+        Rdp.PushStatus.SUCCESS,
+        Rdp.PushStatus.CANCELLED,
+        Rdp.PushStatus.REVIEW_PENDING,
+        Rdp.PushStatus.PUSH_PENDING,
+    ],
 )
 def test_is_open_false_for_closed_statuses(rdp, status):
     rdp.status = status

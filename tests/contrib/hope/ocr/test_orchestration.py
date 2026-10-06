@@ -4,7 +4,7 @@ from country_workspace.contrib.hope import ocr as ocr_pkg
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.ocr import orchestration
 from country_workspace.models import OcrRun, Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY
 
 pytestmark = pytest.mark.django_db
@@ -88,7 +88,7 @@ def test_run_ocr_core_publishes_batches_and_marks_in_progress(
     assert ocr_run.status == OcrRun.Status.IN_PROGRESS
 
     rdp.refresh_from_db()
-    assert rdp.operation_log[-1]["action"] == RdpOperationAction.START_OCR.value
+    assert rdp.operation_log[-1]["action"] == RdpLogEntryType.START_OCR.value
     assert rdp.operation_log[-1]["result"]["batches_published"] == 2
 
     assert result["batch_total"] == 2

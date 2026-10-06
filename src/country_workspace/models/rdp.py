@@ -35,11 +35,6 @@ class RdpLogEntryType(models.TextChoices):
     PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
     REVIEW_REQUIRED = "REVIEW_REQUIRED", _("Review required")
     REVIEW_DECISION = "REVIEW_DECISION", _("Review decision")
-
-
-class RdpOperationAction(models.TextChoices):
-    START_DEDUPLICATION = "START_DEDUPLICATION", _("Start deduplication")
-    APPROVE_DEDUPLICATION_SET = "APPROVE_DEDUPLICATION_SET", _("Approve deduplication set")
     START_OCR = "START_OCR", _("Start OCR")
 
 
