@@ -10,6 +10,7 @@ from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
@@ -20,10 +21,11 @@ from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
+from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import AsyncJob, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.rdp import (
@@ -202,16 +204,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             with suppress(TypeError, ValueError):
                 action = RdpLogEntryType(action).label
             rows.append(self._format_log_entry(entry, action=str(action)))
-
-            result = entry.get("result")
-            rows.append(
-                {
-                    "action": action,
-                    "timestamp": timestamp,
-                    "result": json.dumps(result, indent=2, ensure_ascii=False) if result else "",
-                }
-            )
-
         return render_to_string("workspace/rdp/_log.html", {"rows": rows}) if rows else "-"
 
     @display(description="OCR run")
@@ -232,14 +224,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             summary,
             json.dumps(run.results, indent=2, ensure_ascii=False),
         )
-
-    def dedup_engine_state(self, obj: CountryRdp) -> str:
-        try:
-            return str(get_rdp_policy(obj).dedup_engine_state())
-        except RemoteUnavailableError:
-            return str(DedupEngineState.unavailable())
-        except RemoteError as exc:
-            return str(exc)
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -430,6 +414,14 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 messages.error(request, check.reason or "Action is not allowed.")
             return redirect(self._change_url(obj))
 
+        message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
+        if obj.hope_rdi_id not in {None, "N/A"}:
+            message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
+        message += "The old DedupEngine set will be scheduled for rejection."
+        return confirm_action(
+            self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
+        )
+
     @button(
         label="Run OCR",
         change_form=True,
@@ -463,14 +455,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
         messages.success(request, "OCR task scheduled")
         return redirect(self._change_url(obj))
-
-        message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
-        if obj.hope_rdi_id not in {None, "N/A"}:
-            message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
-        message += "The old DedupEngine set will be scheduled for rejection."
-        return confirm_action(
-            self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
-        )
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:
