@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     atomic = False
     dependencies = [
         ("contenttypes", "0002_remove_content_type_name"),
-        ("country_workspace", "0063_alter_rdp_country_office_and_more"),
+        ("country_workspace", "0066_remove_legacy_rdp_deduplication"),
     ]
 
     operations = [
