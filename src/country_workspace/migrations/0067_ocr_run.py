@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0063_alter_rdp_country_office_and_more"),
+        ("country_workspace", "0066_remove_legacy_rdp_deduplication"),
     ]
 
     operations = [
@@ -17,7 +17,6 @@ class Migration(migrations.Migration):
                 "permissions": [
                     ("cancel_rdp", "Can cancel RDP"),
                     ("create_rdp", "Can create RDP from selected beneficiaries"),
-                    ("deduplicate_rdp", "Can run RDP deduplication"),
                     ("push_rdp_to_hope", "Can push RDP to HOPE"),
                     ("reset_rdp", "Can reset RDP"),
                     ("run_ocr_rdp", "Can run RDP OCR"),
