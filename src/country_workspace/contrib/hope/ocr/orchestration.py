@@ -6,10 +6,10 @@ from django.db import IntegrityError, transaction
 
 from country_workspace.contrib.hope.constants import OCR_BATCH_SIZE
 from country_workspace.models import AsyncJob, OcrRun, Rdp
-from country_workspace.models.rdp import RdpOperationAction
+from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
-from country_workspace.rdp.repository import append_rdp_operation_log, lock_rdp_for_update
+from country_workspace.rdp.repository import append_rdp_log, lock_rdp_for_update
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
 
 from .policy import get_ocr_policy
@@ -52,9 +52,9 @@ def get_batches(documents: list[dict], size: int) -> list[list[dict]]:
 def _log_ocr_operation(*, rdp: Rdp, result: dict[str, Any]) -> None:
     with transaction.atomic():
         locked = lock_rdp_for_update(pk=rdp.pk)
-        append_rdp_operation_log(
+        append_rdp_log(
             rdp=locked,
-            action=RdpOperationAction.START_OCR,
+            entry_type=RdpLogEntryType.START_OCR,
             result=result,
         )
 
