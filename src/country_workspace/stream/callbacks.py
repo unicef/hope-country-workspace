@@ -21,24 +21,29 @@ def handle_event(
 ) -> bool:
     """Dispatch a received event by routing key and acknowledge it.
 
-    Handlers must stay thin (see docs/src/flows/rdp_ocr.md): any handler
-    failure is logged and reported to Sentry, but the message is still
-    acked - a malformed/unexpected payload must not block the queue.
+    Handlers must stay thin (see docs/src/flows/rdp_ocr.md): any failure,
+    including a malformed envelope, is logged and reported to Sentry, but
+    the message is still acked so it does not block the queue.
     """
-    message = Event.unmarshal(body)
     routing_key = method.routing_key
-    logger.info(
-        "stream event received queue=%s routing_key=%s id=%s",
-        queue_name,
-        routing_key,
-        message.id,
-    )
-
-    if routing_key == OCR_RESULT_ROUTING_KEY:
-        try:
+    message: Event | None = None
+    try:
+        message = Event.unmarshal(body)
+        logger.info(
+            "stream event received queue=%s routing_key=%s id=%s",
+            queue_name,
+            routing_key,
+            message.id,
+        )
+        if routing_key == OCR_RESULT_ROUTING_KEY:
             handle_ocr_result(message.payload)
-        except Exception:
-            logger.exception("ocr.result: failed to process event id=%s", message.id)
-            sentry_sdk.capture_exception()
+    except Exception:
+        logger.exception(
+            "stream event: failed to process queue=%s routing_key=%s id=%s",
+            queue_name,
+            routing_key,
+            message.id if message is not None else None,
+        )
+        sentry_sdk.capture_exception()
 
     return True
