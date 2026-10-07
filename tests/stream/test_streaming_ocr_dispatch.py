@@ -45,6 +45,20 @@ def test_handle_event_swallows_handler_exception_and_still_acks(mocker):
     capture.assert_called_once()
 
 
+@pytest.mark.parametrize("body", [b"not-json", b'{"id": "x"}'])
+def test_handle_event_acks_malformed_envelope(mocker, body: bytes):
+    """A body that is not a valid Event must be logged and still acknowledged."""
+    handle_ocr_result = mocker.patch.object(callbacks_mod, "handle_ocr_result")
+    capture = mocker.patch.object(callbacks_mod.sentry_sdk, "capture_exception")
+    method = mocker.Mock(routing_key=OCR_RESULT_ROUTING_KEY)
+
+    result = handle_event(OCR_RESULTS_QUEUE, mocker.Mock(), method, mocker.Mock(), body)
+
+    assert result is True
+    handle_ocr_result.assert_not_called()
+    capture.assert_called_once()
+
+
 def test_handle_event_logs_unexpected_payload_shape_without_raising(mocker):
     """A malformed payload (e.g. not matching the expected dict shape) must not block the queue."""
     mocker.patch.object(callbacks_mod, "handle_ocr_result", side_effect=KeyError("documents"))
