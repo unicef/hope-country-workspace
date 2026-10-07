@@ -1,10 +1,12 @@
 import pytest
+from django.db import IntegrityError
 
 from country_workspace.contrib.hope import ocr as ocr_pkg
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.contrib.hope.ocr import orchestration
 from country_workspace.models import OcrRun, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
+from country_workspace.rdp.policy import ActionCheck
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY
 
 pytestmark = pytest.mark.django_db
@@ -31,6 +33,30 @@ def test_claim_rdp_ocr_blocked_when_rdp_not_open(rdp):
 
 def test_claim_rdp_ocr_blocked_when_run_already_exists(rdp):
     OcrRun.objects.create(rdp=rdp)
+
+    check, locked = orchestration.claim_rdp_ocr(rdp.pk)
+
+    assert check.allowed is False
+    assert "already" in check.reason
+    assert locked is None
+
+
+def test_claim_rdp_ocr_blocked_when_run_appears_under_the_lock(rdp, mocker):
+    """Policy can pass, then a run can exist by the time the RDP row is locked."""
+    OcrRun.objects.create(rdp=rdp)
+    policy = mocker.Mock()
+    policy.ocr_check.return_value = ActionCheck(True)
+    mocker.patch.object(orchestration, "get_ocr_policy", return_value=policy)
+
+    check, locked = orchestration.claim_rdp_ocr(rdp.pk)
+
+    assert check.allowed is False
+    assert "already" in check.reason
+    assert locked is None
+
+
+def test_claim_rdp_ocr_blocked_on_integrity_error(rdp, mocker):
+    mocker.patch.object(orchestration.OcrRun.objects, "create", side_effect=IntegrityError)
 
     check, locked = orchestration.claim_rdp_ocr(rdp.pk)
 

@@ -110,6 +110,24 @@ def test_apply_ocr_batch_result_is_idempotent_for_redelivery(ocr_run):
     assert ocr_run.results == {"batch-1": [{"individual_id": 1, "status": "matched"}]}
 
 
+def test_apply_ocr_batch_result_warns_when_batch_total_mismatches(ocr_run, caplog):
+    caplog.set_level("WARNING")
+    apply_ocr_batch_result(
+        correlation_id=str(ocr_run.correlation_id),
+        batch_id="batch-1",
+        batch_total=9,
+        documents=[{"individual_id": 1, "status": "matched"}],
+    )
+
+    ocr_run.refresh_from_db()
+    assert ocr_run.received_batch_ids == ["batch-1"]
+    assert "batch_total mismatch" in caplog.text
+
+
+def test_ocr_run_str(ocr_run):
+    assert str(ocr_run) == f"OcrRun({ocr_run.correlation_id}) rdp={ocr_run.rdp_id} status={ocr_run.status}"
+
+
 def test_apply_ocr_batch_result_completes_run_when_all_batches_received(ocr_run):
     apply_ocr_batch_result(
         correlation_id=str(ocr_run.correlation_id),
