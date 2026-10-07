@@ -86,6 +86,24 @@ def test_ocr_run_display_no_run(admin_instance, rdp: CountryRdp) -> None:
     assert admin_instance.ocr_run_display(rdp) == "-"
 
 
+def test_get_fieldsets_includes_ocr_section_when_run_exists(admin_instance, mock_request, rdp: CountryRdp) -> None:
+    OcrRun.objects.create(rdp=rdp)
+
+    fields = [field for _, options in admin_instance.get_fieldsets(mock_request, rdp) for field in options["fields"]]
+
+    assert "ocr_run_display" in fields
+
+
+def test_ocr_run_display_without_results_returns_summary_only(admin_instance, rdp: CountryRdp) -> None:
+    run = OcrRun.objects.create(rdp=rdp, batch_total=2)
+
+    result = str(admin_instance.ocr_run_display(rdp))
+
+    assert "0/2" in result
+    assert str(run.correlation_id) in result
+    assert "<pre>" not in result
+
+
 def test_ocr_run_display_shows_progress_and_results(admin_instance, rdp: CountryRdp) -> None:
     run = OcrRun.objects.create(rdp=rdp, batch_total=2, received_batch_ids=["b1"], results={"b1": [{"ok": True}]})
 
