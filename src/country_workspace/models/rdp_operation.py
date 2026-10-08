@@ -8,6 +8,7 @@ from .base import BaseModel
 
 class RdpOperationType(models.TextChoices):
     BIOMETRIC_DEDUPLICATION = "BIOMETRIC_DEDUPLICATION", _("Biometric deduplication")
+    OCR = "OCR", _("Identity document OCR")
 
 
 class RdpOperationStatus(models.TextChoices):
