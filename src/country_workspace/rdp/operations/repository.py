@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -5,7 +6,7 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding, RdpOperationUnit
 from country_workspace.rdp.types import JSONValue, OperationLogResult
 from country_workspace.rdp.repository import lock_rdp_for_update
 
@@ -111,3 +112,41 @@ def append_rdp_operation_log(
 
         operation.log = [*(operation.log or []), entry]
         operation.save(update_fields=["log"])
+
+
+def prepare_rdp_operation_units_for_retry(*, operation_id: UUID) -> int:
+    """Prepare non-successful operation units for another execution attempt."""
+    return (
+        RdpOperationUnit.objects.filter(operation_id=operation_id)
+        .exclude(status=RdpOperationUnit.Status.SUCCESS)
+        .update(status=RdpOperationUnit.Status.PENDING, error={})
+    )
+
+
+def pending_rdp_operation_units(*, operation_id: UUID) -> QuerySet[RdpOperationUnit]:
+    """Return pending operation units with their individuals."""
+    return (
+        RdpOperationUnit.objects.filter(operation_id=operation_id, status=RdpOperationUnit.Status.PENDING)
+        .select_related("individual")
+        .order_by("pk")
+    )
+
+
+def fail_rdp_operation_units(
+    *,
+    unit_ids: Iterable[int],
+    error: dict[str, JSONValue],
+) -> int:
+    """Mark pending operation units as failed."""
+    return RdpOperationUnit.objects.filter(
+        pk__in=unit_ids,
+        status=RdpOperationUnit.Status.PENDING,
+    ).update(
+        status=RdpOperationUnit.Status.FAILURE,
+        error=error,
+    )
+
+
+def has_rdp_operation_units(*, operation_id: UUID) -> bool:
+    """Return whether an RDP operation has persistent units."""
+    return RdpOperationUnit.objects.filter(operation_id=operation_id).exists()
