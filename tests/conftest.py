@@ -110,6 +110,15 @@ def pytest_configure(config):
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
     settings.SESSION_COOKIE_SECURE = False
+    settings.STREAMING = {
+        "BROKER_URL": "console://",
+        "CLIENT_NAME": "country-workspace-test",
+        "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "LISTEN_CALLBACK": "country_workspace.stream.callbacks.handle_event",
+        "QUEUES": {
+            "ocr_results": {"binding_keys": ["hcw.ocr.result"]},
+        },
+    }
     django.setup()
     from country_workspace.cache.manager import cache_manager
 

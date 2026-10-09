@@ -9,6 +9,8 @@ from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
@@ -17,12 +19,15 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
+from strategy_field.utils import fqn
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import AsyncJob, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
+from country_workspace.contrib.hope.ocr import claim_rdp_ocr, get_ocr_policy, run_ocr_core
 from country_workspace.rdp import (
     RdpActionPolicy,
     RdpWorkflowError,
@@ -84,6 +89,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         "operations_display",
         "processing_history",
         "rdp_log_display",
+        "ocr_run_display",
     )
 
     @staticmethod
@@ -113,8 +119,13 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         fieldsets = [
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
+
         if obj and obj.operations.exists():
             fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
+
+        if obj and hasattr(obj, "ocr_run"):
+            fieldsets.append((_("OCR"), {"fields": ("ocr_run_display",), "classes": ("content-only",)}))
+
         fieldsets.extend(
             [
                 (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
@@ -193,8 +204,26 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             with suppress(TypeError, ValueError):
                 action = RdpLogEntryType(action).label
             rows.append(self._format_log_entry(entry, action=str(action)))
-
         return render_to_string("workspace/rdp/_log.html", {"rows": rows}) if rows else "-"
+
+    @display(description="OCR run")
+    def ocr_run_display(self, obj: CountryRdp) -> str:
+        """Return a compact summary of this RDP's OCR run, if any."""
+        try:
+            run = obj.ocr_run
+        except ObjectDoesNotExist:
+            return "-"
+
+        progress = f"{len(run.received_batch_ids)}/{run.batch_total}" if run.batch_total else "-"
+        summary = f"{run.get_status_display()} ({progress}) · correlation_id={run.correlation_id}"
+        if not run.results:
+            return summary
+
+        return format_html(
+            "{}<pre>{}</pre>",
+            summary,
+            json.dumps(run.results, indent=2, ensure_ascii=False),
+        )
 
     def _change_url(self, obj: CountryRdp) -> str:
         try:
@@ -392,6 +421,40 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return confirm_action(
             self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
         )
+
+    @button(
+        label="Run OCR",
+        change_form=True,
+        change_list=False,
+        permission="country_workspace.run_ocr_rdp",
+        visible=lambda btn: bool((obj := btn.original) and get_ocr_policy(obj).is_ocr_visible()),
+        enabled=lambda btn: bool((obj := btn.original) and get_ocr_policy(obj).ocr_check().allowed),
+        html_attrs={"title": "Send identity-document images to Hope Documents for OCR."},
+    )
+    def run_ocr(self, request: HttpRequest, pk: str) -> HttpResponse:
+        if (obj := self.get_object(request, pk)) is None:
+            messages.error(request, "RDP not found")
+            return redirect("workspace:workspaces_countryrdp_changelist")
+
+        check, locked = claim_rdp_ocr(rdp_id=obj.pk)
+        if not check.allowed or locked is None:
+            messages.error(request, check.reason or "Action is not allowed.")
+            return redirect(self._change_url(obj))
+
+        with transaction.atomic():
+            job = AsyncJob.objects.create(
+                description="Run OCR on RDP identity documents",
+                type=AsyncJob.JobType.TASK,
+                owner=request.user,
+                action=fqn(run_ocr_core),
+                program=locked.program,
+                rdp=locked,
+                config={"rdp_id": locked.pk},
+            )
+            transaction.on_commit(job.queue)
+
+        messages.success(request, "OCR task scheduled")
+        return redirect(self._change_url(obj))
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:
