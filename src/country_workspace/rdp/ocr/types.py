@@ -1,4 +1,4 @@
-from typing import ReadOnly, TypedDict
+from typing import Literal, ReadOnly, TypedDict
 
 
 class OcrUnitConfig(TypedDict):
@@ -18,3 +18,20 @@ class OcrRequestMessage(TypedDict):
     batch_index: ReadOnly[int]
     batch_total: ReadOnly[int]
     documents: ReadOnly[list[OcrDocumentRequest]]
+
+
+class OcrDocumentResult(TypedDict):
+    individual_id: int
+    status: Literal["ok", "error"]
+    found: bool
+    match: list[str | float] | None
+    error: str | None
+
+
+class OcrResultMessage(TypedDict):
+    correlation_id: str
+    rdp_id: int
+    batch_id: str
+    batch_index: int
+    batch_total: int
+    documents: list[OcrDocumentResult]
