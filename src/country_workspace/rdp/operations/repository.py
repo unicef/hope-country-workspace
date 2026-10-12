@@ -51,11 +51,18 @@ def claim_rdp_operation(operation_id: UUID) -> RdpOperation | None:
     return operation
 
 
-def fail_rdp_operation(*, operation_id: UUID, error: dict[str, JSONValue]) -> bool:
-    """Mark a running RDP operation as failed."""
+def fail_rdp_operation(
+    *,
+    operation_id: UUID,
+    error: dict[str, JSONValue],
+    expected_attempt: int | None = None,
+) -> bool:
+    """Fail a running operation if it matches the expected attempt."""
     with transaction.atomic():
         operation = lock_rdp_operation_for_update(pk=operation_id)
         if operation.status != RdpOperation.Status.RUNNING:
+            return False
+        if expected_attempt is not None and operation.attempt != expected_attempt:
             return False
 
         operation.status = RdpOperation.Status.FAILURE
@@ -66,17 +73,25 @@ def fail_rdp_operation(*, operation_id: UUID, error: dict[str, JSONValue]) -> bo
     return True
 
 
-def finish_rdp_operation(*, operation_id: UUID, findings: list[RdpOperationFinding]) -> bool:
-    """Replace findings and mark a running RDP operation as successful."""
+def finish_rdp_operation(
+    *,
+    operation_id: UUID,
+    findings: list[RdpOperationFinding] | None = None,
+    expected_attempt: int | None = None,
+) -> bool:
+    """Finish a running operation, optionally replacing findings."""
     with transaction.atomic():
         operation = lock_rdp_operation_for_update(pk=operation_id)
         if operation.status != RdpOperation.Status.RUNNING:
             return False
+        if expected_attempt is not None and operation.attempt != expected_attempt:
+            return False
 
-        operation.findings.all().delete()
-        for finding in findings:
-            finding.operation = operation
-        RdpOperationFinding.objects.bulk_create(findings)
+        if findings is not None:
+            operation.findings.all().delete()
+            for finding in findings:
+                finding.operation = operation
+            RdpOperationFinding.objects.bulk_create(findings)
 
         operation.status = RdpOperation.Status.SUCCESS
         operation.error = {}
@@ -114,13 +129,27 @@ def append_rdp_operation_log(
         operation.save(update_fields=["log"])
 
 
-def prepare_rdp_operation_units_for_retry(*, operation_id: UUID) -> int:
-    """Prepare non-successful operation units for another execution attempt."""
-    return (
-        RdpOperationUnit.objects.filter(operation_id=operation_id)
-        .exclude(status=RdpOperationUnit.Status.SUCCESS)
-        .update(status=RdpOperationUnit.Status.PENDING, error={})
-    )
+def prepare_rdp_operation_units_for_retry(*, operation_id: UUID, expected_attempt: int) -> bool:
+    """Prepare incomplete units only for the expected running attempt."""
+    with transaction.atomic():
+        if lock_current_rdp_operation(operation_id=operation_id, expected_attempt=expected_attempt) is None:
+            return False
+        RdpOperationUnit.objects.filter(operation_id=operation_id).exclude(
+            status=RdpOperationUnit.Status.SUCCESS,
+        ).update(status=RdpOperationUnit.Status.PENDING, error={})
+    return True
+
+
+def lock_current_rdp_operation(*, operation_id: UUID, expected_attempt: int) -> RdpOperation | None:
+    """Lock an operation and return it only for its active running attempt."""
+    operation = lock_rdp_operation_for_update(pk=operation_id)
+    if (
+        operation.status != RdpOperation.Status.RUNNING
+        or operation.attempt != expected_attempt
+        or operation.rdp.status != Rdp.PushStatus.PENDING
+    ):
+        return None
+    return operation
 
 
 def pending_rdp_operation_units(*, operation_id: UUID) -> QuerySet[RdpOperationUnit]:
@@ -134,19 +163,65 @@ def pending_rdp_operation_units(*, operation_id: UUID) -> QuerySet[RdpOperationU
 
 def fail_rdp_operation_units(
     *,
+    operation_id: UUID,
+    expected_attempt: int,
     unit_ids: Iterable[int],
     error: dict[str, JSONValue],
 ) -> int:
-    """Mark pending operation units as failed."""
-    return RdpOperationUnit.objects.filter(
-        pk__in=unit_ids,
-        status=RdpOperationUnit.Status.PENDING,
-    ).update(
-        status=RdpOperationUnit.Status.FAILURE,
-        error=error,
-    )
+    """Fail pending units only for the expected running operation attempt."""
+    with transaction.atomic():
+        if lock_current_rdp_operation(operation_id=operation_id, expected_attempt=expected_attempt) is None:
+            return 0
+        return RdpOperationUnit.objects.filter(
+            operation_id=operation_id,
+            pk__in=unit_ids,
+            status=RdpOperationUnit.Status.PENDING,
+        ).update(status=RdpOperationUnit.Status.FAILURE, error=error)
 
 
 def has_rdp_operation_units(*, operation_id: UUID) -> bool:
     """Return whether an RDP operation has persistent units."""
     return RdpOperationUnit.objects.filter(operation_id=operation_id).exists()
+
+
+def get_rdp_operation_units_outcome(*, operation_id: UUID) -> RdpOperation.Status | None:
+    """Return a terminal outcome for nonempty operations without pending units."""
+    units = RdpOperationUnit.objects.filter(operation_id=operation_id)
+    if units.filter(status=RdpOperationUnit.Status.PENDING).exists():
+        return None
+    if units.filter(status=RdpOperationUnit.Status.FAILURE).exists():
+        return RdpOperation.Status.FAILURE
+    return RdpOperation.Status.SUCCESS if units.exists() else None
+
+
+def record_rdp_operation_error(
+    *,
+    operation_id: UUID,
+    expected_attempt: int,
+    error: dict[str, JSONValue],
+) -> bool:
+    """Record an execution error, keeping attempts with pending units open."""
+    with transaction.atomic():
+        operation = lock_current_rdp_operation(operation_id=operation_id, expected_attempt=expected_attempt)
+        if operation is None:
+            return False
+
+        has_pending = RdpOperationUnit.objects.filter(
+            operation_id=operation_id, status=RdpOperationUnit.Status.PENDING
+        ).exists()
+        now = timezone.now()
+        operation.error = error
+        update_fields = ["error", "log"]
+        if not has_pending:
+            operation.status = RdpOperation.Status.FAILURE
+            operation.finished_at = now
+            update_fields += ["status", "finished_at"]
+
+        entry: OperationLogEntry = {
+            "timestamp": now.isoformat(),
+            "action": "EXECUTION_ERROR",
+            "result": {"attempt": expected_attempt, "error": error, "outcome": operation.status},
+        }
+        operation.log = [*(operation.log or []), entry]
+        operation.save(update_fields=update_fields)
+    return True

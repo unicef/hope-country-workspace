@@ -7,6 +7,7 @@ from country_workspace.models import AsyncJob, Rdp, RdpOperation
 from country_workspace.rdp.repository import lock_rdp_for_update
 from country_workspace.rdp.types import JSONValue
 
+from .errors import handle_rdp_operation_error
 from .repository import claim_rdp_operation, fail_rdp_operation, failed_rdp_operations
 
 
@@ -20,13 +21,17 @@ def run_rdp_operation_core(job: AsyncJob) -> dict[str, JSONValue]:
 
     if (definition := RDP_OPERATION_DEFINITIONS.get(operation.operation_type)) is None:
         message = f"Unsupported RDP operation type: {operation.operation_type!r}"
-        fail_rdp_operation(operation_id=operation.id, error={"message": message})
+        fail_rdp_operation(
+            operation_id=operation.id,
+            error={"message": message},
+            expected_attempt=operation.attempt,
+        )
         raise ValueError(message)
 
     try:
         definition.runner(operation)
     except Exception as exc:
-        fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})
+        handle_rdp_operation_error(operation=operation, exc=exc)
         raise
 
     return {"operation_id": str(operation.id), "started": True}

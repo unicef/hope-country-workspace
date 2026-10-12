@@ -169,6 +169,7 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
                 return fail_rdp_operation(
                     operation_id=operation.id,
                     error={"message": "DedupEngine processing failed.", "state": state.value},
+                    expected_attempt=operation.attempt,
                 )
 
             if state != DeduplicationSetState.DEDUPLICATED:
@@ -188,15 +189,19 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
                     "count": len(system_errors),
                     "findings": system_errors[:5],
                 },
+                expected_attempt=operation.attempt,
             )
         else:
             result = complete_rdp_operation(
                 operation=operation,
                 findings=_build_biometric_findings(operation, findings),
             )
-
     except (RemoteError, RemoteUnavailableError) as exc:
-        return fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})
+        return fail_rdp_operation(
+            operation_id=operation.id,
+            error={"message": str(exc)},
+            expected_attempt=operation.attempt,
+        )
     else:
         return result
 
