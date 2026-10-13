@@ -27,6 +27,10 @@ RUN groupadd --gid 1024 unicef \
 
 # ------- builder -------
 FROM base_os AS builder
+ARG VERSION
+ENV HATCH_VCS_VERSION=${VERSION} \
+    SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}
+
 RUN set -x \
     && buildDeps="build-essential \
 cmake \
