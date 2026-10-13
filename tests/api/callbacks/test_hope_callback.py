@@ -104,3 +104,21 @@ def test_push_ready_callback_rejects_get(client: Client, callback_url: tuple[str
     response = client.get(url)
 
     assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+def test_push_ready_callback_accepts_url_without_trailing_slash(
+    client: Client,
+    mocker: MockerFixture,
+    callback_url: tuple[str, UUID, str],
+) -> None:
+    url, push_attempt_id, token = callback_url
+    handler = mocker.patch.object(views, "handle_push_ready_callback", return_value=True)
+
+    response = client.post(
+        url.rstrip("/"),
+        data={"signed_token": token},
+        content_type="application/json",
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    handler.assert_called_once_with(rdp_id=1, push_attempt_id=push_attempt_id)
