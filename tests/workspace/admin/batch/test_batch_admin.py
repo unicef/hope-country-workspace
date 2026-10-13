@@ -142,6 +142,49 @@ def test_reprocess_button_creates_task_job(
     assert job.action == fqn(reprocess_batch_task)
 
 
+def test_reprocess_button_passes_people_prefix_from_import_job(
+    batch_admin,
+    people_program,
+    user,
+    rf: RequestFactory,
+    mocker,
+) -> None:
+    from country_workspace.datasources.rdi.processors import import_from_rdi
+    from country_workspace.models import Batch
+    from country_workspace.workspaces.admin.batch import admin as batch_admin_module
+    from testutils.factories import AsyncJobFactory, CountryBatchFactory
+
+    batch = CountryBatchFactory(
+        program=people_program,
+        country_office=people_program.country_office,
+        source=Batch.BatchSource.RDI,
+    )
+    AsyncJobFactory(
+        program=people_program,
+        batch=batch,
+        owner=user,
+        type=AsyncJob.JobType.TASK,
+        action=fqn(import_from_rdi),
+        config={"people_prefix": "pp_"},
+    )
+
+    mocker.patch.object(batch_admin, "get_object", return_value=batch)
+    mocker.patch.object(batch_admin, "message_user")
+    mocker.patch.object(batch_admin, "get_common_context")
+    mocker.patch.object(AsyncJob, "queue")
+    mocker.patch.object(batch_admin_module, "reverse", return_value="/batches/")
+
+    request = rf.post("/", data={"apply": "1"})
+    request.user = user
+
+    response = batch_admin.reprocess_batch.func(batch_admin, request, str(batch.pk))
+
+    assert response.status_code == 302
+    job = AsyncJob.objects.exclude(action=fqn(import_from_rdi)).latest("pk")
+    assert job.config["people_prefix"] == "pp_"
+    assert job.config["batch_id"] == batch.pk
+
+
 def test_reprocess_button_includes_selected_mapping_and_transformer_ids(
     batch_admin,
     batch: CountryBatch,

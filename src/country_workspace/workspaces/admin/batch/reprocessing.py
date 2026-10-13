@@ -6,6 +6,7 @@ from typing import Any, Final, NamedTuple
 from django.db.models import Count, F, Q, QuerySet, Value
 from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransform
+from strategy_field.utils import fqn
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.aurora.import_processing import (
@@ -16,6 +17,7 @@ from country_workspace.contrib.kobo.sync import (
     build_household_processor as build_kobo_household_processor,
     build_individual_processor as build_kobo_individual_processor,
 )
+from country_workspace.datasources.rdi.processors import import_from_rdi, normalize_row_structure
 from country_workspace.models import AsyncJob, Batch, Household, Individual, MappingImporter, Program
 from country_workspace.models.household import RELATIONSHIP_NON_BENEFICIARY
 from country_workspace.utils.fields import to_reference_key
@@ -113,12 +115,42 @@ def _apply_import_processor(
     return True
 
 
+def _clean_prefix(value: object) -> str | None:
+    if isinstance(value, str) and (prefix := value.strip()):
+        return prefix
+    return None
+
+
+def _people_prefix_from_import_job(batch: Batch) -> str | None:
+    """Prefix passed with the original RDI import and kept on that job's config."""
+    job = batch.jobs.filter(action=fqn(import_from_rdi)).order_by("pk").only("config").first()
+    if job is None or not isinstance(job.config, dict):
+        return None
+    return _clean_prefix(job.config.get("people_prefix"))
+
+
+def _people_prefix_for_job(job: AsyncJob, batch: Batch) -> str | None:
+    """Prefix for this reprocess run: the value passed on the job, or the original import."""
+    if isinstance(job.config, dict) and (prefix := _clean_prefix(job.config.get("people_prefix"))):
+        return prefix
+    return _people_prefix_from_import_job(batch)
+
+
+def _strip_people_prefix(prefix: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    def strip_prefix(data: dict[str, Any]) -> dict[str, Any]:
+        cleaned, _name_column = normalize_row_structure(data, prefix)
+        return dict(cleaned)
+
+    return strip_prefix
+
+
 def _build_processor(
     *,
     batch: Batch,
     program: Program,
     model: type[Household] | type[Individual],
     mapping_id: int | None,
+    people_prefix: str | None = None,
 ) -> Callable[[Any], dict[str, Any]]:
     if batch.source == Batch.BatchSource.KOBO:
         if model is Household:
@@ -129,6 +161,16 @@ def _build_processor(
         if model is Household:
             return build_aurora_household_processor(program, mapping_id)
         return build_aurora_individual_processor(program, mapping_id)
+
+    prefix = _clean_prefix(people_prefix)
+    if model is Individual and prefix and batch.source == Batch.BatchSource.RDI and not program.is_master_detail:
+        return build_import_processor(
+            program=program,
+            model=model,
+            mapping_id=mapping_id,
+            source=batch.source,
+            pre_processors=[_strip_people_prefix(prefix)],
+        )
 
     return build_import_processor(
         program=program,
@@ -333,7 +375,12 @@ def reprocess_batch(job: AsyncJob) -> dict[str, Any]:
             batch.name,
         )
 
-    build_processor = partial(_build_processor, batch=batch, program=batch.program)
+    build_processor = partial(
+        _build_processor,
+        batch=batch,
+        program=batch.program,
+        people_prefix=_people_prefix_for_job(job, batch),
+    )
 
     household_records, household_preserved = _preserve_flex_fields(
         households.only("pk", "name", "raw_data"),

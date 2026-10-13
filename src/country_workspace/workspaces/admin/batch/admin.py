@@ -27,7 +27,7 @@ from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
 from ..hh_ind import SelectedProgramMixin
 from .picture_import import BatchPictureImportService, PictureImportLimitError, import_pictures_for_batch
-from .reprocessing import reprocess_batch as reprocess_batch_task
+from .reprocessing import _people_prefix_from_import_job, reprocess_batch as reprocess_batch_task
 
 media_storage = storages["media"]
 
@@ -425,6 +425,8 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     config["individual_transformer_id"] = form.cleaned_data["individual_transformer"].pk
                 if form.cleaned_data.get("individual_mapping"):
                     config["individual_mapping_id"] = form.cleaned_data["individual_mapping"].pk
+                if people_prefix := _people_prefix_from_import_job(obj):
+                    config["people_prefix"] = people_prefix
 
                 job = AsyncJob.objects.create(
                     description=f"Reprocess batch: {obj.name}",
