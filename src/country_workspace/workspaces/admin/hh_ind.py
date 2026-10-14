@@ -310,6 +310,17 @@ class BeneficiaryBaseAdmin(
         elif not self.has_view_or_change_permission(request, obj):
             raise PermissionDenied
 
+        if obj is None:
+            self.message_user(
+                request,
+                _('%(name)s with ID "%(key)s" does not exist. Perhaps it was deleted?')
+                % {"name": self.opts.verbose_name, "key": unquote(object_id)},
+                messages.WARNING,
+            )
+            return HttpResponseRedirect(
+                reverse(f"{self.admin_site.namespace}:{self.opts.app_label}_{self.opts.model_name}_changelist")
+            )
+
         if obj.flex_fields:
             initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
         else:
