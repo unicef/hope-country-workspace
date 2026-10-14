@@ -1,7 +1,7 @@
 import pytest
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
-from country_workspace.models import RdpOperation
+from country_workspace.models import Rdp, RdpOperation
 from country_workspace.rdp.deduplication.repository import (
     annotate_biometric_households,
     annotate_biometric_individuals,
@@ -121,7 +121,7 @@ def test_biometric_findings_for_individual(people_rdp) -> None:
     )
 
     assert biometric_findings_for_individual(individual=individuals[0], rdp=rdp) == (
-        [individuals[1].pk],
+        {individuals[1].pk: rdp.pk},
         [FindingStatusCode.BAD_IMAGE_QUALITY.name],
     )
 
@@ -139,7 +139,7 @@ def test_biometric_findings_for_individual_uses_successful_program_operations(pe
         related_individual=related,
     )
 
-    assert biometric_findings_for_individual(individual=related) == ([individuals[0].pk], [])
+    assert biometric_findings_for_individual(individual=related) == ({individuals[0].pk: rdp.pk}, [])
 
 
 def test_annotate_biometric_households_without_rdp_uses_successful_operations(household_rdp) -> None:
@@ -291,3 +291,35 @@ def test_annotate_biometric_households_for_rdp(household_rdp) -> None:
     assert rows[households[1].pk]._duplicate_member_count == 1
     assert rows[households[1].pk]._image_issue_member_count == 1
     assert all(row._result_available for row in rows.values())
+
+
+def test_biometric_findings_for_individual_uses_latest_rdp_for_duplicate(people_rdp) -> None:
+    from testutils.factories import BiometricRdpOperationFactory, BiometricRdpOperationFindingFactory
+
+    rdp, individuals = people_rdp
+    operation = BiometricRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
+    BiometricRdpOperationFindingFactory(
+        operation=operation,
+        finding_type=FindingStatusCode.DUPLICATE.name,
+        individual=individuals[0],
+        related_individual=individuals[1],
+    )
+
+    newer_rdp = Rdp.objects.create(
+        country_office=rdp.country_office,
+        program=rdp.program,
+        pushed_by=rdp.pushed_by,
+        status=Rdp.PushStatus.SUCCESS,
+    )
+    newer_operation = BiometricRdpOperationFactory(rdp=newer_rdp, status=RdpOperation.Status.SUCCESS)
+    BiometricRdpOperationFindingFactory(
+        operation=newer_operation,
+        finding_type=FindingStatusCode.DUPLICATE.name,
+        individual=individuals[0],
+        related_individual=individuals[1],
+    )
+
+    assert biometric_findings_for_individual(individual=individuals[0]) == (
+        {individuals[1].pk: newer_rdp.pk},
+        [],
+    )
