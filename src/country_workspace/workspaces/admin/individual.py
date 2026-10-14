@@ -1,15 +1,19 @@
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from django.contrib.admin import AdminSite, display, register
+from django.core.exceptions import ValidationError
 from django.db.models import Model, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 
+from country_workspace.models import Batch
 from country_workspace.rdp import (
     annotate_biometric_individuals,
     biometric_findings_for_individual,
+    biometric_operation_for_rdp,
+    qs_biometric_duplicate_individuals,
 )
 
 
@@ -59,6 +63,40 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     def __init__(self, model: Model, admin_site: "AdminSite") -> None:
         self._selected_household = None
         super().__init__(model, admin_site)
+
+    def get_object(
+        self,
+        request: HttpRequest,
+        object_id: str | None,
+        from_field: str | None = None,
+    ) -> CountryIndividual | None:
+        if object_id is None:
+            return None
+
+        if obj := super().get_object(request, object_id, from_field):
+            return obj
+
+        if from_field is not None or (rdp := get_rdp_context(request)) is None:
+            return None
+
+        if (operation := biometric_operation_for_rdp(rdp=rdp)) is None or operation.status != operation.Status.SUCCESS:
+            return None
+
+        try:
+            pk = self.model._meta.pk.to_python(object_id)
+        except (ValidationError, ValueError):
+            return None
+
+        duplicate_pks = qs_biometric_duplicate_individuals(operation=operation).values_list("pk", flat=True)
+        qs = CountryIndividual.objects.filter(
+            pk=pk,
+            pk__in=duplicate_pks,
+            removed=True,
+            batch__country_office=state.tenant,
+            batch__program_id=rdp.program_id,
+            batch__status=Batch.BatchStatus.COMPLETE,
+        )
+        return annotate_biometric_individuals(qs, program=rdp.program, rdp=rdp).first()
 
     def get_list_filter(self, request: HttpRequest) -> list[Any]:
         filters = list(super().get_list_filter(request))
@@ -132,17 +170,23 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         if original is None or not getattr(original, "_result_available", False):
             return context
 
-        duplicate_pks, image_issues = biometric_findings_for_individual(
+        duplicate_rdp_ids, image_issues = biometric_findings_for_individual(
             individual=original,
             rdp=get_rdp_context(request),
         )
 
-        context["dedup_duplicates"] = [
-            {
-                "pk": duplicate_pk,
-                "url": reverse("workspace:workspaces_countryindividual_change", args=[duplicate_pk]),
-            }
-            for duplicate_pk in duplicate_pks
-        ]
+        removed_duplicate_pks = set(
+            CountryIndividual.objects.filter(pk__in=duplicate_rdp_ids, removed=True).values_list("pk", flat=True)
+        )
+
+        duplicates = []
+        for duplicate_pk, rdp_id in duplicate_rdp_ids.items():
+            url = reverse("workspace:workspaces_countryindividual_change", args=[duplicate_pk])
+            if duplicate_pk in removed_duplicate_pks:
+                preserved = urlencode({"rdp_id": rdp_id})
+                url = f"{url}?{urlencode({'_changelist_filters': preserved})}"
+            duplicates.append({"pk": duplicate_pk, "url": url})
+
+        context["dedup_duplicates"] = duplicates
         context["dedup_image_issues"] = image_issues
         return context

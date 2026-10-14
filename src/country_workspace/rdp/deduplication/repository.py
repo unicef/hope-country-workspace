@@ -124,22 +124,23 @@ def biometric_findings_for_individual(
     *,
     individual: Individual,
     rdp: Rdp | None = None,
-) -> tuple[list[int], list[str]]:
-    """Return duplicate counterparts and image issues for an individual."""
+) -> tuple[dict[int, int], list[str]]:
+    """Return duplicate counterparts with RDP context and image issues for an individual."""
     operations = qs_successful_biometric_operations().filter(rdp__program=individual.program)
     if rdp:
         operations = operations.filter(rdp=rdp)
 
     findings = RdpOperationFinding.objects.filter(operation__in=operations)
 
-    duplicate_pks: set[int] = set()
-    for first_id, second_id in (
+    duplicate_rdp_ids: dict[int, int] = {}
+    for first_id, second_id, finding_rdp_id in (
         findings.filter(finding_type=FindingStatusCode.DUPLICATE.name)
         .filter(Q(individual=individual) | Q(related_individual=individual))
-        .values_list("individual_id", "related_individual_id")
+        .order_by("operation__rdp__push_date", "operation__rdp_id")
+        .values_list("individual_id", "related_individual_id", "operation__rdp_id")
     ):
         if (counterpart_id := second_id if first_id == individual.pk else first_id) is not None:
-            duplicate_pks.add(counterpart_id)
+            duplicate_rdp_ids[counterpart_id] = finding_rdp_id
 
     image_issues = list(
         findings.filter(
@@ -150,7 +151,7 @@ def biometric_findings_for_individual(
         .distinct()
         .order_by("finding_type")
     )
-    return sorted(duplicate_pks), image_issues
+    return dict(sorted(duplicate_rdp_ids.items())), image_issues
 
 
 def annotate_biometric_households(
