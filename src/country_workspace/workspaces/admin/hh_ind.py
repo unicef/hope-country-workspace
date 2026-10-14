@@ -155,7 +155,6 @@ class BeneficiaryBaseAdmin(
         return {
             **context,
             "modeladmin": self,
-            "original": self.get_object(request, pk),
             "datachecker": self.get_checker(request, context.get("original")),
             "title_group": self.title_group,
             "title_group_plural": self.title_group_plural,
@@ -285,7 +284,9 @@ class BeneficiaryBaseAdmin(
         extra_context: dict[str, Any],
     ) -> HttpResponse:
         context = self.get_common_context(request, object_id, **extra_context)
-        obj = self.get_object(request, unquote(object_id))
+        if (obj := context["original"]) is None:
+            return self._get_obj_does_not_exist_redirect(request, self.opts, object_id)
+
         dc: "DataChecker" = self.get_checker(request, obj)
         try:
             form_class = dc.get_form()
@@ -309,24 +310,22 @@ class BeneficiaryBaseAdmin(
             initials = {k.replace("flex_fields__", ""): v for k, v in obj.flex_fields.items()}
         else:
             initials = {}
+
         if request.method == "POST":
-            if obj:
-                form: "FlexForm" = form_class(request.POST, request.FILES, prefix="flex_field", initial=initials)
-                form_valid = form.is_valid()
-                if (form_valid or "_save_invalid" in request.POST) and self._save_flex_fields(
-                    request, obj, form, form_valid
-                ):
-                    return HttpResponseRedirect(request.META["HTTP_REFERER"])
-                self.message_user(request, "Please fixes the errors below", messages.ERROR)
+            form: "FlexForm" = form_class(request.POST, request.FILES, prefix="flex_field", initial=initials)
+            form_valid = form.is_valid()
+            if (form_valid or "_save_invalid" in request.POST) and self._save_flex_fields(
+                request, obj, form, form_valid
+            ):
+                return HttpResponseRedirect(request.META["HTTP_REFERER"])
+            self.message_user(request, "Please fixes the errors below", messages.ERROR)
         else:
             form = form_class(prefix="flex_field", initial=initials)
 
-        ordered_fields = self._get_ordered_fields(dc, form)
-        form.fields = ordered_fields
+        form.fields = self._get_ordered_fields(dc, form)
 
-        context["show_save_invalid"] = True
+        context["show_save_invalid"] = context["has_change_permission"]
         context["checker_form"] = form
-        context["has_change_permission"] = self.has_change_permission(request)
         context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
 
         return TemplateResponse(request, self.change_form_template, context)
@@ -374,9 +373,12 @@ class BeneficiaryBaseAdmin(
         form_url: str = "",
         extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
-        context = self.get_common_context(request, object_id, title="")
-        context.update(extra_context or {})
-        return super().change_view(request, object_id, form_url, context)
+        return super().change_view(
+            request,
+            object_id,
+            form_url,
+            {"title": "", **(extra_context or {})},
+        )
 
     def save_model(self, request: HttpRequest, obj: "Validable", form: Form, change: bool) -> None:
         super().save_model(request, obj, form, change)
