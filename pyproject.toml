@@ -126,6 +126,7 @@ type-check = [
 
 [tool.hatch]
 version.source = "vcs"
+version.fallback-version = "0.0.0"
 version.raw-options.local_scheme = "no-local-version"
 build.targets.sdist.include = [
   "src/country_workspace/**/*.*",
