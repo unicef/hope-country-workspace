@@ -7,7 +7,6 @@ requires = [
 
 [project]
 name = "hope-country-workspace"
-version = "1.0.1"
 description = "HOPE Country Workspace (HCW)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,6 +17,9 @@ requires-python = "==3.14.*"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.14",
+]
+dynamic = [
+  "version",
 ]
 dependencies = [
   "bitcaster-sdk>=0.1",
@@ -123,6 +125,9 @@ type-check = [
 ]
 
 [tool.hatch]
+version.source = "vcs"
+version.fallback-version = "0.0.0"
+version.raw-options.local_scheme = "no-local-version"
 build.targets.sdist.include = [
   "src/country_workspace/**/*.*",
 ]
