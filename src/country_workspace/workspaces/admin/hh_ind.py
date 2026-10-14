@@ -324,7 +324,7 @@ class BeneficiaryBaseAdmin(
 
         form.fields = self._get_ordered_fields(dc, form)
 
-        context["show_save_invalid"] = True
+        context["show_save_invalid"] = context["has_change_permission"]
         context["checker_form"] = form
         context["has_file_field"] = any(isinstance(field, Base64ImageField) for field in form.fields.values())
 

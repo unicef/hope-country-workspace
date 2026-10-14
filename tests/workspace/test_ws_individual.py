@@ -504,6 +504,8 @@ def test_ind_change_opens_removed_biometric_duplicate_from_rdp(
         assert duplicate_response.status_code == 200
         assert duplicate_response.context["original"].pk == duplicate.pk
         assert duplicate_response.context["has_change_permission"] is False
+        assert duplicate_response.context["show_save_invalid"] is False
+        assert 'name="_save_invalid"' not in duplicate_response.text
 
         unrelated_url = reverse("workspace:workspaces_countryindividual_change", args=[unrelated.pk])
         app.get(
