@@ -67,6 +67,28 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
     return django_app
 
 
+def test_ind_change_missing_record_redirects(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    url = reverse("workspace:workspaces_countryindividual_change", args=[9_999_999_999])
+    changelist = reverse("workspace:workspaces_countryindividual_changelist")
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+        assert res.status_code == 302
+        assert res.location.endswith(changelist)
+        res = res.follow()
+        assert "9999999999" in res.text
+        assert "exist" in res.text
+
+
+def test_workspace_app_index_renders(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
+    from django.utils.text import capfirst
+
+    url = reverse("workspace:app_list", kwargs={"app_label": individual._meta.app_label})
+    with select_office(app, individual.country_office, individual.program):
+        res = app.get(url)
+        assert res.status_code == 200
+        assert capfirst(str(individual._meta.verbose_name_plural)) in res.text
+
+
 def test_ind_change(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
     url = reverse("workspace:workspaces_countryindividual_changelist")
     with select_office(app, individual.country_office, individual.program):
