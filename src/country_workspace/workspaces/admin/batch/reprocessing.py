@@ -8,6 +8,10 @@ from django.db.models.expressions import CombinedExpression
 from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransform
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+from country_workspace.contrib.ona.import_processing import (
+    build_household_processor as build_ona_household_processor,
+    build_individual_processor as build_ona_individual_processor,
+)
 from country_workspace.contrib.aurora.import_processing import (
     build_household_processor as build_aurora_household_processor,
     build_individual_processor as build_aurora_individual_processor,
@@ -112,7 +116,6 @@ def _apply_import_processor(
     record.save(update_fields=update_fields)
     return True
 
-
 def _build_processor(
     *,
     batch: Batch,
@@ -129,6 +132,11 @@ def _build_processor(
         if model is Household:
             return build_aurora_household_processor(program, mapping_id)
         return build_aurora_individual_processor(program, mapping_id)
+
+    if batch.source == Batch.BatchSource.ONA:
+        if model is Household:
+            return build_ona_household_processor(program, mapping_id)
+        return build_ona_individual_processor(program, mapping_id)
 
     return build_import_processor(
         program=program,

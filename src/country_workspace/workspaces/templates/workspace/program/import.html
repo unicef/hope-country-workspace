@@ -30,6 +30,11 @@
                                 Kobo
                             </button>
                         </li>
+                       <li class="me-2" role="presentation">
+                      <button data-tabs-target="#tab-ona" data-input-value="ona" type="button" role="tab" aria-selected="false">
+                      ONA / INFORM
+                    </button>
+                    </li>
                     </ul>
                 </div>
                 <div id="tab-content">
@@ -42,6 +47,9 @@
                     <div class="hidden content" id="tab-kobo">
                         {% include "workspace/program/_import_kobo.html" %}
                     </div>
+                   <div class="hidden content" id="tab-ona">
+                   {% include "workspace/program/_import_ona.html" %}
+                   </div>
                 </div>
             </div>
             {# <div class="block min-w-full"> #}
