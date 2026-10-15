@@ -153,6 +153,24 @@ def test_update_middleware_without_etag(update_middleware, rf, mock_user, mocker
     assert processed_response.headers["Etag"] == generated_key
 
 
+@pytest.mark.parametrize("directive", ["no-store", "no-cache", "private"])
+def test_update_middleware_skips_uncachable_response(update_middleware, rf, mock_user, mocker, directive) -> None:
+    request = rf.get("/test-url/")
+    request.user = mock_user
+    request._cache_update_cache = True
+
+    response = HttpResponse()
+    response.status_code = 200
+    response["Cache-Control"] = directive
+
+    mock_store = mocker.patch("country_workspace.cache.manager.cache_manager.store")
+
+    processed_response = update_middleware.process_response(request, response)
+
+    mock_store.assert_not_called()
+    assert "Etag" not in processed_response.headers
+
+
 def test_fetch_middleware_admin_action_request(fetch_middleware, rf, mock_user):
     request = rf.post("/test-url/", {"action": "validate_records"})
     request.user = mock_user

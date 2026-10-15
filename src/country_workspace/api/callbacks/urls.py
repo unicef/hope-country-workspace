@@ -17,4 +17,8 @@ urlpatterns = [
         HopeRdpPushReadyCallbackView.as_view(),
         name="hope-rdp-push-ready",
     ),
+    path(
+        "hope/rdps/push-ready",
+        HopeRdpPushReadyCallbackView.as_view(),
+    ),
 ]

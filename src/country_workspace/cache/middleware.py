@@ -9,6 +9,12 @@ from django.utils.deprecation import MiddlewareMixin
 from country_workspace.cache.manager import cache_manager
 
 NOT_CACHABLE_METHODS = {"POST"}
+NOT_CACHABLE_DIRECTIVES = ("private", "no-store", "no-cache")
+
+
+def is_cachable_response(response: HttpResponse) -> bool:
+    cache_control = response.get("Cache-Control", "").lower()
+    return not any(directive in cache_control for directive in NOT_CACHABLE_DIRECTIVES)
 
 
 class UpdateCacheMiddleware(MiddlewareMixin):
@@ -32,7 +38,7 @@ class UpdateCacheMiddleware(MiddlewareMixin):
                 hasattr(request, "_cache_update_cache") and request._cache_update_cache,
                 not response.streaming,
                 response.status_code in (200, 304),
-                "private" not in response.get("Cache-Control", ""),
+                is_cachable_response(response),
                 request.method not in NOT_CACHABLE_METHODS,
                 not get_messages(request),
             )
