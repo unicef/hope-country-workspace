@@ -73,6 +73,7 @@ if TYPE_CHECKING:
 
 
 ITERATOR_CHUNK_SIZE = 50
+EXPORT_STATUS_COLUMNS = ("is_valid", "errors")
 
 
 class XlsValidateRule:
@@ -354,6 +355,11 @@ def _get_queryset_with_is_valid_annotation(model: Validable, job: AsyncJob) -> Q
     return qs
 
 
+def _drop_export_status_columns(data: dict[str, Any]) -> None:
+    for column in EXPORT_STATUS_COLUMNS:
+        data.pop(column, None)
+
+
 def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) -> dict[str, Any]:  # noqa: C901
     total = {"processed": 0, "not_found": [], "errors": {}}
     version_check_enabled = constance_config.CONCURRENCY_GUARD
@@ -380,6 +386,8 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                             total["version_mismatch"].append(entity_id)
                             continue
 
+                    _drop_export_status_columns(row_data)
+
                     if row_data:
                         if field_lookup is None:
                             dc: DataChecker = job.program.get_checker_for(entity.__class__)
@@ -387,6 +395,7 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                         validate_date_datetime_fields(row_data, field_lookup, line_number, total["errors"])
                         validate_individual_reference_ids(row_data, line_number, total["errors"])
 
+                        _drop_export_status_columns(entity.flex_fields)
                         entity.flex_fields.update(**row_data)
                         entity.errors = {}
                         entity.last_checked = None
