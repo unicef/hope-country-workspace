@@ -258,6 +258,65 @@ def test_validate_date_datetime_fields_with_empty_values():
     assert not errors
 
 
+def test_import_bulk_update_file_ignores_export_status_columns(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    households,
+    individuals,
+    program,
+) -> None:
+    from django.utils import timezone
+
+    is_master_detail = program.beneficiary_group.master_detail
+    entities = households if is_master_detail else individuals
+    updated = entities[0]
+    unchanged = entities[1]
+    import_function = import_household_updates if is_master_detail else import_individual_updates
+
+    updated.flex_fields = {"kept": "yes", "is_valid": "False", "errors": "old"}
+    updated.errors = {"old": ["err"]}
+    updated.last_checked = timezone.now()
+    updated.save(update_fields=["flex_fields", "errors", "last_checked"])
+    updated.refresh_from_db()
+
+    unchanged.flex_fields = {"kept": "original", "is_valid": "True", "errors": "old"}
+    unchanged.errors = {"old": ["err"]}
+    unchanged.last_checked = timezone.now()
+    unchanged.save(update_fields=["flex_fields", "errors", "last_checked"])
+    unchanged.refresh_from_db()
+
+    rows = [
+        {
+            "id": str(updated.id),
+            "version": str(updated.version),
+            "some_field": "value",
+            "is_valid": "False",
+            "errors": "{'field': ['bad']}",
+        },
+        {
+            "id": str(unchanged.id),
+            "version": str(unchanged.version),
+            "is_valid": "True",
+            "errors": "",
+        },
+    ]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = import_function(job=job)
+
+    updated.refresh_from_db()
+    unchanged.refresh_from_db()
+
+    assert result["processed"] == 1
+    assert updated.flex_fields == {"kept": "yes", "some_field": "value"}
+    assert updated.errors == {}
+    assert updated.last_checked is None
+    assert unchanged.flex_fields == {"kept": "original", "is_valid": "True", "errors": "old"}
+    assert unchanged.errors == {"old": ["err"]}
+    assert unchanged.last_checked is not None
+
+
 def test_import_bulk_update_file_with_individual_reference_validation_errors(
     mocker: MockerFixture,
     job: AsyncJob,
