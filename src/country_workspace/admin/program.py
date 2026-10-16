@@ -2,7 +2,8 @@ from typing import TYPE_CHECKING
 
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 from strategy_field.utils import fqn
@@ -85,19 +86,30 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         )
 
     @button()
-    def clean_program(self, request: HttpRequest, pk: str) -> None:
+    def clean_program(self, request: HttpRequest, pk: str) -> HttpResponse:
         obj: Program = self.get_object(request, pk)
 
-        def _action(_: HttpRequest) -> None:
-            job = AsyncJob.objects.create(
-                description=f"Clean data for program {obj.name}",
-                program=obj,
-                owner=request.user,
-                type=AsyncJob.JobType.TASK,
-                action=fqn(clean_program_data),
-                config={},
-            )
+        def _action(action_request: HttpRequest) -> None:
+            with transaction.atomic():
+                program = Program.objects.select_for_update().get(pk=obj.pk)
+                if program.cleanup_in_progress:
+                    self.message_user(action_request, "Program cleanup is already in progress.", messages.WARNING)
+                    return
+
+                program.cleanup_in_progress = True
+                program.save(update_fields=["cleanup_in_progress"])
+                job = AsyncJob.objects.create(
+                    description=f"Clean data for program {program.name}",
+                    program=program,
+                    owner=action_request.user,
+                    type=AsyncJob.JobType.TASK,
+                    action=fqn(clean_program_data),
+                    config={},
+                    repeatable=True,
+                )
+
             job.queue()
+            self.message_user(action_request, "Job for program data cleaning is scheduled", messages.SUCCESS)
 
         return confirm_action(
             self,
@@ -105,5 +117,5 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
             _action,
             "Confirm action",
             description="Continuing will erase all the data from this program",
-            success_message="Job for program data cleaning is scheduled",
+            error_message="Program cleanup could not be started.",
         )

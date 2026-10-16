@@ -125,6 +125,11 @@ class Program(BaseModel):
         default=False,
         help_text="Is biometric deduplication enabled for this program?",
     )
+    cleanup_in_progress = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text="Whether program data cleanup is in progress.",
+    )
 
     def __str__(self) -> str:
         return self.name
