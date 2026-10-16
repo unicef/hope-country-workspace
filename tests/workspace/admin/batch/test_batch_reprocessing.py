@@ -1,7 +1,7 @@
 import pytest
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Batch, Household, Individual, User
+from country_workspace.models import AsyncJob, Batch, Household, Individual, User
 from country_workspace.utils.import_flow.collector_identity import compute_collector_hash
 from country_workspace.workspaces.admin.batch.reprocessing import (
     _apply_import_processor,
@@ -102,6 +102,62 @@ def test_build_processor_uses_default_builder(program, batch: CountryBatch, mock
         program=program,
         model=Household,
         mapping_id=7,
+        source=batch.source,
+    )
+
+
+def test_build_processor_strips_passed_people_prefix_for_people_only_rdi(people_program, mocker) -> None:
+    from testutils.factories import CountryBatchFactory
+
+    batch = CountryBatchFactory(
+        program=people_program,
+        country_office=people_program.country_office,
+        source=Batch.BatchSource.RDI,
+    )
+    processor = mocker.MagicMock(name="processor")
+    build_import_processor = mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.build_import_processor",
+        return_value=processor,
+    )
+
+    assert (
+        _build_processor(
+            batch=batch,
+            program=people_program,
+            model=Individual,
+            mapping_id=None,
+            people_prefix="pp_",
+        )
+        is processor
+    )
+
+    pre_processors = build_import_processor.call_args.kwargs["pre_processors"]
+    assert pre_processors[0](
+        {"pp_admin1": "Region", "pp_email": "person@example.com", "pp_full_name": "Jane", "note": "kept"}
+    ) == {
+        "admin1": "Region",
+        "email": "person@example.com",
+        "full_name": "Jane",
+        "note": "kept",
+    }
+
+
+def test_build_processor_keeps_master_detail_field_names(program, batch: CountryBatch, mocker) -> None:
+    processor = mocker.MagicMock(name="processor")
+    build_import_processor = mocker.patch(
+        "country_workspace.workspaces.admin.batch.reprocessing.build_import_processor",
+        return_value=processor,
+    )
+
+    assert (
+        _build_processor(batch=batch, program=program, model=Individual, mapping_id=None, people_prefix="pp_")
+        is processor
+    )
+
+    build_import_processor.assert_called_once_with(
+        program=program,
+        model=Individual,
+        mapping_id=None,
         source=batch.source,
     )
 
@@ -523,6 +579,68 @@ def test_reprocess_batch_creates_validation_jobs_for_people_only_batch(
     assert validation_jobs.call_args.kwargs["program"] == batch.program
     assert list(validation_jobs.call_args.kwargs["queryset"]) == list(batch.individual_set.filter(removed=False))
 
+    postprocessing.assert_called_once()
+
+
+@pytest.mark.parametrize("passed_on_job", [True, False])
+def test_reprocess_people_only_batch_normalizes_prefixed_fields(
+    people_program,
+    user: User,
+    job_factory,
+    validation_jobs,
+    postprocessing,
+    passed_on_job: bool,
+) -> None:
+    from strategy_field.utils import fqn
+
+    from country_workspace.datasources.rdi.processors import import_from_rdi
+    from country_workspace.utils.imports import validate_alien_fields
+    from testutils.factories import AsyncJobFactory, CountryBatchFactory, CountryIndividualFactory, DataCheckerFactory
+
+    checker = DataCheckerFactory(fields=["admin1", "admin2", "email", "phone_no"])
+    people_program.individual_checker = checker
+    people_program.save(update_fields=["individual_checker"])
+
+    raw_data = {
+        "pp_admin1": "Region",
+        "pp_admin2": "District",
+        "pp_email": "person@example.com",
+        "pp_phone_no": "555",
+    }
+    batch = CountryBatchFactory(
+        program=people_program,
+        country_office=people_program.country_office,
+        source=Batch.BatchSource.RDI,
+    )
+    if not passed_on_job:
+        AsyncJobFactory(
+            program=people_program,
+            batch=batch,
+            owner=user,
+            type=AsyncJob.JobType.TASK,
+            action=fqn(import_from_rdi),
+            config={"people_prefix": "pp_"},
+        )
+    individual = CountryIndividualFactory(
+        batch=batch,
+        household=None,
+        raw_data=raw_data,
+        flex_fields={"admin1": "Region", "admin2": "District", "email": "person@example.com", "phone_no": "555"},
+    )
+
+    job = job_factory(batch, people_prefix="pp_") if passed_on_job else job_factory(batch)
+    reprocess_batch(job)
+
+    individual.refresh_from_db()
+    assert individual.raw_data == raw_data
+    assert individual.flex_fields == {
+        "admin1": "Region",
+        "admin2": "District",
+        "email": "person@example.com",
+        "phone_no": "555",
+    }
+    validate_alien_fields(individual)
+    validation_jobs.assert_called_once()
     postprocessing.assert_called_once()
 
 
