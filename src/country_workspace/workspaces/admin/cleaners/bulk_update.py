@@ -24,7 +24,7 @@ from country_workspace.models import AsyncJob, Program, Country
 from country_workspace.models.base import Validable
 from country_workspace.state import state
 from country_workspace.storages import MEDIA_STORAGE
-from country_workspace.utils.flex_fields import get_file_field_names
+from country_workspace.utils.flex_fields import CaseInsensitiveChoiceField, get_file_field_names
 from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportError, BulkImportFileProcessingError
 from django.db.models import QuerySet
 
@@ -114,6 +114,7 @@ class ValidateList(XlsValidateRule):
 TYPES = {
     forms.IntegerField: ValidateInteger,
     forms.ChoiceField: ValidateList,
+    CaseInsensitiveChoiceField: ValidateList,
     forms.BooleanField: ValidateBool,
 }
 
