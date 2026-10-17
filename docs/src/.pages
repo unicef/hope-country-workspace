@@ -9,6 +9,7 @@ nav:
   - Country Workspace interface: interfaces.md
   - Program: program.md
   - Data cleaning and updates: data_cleaning_updates.md
+  - Images and documents: images.md
   - Data Import: data_import
   - Data Validation: data_validation
   - Registration Data Pushes: rdp

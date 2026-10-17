@@ -96,6 +96,8 @@ class MassUpdateForm(BaseActionForm):
         checker: "DataChecker" = kwargs.pop("checker")
         super().__init__(*args, **kwargs)
         for name, fld in checker.get_form()().fields.items():
+            if isinstance(fld, forms.FileField):
+                continue
             self.fields[f"flex_fields__{name}"] = MassUpdateField(label=fld.label, field=fld)
 
     def get_selected(self) -> "dict[str, Any]":
