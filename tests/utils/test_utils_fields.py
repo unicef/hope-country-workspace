@@ -1,6 +1,7 @@
 from unittest.mock import Mock, call
 
 import pytest
+from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from pytest_mock import MockerFixture
 
@@ -10,9 +11,16 @@ from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, c
 from country_workspace.utils.flex_fields import (
     Base64ImageInput,
     Base64ImageField,
+    CaseInsensitiveChoiceField,
+    CaseInsensitiveChoiceFieldWithEmptyDisplay,
     ConsentSharingChoice,
+    ObservedDisabilityChoice,
     split_options,
 )
+
+SEVERITY_CHOICES = [("", "None"), ("LOT_DIFFICULTY", "A lot"), ("CANNOT_DO", "Cannot"), ("SOME_DIFFICULTY", "Some")]
+DISABILITY_CHOICES = [("disabled", "disabled"), ("not disabled", "not disabled")]
+OBSERVED_DISABILITY_CHOICES = [("NONE", "None"), ("SEEING", "Seeing"), ("HEARING", "Hearing")]
 
 
 @pytest.mark.parametrize(
@@ -127,6 +135,78 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_split_options(
     ConsentSharingChoice.prepare_value(instance, value)
 
     split_options_mock.assert_has_calls([c := call(value), c])
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("SOME_DIFFICULTY", "SOME_DIFFICULTY", id="exact"),
+        pytest.param("some_difficulty", "SOME_DIFFICULTY", id="lowercase"),
+        pytest.param("Cannot_Do", "CANNOT_DO", id="mixed-case"),
+        pytest.param("", "", id="empty"),
+        pytest.param(None, "", id="none"),
+    ],
+)
+def test_case_insensitive_choice_field_returns_choice_key(value: str | None, expected: str) -> None:
+    field = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    assert field.clean(value) == expected
+
+
+def test_case_insensitive_choice_field_rejects_unknown_value() -> None:
+    field = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    with pytest.raises(forms.ValidationError):
+        field.clean("some difficulty")
+
+
+def test_case_insensitive_choice_field_keeps_lowercase_choice_keys() -> None:
+    field = CaseInsensitiveChoiceFieldWithEmptyDisplay(choices=DISABILITY_CHOICES, required=False)
+
+    assert field.clean("DISABLED") == "disabled"
+    assert field.clean("Not Disabled") == "not disabled"
+
+
+def test_case_insensitive_choice_field_with_empty_display_still_requires_value() -> None:
+    field = CaseInsensitiveChoiceFieldWithEmptyDisplay(choices=DISABILITY_CHOICES, required=True)
+
+    with pytest.raises(forms.ValidationError):
+        field.clean("")
+
+
+def test_case_insensitive_choice_field_matches_grouped_choices() -> None:
+    field = CaseInsensitiveChoiceField(choices=[("Group", [("MARRIED", "Married"), ("SINGLE", "Single")])])
+
+    assert field.clean("single") == "SINGLE"
+
+
+def test_case_insensitive_choice_field_selects_stored_lowercase_value() -> None:
+    class TestForm(forms.Form):
+        seeing_disability = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    html = str(TestForm(initial={"seeing_disability": "some_difficulty"})["seeing_disability"])
+
+    assert '<option value="SOME_DIFFICULTY" selected>' in html
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("seeing, Hearing", ["SEEING", "HEARING"], id="string"),
+        pytest.param(["none"], ["NONE"], id="list"),
+        pytest.param("", [], id="empty"),
+    ],
+)
+def test_observed_disability_choice_returns_choice_keys(value: str | list[str], expected: list[str]) -> None:
+    field = ObservedDisabilityChoice(choices=OBSERVED_DISABILITY_CHOICES, required=False)
+
+    assert field.clean(value) == expected
+
+
+def test_consent_sharing_choice_returns_choice_keys() -> None:
+    field = ConsentSharingChoice(choices=[("UNICEF", "UNICEF"), ("PRIVATE_PARTNER", "Private")], required=False)
+
+    assert field.clean("unicef private_partner") == ["UNICEF", "PRIVATE_PARTNER"]
 
 
 @pytest.mark.parametrize(

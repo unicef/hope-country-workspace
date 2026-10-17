@@ -1,13 +1,15 @@
 from base64 import b64encode
 import hashlib
 import json
-from typing import TYPE_CHECKING, Generator, Literal
+from typing import TYPE_CHECKING, Any, Generator, Literal
 
 from django import forms
 from django.core.files.uploadedfile import UploadedFile
+from django.utils.choices import flatten_choices
 
 from hope_flex_fields.models import DataChecker
 
+from country_workspace.contrib.hope.required_choice_field import ChoiceFieldWithEmptyDisplay
 from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 
 if TYPE_CHECKING:
@@ -70,6 +72,40 @@ def split_options(value: str) -> list[str]:
     return [stripped]
 
 
+class CaseInsensitiveChoiceMixin(forms.Field):
+    """Match values against the choice keys ignoring letter case and return the key as defined."""
+
+    choices: Any
+
+    def _match_choice(self, value: Any) -> Any:
+        if not isinstance(value, str) or not value:
+            return value
+        keys = [str(key) for key, __ in flatten_choices(self.choices)]
+        if value in keys:
+            return value
+        folded = value.casefold()
+        return next((key for key in keys if key.casefold() == folded), value)
+
+    def _match_choices(self, value: Any) -> Any:
+        if isinstance(value, list):
+            return [self._match_choice(item) for item in value]
+        return self._match_choice(value)
+
+    def to_python(self, value: Any) -> Any:
+        return self._match_choices(super().to_python(value))
+
+    def prepare_value(self, value: Any) -> Any:
+        return self._match_choices(super().prepare_value(value))
+
+
+class CaseInsensitiveChoiceField(CaseInsensitiveChoiceMixin, forms.ChoiceField):
+    """Choice field that accepts values in any letter case."""
+
+
+class CaseInsensitiveChoiceFieldWithEmptyDisplay(CaseInsensitiveChoiceMixin, ChoiceFieldWithEmptyDisplay):
+    """Choice field with an explicit empty option that accepts values in any letter case."""
+
+
 class CustomMultipleChoiceField(forms.MultipleChoiceField):
     def to_python(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
@@ -84,9 +120,9 @@ class CustomMultipleChoiceField(forms.MultipleChoiceField):
         return super().prepare_value(value)
 
 
-class ConsentSharingChoice(CustomMultipleChoiceField):
+class ConsentSharingChoice(CaseInsensitiveChoiceMixin, CustomMultipleChoiceField):
     """Consent sharing multiple choice field."""
 
 
-class ObservedDisabilityChoice(CustomMultipleChoiceField):
+class ObservedDisabilityChoice(CaseInsensitiveChoiceMixin, CustomMultipleChoiceField):
     """Observed Disability multiple choice field."""
