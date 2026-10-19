@@ -11,7 +11,8 @@ from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
 from PIL import Image, UnidentifiedImageError
 
-from country_workspace.models import AsyncJob
+from country_workspace.models import AsyncJob, Individual
+from country_workspace.workspaces.admin.cleaners.validate import create_validation_jobs
 from ...models import CountryBatch, CountryIndividual
 from ....storages import MEDIA_STORAGE
 from ....utils.flex_files import FlexFileContent, write_flex_file
@@ -161,8 +162,12 @@ class BatchPictureImportService:
         }
 
     def apply_assignments(self, target_field: str, assignments: list[dict[str, Any]]) -> int:
+        return len(self.apply_assignments_and_get_ids(target_field, assignments))
+
+    def apply_assignments_and_get_ids(self, target_field: str, assignments: list[dict[str, Any]]) -> list[int]:
+        """Apply pictures and return PKs of the individuals that were actually changed."""
         if not assignments:
-            return 0
+            return []
         record_ids = [item["record_id"] for item in assignments]
         individuals = CountryIndividual.objects.filter(
             pk__in=record_ids,
@@ -170,7 +175,7 @@ class BatchPictureImportService:
             removed=False,
         ).in_bulk()
 
-        updated = 0
+        updated: list[int] = []
         with transaction.atomic():
             for item in assignments:
                 individual = individuals.get(item["record_id"])
@@ -190,8 +195,21 @@ class BatchPictureImportService:
                     individual.last_checked = None
                     individual.errors = {}
                     individual.save(update_fields=["flex_fields", "last_checked", "errors"])
-                    updated += 1
+                    updated.append(individual.pk)
         return updated
+
+
+def _schedule_validation(job: AsyncJob, batch: CountryBatch, individual_ids: list[int]) -> None:
+    """Re-validate individuals whose pictures changed (their check state was reset on import)."""
+    if not individual_ids:
+        return
+    create_validation_jobs(
+        description=f"Validate records for batch {batch.pk} after picture import",
+        owner=job.owner,
+        program=batch.program,
+        queryset=Individual.objects.filter(pk__in=individual_ids),
+        validation_scope="batch",
+    )
 
 
 def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
@@ -214,8 +232,9 @@ def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
     try:
         with MEDIA_STORAGE.open(zip_file_name, "rb") as zip_stream:
             preview = service.build_preview(match_field, zip_stream, include_content=True)
-        updated = service.apply_assignments(target_field, preview.get("assignments", []))
-        return {"updated": updated}
+        updated_ids = service.apply_assignments_and_get_ids(target_field, preview.get("assignments", []))
+        _schedule_validation(job, batch, updated_ids)
+        return {"updated": len(updated_ids)}
     finally:
         # Always clear draft state + temp ZIP after the job run.
         batch.finish_picture_import()
