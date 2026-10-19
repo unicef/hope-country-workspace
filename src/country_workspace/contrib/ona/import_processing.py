@@ -8,10 +8,15 @@ from django.db import transaction
 from django.utils import timezone
 from constance import config as constance_config
 from country_workspace.contrib.ona.client import OnaClient
-from country_workspace.contrib.ona.transformers import transform_submission_to_records
+from country_workspace.contrib.ona.transformers import (
+    filter_ona_sys_fields,
+    flatten_ona_data,
+    transform_submission_to_records,
+)
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.models import AsyncJob, Batch, Household, Individual, Program, SyncLog
 from country_workspace.notifications.signals import data_imported_signal
+from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.models.household import (
     RELATIONSHIP_HEAD,
     RELATIONSHIP_NON_BENEFICIARY,
@@ -45,14 +50,13 @@ class Config(BatchNameConfig, ValidateModeConfig):
     individual_mapping_id: NotRequired[int | None]
     household_transformer_id: NotRequired[int | None]
     individual_transformer_id: NotRequired[int | None]
-    household_field_mapping: NotRequired[dict[str, str]]
-    individual_field_mapping: NotRequired[dict[str, str]]
     individuals_key: NotRequired[str]
 
 
 class ImportResult(NamedTuple):
     people: int
     households: int = 0
+    completed: bool = True
 
 
 class ImportedIndividual(NamedTuple):
@@ -67,6 +71,10 @@ def import_data(job: AsyncJob) -> ImportResult:
     Pulls submissions from ONA/INFORM, transforms them into Country Workspace
     household/individual records, then reuses the existing import processors,
     post-processing, and optional validation.
+
+    Each submission commits independently. On timebox exhaustion, persist
+    the cursor before queuing a continuation for the same batch. Only the
+    final run performs post-processing, validation, and completion.
 
     This does not push anything to HOPE.
     """
@@ -104,36 +112,12 @@ def import_data(job: AsyncJob) -> ImportResult:
         token=constance_config.ONA_API_TOKEN,
     )
 
-    total_people = 0
-    total_households = 0
+    timebox_minutes = getattr(constance_config, "ONA_IMPORT_TIMEBOX_MINUTES", 0) or 0
+    timebox_seconds = int(timebox_minutes * 60) if timebox_minutes > 0 else None
+    result = import_submissions(batch, client, config, job=job, timebox_seconds=timebox_seconds)
 
-    sync_log_name = get_ona_sync_log_name(config["form_id"])
-    program_ct = ContentType.objects.get_for_model(Program)
-    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=job.program.id).first()
-    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else None
-    last_successful_id = last_id
-    current_submission_id: int | None = None
-
-    try:
-        for submission in client.iter_submissions(config["form_id"], last_id=last_id):
-            job.ensure_not_cancelled(refresh=True)
-
-            current_submission_id = get_ona_submission_cursor_id(submission)
-            if last_id is not None and current_submission_id <= last_id:
-                continue
-
-            imported = import_submission(
-                batch=batch,
-                submission=submission,
-                config=config,
-            )
-
-            total_people += imported.people
-            total_households += imported.households
-            last_successful_id = current_submission_id
-
-        job.ensure_not_cancelled(refresh=True)
-
+    job.ensure_not_cancelled(refresh=True)
+    if result.completed:
         run_batch_postprocessing(
             batch,
             household_transformer_id=config.get("household_transformer_id"),
@@ -141,7 +125,6 @@ def import_data(job: AsyncJob) -> ImportResult:
         )
 
         job.ensure_not_cancelled(refresh=True)
-
         if config.get("validate_after_import"):
             create_validation_jobs(
                 description=f"Validate records for batch {batch.pk}",
@@ -151,22 +134,73 @@ def import_data(job: AsyncJob) -> ImportResult:
                 validation_scope="batch",
             )
 
-        batch.status = Batch.BatchStatus.COMPLETE
-        batch.save(update_fields=["status"])
+        job.ensure_not_cancelled(refresh=True)
+        with transaction.atomic():
+            batch.status = Batch.BatchStatus.COMPLETE
+            batch.save(update_fields=["status"])
 
         data_imported_signal.send(
             sender=Batch,
             program_id=batch.program_id,
             batch_id=batch.id,
-            record_count=total_people + total_households,
+            record_count=batch.household_set.count() + batch.individual_set.count(),
             source=Batch.BatchSource.ONA,
         )
+    else:
+        AsyncJob.objects.create(
+            description=f"ONA / INFORM import: {job.program.name}",
+            type=job.type,
+            action=job.action,
+            file=getattr(job, "file", None),
+            program=job.program,
+            owner=job.owner,
+            config=config,
+            batch=batch,
+        ).queue()
 
-        return ImportResult(
-            people=total_people,
-            households=total_households,
-        )
+    return result
 
+
+def import_submissions(
+    batch: Batch,
+    client: OnaClient,
+    config: Config,
+    *,
+    job: AsyncJob,
+    timebox_seconds: int | None = None,
+) -> ImportResult:
+    """Import committed submissions and persist their cursor before returning."""
+    total_people = 0
+    total_households = 0
+    sync_log_name = get_ona_sync_log_name(config["form_id"])
+    program_ct = ContentType.objects.get_for_model(Program)
+    sync_log = SyncLog.objects.filter(name=sync_log_name, content_type=program_ct, object_id=job.program.id).first()
+    last_id = int(sync_log.last_id) if sync_log and sync_log.last_id else None
+    last_successful_id = last_id
+    current_submission_id: int | None = None
+    start_time = timezone.now()
+    time_exhausted = False
+
+    try:
+        for submission in client.iter_submissions(config["form_id"], last_id=last_id):
+            job.ensure_not_cancelled(refresh=True)
+            current_submission_id = get_ona_submission_cursor_id(submission)
+            if last_id is not None and current_submission_id <= last_id:
+                continue
+
+            # import_submission commits the whole submission before returning.
+            imported = import_submission(batch=batch, submission=submission, config=config)
+            total_people += imported.people
+            total_households += imported.households
+            last_successful_id = current_submission_id
+
+            if timebox_seconds is not None:
+                elapsed_seconds = (timezone.now() - start_time).total_seconds()
+                if elapsed_seconds >= timebox_seconds:
+                    time_exhausted = True
+                    break
+    except GracefulJobCancellationError:
+        raise
     except Exception:
         logger.exception(
             "INFORM/ONA import failed",
@@ -179,13 +213,15 @@ def import_data(job: AsyncJob) -> ImportResult:
         )
         raise
     finally:
-        if last_successful_id and last_successful_id != last_id:
+        if last_successful_id is not None and last_successful_id != last_id:
             SyncLog.objects.update_or_create(
                 name=sync_log_name,
                 content_type=program_ct,
                 object_id=job.program.id,
                 defaults={"last_id": str(last_successful_id), "last_update_date": timezone.now()},
             )
+
+    return ImportResult(people=total_people, households=total_households, completed=not time_exhausted)
 
 
 def import_submission(
@@ -199,8 +235,6 @@ def import_submission(
     transformed = transform_submission_to_records(
         submission,
         master_detail=config.get("master_detail", False),
-        household_field_mapping=config.get("household_field_mapping", {}),
-        individual_field_mapping=config.get("individual_field_mapping", {}),
         individuals_key=config.get("individuals_key", "individuals"),
     )
 
@@ -378,7 +412,7 @@ def build_individual_processor(
         program=program,
         model=Individual,
         mapping_id=mapping_id,
-        pre_processors=(),
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )
@@ -392,7 +426,7 @@ def build_household_processor(
         program=program,
         model=Household,
         mapping_id=mapping_id,
-        pre_processors=(),
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )

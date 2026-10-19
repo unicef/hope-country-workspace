@@ -119,16 +119,6 @@ class ImportOnaForm(BaseImportForm):
         initial="individuals",
         help_text="JSON key that contains individual records for master/detail forms.",
     )
-    household_field_mapping = forms.JSONField(
-        required=False,
-        initial=dict,
-        help_text='JSON mapping from ONA household fields to CW fields, e.g. {"household/name": "household_name"}.',
-    )
-    individual_field_mapping = forms.JSONField(
-        required=True,
-        initial=dict,
-        help_text='JSON mapping from ONA individual fields to CW fields, e.g. {"name": "full_name"}.',
-    )
 
     def __init__(
         self,

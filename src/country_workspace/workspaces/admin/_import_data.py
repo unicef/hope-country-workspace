@@ -273,8 +273,6 @@ class ImportDataMixin:
                 "form_id": form.cleaned_data["form_id"],
                 "master_detail": program.beneficiary_group.master_detail if program.beneficiary_group else False,
                 "individuals_key": form.cleaned_data.get("individuals_key") or "individuals",
-                "household_field_mapping": form.cleaned_data.get("household_field_mapping") or {},
-                "individual_field_mapping": form.cleaned_data.get("individual_field_mapping") or {},
                 "household_mapping_id": (
                     household_mapping.id if (household_mapping := form.cleaned_data.get("household_mapping")) else None
                 ),

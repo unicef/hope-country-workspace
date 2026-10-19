@@ -28,41 +28,64 @@ def get_nested_value(data: Mapping[str, Any], path: str) -> Any:
     return current
 
 
-def map_fields(
-    source: Mapping[str, Any],
-    field_mapping: Mapping[str, str],
-) -> dict[str, Any]:
-    """
-    Convert ONA field names into Country Workspace/RDI field names.
+def remove_nested_value(data: Mapping[str, Any], path: str) -> dict[str, Any]:
+    """Return a copy of ONA data with a flat or nested slash-path removed."""
+    output = dict(data)
 
-    Example:
-    {
-        "hh/name": "full_name",
-        "hh/gov": "residence_governorate"
-    }
+    if path in output:
+        output.pop(path, None)
+        return output
 
-    """
+    parts = path.split("/")
+    source: Mapping[str, Any] = data
+    target = output
+
+    for part in parts[:-1]:
+        child = source.get(part)
+        if not isinstance(child, Mapping):
+            return output
+
+        child_copy = dict(child)
+        target[part] = child_copy
+        target = child_copy
+        source = child
+
+    target.pop(parts[-1], None)
+    return output
+
+
+def flatten_ona_data(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
+    """Flatten nested ONA/ODK JSON into slash-separated source field names."""
     output: dict[str, Any] = {}
 
-    for ona_field, target_field in field_mapping.items():
-        if not target_field:
-            raise OnaMappingError(f"Missing target field for ONA field: {ona_field}")
+    for key, value in data.items():
+        path = f"{prefix}/{key}" if prefix else str(key)
 
-        output[target_field] = get_nested_value(source, ona_field)
+        if isinstance(value, Mapping):
+            output.update(flatten_ona_data(value, path))
+        else:
+            output[path] = value
 
     return output
+
+
+def filter_ona_sys_fields(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove ONA/ODK system fields such as _id, _uuid, and _submission_time."""
+    return {
+        key: value
+        for key, value in data.items()
+        if not key.split("/")[-1].startswith("_")
+    }
 
 
 def transform_submission_to_records(
     submission: Mapping[str, Any],
     *,
     master_detail: bool,
-    household_field_mapping: Mapping[str, str] | None = None,
-    individual_field_mapping: Mapping[str, str] | None = None,
     individuals_key: str = "individuals",
 ) -> dict[str, Any]:
     """
-    Transform one ONA submission into mapped records with separate raw source data.
+    Transform one ONA submission into source records with separate raw source data.
 
     For non-master-detail:
         returns one individual record.
@@ -70,15 +93,12 @@ def transform_submission_to_records(
     For master-detail:
         returns one household record plus list of individual records.
     """
-    household_field_mapping = household_field_mapping or {}
-    individual_field_mapping = individual_field_mapping or {}
-
     if not master_detail:
         return {
             "household": None,
             "individuals": [
                 {
-                    "fields": map_fields(submission, individual_field_mapping),
+                    "fields": dict(submission),
                     "raw_data": dict(submission),
                 }
             ],
@@ -95,7 +115,7 @@ def transform_submission_to_records(
     if not isinstance(raw_individuals, list):
         raise OnaMappingError(f"Expected list for individuals_key: {individuals_key}")
 
-    raw_household = {key: value for key, value in submission.items() if key != individuals_key}
+    raw_household = remove_nested_value(submission, individuals_key)
 
     individuals = []
     for index, raw_individual in enumerate(raw_individuals):
@@ -104,14 +124,14 @@ def transform_submission_to_records(
 
         individuals.append(
             {
-                "fields": map_fields(raw_individual, individual_field_mapping),
+                "fields": dict(raw_individual),
                 "raw_data": dict(raw_individual),
             }
         )
 
     return {
         "household": {
-            "fields": map_fields(submission, household_field_mapping),
+            "fields": raw_household,
             "raw_data": raw_household,
         },
         "individuals": individuals,

@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import ANY
 
 import pytest
 from pytest_mock import MockerFixture
+
+from country_workspace.models.jobs import GracefulJobCancellationError
 
 from country_workspace.contrib.ona.import_processing import (
     Config,
@@ -23,10 +26,6 @@ def config() -> Config:
         "validate_after_import": False,
         "form_id": "9153",
         "master_detail": False,
-        "individual_field_mapping": {
-            "name": "full_name",
-            "age": "age",
-        },
     }
 
 
@@ -45,6 +44,7 @@ def ona_constance_config(mocker: MockerFixture):
     constance_config = mocker.patch("country_workspace.contrib.ona.import_processing.constance_config")
     constance_config.ONA_API_URL = "https://data.inform.unicef.org"
     constance_config.ONA_API_TOKEN = "dummy-token"
+    constance_config.ONA_IMPORT_TIMEBOX_MINUTES = 0
     return constance_config
 
 
@@ -236,7 +236,10 @@ def test_import_data_persists_last_successful_submission_on_error(
     sync_log.last_id = "100"
     ona_sync_log["filter"].return_value.first.return_value = sync_log
 
-    mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    async_job_cls = mocker.patch("country_workspace.contrib.ona.import_processing.AsyncJob")
+    postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    validation_jobs = mocker.patch("country_workspace.contrib.ona.import_processing.create_validation_jobs")
     client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
     client_cls.return_value.iter_submissions.return_value = [
         {"_id": 101, "_uuid": "new-101"},
@@ -255,6 +258,10 @@ def test_import_data_persists_last_successful_submission_on_error(
         object_id=job.program.id,
         defaults={"last_id": "101", "last_update_date": ANY},
     )
+    async_job_cls.objects.create.assert_not_called()
+    postprocessing.assert_not_called()
+    validation_jobs.assert_not_called()
+    batch_cls.objects.create.return_value.save.assert_not_called()
 
 
 def test_import_data_reuses_existing_job_batch(
@@ -365,7 +372,7 @@ def test_import_submission_non_master_detail(mocker: MockerFixture, config: Conf
 
     kwargs = create_individual.call_args.kwargs
     assert kwargs["originating_id"] == "ONA#uuid-123#IND0"
-    assert kwargs["row"]["full_name"] == "Ahmad Ali"
+    assert kwargs["row"]["name"] == "Ahmad Ali"
     assert kwargs["row"]["age"] == 35
     assert kwargs["raw_data"] == {
         "_uuid": "uuid-123",
@@ -399,12 +406,6 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
         config={
             **config,
             "master_detail": True,
-            "household_field_mapping": {
-                "household/name": "household_name",
-            },
-            "individual_field_mapping": {
-                "name": "full_name",
-            },
             "individuals_key": "individuals",
         },
     )
@@ -413,7 +414,7 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
 
     create_household.assert_called_once()
     assert create_household.call_args.kwargs["originating_id"] == "ONA#uuid-123#HH0"
-    assert create_household.call_args.kwargs["row"]["household_name"] == "Ahmad Household"
+    assert create_household.call_args.kwargs["row"]["household/name"] == "Ahmad Household"
     assert create_household.call_args.kwargs["raw_data"] == {
         "_uuid": "uuid-123",
         "household/name": "Ahmad Household",
@@ -620,6 +621,8 @@ def test_import_data_emits_data_imported_signal(
     batch = batch_cls.objects.create.return_value
     batch.program_id = 123
     batch.id = 456
+    batch.household_set.count.return_value = 2
+    batch.individual_set.count.return_value = 3
 
     client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
     client_cls.return_value.iter_submissions.return_value = []
@@ -634,6 +637,182 @@ def test_import_data_emits_data_imported_signal(
         sender=batch_cls,
         program_id=123,
         batch_id=456,
-        record_count=0,
+        record_count=5,
         source=batch_cls.BatchSource.ONA,
     )
+
+
+def test_import_data_timeboxes_and_resumes_same_batch(  # noqa: PLR0915
+    mocker: MockerFixture,
+    job,
+    config: Config,
+    ona_constance_config,
+    ona_sync_log,
+    ona_data_imported_signal,
+) -> None:
+    _mock_atomic(mocker)
+    ona_constance_config.ONA_IMPORT_TIMEBOX_MINUTES = 1
+    job.config = {**config, "validate_after_import": True}
+    job.program.name = "Test programme"
+    clock = {"now": datetime(2026, 1, 1, tzinfo=timezone.utc), "cursor": None, "people": 0}
+    mocker.patch("country_workspace.contrib.ona.import_processing.timezone.now", side_effect=lambda: clock["now"])
+    ona_sync_log["filter"].return_value.first.side_effect = lambda: (
+        mocker.Mock(last_id=str(clock["cursor"])) if clock["cursor"] is not None else None
+    )
+
+    def persist_cursor(**kwargs) -> None:
+        clock["cursor"] = int(kwargs["defaults"]["last_id"])
+
+    ona_sync_log["update_or_create"].side_effect = persist_cursor
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch_cls.BatchStatus.LOADING = "LOADING"
+    batch_cls.BatchStatus.COMPLETE = "COMPLETE"
+    batch = batch_cls.objects.create.return_value
+    batch.id = batch.pk = 777
+    batch.status = "LOADING"
+    batch.household_set.count.return_value = 0
+    batch.individual_set.count.side_effect = lambda: clock["people"]
+    batch_cls.objects.select_for_update.return_value.select_related.return_value.get.return_value = batch
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    submissions = [{"_id": value} for value in (1, 2, 3)]
+    client_cls.return_value.iter_submissions.side_effect = [submissions, submissions]
+
+    def import_one(**kwargs) -> ImportResult:
+        clock["people"] += 1
+        clock["now"] += timedelta(seconds=60 if kwargs["submission"]["_id"] == 1 else 1)
+        return ImportResult(people=1)
+
+    import_submission_mock = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.import_submission", side_effect=import_one
+    )
+    postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    validation_queryset = mocker.Mock()
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing._validation_queryset", return_value=validation_queryset
+    )
+    validation_jobs = mocker.patch("country_workspace.contrib.ona.import_processing.create_validation_jobs")
+    async_job_cls = mocker.patch("country_workspace.contrib.ona.import_processing.AsyncJob")
+    continuation = async_job_cls.objects.create.return_value
+
+    def queue_after_cursor_saved() -> None:
+        assert clock["cursor"] == 1
+        assert batch.status == "LOADING"
+        assert import_submission_mock.call_count == 1
+        postprocessing.assert_not_called()
+        validation_jobs.assert_not_called()
+        ona_data_imported_signal.assert_not_called()
+
+    continuation.queue.side_effect = queue_after_cursor_saved
+
+    assert import_data(job) == ImportResult(people=1, completed=False)
+    batch.save.assert_not_called()
+    async_job_cls.objects.create.assert_called_once_with(
+        description="ONA / INFORM import: Test programme",
+        type=job.type,
+        action=job.action,
+        file=job.file,
+        program=job.program,
+        owner=job.owner,
+        config=job.config,
+        batch=batch,
+    )
+    continuation.queue.assert_called_once_with()
+    continuation.config = job.config
+    continuation.batch_id = batch.pk
+    continuation.program = job.program
+    continuation.owner = job.owner
+
+    assert import_data(continuation) == ImportResult(people=2, completed=True)
+    assert clock["cursor"] == 3
+    assert clock["people"] == 3
+    assert [call.kwargs["submission"]["_id"] for call in import_submission_mock.call_args_list] == [1, 2, 3]
+    assert [call.kwargs["last_id"] for call in client_cls.return_value.iter_submissions.call_args_list] == [None, 1]
+    batch_cls.objects.create.assert_called_once()
+    batch_cls.objects.select_for_update.return_value.select_related.return_value.get.assert_called_once_with(pk=777)
+    async_job_cls.objects.create.assert_called_once()
+    postprocessing.assert_called_once_with(batch, household_transformer_id=None, individual_transformer_id=None)
+    validation_jobs.assert_called_once_with(
+        description="Validate records for batch 777",
+        owner=job.owner,
+        program=job.program,
+        queryset=validation_queryset,
+        validation_scope="batch",
+    )
+    assert batch.status == "COMPLETE"
+    batch.save.assert_called_once_with(update_fields=["status"])
+    ona_data_imported_signal.assert_called_once_with(
+        sender=batch_cls,
+        program_id=batch.program_id,
+        batch_id=777,
+        record_count=3,
+        source=batch_cls.BatchSource.ONA,
+    )
+
+
+@pytest.mark.parametrize(("minutes", "submissions"), [(0, [{"_id": 1}]), (-1, [{"_id": 1}]), (30, [])])
+def test_import_data_completes_disabled_timebox_or_empty_stream(
+    mocker: MockerFixture,
+    job,
+    ona_constance_config,
+    minutes: int,
+    submissions: list[dict[str, int]],
+) -> None:
+    _mock_atomic(mocker)
+    ona_constance_config.ONA_IMPORT_TIMEBOX_MINUTES = minutes
+    clock = {"now": datetime(2026, 1, 1, tzinfo=timezone.utc)}
+    mocker.patch("country_workspace.contrib.ona.import_processing.timezone.now", side_effect=lambda: clock["now"])
+    mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = submissions
+
+    def import_one(**kwargs) -> ImportResult:
+        clock["now"] += timedelta(hours=2)
+        return ImportResult(people=1)
+
+    mocker.patch("country_workspace.contrib.ona.import_processing.import_submission", side_effect=import_one)
+    postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    async_job_cls = mocker.patch("country_workspace.contrib.ona.import_processing.AsyncJob")
+
+    assert import_data(job) == ImportResult(people=len(submissions), completed=True)
+    async_job_cls.objects.create.assert_not_called()
+    postprocessing.assert_called_once()
+
+
+def test_import_data_cancellation_preserves_committed_cursor_without_continuation(
+    mocker: MockerFixture,
+    job,
+    ona_sync_log,
+    ona_data_imported_signal,
+) -> None:
+    _mock_atomic(mocker)
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client_cls.return_value.iter_submissions.return_value = [{"_id": 101}, {"_id": 102}]
+    import_submission_mock = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.import_submission", return_value=ImportResult(people=1)
+    )
+
+    def cancel_after_commit(**kwargs) -> None:
+        if import_submission_mock.call_count:
+            raise GracefulJobCancellationError("cancel requested")
+
+    job.ensure_not_cancelled.side_effect = cancel_after_commit
+    async_job_cls = mocker.patch("country_workspace.contrib.ona.import_processing.AsyncJob")
+    postprocessing = mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    validation_jobs = mocker.patch("country_workspace.contrib.ona.import_processing.create_validation_jobs")
+
+    with pytest.raises(GracefulJobCancellationError, match="cancel requested"):
+        import_data(job)
+
+    import_submission_mock.assert_called_once()
+    ona_sync_log["update_or_create"].assert_called_once_with(
+        name="ona_9153",
+        content_type=ona_sync_log["program_ct"],
+        object_id=job.program.id,
+        defaults={"last_id": "101", "last_update_date": ANY},
+    )
+    async_job_cls.objects.create.assert_not_called()
+    postprocessing.assert_not_called()
+    validation_jobs.assert_not_called()
+    ona_data_imported_signal.assert_not_called()
+    batch_cls.objects.create.return_value.save.assert_not_called()

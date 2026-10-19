@@ -44,6 +44,12 @@ PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[
             HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
         ),
     },
+    Batch.BatchSource.ONA: {
+        Household: (
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+        ),
+    },
 }
 
 
@@ -83,7 +89,7 @@ def _get_batch_from_job(job: AsyncJob) -> tuple[int, Batch]:
 
 def _sync_household_refs(batch: Batch) -> None:
     match batch.source:
-        case Batch.BatchSource.KOBO:
+        case Batch.BatchSource.KOBO | Batch.BatchSource.ONA:
             _sync_kobo_household_refs(batch)
         case Batch.BatchSource.RDI:
             _sync_rdi_household_refs(batch)
