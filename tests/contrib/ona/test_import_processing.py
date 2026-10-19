@@ -72,6 +72,11 @@ def ona_data_imported_signal(mocker: MockerFixture):
     return mocker.patch("country_workspace.contrib.ona.import_processing.data_imported_signal.send")
 
 
+@pytest.fixture(autouse=True)
+def ona_import_lock(mocker: MockerFixture):
+    return mocker.patch("country_workspace.contrib.ona.import_processing.cache.lock")
+
+
 def _mock_atomic(mocker: MockerFixture) -> None:
     atomic = mocker.patch("country_workspace.contrib.ona.import_processing.transaction.atomic")
     atomic.return_value.__enter__.return_value = None
@@ -111,6 +116,57 @@ def test_import_data_requires_form_id(job, config: Config) -> None:
 
     with pytest.raises(ImportError, match="form_id is required"):
         import_data(job)
+
+
+@pytest.mark.parametrize(
+    ("program_id", "form_id"),
+    [(123, "9153"), (124, "9153"), (123, "9154")],
+)
+def test_import_data_locks_by_program_and_form(
+    mocker: MockerFixture,
+    job,
+    config: Config,
+    ona_import_lock,
+    program_id: int,
+    form_id: str,
+) -> None:
+    _mock_atomic(mocker)
+    job.program.id = program_id
+    job.config = {**config, "form_id": form_id}
+
+    batch_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    batch = batch_cls.objects.create.return_value
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+
+    lock = ona_import_lock.return_value
+
+    def check_locked(*args, **kwargs):
+        lock.__enter__.assert_called_once()
+        lock.__exit__.assert_not_called()
+        return ImportResult(people=0)
+
+    import_mock = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.import_submissions",
+        side_effect=check_locked,
+    )
+
+    result = import_data(job)
+
+    assert result == ImportResult(people=0)
+    ona_import_lock.assert_called_once_with(
+        f"lock:ona-import:{program_id}:{form_id}",
+        60,
+        auto_renewal=True,
+    )
+    lock.__exit__.assert_called_once()
+    import_mock.assert_called_once_with(
+        batch,
+        client_cls.return_value,
+        job.config,
+        job=job,
+        timebox_seconds=None,
+    )
 
 
 @pytest.mark.parametrize(

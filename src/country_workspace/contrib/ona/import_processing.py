@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 from constance import config as constance_config
@@ -114,7 +115,10 @@ def import_data(job: AsyncJob) -> ImportResult:
 
     timebox_minutes = getattr(constance_config, "ONA_IMPORT_TIMEBOX_MINUTES", 0) or 0
     timebox_seconds = int(timebox_minutes * 60) if timebox_minutes > 0 else None
-    result = import_submissions(batch, client, config, job=job, timebox_seconds=timebox_seconds)
+
+    lock_key = f"lock:ona-import:{job.program.id}:{config['form_id']}"
+    with cache.lock(lock_key, 60, auto_renewal=True):
+        result = import_submissions(batch, client, config, job=job, timebox_seconds=timebox_seconds)
 
     job.ensure_not_cancelled(refresh=True)
     if result.completed:
