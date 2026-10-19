@@ -1,6 +1,7 @@
 import io
+from datetime import date, datetime
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from constance.test import override_config
@@ -12,6 +13,7 @@ from country_workspace.workspaces.admin.cleaners.bulk_update import (
     import_household_updates,
     import_individual_updates,
     validate_date_datetime_fields,
+    _coerce_imported_value,
     _validate_datetime_format,
     _validate_date_format,
     _write_country_choices,
@@ -242,6 +244,43 @@ def test_validate_date_datetime_fields():
     assert "Invalid datetime format for field 'flex_fields__created_at' on line" in errors
     assert errors["Invalid date format for field 'flex_fields__birth_date' on line"] == [line_number]
     assert errors["Invalid datetime format for field 'flex_fields__created_at' on line"] == [line_number]
+
+
+def test_coerce_imported_value_turns_dates_into_strings():
+    from django.forms.fields import DateField
+
+    date_field = Mock()
+    date_field.definition.field_type = DateField
+
+    assert _coerce_imported_value(datetime(2020, 1, 2, 15, 4, 5), None) == "2020-01-02 15:04:05"  # noqa: DTZ001
+    assert _coerce_imported_value(datetime(2020, 1, 2, 0, 0, 0), date_field) == "2020-01-02"  # noqa: DTZ001
+    assert _coerce_imported_value(date(2020, 1, 2), None) == "2020-01-02"
+    assert _coerce_imported_value("already-text", None) == "already-text"
+
+
+def test_import_bulk_update_file_stores_excel_datetimes_as_strings(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    test_data: dict[str, Any],
+) -> None:
+    entity = test_data["valid_entity"]
+    rows = [
+        {
+            "id": str(entity.id),
+            "version": str(entity.version),
+            "birth_date": datetime(2020, 1, 2, 0, 0, 0),  # noqa: DTZ001
+            "registered_at": datetime(2020, 1, 2, 15, 4, 5),  # noqa: DTZ001
+        },
+    ]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = test_data["import_function"](job=job)
+
+    entity.refresh_from_db()
+    assert result["processed"] == 1
+    assert entity.flex_fields["birth_date"] == "2020-01-02 00:00:00"
+    assert entity.flex_fields["registered_at"] == "2020-01-02 15:04:05"
 
 
 def test_validate_date_datetime_fields_with_empty_values():
