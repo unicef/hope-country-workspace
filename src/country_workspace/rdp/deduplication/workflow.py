@@ -21,7 +21,7 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.contrib.dedup_engine.client import Client
 from country_workspace.contrib.dedup_engine.response import Finding
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.completion import complete_rdp_operation
 from country_workspace.rdp.operations.repository import fail_rdp_operation, get_rdp_operation
@@ -307,10 +307,14 @@ def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
         raise RdpWorkflowError({"errors": [str(exc)]}) from exc
 
     if clean_rdp_id := job.config.get("clean_rdp_id"):
-        clean_rdp = Rdp.objects.get(pk=clean_rdp_id, program_id=rdp.program_id)
-        if clean_rdp.status != Rdp.PushStatus.PENDING:
-            raise RdpWorkflowError({"errors": ["RDP: clean replacement is no longer pending."]})
-        schedule_rdp_operations(rdp=clean_rdp)
+        with transaction.atomic():
+            program = Program.objects.select_for_update().only("cleanup_in_progress").get(pk=rdp.program_id)
+            if program.cleanup_in_progress:
+                return {"rdp_id": rdp.pk}
+            clean_rdp = Rdp.objects.get(pk=clean_rdp_id, program_id=rdp.program_id)
+            if clean_rdp.status != Rdp.PushStatus.PENDING:
+                raise RdpWorkflowError({"errors": ["RDP: clean replacement is no longer pending."]})
+            schedule_rdp_operations(rdp=clean_rdp)
 
     return {"rdp_id": rdp.pk}
 

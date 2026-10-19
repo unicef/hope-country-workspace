@@ -19,7 +19,7 @@ def complete_rdp_operation(
                 return False
 
             rdp = lock_rdp_for_update(pk=operation.rdp_id)
-            if not has_incomplete_rdp_operations(rdp_id=rdp.pk):
+            if not rdp.program.cleanup_in_progress and not has_incomplete_rdp_operations(rdp_id=rdp.pk):
                 schedule_rdp_push_evaluation(rdp=rdp)
     except Exception as exc:
         fail_rdp_operation(operation_id=operation.id, error={"message": str(exc)})

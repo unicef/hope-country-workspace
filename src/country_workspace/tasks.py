@@ -287,8 +287,18 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
 
     program_id = program.pk
     current_job_id = job.pk
-    deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
 
+    other_jobs = AsyncJob.objects.filter(program_id=program_id, curr_async_result_id__isnull=False).exclude(
+        pk=current_job_id
+    )
+    completed_statuses = AsyncJob.TERMINATED_STATUSES | {AsyncJob.SUCCESS}
+    if any(job.task_status not in completed_statuses for job in other_jobs):
+        raise ValueError("Cannot clean program while another job is running.")
+
+    if Rdp.objects.filter(program_id=program_id, status=Rdp.PushStatus.PUSH_PENDING).exists():
+        raise ValueError("Cannot clean program while an RDP push is pending.")
+
+    deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
 
     try:

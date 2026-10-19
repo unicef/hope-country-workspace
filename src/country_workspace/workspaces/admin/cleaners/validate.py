@@ -13,6 +13,7 @@ from django.db.models.query import prefetch_related_objects
 
 from country_workspace.context import batch_ctx
 from country_workspace.models import AsyncJob, Household, Individual, Program
+from country_workspace.program_jobs import schedule_program_jobs
 from country_workspace.state import state
 from country_workspace.utils.imports import validate_alien_fields
 from country_workspace.notifications.signals import validation_completed_signal
@@ -163,27 +164,31 @@ def _single_batch_id(queryset: QuerySet) -> int | None:
 
 
 def create_validation_jobs(
-    description: str, owner: str, program: Program, queryset: QuerySet, *, validation_scope: str = "program"
-) -> None:
+    description: str,
+    owner: str,
+    program: Program,
+    queryset: QuerySet,
+    *,
+    validation_scope: str = "program",
+) -> bool:
     opts = queryset.model._meta
     batch_id = _single_batch_id(queryset)
     queryset = queryset.order_by("pk").values_list("pk", flat=True)
     chunk_size = config.CHUNK_SIZE_FOR_VALIDATION_TASK
     total_records = queryset.count()
     if total_records == 0:
-        return
+        return True
+
     total_chunks = math.ceil(total_records / chunk_size)
     validation_run_id = uuid.uuid4().hex
-
-    for chunk in batched(queryset, chunk_size):
-        job = AsyncJob.objects.create(
-            description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
-            type=AsyncJob.JobType.ACTION,
-            owner=owner,
-            action=fqn(validate_queryset),
-            program=program,
-            batch_id=batch_id,
-            config={
+    jobs = [
+        {
+            "description": f"{description} (PKs {chunk[0]} - {chunk[-1]})",
+            "type": AsyncJob.JobType.ACTION,
+            "owner": owner,
+            "action": fqn(validate_queryset),
+            "batch_id": batch_id,
+            "config": {
                 "pks": chunk,
                 "model_name": opts.label,
                 "kwargs": {
@@ -192,5 +197,7 @@ def create_validation_jobs(
                     "validation_total_chunks": total_chunks,
                 },
             },
-        )
-        job.queue()
+        }
+        for chunk in batched(queryset, chunk_size)
+    ]
+    return schedule_program_jobs(program=program, jobs=jobs) is not None

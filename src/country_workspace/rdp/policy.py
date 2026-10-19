@@ -37,6 +37,8 @@ class RdpActionPolicy:
 
     def reset_check(self) -> ActionCheck:
         """Check whether this RDP can be reset."""
+        if self.rdp.program.cleanup_in_progress:
+            return ActionCheck(False, "Program cleanup is in progress.")
         if self.rdp.status != Rdp.PushStatus.SUCCESS:
             return ActionCheck(False, f"RDP: can not reset in status={self.rdp.status}")
         if Rdp.objects.filter(

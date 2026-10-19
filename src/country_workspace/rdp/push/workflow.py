@@ -112,6 +112,8 @@ def _schedule_push_data(*, rdp_id: int, push_attempt_id: UUID) -> AsyncJob | Non
     with transaction.atomic():
         if (rdp := lock_rdp_push_attempt(rdp_id=rdp_id, push_attempt_id=push_attempt_id)) is None:
             return None
+        if rdp.program.cleanup_in_progress:
+            return None
 
         job, created = get_or_create_rdp_push_data_job(
             rdp=rdp,
@@ -159,6 +161,13 @@ def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
             return {
                 "evaluated": False,
                 "reason": "RDP is no longer pending.",
+                "outcome": rdp.status,
+            }
+
+        if rdp.program.cleanup_in_progress:
+            return {
+                "evaluated": False,
+                "reason": "Program cleanup is in progress.",
                 "outcome": rdp.status,
             }
 

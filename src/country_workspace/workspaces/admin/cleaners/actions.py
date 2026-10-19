@@ -14,6 +14,7 @@ from country_workspace.rdp import (
     get_validated_rdp_operation_configs,
 )
 from country_workspace.models import AsyncJob
+from country_workspace.program_jobs import schedule_program_job
 from country_workspace.state import state
 from country_workspace.utils.fields import rdi_name_default
 from .bulk_update import export_bulk_update_template
@@ -38,14 +39,20 @@ def validate_records(
 ) -> None:
     if model_admin._check_empty_queryset(request, queryset):
         return
-    create_validation_jobs(
+
+    scheduled = create_validation_jobs(
         description=validate_records.short_description,
         owner=request.user,
         program=state.program,
         queryset=queryset,
         validation_scope="program",
     )
-    model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    model_admin.message_user(
+        request,
+        "Task scheduled" if scheduled else _("Program cleanup is in progress."),
+        messages.SUCCESS if scheduled else messages.ERROR,
+    )
+
     return
 
 
@@ -64,7 +71,7 @@ def mass_update(
     ctx["form"] = form
     if "_apply" in request.POST and form.is_valid():
         opts = queryset.model._meta
-        job = AsyncJob.objects.create(
+        job = schedule_program_job(
             description=mass_update.short_description,
             type=AsyncJob.JobType.ACTION,
             owner=state.request.user,
@@ -79,8 +86,11 @@ def mass_update(
                 },
             },
         )
-        job.queue()
-        model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+        model_admin.message_user(
+            request,
+            "Task scheduled" if job else _("Program cleanup is in progress."),
+            messages.SUCCESS if job else messages.ERROR,
+        )
     return render(request, "workspace/actions/mass_update.html", ctx)
 
 
@@ -102,7 +112,7 @@ def name_parser_action(
         form = NameParserForm(request.POST, checker=checker, tenant=state.tenant)
         if form.is_valid():
             opts = queryset.model._meta
-            job = AsyncJob.objects.create(
+            job = schedule_program_job(
                 description=name_parser_action.short_description,
                 type=AsyncJob.JobType.ACTION,
                 owner=state.request.user,
@@ -114,8 +124,11 @@ def name_parser_action(
                     "kwargs": {"config": form.cleaned_data},
                 },
             )
-            job.queue()
-            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            model_admin.message_user(
+                request,
+                "Task scheduled" if job else _("Program cleanup is in progress."),
+                messages.SUCCESS if job else messages.ERROR,
+            )
     else:
         form = NameParserForm(
             checker=checker,
@@ -153,7 +166,7 @@ def regex_update(
         form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
             opts = queryset.model._meta
-            job = AsyncJob.objects.create(
+            job = schedule_program_job(
                 description=regex_update.short_description,
                 type=AsyncJob.JobType.ACTION,
                 owner=state.request.user,
@@ -165,8 +178,11 @@ def regex_update(
                     "kwargs": {"config": form.cleaned_data},
                 },
             )
-            job.queue()
-            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            model_admin.message_user(
+                request,
+                "Task scheduled" if job else _("Program cleanup is in progress."),
+                messages.SUCCESS if job else messages.ERROR,
+            )
     else:
         form = RegexUpdateForm(
             checker=checker,
@@ -199,7 +215,7 @@ def bulk_update_export(
         if form.cleaned_data.get("include_errors", False):
             columns += ["is_valid", "errors"]
         opts = queryset.model._meta
-        job = AsyncJob.objects.create(
+        job = schedule_program_job(
             description=bulk_update_export.short_description,
             type=AsyncJob.JobType.TASK,
             owner=state.request.user,
@@ -212,9 +228,11 @@ def bulk_update_export(
                 "send_to": request.user.email,
             },
         )
-        job.queue()
-        model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-        return redirect("workspace:workspaces_countryasyncjob_changelist")
+        if job is None:
+            model_admin.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+        else:
+            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            return redirect("workspace:workspaces_countryasyncjob_changelist")
 
     return render(request, "workspace/actions/bulk_update_export.html", ctx)
 
@@ -228,7 +246,7 @@ def calculate_checksum(
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
     opts = queryset.model._meta
-    job = AsyncJob.objects.create(
+    job = schedule_program_job(
         description=calculate_checksum.short_description,
         type=AsyncJob.JobType.ACTION,
         owner=state.request.user,
@@ -239,8 +257,11 @@ def calculate_checksum(
             "model_name": opts.label,
         },
     )
-    job.queue()
-    model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+    model_admin.message_user(
+        request,
+        "Task scheduled" if job else _("Program cleanup is in progress."),
+        messages.SUCCESS if job else messages.ERROR,
+    )
     return redirect(".")
 
 
@@ -291,16 +312,19 @@ def create_rdp(
                 "pushed_by_id": request.user.id,
                 "operations": operation_configs,
             }
-            AsyncJob.objects.create(
+            job = schedule_program_job(
                 description=create_rdp.short_description,
                 type=AsyncJob.JobType.TASK,
                 owner=request.user,
                 action=fqn(create_rdp_core),
                 program=program,
                 config=config,
-            ).queue()
-            model_admin.message_user(request, "RDP creation scheduled", messages.SUCCESS)
-            return redirect("workspace:workspaces_countryrdp_changelist")
+            )
+            if job is None:
+                model_admin.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+            else:
+                model_admin.message_user(request, "RDP creation scheduled", messages.SUCCESS)
+                return redirect("workspace:workspaces_countryrdp_changelist")
 
     ctx = model_admin.get_common_context(
         request, title=create_rdp.short_description, form=form, operation_forms=operation_forms
@@ -330,7 +354,7 @@ def concatenate_field(
         form = ConcatenateFieldForm(request.POST, checker=checker)
         if form.is_valid():
             opts = queryset.model._meta
-            job = AsyncJob.objects.create(
+            job = schedule_program_job(
                 description=concatenate_field.short_description,
                 type=AsyncJob.JobType.ACTION,
                 owner=state.request.user,
@@ -342,8 +366,11 @@ def concatenate_field(
                     "kwargs": {"config": form.cleaned_data},
                 },
             )
-            job.queue()
-            model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+            model_admin.message_user(
+                request,
+                "Task scheduled" if job else _("Program cleanup is in progress."),
+                messages.SUCCESS if job else messages.ERROR,
+            )
     else:
         form = ConcatenateFieldForm(
             checker=checker,

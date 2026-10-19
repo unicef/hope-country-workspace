@@ -1,7 +1,7 @@
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import button, link
 from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilter
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
@@ -12,6 +12,7 @@ from strategy_field.utils import fqn
 from country_workspace.admin.base import BaseModelAdmin
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.models import Batch, AsyncJob
+from country_workspace.program_jobs import schedule_program_job
 from country_workspace.tasks import batch_cleanup
 
 
@@ -103,7 +104,7 @@ class BatchAdmin(BaseModelAdmin):
         obj: Batch = self.get_object(request, pk)
 
         def _action(_: HttpRequest) -> None:
-            job = AsyncJob.objects.create(
+            job = schedule_program_job(
                 description=f"Batch cleanup: {obj.name}",
                 program=obj.program,
                 batch=obj,
@@ -112,7 +113,11 @@ class BatchAdmin(BaseModelAdmin):
                 action=fqn(batch_cleanup),
                 config={},
             )
-            job.queue()
+            self.message_user(
+                request,
+                "Job for batch cleanup is scheduled" if job else _("Program cleanup is in progress."),
+                messages.SUCCESS if job else messages.ERROR,
+            )
 
         return confirm_action(
             self,
@@ -122,5 +127,5 @@ class BatchAdmin(BaseModelAdmin):
             description=(
                 f"Continuing will permanently delete batch '{obj.name}' and all its related households and individuals."
             ),
-            success_message="Job for batch cleanup is scheduled",
+            error_message="Batch cleanup could not be scheduled.",
         )

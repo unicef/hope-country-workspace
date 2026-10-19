@@ -70,30 +70,14 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         btn.href = f"{base}?program__exact={obj.pk}&country_office__exact={obj.country_office.pk}"
 
     @button()
-    def zap(self, request: HttpRequest, pk: str) -> None:
-        obj: Program = self.get_object(request, pk)
-
-        def _action(_: HttpRequest) -> HttpResponse:
-            obj.households.all().delete()
-
-        return confirm_action(
-            self,
-            request,
-            _action,
-            "Confirm action",
-            description="Continuing will erase all the beneficiaries from this program",
-            success_message="Successfully executed",
-        )
-
-    @button()
     def clean_program(self, request: HttpRequest, pk: str) -> HttpResponse:
         obj: Program = self.get_object(request, pk)
 
-        def _action(action_request: HttpRequest) -> None:
+        def _action(_: HttpRequest) -> None:
             with transaction.atomic():
                 program = Program.objects.select_for_update().get(pk=obj.pk)
                 if program.cleanup_in_progress:
-                    self.message_user(action_request, "Program cleanup is already in progress.", messages.WARNING)
+                    self.message_user(request, "Program cleanup is already in progress.", messages.WARNING)
                     return
 
                 program.cleanup_in_progress = True
@@ -101,15 +85,15 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
                 job = AsyncJob.objects.create(
                     description=f"Clean data for program {program.name}",
                     program=program,
-                    owner=action_request.user,
+                    owner=request.user,
                     type=AsyncJob.JobType.TASK,
                     action=fqn(clean_program_data),
-                    config={},
+                    config={"deduplication_set_group_reference_id": program.unicef_id},
                     repeatable=True,
                 )
+                transaction.on_commit(job.queue)
 
-            job.queue()
-            self.message_user(action_request, "Job for program data cleaning is scheduled", messages.SUCCESS)
+            self.message_user(request, "Job for program data cleaning is scheduled", messages.SUCCESS)
 
         return confirm_action(
             self,

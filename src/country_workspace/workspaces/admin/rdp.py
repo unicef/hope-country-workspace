@@ -288,7 +288,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return redirect("workspace:workspaces_countryrdp_changelist")
 
         count = retry_failed_rdp_operations(rdp_id=obj.pk, owner_id=request.user.pk)
-        if count:
+        if count is None:
+            messages.error(request, _("Program cleanup is in progress."))
+        elif count:
             messages.success(request, f"{count} failed operation(s) scheduled for retry.")
         else:
             messages.warning(request, "No failed operations available for retry.")

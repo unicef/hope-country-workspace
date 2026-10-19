@@ -5,6 +5,7 @@ from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from django.contrib import messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Model, QuerySet
 from django.forms import Form
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -20,7 +21,7 @@ from ._import_data import ImportDataMixin
 from ..options import WorkspaceModelAdmin
 from ..models import CountryHousehold, CountryIndividual
 from ..permissions import can_import_program_data
-from ...models import Batch, Individual, Rdp
+from ...models import Batch, Individual, Program, Rdp
 from .filters import get_rdp_context
 from ...utils.imports import validate_alien_fields
 from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
@@ -175,16 +176,26 @@ class BeneficiaryBaseAdmin(
     )
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: "Beneficiary" = self.get_object(request, pk)
-        try:
-            validate_alien_fields(obj)
-        except ValueError as exc:
-            self.message_user(request, str(exc), messages.ERROR)
-            return
 
-        if obj.validate_with_checker():
-            self.message_user(request, _("Validation successful!"), messages.SUCCESS)
-        else:
-            self.message_user(request, _("Validation failed!"), messages.ERROR)
+        with transaction.atomic():
+            program = Program.objects.select_for_update().only("cleanup_in_progress").get(pk=state.program.pk)
+            if program.cleanup_in_progress:
+                self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+                return
+
+            try:
+                validate_alien_fields(obj)
+            except ValueError as exc:
+                self.message_user(request, str(exc), messages.ERROR)
+                return
+
+            valid = obj.validate_with_checker()
+
+        self.message_user(
+            request,
+            _("Validation successful!") if valid else _("Validation failed!"),
+            messages.SUCCESS if valid else messages.ERROR,
+        )
 
     @button(
         label=_("Validate Programme"),
@@ -200,14 +211,18 @@ class BeneficiaryBaseAdmin(
             if program.beneficiary_group.master_detail
             else program.individuals.filter(removed=False)
         )
-        create_validation_jobs(
+        scheduled = create_validation_jobs(
             description="Validate Entire Programme",
             owner=request.user,
             program=program,
             queryset=queryset,
             validation_scope="program",
         )
-        self.message_user(request, _("Task scheduled"), messages.SUCCESS)
+        self.message_user(
+            request,
+            _("Task scheduled") if scheduled else _("Program cleanup is in progress."),
+            messages.SUCCESS if scheduled else messages.ERROR,
+        )
 
     @button(
         label=_("Import Data"),
@@ -318,7 +333,7 @@ class BeneficiaryBaseAdmin(
                 request, obj, form, form_valid
             ):
                 return HttpResponseRedirect(request.META["HTTP_REFERER"])
-            self.message_user(request, "Please fixes the errors below", messages.ERROR)
+            self.message_user(request, _("Please fix the errors below."), messages.ERROR)
         else:
             form = form_class(prefix="flex_field", initial=initials)
 
@@ -338,8 +353,15 @@ class BeneficiaryBaseAdmin(
             form.add_error(None, STRUCTURAL_FIELD_LOCK_ERROR % {"fields": ", ".join(locked)})
             return False
 
-        obj.flex_fields = form.cleaned_data
-        self.save_model(request, obj, form, True)
+        with transaction.atomic():
+            program = Program.objects.select_for_update().only("cleanup_in_progress").get(pk=state.program.pk)
+            if program.cleanup_in_progress:
+                form.add_error(None, _("Program cleanup is in progress."))
+                return False
+
+            obj.flex_fields = form.cleaned_data
+            self.save_model(request, obj, form, True)
+
         if form_valid:
             self.message_user(request, _("Record saved!"), messages.SUCCESS)
         else:

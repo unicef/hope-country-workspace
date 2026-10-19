@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, Batch
+from country_workspace.program_jobs import schedule_program_job
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryTransformer
 from country_workspace.workspaces.options import WorkspaceModelAdmin
@@ -172,7 +173,7 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
                 ):
                     config["individual_transformer_id"] = obj.pk
 
-                job = AsyncJob.objects.create(
+                job = schedule_program_job(
                     description=f"Run formula '{obj.name}' on batch {batch.name}",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
@@ -181,16 +182,17 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
                     batch=batch,
                     config=config,
                 )
-                job.queue()
-
-                self.message_user(
-                    request,
-                    _("Formula execution has been scheduled for the selected batch."),
-                    messages.SUCCESS,
-                )
-                return HttpResponseRedirect(reverse("workspace:workspaces_countrybatch_changelist"))
-
-            self.message_user(request, _("Please correct the errors below."), messages.ERROR)
+                if job is None:
+                    self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+                else:
+                    self.message_user(
+                        request,
+                        _("Formula execution has been scheduled for the selected batch."),
+                        messages.SUCCESS,
+                    )
+                    return HttpResponseRedirect(reverse("workspace:workspaces_countrybatch_changelist"))
+            else:
+                self.message_user(request, _("Please correct the errors below."), messages.ERROR)
         else:
             form = RunTransformerForm(office=state.tenant, program=state.program)
 
