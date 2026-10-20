@@ -1,17 +1,19 @@
 from typing import TYPE_CHECKING, Any
+from strategy_field.utils import fqn
 
 from admin_extra_buttons.decorators import button
 from django.contrib.admin import register
 from django_celery_boost.admin import CeleryTaskModelAdmin
 from django_celery_boost.models import CeleryTaskModel
 
-from ..permissions import can_debug_async_job
-from ..models import CountryAsyncJob
-from ..options import WorkspaceModelAdmin
-from ..sites import workspace
+from country_workspace.state import state
+from country_workspace.tasks import clean_program_data
+from country_workspace.admin.mixins import JobErrorDisplayMixin
+from country_workspace.workspaces.models import CountryAsyncJob
+from country_workspace.workspaces.options import WorkspaceModelAdmin
+from country_workspace.workspaces.permissions import can_debug_async_job
+from country_workspace.workspaces.sites import workspace
 from .filters import ChoiceFilter, UserAutoCompleteFilter, WFailedFilter
-from ...state import state
-from ...admin.mixins import JobErrorDisplayMixin
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -63,7 +65,11 @@ class CountryJobAdmin(
         return False
 
     def has_queue_permission(self, perm: str, request: "HttpRequest", obj: CeleryTaskModel | None) -> bool:
-        return can_debug_async_job(request, obj)
+        if not can_debug_async_job(request, obj):
+            return False
+        if perm == "queue" and isinstance(obj, CountryAsyncJob) and obj.program_id is not None:
+            return obj.action == fqn(clean_program_data) or not obj.program.cleanup_in_progress
+        return True
 
     def status(self, obj: "CountryAsyncJob|None") -> str:
         return obj.task_status
@@ -79,7 +85,7 @@ class CountryJobAdmin(
 
     @button(
         label="Check",
-        permission=lambda r, o, handler: handler.model_admin.has_queue_permission("queue", r, o),
+        permission=can_debug_async_job,
         html_attrs={"title": "Checks errors in Celery."},
     )
     def celery_check(self, request: "HttpRequest", pk: str) -> "HttpResponse":

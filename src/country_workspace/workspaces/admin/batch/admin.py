@@ -290,6 +290,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 match_field_choices=match_field_choices,
                 target_field_choices=target_field_choices,
             )
+
             if form.is_valid():
                 zip_file_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
                 try:
@@ -298,33 +299,33 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 except PictureImportLimitError as exc:
                     self._delete_uploaded_zip(zip_file_name)
                     form.add_error("zip_file", str(exc))
-            else:
-                old_payload = None
-                with transaction.atomic():
-                    program = Program.objects.select_for_update().get(pk=obj.program_id)
-                    cleanup_in_progress = program.cleanup_in_progress
-
-                    if not cleanup_in_progress:
-                        old_payload = self._save_picture_import_payload(
-                            request,
-                            obj,
-                            {
-                                "batch_id": obj.pk,
-                                "match_field": form.cleaned_data["match_field"],
-                                "target_field": form.cleaned_data["target_field"],
-                                "zip_file_name": zip_file_name,
-                                **preview,
-                            },
-                        )
-
-                if cleanup_in_progress:
-                    self._delete_uploaded_zip(zip_file_name)
-                    self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                    response = redirect_to_change()
                 else:
-                    if old_payload:
-                        self._delete_uploaded_zip(old_payload.get("zip_file_name"))
-                    response = HttpResponseRedirect(f"{request.path}?step=2")
+                    old_payload = None
+                    with transaction.atomic():
+                        program = Program.objects.select_for_update().get(pk=obj.program_id)
+                        cleanup_in_progress = program.cleanup_in_progress
+
+                        if not cleanup_in_progress:
+                            old_payload = self._save_picture_import_payload(
+                                request,
+                                obj,
+                                {
+                                    "batch_id": obj.pk,
+                                    "match_field": form.cleaned_data["match_field"],
+                                    "target_field": form.cleaned_data["target_field"],
+                                    "zip_file_name": zip_file_name,
+                                    **preview,
+                                },
+                            )
+
+                    if cleanup_in_progress:
+                        self._delete_uploaded_zip(zip_file_name)
+                        self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+                        response = redirect_to_change()
+                    else:
+                        if old_payload:
+                            self._delete_uploaded_zip(old_payload.get("zip_file_name"))
+                        response = HttpResponseRedirect(f"{request.path}?step=2")
 
         elif request.method == "POST" and "confirm" in request.POST:
             step = "3"

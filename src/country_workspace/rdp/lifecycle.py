@@ -126,17 +126,20 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
         return rejection_check, False
 
     with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp_id)
+        rdp = lock_rdp_for_update(pk=rdp_id)
 
-        if not (check := get_rdp_policy(locked).cancel_check()).allowed:
+        if not (check := get_rdp_policy(rdp).cancel_check()).allowed:
             return check, False
 
-        was_review_pending = locked.status == Rdp.PushStatus.REVIEW_PENDING
-        locked.mark_cancelled()
+        if rdp.program.cleanup_in_progress:
+            rejection_set_id = None
+
+        was_review_pending = rdp.status == Rdp.PushStatus.REVIEW_PENDING
+        rdp.mark_cancelled()
 
         if was_review_pending:
             append_rdp_log(
-                rdp=locked,
+                rdp=rdp,
                 entry_type=RdpLogEntryType.REVIEW_DECISION,
                 result={
                     "decision": "CANCEL",
@@ -148,7 +151,7 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
 
         if rejection_set_id:
             schedule_cancelled_rdp_set_rejection(
-                rdp=locked,
+                rdp=rdp,
                 user_id=user_id,
                 deduplication_set_id=rejection_set_id,
             )
