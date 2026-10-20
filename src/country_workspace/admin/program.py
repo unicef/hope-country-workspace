@@ -6,13 +6,14 @@ from django.contrib import admin, messages
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
+from constance import config as constance_config
 from strategy_field.utils import fqn
 
 from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 from .base import BaseModelAdmin
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
-from ..models import Program, AsyncJob
+from ..models import Program, AsyncJob, Rdp
 from ..tasks import clean_program_data
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 @admin.register(Program)
 class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
+    readonly_fields = ("cleanup_in_progress",)
     list_display = (
         "name",
         "sector",
@@ -80,6 +82,10 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
                     self.message_user(request, "Program cleanup is already in progress.", messages.WARNING)
                     return
 
+                if Rdp.objects.filter(program=program, status=Rdp.PushStatus.PUSH_PENDING).exists():
+                    self.message_user(request, "Cannot clean program while an RDP push is pending.", messages.ERROR)
+                    return
+
                 program.cleanup_in_progress = True
                 program.save(update_fields=["cleanup_in_progress"])
                 job = AsyncJob.objects.create(
@@ -88,7 +94,13 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
                     owner=request.user,
                     type=AsyncJob.JobType.TASK,
                     action=fqn(clean_program_data),
-                    config={"deduplication_set_group_reference_id": program.unicef_id},
+                    config={
+                        "deduplication_set_group_reference_id": (
+                            program.unicef_id
+                            if constance_config.DEDUP_API_URL and constance_config.DEDUP_API_TOKEN
+                            else None
+                        ),
+                    },
                     repeatable=True,
                 )
                 transaction.on_commit(job.queue)

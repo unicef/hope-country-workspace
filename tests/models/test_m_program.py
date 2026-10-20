@@ -351,3 +351,7 @@ def test_program_unicef_id(program: Program, code: str | None, slug: str | None,
             _ = program.unicef_id
     else:
         assert program.unicef_id == expected
+
+
+def test_program_cleanup_in_progress_defaults_to_false(program: Program) -> None:
+    assert program.cleanup_in_progress is False

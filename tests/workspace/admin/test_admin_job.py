@@ -1,10 +1,14 @@
-from unittest.mock import patch, PropertyMock, MagicMock
+from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 from django.contrib.admin.sites import AdminSite
 from django.urls import reverse
 from django.utils import timezone
-from testutils.factories import AsyncJobFactory
+from pytest_mock import MockerFixture
+from strategy_field.utils import fqn
+from testutils.factories import AsyncJobFactory, ProgramFactory
+
+from country_workspace.tasks import clean_program_data
 
 
 @pytest.fixture
@@ -179,3 +183,37 @@ def test_get_readonly_fields_non_superuser_excludes_result(rf, async_job, admin_
     request.user = MagicMock(is_superuser=False)
 
     assert admin.get_readonly_fields(request, async_job) == ("error",)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("cleanup_job", "cleanup_in_progress", "allowed"),
+    [
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+        (True, True, True),
+    ],
+)
+def test_has_queue_permission_during_program_cleanup(
+    rf,
+    admin_site,
+    mocker: MockerFixture,
+    cleanup_job: bool,
+    cleanup_in_progress: bool,
+    allowed: bool,
+) -> None:
+    from country_workspace.workspaces.admin import job as job_admin
+    from country_workspace.workspaces.models import CountryAsyncJob
+
+    program = ProgramFactory(cleanup_in_progress=cleanup_in_progress)
+    job = AsyncJobFactory(
+        program=program,
+        action=fqn(clean_program_data) if cleanup_job else "other.job",
+    )
+    job = CountryAsyncJob.objects.get(pk=job.pk)
+    admin = job_admin.CountryJobAdmin(model=CountryAsyncJob, admin_site=admin_site)
+    request = rf.get("/")
+    mocker.patch.object(job_admin, "can_debug_async_job", return_value=True)
+
+    assert admin.has_queue_permission("queue", request, job) is allowed

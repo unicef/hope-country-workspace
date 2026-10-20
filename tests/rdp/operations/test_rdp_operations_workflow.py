@@ -1,7 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Rdp, RdpOperation, User
 from country_workspace.rdp.operations import definitions, workflow
 
 
@@ -159,6 +159,22 @@ def test_retry_failed_rdp_operations_ignores_non_pending_rdp(
         )
         == 0
     )
+
+    failed.assert_not_called()
+    schedule.assert_not_called()
+
+
+def test_retry_failed_rdp_operations_during_program_cleanup(
+    rdp: Rdp,
+    user: User,
+    mocker: MockerFixture,
+) -> None:
+    rdp.program.cleanup_in_progress = True
+    rdp.program.save(update_fields=["cleanup_in_progress"])
+    failed = mocker.patch.object(workflow, "failed_rdp_operations")
+    schedule = mocker.patch.object(workflow, "schedule_rdp_operation")
+
+    assert workflow.retry_failed_rdp_operations(rdp_id=rdp.pk, owner_id=user.pk) is None
 
     failed.assert_not_called()
     schedule.assert_not_called()

@@ -56,6 +56,15 @@ def test_reset_check_allows_latest_successful_rdp(successful_rdp: Rdp) -> None:
     assert RdpActionPolicy(successful_rdp).reset_check().allowed is True
 
 
+def test_reset_check_rejects_program_cleanup(successful_rdp: Rdp) -> None:
+    successful_rdp.program.cleanup_in_progress = True
+
+    check = RdpActionPolicy(successful_rdp).reset_check()
+
+    assert check.allowed is False
+    assert "cleanup" in (check.reason or "")
+
+
 def test_reset_check_rejects_when_newer_successful_rdp_exists(successful_rdp: Rdp) -> None:
     from testutils.factories import RdpFactory
 

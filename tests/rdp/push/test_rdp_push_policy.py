@@ -50,6 +50,32 @@ def test_retry_push_check_rejects_other_status(rdp: Rdp, mocker: MockerFixture) 
     has_incomplete.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("check_name", "status"),
+    [
+        ("review_push_check", Rdp.PushStatus.REVIEW_PENDING),
+        ("retry_push_check", Rdp.PushStatus.FAILURE),
+    ],
+)
+def test_push_check_when_cleanup_in_progress(
+    rdp: Rdp,
+    mocker: MockerFixture,
+    check_name: str,
+    status: Rdp.PushStatus,
+) -> None:
+    from country_workspace.rdp.push import policy as policy_mod
+
+    rdp.status = status
+    rdp.program.cleanup_in_progress = True
+    has_incomplete = mocker.patch.object(policy_mod, "has_incomplete_rdp_operations")
+
+    check = getattr(PushPolicy(rdp), check_name)()
+
+    assert check.allowed is False
+    assert "cleanup" in (check.reason or "")
+    has_incomplete.assert_not_called()
+
+
 def test_get_push_policy_is_cached(rdp: Rdp) -> None:
     assert get_push_policy(rdp) is get_push_policy(rdp)
 

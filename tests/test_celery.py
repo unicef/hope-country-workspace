@@ -1,10 +1,12 @@
 import pytest
 from celery.exceptions import Ignore
+from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app, init_sentry
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import Household, Individual, Batch, Rdp, Rdi, AsyncJob
 from country_workspace.models.jobs import GracefulJobCancellationError
 from country_workspace.tasks import (
@@ -57,6 +59,14 @@ def job(program):
 
 
 @pytest.fixture
+def cleanup_job(job):
+    job.program.cleanup_in_progress = True
+    job.program.save(update_fields=["cleanup_in_progress"])
+    with override_config(DEDUP_API_URL="", DEDUP_API_TOKEN=""):
+        yield job
+
+
+@pytest.fixture
 def households(batch):
     HouseholdFactory.create_batch(10, individuals=[], batch=batch, errors={}, removed=False)
     HouseholdFactory.create_batch(10, individuals=[], batch=batch, removed=True)
@@ -88,8 +98,8 @@ def other_jobs(program):
     return AsyncJobFactory.create_batch(4, program=program)
 
 
-def test_clean_program_data(job, batch, households, individuals):
-    program = job.program
+def test_clean_program_data(cleanup_job, batch, households, individuals):
+    program = cleanup_job.program
 
     initial_households = Household.objects.filter(batch__program=program).count()
     initial_individuals = Individual.objects.filter(batch__program=program).count()
@@ -98,7 +108,7 @@ def test_clean_program_data(job, batch, households, individuals):
     assert initial_individuals > 0
     assert Batch.objects.filter(program=program).count() > 0
 
-    result = clean_program_data(job, batch_size=5)
+    result = clean_program_data(cleanup_job, batch_size=5)
 
     assert result is not None
     assert result["batches"] > 0
@@ -108,16 +118,49 @@ def test_clean_program_data(job, batch, households, individuals):
     assert Household.objects.filter(batch__program=program).count() == 0
     assert Individual.objects.filter(batch__program=program).count() == 0
     assert Batch.objects.filter(program=program).count() == 0
+    program.refresh_from_db()
+    assert program.cleanup_in_progress is False
 
 
-def test_clean_program_data_with_rdps_and_rdis(job, batch, households, individuals, rdps, rdis):
-    program = job.program
+def test_clean_program_data_requires_cleanup_fence(cleanup_job) -> None:
+    cleanup_job.program.cleanup_in_progress = False
+    cleanup_job.program.save(update_fields=["cleanup_in_progress"])
+
+    with pytest.raises(ValueError, match="not in progress"):
+        clean_program_data(cleanup_job)
+
+
+def test_clean_program_data_rejects_pending_push(cleanup_job, batch) -> None:
+    RdpFactory.create(program=cleanup_job.program, status=Rdp.PushStatus.PUSH_PENDING)
+
+    with pytest.raises(ValueError, match="push is pending"):
+        clean_program_data(cleanup_job)
+
+    cleanup_job.program.refresh_from_db()
+    assert cleanup_job.program.cleanup_in_progress is True
+    assert Batch.objects.filter(pk=batch.pk).exists()
+
+
+def test_clean_program_data_rejects_running_job(cleanup_job, batch, mocker: MockerFixture) -> None:
+    AsyncJobFactory.create(program=cleanup_job.program, curr_async_result_id="task-id")
+    mocker.patch.object(AsyncJob, "task_status", new_callable=mocker.PropertyMock, return_value="STARTED")
+
+    with pytest.raises(ValueError, match="another job is running"):
+        clean_program_data(cleanup_job)
+
+    cleanup_job.program.refresh_from_db()
+    assert cleanup_job.program.cleanup_in_progress is True
+    assert Batch.objects.filter(pk=batch.pk).exists()
+
+
+def test_clean_program_data_with_rdps_and_rdis(cleanup_job, batch, households, individuals, rdps, rdis):
+    program = cleanup_job.program
 
     assert Batch.objects.filter(program=program).count() > 0
     assert Rdp.objects.filter(program=program).count() == 3
     assert Rdi.objects.filter(program=program).count() == 2
 
-    result = clean_program_data(job, batch_size=5)
+    result = clean_program_data(cleanup_job, batch_size=5)
 
     assert result is not None
     assert result["batches"] > 0
@@ -131,21 +174,21 @@ def test_clean_program_data_with_rdps_and_rdis(job, batch, households, individua
     assert Rdi.objects.filter(program=program).count() == 0
 
 
-def test_clean_program_data_with_jobs(job, batch, households, other_jobs):
-    program = job.program
+def test_clean_program_data_with_jobs(cleanup_job, batch, households, other_jobs):
+    program = cleanup_job.program
 
     assert AsyncJob.objects.filter(program=program).count() == 5
 
-    result = clean_program_data(job, batch_size=5)
+    result = clean_program_data(cleanup_job, batch_size=5)
 
     assert result["jobs"] == 4
     assert result["households"] > 0
     assert AsyncJob.objects.filter(program=program).count() == 1
-    assert AsyncJob.objects.filter(id=job.pk).exists()
+    assert AsyncJob.objects.filter(id=cleanup_job.pk).exists()
 
 
-def test_clean_program_data_multiple_batches(job):
-    program = job.program
+def test_clean_program_data_multiple_batches(cleanup_job):
+    program = cleanup_job.program
     batch1 = BatchFactory.create(program=program)
     batch2 = BatchFactory.create(program=program)
 
@@ -157,7 +200,7 @@ def test_clean_program_data_multiple_batches(job):
     assert Batch.objects.filter(program=program).count() >= 2
     assert initial_households >= 10
 
-    result = clean_program_data(job, batch_size=1)
+    result = clean_program_data(cleanup_job, batch_size=1)
 
     assert result is not None
     assert result["batches"] >= 2
@@ -167,7 +210,7 @@ def test_clean_program_data_multiple_batches(job):
     assert Household.objects.filter(batch__program=program).count() == 0
 
 
-def test_clean_program_data_does_not_affect_other_programs(job, batch, households):
+def test_clean_program_data_does_not_affect_other_programs(cleanup_job, batch, households):
     other_program = ProgramFactory.create()
     other_batch = BatchFactory.create(program=other_program)
     HouseholdFactory.create_batch(5, individuals=[], batch=other_batch, removed=False)
@@ -180,7 +223,7 @@ def test_clean_program_data_does_not_affect_other_programs(job, batch, household
     other_program_batch_count = Batch.objects.filter(program=other_program).count()
     other_program_household_count = Household.objects.filter(batch__program=other_program).count()
 
-    result = clean_program_data(job, batch_size=5)
+    result = clean_program_data(cleanup_job, batch_size=5)
 
     assert result is not None
     assert Household.objects.filter(batch__program=other_program).count() == other_program_household_count
@@ -192,11 +235,11 @@ def test_clean_program_data_does_not_affect_other_programs(job, batch, household
 
 def test_clean_program_data_stops_when_cancellation_requested(
     mocker: MockerFixture,
-    job,
+    cleanup_job,
     batch,
     households,
 ) -> None:
-    initial_batches = Batch.objects.filter(program=job.program).count()
+    initial_batches = Batch.objects.filter(program=cleanup_job.program).count()
     requested = mocker.patch(
         "country_workspace.models.AsyncJob.is_termination_requested",
         new_callable=mocker.PropertyMock,
@@ -204,16 +247,18 @@ def test_clean_program_data_stops_when_cancellation_requested(
     requested.return_value = True
 
     with pytest.raises(GracefulJobCancellationError):
-        clean_program_data(job, batch_size=1)
+        clean_program_data(cleanup_job, batch_size=1)
 
-    assert Batch.objects.filter(program=job.program).count() == initial_batches
+    assert Batch.objects.filter(program=cleanup_job.program).count() == initial_batches
+    cleanup_job.program.refresh_from_db()
+    assert cleanup_job.program.cleanup_in_progress is True
 
 
-def test_clean_program_data_bumps_cache_version_exactly_once(job, batch, households, individuals):
-    program = job.program
+def test_clean_program_data_bumps_cache_version_exactly_once(cleanup_job, batch, households, individuals):
+    program = cleanup_job.program
     version_before = cache_manager.get_cache_version(program=program)
 
-    result = clean_program_data(job, batch_size=5)
+    result = clean_program_data(cleanup_job, batch_size=5)
 
     assert result is not None
     assert result["households"] > 0
@@ -412,15 +457,15 @@ def test_batch_cleanup_ignores_collector_reference_from_other_program(batch, bat
     assert not Individual.objects.filter(pk=collector.pk).exists()
 
 
-def test_clean_program_data_deletes_collector_referenced_within_deleted_program(job):
-    program = job.program
+def test_clean_program_data_deletes_collector_referenced_within_deleted_program(cleanup_job):
+    program = cleanup_job.program
     batch1 = BatchFactory.create(program=program)
     batch2 = BatchFactory.create(program=program)
     collector = IndividualFactory.create(batch=batch1, household=None)
     household = HouseholdFactory.create(batch=batch2, individuals=[])
     _add_household_role_ref(household, HOUSEHOLD_ROLE_REF_FIELDS.primary_collector, collector)
 
-    result = clean_program_data(job, batch_size=1)
+    result = clean_program_data(cleanup_job, batch_size=1)
 
     assert result is not None
     assert not Individual.objects.filter(pk=collector.pk).exists()
@@ -463,3 +508,88 @@ def test_sync_hope_data_isolates_failures(mocker):
     assert result["programs"] == {"status": "error", "error": "boom"}
     assert result["geo"]["status"] == "ok"
     assert result["flex_fields"]["status"] == "ok"
+
+
+def test_clean_program_data_allows_missing_job(cleanup_job, mocker: MockerFixture) -> None:
+    other_job = AsyncJobFactory.create(program=cleanup_job.program, curr_async_result_id="task-id")
+    mocker.patch.object(AsyncJob, "task_status", new_callable=mocker.PropertyMock, return_value=AsyncJob.MISSING)
+
+    result = clean_program_data(cleanup_job)
+
+    assert result["jobs"] == 1
+    assert not AsyncJob.objects.filter(pk=other_job.pk).exists()
+
+
+def test_clean_program_data_without_dedup_engine(
+    cleanup_job,
+    batch,
+    mocker: MockerFixture,
+) -> None:
+    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+
+    clean_program_data(cleanup_job)
+
+    make_client.assert_not_called()
+    assert not Batch.objects.filter(pk=batch.pk).exists()
+
+
+def test_clean_program_data_deletes_stored_and_current_dedup_groups(
+    cleanup_job,
+    mocker: MockerFixture,
+) -> None:
+    cleanup_job.config = {"deduplication_set_group_reference_id": "old-reference"}
+    cleanup_job.save(update_fields=["config"])
+    current_reference = cleanup_job.program.unicef_id
+    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    client = make_client.return_value.__enter__.return_value
+
+    with override_config(DEDUP_API_URL="https://dedup.example.org", DEDUP_API_TOKEN="token"):
+        clean_program_data(cleanup_job)
+
+    assert make_client.call_args_list == [
+        mocker.call("old-reference"),
+        mocker.call(current_reference),
+    ]
+    assert client.delete_deduplication_set_group.call_count == 2
+
+
+def test_clean_program_data_rejects_missing_dedup_config(
+    cleanup_job,
+    batch,
+    mocker: MockerFixture,
+) -> None:
+    cleanup_job.config = {"deduplication_set_group_reference_id": "stored-reference"}
+    cleanup_job.save(update_fields=["config"])
+    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+
+    with (
+        override_config(DEDUP_API_URL="", DEDUP_API_TOKEN=""),
+        pytest.raises(ValueError, match="not configured"),
+    ):
+        clean_program_data(cleanup_job)
+
+    make_client.assert_not_called()
+    cleanup_job.program.refresh_from_db()
+    assert cleanup_job.program.cleanup_in_progress is True
+    assert Batch.objects.filter(pk=batch.pk).exists()
+
+
+def test_clean_program_data_stops_on_dedup_error(
+    cleanup_job,
+    batch,
+    mocker: MockerFixture,
+) -> None:
+    cleanup_job.config = {"deduplication_set_group_reference_id": cleanup_job.program.unicef_id}
+    cleanup_job.save(update_fields=["config"])
+    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    make_client.return_value.__enter__.return_value.delete_deduplication_set_group.side_effect = RemoteError("failed")
+
+    with (
+        override_config(DEDUP_API_URL="https://dedup.example.org", DEDUP_API_TOKEN="token"),
+        pytest.raises(RemoteError),
+    ):
+        clean_program_data(cleanup_job)
+
+    cleanup_job.program.refresh_from_db()
+    assert cleanup_job.program.cleanup_in_progress is True
+    assert Batch.objects.filter(pk=batch.pk).exists()

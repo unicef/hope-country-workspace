@@ -1,9 +1,12 @@
 import pytest
 from django.test import RequestFactory
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django_celery_results.models import TaskResult
+from pytest_mock import MockerFixture
 from testutils.factories import AsyncJobFactory, ProgramFactory
 
+from country_workspace.state import state
+from country_workspace.workspaces.cleanup import ProgramCleanupSiteMixin
 from country_workspace.workspaces.sites import workspace
 
 
@@ -98,3 +101,45 @@ def test_get_pending_jobs_count_excludes_terminal_task_result_statuses(status):
     TaskResult.objects.create(task_id=job.curr_async_result_id, status=status)
 
     assert workspace.get_pending_jobs_count(program) == 0
+
+
+@pytest.mark.parametrize(
+    ("url_name", "allowed"),
+    [
+        ("workspace:index", True),
+        ("workspace:select_tenant", True),
+        ("workspace:select_program", True),
+        ("workspace:workspaces_countryprogram_changelist", True),
+        ("workspace:workspaces_countryasyncjob_changelist", True),
+        ("workspace:workspaces_countryrdp_changelist", True),
+        ("workspace:workspaces_countrybatch_changelist", False),
+    ],
+)
+def test_cleanup_allowed_urls(rf: RequestFactory, url_name: str, allowed: bool) -> None:
+    request = rf.get(reverse(url_name))
+    request.resolver_match = resolve(request.path)
+
+    assert ProgramCleanupSiteMixin._is_allowed_during_cleanup(request) is allowed
+
+
+@pytest.mark.parametrize(("method", "allowed"), [("get", True), ("post", False)])
+def test_cleanup_program_change_is_read_only(
+    rf: RequestFactory,
+    method: str,
+    allowed: bool,
+) -> None:
+    url = reverse("workspace:workspaces_countryprogram_change", args=[1])
+    request = getattr(rf, method)(url)
+    request.resolver_match = resolve(request.path)
+
+    assert ProgramCleanupSiteMixin._is_allowed_during_cleanup(request) is allowed
+
+
+@pytest.mark.django_db
+def test_cleanup_program_uses_program_from_url(rf: RequestFactory, mocker: MockerFixture) -> None:
+    program = ProgramFactory()
+    request = rf.get(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+    request.resolver_match = resolve(request.path)
+    mocker.patch.object(state, "tenant", program.country_office)
+
+    assert ProgramCleanupSiteMixin._cleanup_program(request) == program

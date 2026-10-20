@@ -214,13 +214,16 @@ class Client:
             try:
                 item.delete()
             except HTTPError as exc:
-                if getattr(exc.response, "status_code", None) != HTTPStatus.CONFLICT:
-                    raise
-                raise self._err(
-                    "delete_deduplication_set_group",
-                    exc,
-                    exc.response,
-                    error_cls=DeduplicationSetGroupBusyError,
-                ) from exc
+                status_code = getattr(exc.response, "status_code", None)
+                if status_code == HTTPStatus.NOT_FOUND:
+                    return
+                if status_code == HTTPStatus.CONFLICT:
+                    raise self._err(
+                        "delete_deduplication_set_group",
+                        exc,
+                        exc.response,
+                        error_cls=DeduplicationSetGroupBusyError,
+                    ) from exc
+                raise
 
         self._request("delete_deduplication_set_group", delete)

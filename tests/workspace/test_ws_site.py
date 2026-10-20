@@ -59,3 +59,17 @@ def test_autocomplete_view(app, user: "User", batch: "CountryBatch"):
                 expect_errors=True,
             )
             assert res.status_code == 403
+
+
+def test_program_cleanup_blocks_workspace(app, user: "User", batch: "CountryBatch") -> None:
+    url = reverse("workspace:workspaces_countrybatch_changelist")
+    app.set_user(user)
+
+    with user_grant_permissions(user, "workspaces.view_countrybatch", batch.program):
+        with select_office(app, batch.country_office, batch.program):
+            batch.program.cleanup_in_progress = True
+            batch.program.save(update_fields=["cleanup_in_progress"])
+
+            res = app.get(url)
+
+    assert res.location == reverse("workspace:workspaces_countryprogram_change", args=[batch.program_id])

@@ -10,7 +10,6 @@ from django.contrib import messages
 from django.contrib.admin import register
 from django.core.files.storage import storages
 from django.core.files.uploadedfile import UploadedFile
-from django.db import transaction
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -20,7 +19,6 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, MappingImporter, Program, Transformer
-from country_workspace.program_jobs import schedule_program_job
 from ....state import state
 from ...models import CountryBatch
 from ...options import WorkspaceModelAdmin
@@ -224,16 +222,14 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             return None
         return payload
 
-    def _save_picture_import_payload(
-        self,
-        request: HttpRequest,
-        batch: CountryBatch,
-        payload: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        return batch.start_picture_import(
-            payload={**payload, "created_by_id": request.user.pk},
-            user=request.user,
-        )
+    def _save_picture_import_payload(self, request: HttpRequest, batch: CountryBatch, payload: dict[str, Any]) -> None:
+        payload_to_store = {
+            **payload,
+            "created_by_id": request.user.pk,
+        }
+        old_payload = batch.start_picture_import(payload=payload_to_store, user=request.user)
+        if old_payload:
+            self._delete_uploaded_zip(old_payload.get("zip_file_name"))
 
     def _clear_picture_import_payload(self, batch: CountryBatch) -> None:
         payload = batch.finish_picture_import()
@@ -250,10 +246,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         obj: CountryBatch | None = self.get_object(request, pk)
         if not obj:
             return HttpResponse("Batch not found", status=404)
-
-        if obj.program.cleanup_in_progress:
-            self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-            return HttpResponseRedirect(obj.get_change_url(namespace=self.admin_site.name))
 
         def redirect_to_change() -> HttpResponseRedirect:
             return HttpResponseRedirect(obj.get_change_url(namespace=self.admin_site.name))
@@ -290,7 +282,6 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 match_field_choices=match_field_choices,
                 target_field_choices=target_field_choices,
             )
-
             if form.is_valid():
                 zip_file_name = self._store_uploaded_zip(form.cleaned_data["zip_file"])
                 try:
@@ -300,33 +291,18 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     self._delete_uploaded_zip(zip_file_name)
                     form.add_error("zip_file", str(exc))
                 else:
-                    old_payload = None
-                    with transaction.atomic():
-                        program = Program.objects.select_for_update().get(pk=obj.program_id)
-                        cleanup_in_progress = program.cleanup_in_progress
-
-                        if not cleanup_in_progress:
-                            old_payload = self._save_picture_import_payload(
-                                request,
-                                obj,
-                                {
-                                    "batch_id": obj.pk,
-                                    "match_field": form.cleaned_data["match_field"],
-                                    "target_field": form.cleaned_data["target_field"],
-                                    "zip_file_name": zip_file_name,
-                                    **preview,
-                                },
-                            )
-
-                    if cleanup_in_progress:
-                        self._delete_uploaded_zip(zip_file_name)
-                        self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                        response = redirect_to_change()
-                    else:
-                        if old_payload:
-                            self._delete_uploaded_zip(old_payload.get("zip_file_name"))
-                        response = HttpResponseRedirect(f"{request.path}?step=2")
-
+                    self._save_picture_import_payload(
+                        request,
+                        obj,
+                        {
+                            "batch_id": obj.pk,
+                            "match_field": form.cleaned_data["match_field"],
+                            "target_field": form.cleaned_data["target_field"],
+                            "zip_file_name": zip_file_name,
+                            **preview,
+                        },
+                    )
+                    response = HttpResponseRedirect(f"{request.path}?step=2")
         elif request.method == "POST" and "confirm" in request.POST:
             step = "3"
             payload = self._get_picture_import_payload(request, obj)
@@ -348,7 +324,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     )
                     response = HttpResponseRedirect(request.path)
                 else:
-                    job = schedule_program_job(
+                    job = AsyncJob.objects.create(
                         description=f"Import pictures: {obj.name}",
                         type=AsyncJob.JobType.TASK,
                         owner=request.user,
@@ -357,16 +333,13 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         batch=obj,
                         config={"batch_id": obj.pk},
                     )
-                    if job is None:
-                        self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                        response = redirect_to_change()
-                    else:
-                        self.message_user(
-                            request,
-                            _("Picture import has been scheduled and will run in the background."),
-                            messages.SUCCESS,
-                        )
-                        response = redirect_to_change()
+                    job.queue()
+                    self.message_user(
+                        request,
+                        _("Picture import has been scheduled and will run in the background."),
+                        messages.SUCCESS,
+                    )
+                    response = redirect_to_change()
         elif request.method == "GET" and request.GET.get("step") == "2":
             payload = self._get_picture_import_payload(request, obj)
             if not payload:
@@ -455,7 +428,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 if people_prefix := _people_prefix_from_import_job(obj):
                     config["people_prefix"] = people_prefix
 
-                job = schedule_program_job(
+                job = AsyncJob.objects.create(
                     description=f"Reprocess batch: {obj.name}",
                     type=AsyncJob.JobType.TASK,
                     owner=request.user,
@@ -464,16 +437,17 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     batch=obj,
                     config=config,
                 )
-                if job is None:
-                    self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                else:
-                    self.message_user(request, "Batch reprocessing has been scheduled.", messages.SUCCESS)
+                job.queue()
 
-                    namespace = self.admin_site.name
-                    opts = self.model._meta
-                    return HttpResponseRedirect(reverse(f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"))
-            else:
-                self.message_user(request, "Please correct the errors below.", messages.ERROR)
+                self.message_user(request, "Batch reprocessing has been scheduled.", messages.SUCCESS)
+
+                # Redirect to changelist
+                namespace = self.admin_site.name
+                opts = self.model._meta
+                url_name = f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"
+                return HttpResponseRedirect(reverse(url_name))
+
+            self.message_user(request, "Please correct the errors below.", messages.ERROR)
         else:
             form = BatchReprocessForm(program=obj.program)
 

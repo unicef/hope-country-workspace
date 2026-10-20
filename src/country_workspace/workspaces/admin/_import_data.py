@@ -22,7 +22,6 @@ from country_workspace.datasources.rdi import (
     Config as RDIConfig,
     import_from_rdi,
 )
-from country_workspace.program_jobs import schedule_program_job
 from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import batch_name_default
 from .forms import ImportFileForm
@@ -150,23 +149,18 @@ class ImportDataMixin:
                     else None
                 ),
             }
-
-            job = self._schedule_import_job(
-                request,
-                program,
+            job: AsyncJob = AsyncJob.objects.create(
                 description="RDI import",
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_rdi),
                 file=request.FILES["rdi-file"],
+                program=program,
                 owner=request.user,
                 config=config,
             )
-            if job is None:
-                return form
-
+            job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
             return None
-
         return form
 
     def import_aurora(self, request: HttpRequest, program: "CountryProgram") -> "ImportAuroraForm | None":
@@ -194,23 +188,18 @@ class ImportDataMixin:
                     else None
                 ),
             }
-
-            job = self._schedule_import_job(
-                request,
-                program,
-                description="Aurora import",
+            job: AsyncJob = AsyncJob.objects.create(
+                description="Aurora importing",
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_aurora),
                 file=None,
+                program=program,
                 owner=request.user,
                 config=config,
             )
-            if job is None:
-                return form
-
+            job.queue()
             self.message_user(request, _("Import scheduled"), messages.SUCCESS)
             return None
-
         return form
 
     def import_kobo(self, request: HttpRequest, program: "CountryProgram") -> "ImportKoboForm | None":
@@ -245,20 +234,16 @@ class ImportDataMixin:
                     else None
                 ),
             }
-
-            job = self._schedule_import_job(
-                request,
-                program,
+            job: AsyncJob = AsyncJob.objects.create(
                 description=KOBO_IMPORT_JOB_DESCRIPTION.format(program_name=program.name),
                 type=AsyncJob.JobType.TASK,
                 action=fqn(import_from_kobo),
                 file=None,
+                program=program,
                 owner=request.user,
                 config=config,
             )
-            if job is None:
-                return form
-
+            job.queue()
             self.message_user(
                 request,
                 _("The Kobo data import task has been successfully queued. Job #{0}.").format(job.id),
@@ -267,9 +252,3 @@ class ImportDataMixin:
             return None
 
         return form
-
-    def _schedule_import_job(self, request: HttpRequest, program: "CountryProgram", **kwargs: Any) -> AsyncJob | None:
-        job = schedule_program_job(program=program, **kwargs)
-        if job is None:
-            self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-        return job

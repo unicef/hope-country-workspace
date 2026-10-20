@@ -121,9 +121,11 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     if not (check := get_rdp_policy(rdp).cancel_check()).allowed:
         return check, False
 
-    rejection_check, rejection_set_id = _biometric_rejection_check(rdp)
-    if not rejection_check.allowed:
-        return rejection_check, False
+    rejection_set_id = None
+    if not rdp.program.cleanup_in_progress:
+        rejection_check, rejection_set_id = _biometric_rejection_check(rdp)
+        if not rejection_check.allowed:
+            return rejection_check, False
 
     with transaction.atomic():
         rdp = lock_rdp_for_update(pk=rdp_id)

@@ -6,7 +6,6 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db import transaction
 from django.db.models import Field, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -20,7 +19,6 @@ from country_workspace.rdp import get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
-from country_workspace.program_jobs import schedule_program_job
 from country_workspace.state import state
 from ._import_data import ImportDataMixin
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
@@ -535,7 +533,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         if request.method == "POST":
             form = BulkUpdateImportForm(request.POST, request.FILES, beneficiary_group=program.beneficiary_group)
             if form.is_valid():
-                job = schedule_program_job(
+                job = AsyncJob.objects.create(
                     description=form.cleaned_data["description"] or context["title"],
                     program=program,
                     owner=request.user,
@@ -545,11 +543,10 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
                     file=request.FILES["file"],
                     config={},
                 )
-                if job is None:
-                    self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                else:
-                    self.message_user(request, _("Import scheduled"), messages.SUCCESS)
-                    return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+                job.queue()
+                self.message_user(request, _("Import scheduled"), messages.SUCCESS)
+                return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
+
         else:
             form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
         context["form"] = form
@@ -594,20 +591,13 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
             return HttpResponseRedirect(change_url)
 
         form = DedupSettingsForm(request.POST or None, settings=settings)
-
         if request.method == "POST" and form.is_valid():
             if response := deny_if_not_allowed():
                 return response
 
             try:
-                with transaction.atomic():
-                    program = CountryProgram.objects.select_for_update().get(pk=program.pk)
-                    if program.cleanup_in_progress:
-                        self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
-                        return HttpResponseRedirect(change_url)
-
-                    with make_dedup_client(group_reference_id=program.unicef_id) as client:
-                        client.post_deduplication_set_group_config(payload=form.get_payload())
+                with make_dedup_client(group_reference_id=program.unicef_id) as client:
+                    client.post_deduplication_set_group_config(payload=form.get_payload())
             except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(
                     request,
