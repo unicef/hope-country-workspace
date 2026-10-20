@@ -85,6 +85,8 @@ scripts.celery-monitor = "country_workspace.__monitor__:run"
 [dependency-groups]
 dev = [
   "bump2version",
+  # pyquery 2.0.1 breaks with cssselect>=1.5 (XPathExpr.join() got an unexpected keyword 'closing_combiner')
+  "cssselect<1.5",
   "djade",
   "django-browser-reload",
   "django-webtest",
