@@ -19,6 +19,8 @@ class Config(AppConfig):
         from .remotes.country import CountryAttributeHandler
 
         from country_workspace.utils.flex_fields import (
+            CaseInsensitiveChoiceField,
+            CaseInsensitiveChoiceFieldWithEmptyDisplay,
             CustomMultipleChoiceField,
             ObservedDisabilityChoice,
         )
@@ -33,6 +35,8 @@ class Config(AppConfig):
         field_registry.register(PhoneNumberField)
         field_registry.register(BeneficiaryReferenceModelChoiceField)
         field_registry.register(ChoiceFieldWithEmptyDisplay)
+        field_registry.register(CaseInsensitiveChoiceField)
+        field_registry.register(CaseInsensitiveChoiceFieldWithEmptyDisplay)
         field_registry.register(ObservedDisabilityChoice)
         field_registry.register(CustomMultipleChoiceField)
         field_registry.register(LatinNameField)
