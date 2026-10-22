@@ -46,10 +46,22 @@
                                             {{ field }}
                                         </div>
                                         <div class="flex-none old_value">
-                                            {{ data.from }}
+                                            {% if data.from_src %}
+                                                <a href="{{ data.from_src }}" target="_blank">
+                                                    <img src="{{ data.from_src }}" style="max-height: 40px; width: auto" />
+                                                </a>
+                                            {% else %}
+                                                {{ data.from }}
+                                            {% endif %}
                                         </div>
                                         <div class="flex-none new_value">
-                                            {{ data.to }}
+                                            {% if data.to_src %}
+                                                <a href="{{ data.to_src }}" target="_blank">
+                                                    <img src="{{ data.to_src }}" style="max-height: 40px; width: auto" />
+                                                </a>
+                                            {% else %}
+                                                {{ data.to }}
+                                            {% endif %}
                                         </div>
                                     </div>
                                 {% endfor %}
