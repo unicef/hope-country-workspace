@@ -15,6 +15,7 @@ x-env: &env
     - MEDIA_ROOT=/var/country_workspace/media
     - SECRET_KEY=sensitive-secret-key
     - STATIC_ROOT=/var/country_workspace/static
+    - STREAMING_BROKER_URL=rabbit://guest:guest@rabbitmq:5672/?vhost=/&exchange=django-streaming-broadcast
 
 x-common: &common
   build:
@@ -64,6 +65,15 @@ services:
       - DEBUG=true
       - DATABASE_URL="sqlite://:memory:"
 
+  stream_listener:
+    <<:  [*common, *env]
+    command: stream-listener
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   db:
     image: postgres:14
     environment:
@@ -95,6 +105,20 @@ services:
       interval: 5s
       timeout: 4s
       retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    #    ports:
+    #      - 5672:5672
+    #      - 15672:15672
+    restart: always
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      start_period: 10s
+      start_interval: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 
 volumes:
