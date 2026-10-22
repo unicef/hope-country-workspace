@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from country_workspace.models import Rdp
-from country_workspace.rdp.deduplication.types import ThresholdType
+from country_workspace.rdp.types import ThresholdType
 from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
 from country_workspace.rdp.policy import ActionCheck, RdpActionPolicy
 

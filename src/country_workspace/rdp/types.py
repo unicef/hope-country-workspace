@@ -34,3 +34,8 @@ class OperationLogEntry(TypedDict):
     timestamp: ReadOnly[str]
     action: ReadOnly[str]
     result: NotRequired[OperationLogResult]
+
+
+class ThresholdType(StrEnum):
+    COUNT = auto()
+    RATE = auto()

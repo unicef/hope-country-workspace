@@ -1,9 +1,4 @@
-from enum import StrEnum, auto
-
-
-class ThresholdType(StrEnum):
-    COUNT = auto()
-    RATE = auto()
+from enum import StrEnum
 
 
 class DeduplicationLogAction(StrEnum):
