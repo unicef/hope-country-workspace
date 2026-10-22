@@ -1,5 +1,4 @@
 from collections.abc import Callable, Iterator
-from decimal import Decimal
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -15,10 +14,7 @@ from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
 from country_workspace.rdp.deduplication.actions import approve_deduplication_set_after_successful_push
-from country_workspace.rdp.deduplication.repository import (
-    biometric_findings_count,
-    biometric_operation_for_rdp,
-)
+from country_workspace.rdp.deduplication.repository import biometric_operation_for_rdp
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
 from country_workspace.rdp.policy import ActionCheck
@@ -28,20 +24,20 @@ from country_workspace.rdp.repository import (
     qs_households,
     qs_individuals_by_pks,
     qs_individuals_for_push,
-    qs_individuals_for_rdp,
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
-from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome, ThresholdType
+from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome
 
 from .constants import PUSH_READY_CALLBACK_SALT
-from .policy import get_push_policy, threshold_exceeded
+from .policy import get_push_policy
 from .processor import PushProcessor
 from .repository import (
     claim_rdp_data_push,
     get_or_create_rdp_push_data_job,
     lock_rdp_push_attempt,
 )
+from .thresholds import evaluate_review_thresholds
 from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
 
 
@@ -177,34 +173,10 @@ def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
                 "outcome": rdp.status,
             }
 
-        result: OperationLogResult = {}
-        threshold_is_exceeded = False
+        thresholds, review_required = evaluate_review_thresholds(rdp=rdp)
+        result: OperationLogResult = {"thresholds": thresholds}
 
-        if operation := biometric_operation_for_rdp(rdp=rdp):
-            threshold_type = ThresholdType(operation.config["threshold_type"])
-            threshold_value = Decimal(str(operation.config["threshold_value"]))
-            findings_count = biometric_findings_count(operation=operation)
-            individuals_count = qs_individuals_for_rdp(rdp=rdp).count()
-
-            if individuals_count == 0:
-                raise RdpWorkflowError({"errors": ["RDP: no individuals available for push."]})
-
-            threshold_is_exceeded = threshold_exceeded(
-                findings_count=findings_count,
-                total_count=individuals_count,
-                threshold_type=threshold_type,
-                threshold_value=threshold_value,
-            )
-            result.update(
-                threshold_type=threshold_type.value,
-                threshold_value=str(threshold_value),
-                findings_count=findings_count,
-                individuals_count=individuals_count,
-                findings_rate=f"{Decimal(findings_count) * 100 / individuals_count:.2f}",
-                threshold_exceeded=threshold_is_exceeded,
-            )
-
-        if threshold_is_exceeded:
+        if review_required:
             rdp.status = Rdp.PushStatus.REVIEW_PENDING
             rdp.save(update_fields=["status"])
             entry_type = RdpLogEntryType.REVIEW_REQUIRED
@@ -215,7 +187,7 @@ def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
         result["outcome"] = rdp.status
         append_rdp_log(rdp=rdp, entry_type=entry_type, result=result)
 
-        if not threshold_is_exceeded:
+        if not review_required:
             _schedule_push_preparation(rdp=rdp, user_id=rdp.pushed_by_id)
 
     return {"evaluated": True, **result}

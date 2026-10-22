@@ -10,6 +10,7 @@ from country_workspace.contrib.hope.constants import OCR_BATCH_SIZE
 from country_workspace.models import RdpOperation
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.completion import complete_rdp_operation, finalize_rdp_operation_from_units
+from country_workspace.rdp.operations.errors import handle_rdp_operation_error
 from country_workspace.rdp.operations.repository import (
     fail_rdp_operation_units,
     has_rdp_operation_units,
@@ -21,7 +22,8 @@ from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
 
 from .processor import build_ocr_document_request, iter_ocr_unit_configs
-from .repository import create_ocr_units
+from .repository import apply_ocr_document_results, create_ocr_units, lock_ocr_operation_for_update
+from .validation import validate_ocr_result
 
 if TYPE_CHECKING:
     from country_workspace.models import RdpOperationUnit
@@ -124,3 +126,27 @@ def run_ocr(operation: RdpOperation) -> None:
         raise RdpWorkflowError({"errors": ["OCR: failed to publish one or more batches."]})
 
     finalize_rdp_operation_from_units(operation=operation)
+
+
+def handle_ocr_result(payload: object) -> None:
+    """Apply an OCR result to the current operation attempt."""
+    result = validate_ocr_result(payload)
+    current_operation: RdpOperation | None = None
+
+    try:
+        with transaction.atomic():
+            operation = lock_ocr_operation_for_update(rdp_id=result["rdp_id"])
+            if (
+                operation is None
+                or operation.status != RdpOperation.Status.RUNNING
+                or result["correlation_id"] != str(_ocr_correlation_id(operation))
+            ):
+                return
+
+            current_operation = operation
+            apply_ocr_document_results(operation=operation, documents=result["documents"])
+            finalize_rdp_operation_from_units(operation=operation)
+    except Exception as exc:
+        if current_operation is not None:
+            handle_rdp_operation_error(operation=current_operation, exc=exc)
+        raise
