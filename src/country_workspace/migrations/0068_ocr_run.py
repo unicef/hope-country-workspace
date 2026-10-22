@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0066_remove_legacy_rdp_deduplication"),
+        ("country_workspace", "0067_program_cleanup_in_progress"),
     ]
 
     operations = [

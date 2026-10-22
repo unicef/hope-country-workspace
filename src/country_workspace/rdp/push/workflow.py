@@ -19,7 +19,6 @@ from country_workspace.rdp.deduplication.repository import (
     biometric_findings_count,
     biometric_operation_for_rdp,
 )
-from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
 from country_workspace.rdp.policy import ActionCheck
@@ -33,7 +32,7 @@ from country_workspace.rdp.repository import (
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
-from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome
+from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome, ThresholdType
 
 from .constants import PUSH_READY_CALLBACK_SALT
 from .policy import get_push_policy, threshold_exceeded
