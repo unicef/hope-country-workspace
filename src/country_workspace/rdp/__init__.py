@@ -1,7 +1,6 @@
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.forms import BiometricDeduplicationConfigForm
 from .deduplication.policy import get_program_dedup_settings_policy
-from .deduplication.types import ThresholdType
 from .deduplication.repository import (
     annotate_biometric_households,
     annotate_biometric_individuals,
@@ -14,6 +13,14 @@ from .deduplication.repository import (
 from .deduplication.workflow import get_dedup_callback_base_url, sync_biometric_deduplication_result
 from .exceptions import RdpWorkflowError
 from .lifecycle import cancel_existing_rdp_core, cancel_rdp, create_clean_rdp, create_rdp_core, reset_rdp
+from .operations.completion import complete_rdp_operation, finalize_rdp_operation_from_units
+from .operations.definitions import (
+    get_enabled_rdp_operation_definitions,
+    get_rdp_operation_forms,
+    get_validated_rdp_operation_configs,
+)
+from .operations.repository import failed_rdp_operations
+from .operations.workflow import retry_failed_rdp_operations
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
@@ -24,20 +31,13 @@ from .push.workflow import (
     push_existing_rdp_core,
     retry_rdp_push,
 )
-from .operations.definitions import (
-    get_enabled_rdp_operation_definitions,
-    get_rdp_operation_forms,
-    get_validated_rdp_operation_configs,
-)
-from .operations.repository import failed_rdp_operations
-from .operations.workflow import retry_failed_rdp_operations
 from .repository import (
     append_rdp_log,
     count_rdp_individuals,
     lock_rdp_for_update,
     qs_individuals_for_rdp,
 )
-from .types import CreateRdpConfig
+from .types import CreateRdpConfig, ThresholdType
 
 __all__ = [
     "DEDUP_CALLBACK_MAX_AGE",
@@ -57,11 +57,13 @@ __all__ = [
     "cancel_existing_rdp_core",
     "cancel_rdp",
     "claim_review_rdp_push",
+    "complete_rdp_operation",
     "count_rdp_individuals",
     "create_clean_rdp",
     "create_rdp_core",
     "fail_stuck_rdp_push",
     "failed_rdp_operations",
+    "finalize_rdp_operation_from_units",
     "get_dedup_callback_base_url",
     "get_enabled_rdp_operation_definitions",
     "get_program_dedup_settings_policy",

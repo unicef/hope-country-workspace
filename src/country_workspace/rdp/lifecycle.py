@@ -15,7 +15,7 @@ from .deduplication.repository import (
     biometric_operation_for_rdp,
 )
 from .deduplication.workflow import schedule_cancelled_rdp_set_rejection
-from .deduplication.types import ThresholdType
+from .types import ThresholdType
 from .exceptions import RdpWorkflowError
 from .operations.workflow import schedule_rdp_operations
 from .policy import ActionCheck, get_rdp_policy
