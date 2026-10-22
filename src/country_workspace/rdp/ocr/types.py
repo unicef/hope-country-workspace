@@ -1,4 +1,10 @@
+from enum import StrEnum
 from typing import Literal, ReadOnly, TypedDict
+
+
+class OcrFindingType(StrEnum):
+    NO_MATCH = "NO_MATCH"
+    OCR_ERROR = "OCR_ERROR"
 
 
 class OcrUnitConfig(TypedDict):
