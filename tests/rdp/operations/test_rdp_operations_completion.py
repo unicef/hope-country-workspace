@@ -54,6 +54,23 @@ def test_complete_rdp_operation_schedules_evaluation_when_operations_complete(
     assert schedule.called is not incomplete
 
 
+def test_complete_rdp_operation_does_not_schedule_evaluation_during_cleanup(
+    running_biometric_operation,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(completion, "finish_rdp_operation", return_value=True)
+    rdp = running_biometric_operation.rdp
+    rdp.program.cleanup_in_progress = True
+    mocker.patch.object(completion, "lock_rdp_for_update", return_value=rdp)
+    incomplete = mocker.patch.object(completion, "has_incomplete_rdp_operations")
+    schedule = mocker.patch.object(completion, "schedule_rdp_push_evaluation")
+
+    assert completion.complete_rdp_operation(operation=running_biometric_operation, findings=[])
+
+    incomplete.assert_not_called()
+    schedule.assert_not_called()
+
+
 def test_complete_rdp_operation_marks_failure_on_error(
     running_biometric_operation,
     mocker: MockerFixture,

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from http import HTTPStatus
 from typing import Any, cast
 
 from requests import Session
@@ -12,6 +13,7 @@ from requests.exceptions import (
 )
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from .exceptions import DeduplicationSetGroupBusyError
 from . import endpoint, request, resource, response
 
 
@@ -203,3 +205,25 @@ class Client:
             lambda: item.update(payload),
         )
         return cast("response.DeduplicationSetGroupConfig", result)
+
+    def delete_deduplication_set_group(self) -> None:
+        """Delete the deduplication set group."""
+        item = resource.DeduplicationSetGroupItem(self.session, self.deduplication_set_group_endpoint)
+
+        def delete() -> None:
+            try:
+                item.delete()
+            except HTTPError as exc:
+                status_code = getattr(exc.response, "status_code", None)
+                if status_code == HTTPStatus.NOT_FOUND:
+                    return
+                if status_code == HTTPStatus.CONFLICT:
+                    raise self._err(
+                        "delete_deduplication_set_group",
+                        exc,
+                        exc.response,
+                        error_cls=DeduplicationSetGroupBusyError,
+                    ) from exc
+                raise
+
+        self._request("delete_deduplication_set_group", delete)

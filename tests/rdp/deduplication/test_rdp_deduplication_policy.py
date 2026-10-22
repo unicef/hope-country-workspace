@@ -2,7 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp
+from country_workspace.models import Program, Rdp
 from country_workspace.rdp.deduplication.policy import ProgramDedupSettingsPolicy
 
 
@@ -20,6 +20,22 @@ def test_update_dedup_settings_check_when_disabled(program) -> None:
     program.biometric_deduplication_enabled = False
 
     assert ProgramDedupSettingsPolicy(program).update_dedup_settings_check().allowed is False
+
+
+def test_update_dedup_settings_check_when_cleanup_in_progress(
+    program: Program,
+    mocker: MockerFixture,
+) -> None:
+    program.cleanup_in_progress = True
+    program.biometric_deduplication_enabled = True
+    policy = ProgramDedupSettingsPolicy(program)
+    remote_check = mocker.patch.object(policy, "_has_blocking_deduplication_set")
+
+    check = policy.update_dedup_settings_check()
+
+    assert check.allowed is False
+    assert "cleanup" in (check.reason or "")
+    remote_check.assert_not_called()
 
 
 @pytest.mark.parametrize("blocked", [True, False])

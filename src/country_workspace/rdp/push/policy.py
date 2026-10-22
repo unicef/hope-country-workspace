@@ -8,11 +8,15 @@ from country_workspace.rdp.policy import ActionCheck, RdpActionPolicy
 
 class PushPolicy(RdpActionPolicy):
     def review_push_check(self) -> ActionCheck:
+        if self.rdp.program.cleanup_in_progress:
+            return ActionCheck(False, "Program cleanup is in progress.")
         if self.rdp.status != Rdp.PushStatus.REVIEW_PENDING:
             return ActionCheck(False, f"RDP: can not push from review in status={self.rdp.status}")
         return ActionCheck(True)
 
     def retry_push_check(self) -> ActionCheck:
+        if self.rdp.program.cleanup_in_progress:
+            return ActionCheck(False, "Program cleanup is in progress.")
         if self.rdp.status != Rdp.PushStatus.FAILURE:
             return ActionCheck(False, f"RDP: can not retry push in status={self.rdp.status}")
         if has_incomplete_rdp_operations(rdp_id=self.rdp.pk):

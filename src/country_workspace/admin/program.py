@@ -2,16 +2,18 @@ from typing import TYPE_CHECKING
 
 from admin_extra_buttons.api import button, link
 from adminfilters.autocomplete import AutoCompleteFilter
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
+from constance import config as constance_config
 from strategy_field.utils import fqn
 
 from country_workspace.admin.sync import SyncAdminMixin, SyncAdminConfig, TargetConfig, Target
 from .base import BaseModelAdmin
 from ..cache.manager import cache_manager
 from ..compat.admin_extra_buttons import confirm_action
-from ..models import Program, AsyncJob
+from ..models import Program, AsyncJob, Rdp
 from ..tasks import clean_program_data
 
 if TYPE_CHECKING:
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
 
 @admin.register(Program)
 class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
+    readonly_fields = ("cleanup_in_progress",)
     list_display = (
         "name",
         "sector",
@@ -69,35 +72,40 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         btn.href = f"{base}?program__exact={obj.pk}&country_office__exact={obj.country_office.pk}"
 
     @button()
-    def zap(self, request: HttpRequest, pk: str) -> None:
-        obj: Program = self.get_object(request, pk)
-
-        def _action(_: HttpRequest) -> HttpResponse:
-            obj.households.all().delete()
-
-        return confirm_action(
-            self,
-            request,
-            _action,
-            "Confirm action",
-            description="Continuing will erase all the beneficiaries from this program",
-            success_message="Successfully executed",
-        )
-
-    @button()
-    def clean_program(self, request: HttpRequest, pk: str) -> None:
+    def clean_program(self, request: HttpRequest, pk: str) -> HttpResponse:
         obj: Program = self.get_object(request, pk)
 
         def _action(_: HttpRequest) -> None:
-            job = AsyncJob.objects.create(
-                description=f"Clean data for program {obj.name}",
-                program=obj,
-                owner=request.user,
-                type=AsyncJob.JobType.TASK,
-                action=fqn(clean_program_data),
-                config={},
-            )
-            job.queue()
+            with transaction.atomic():
+                program = Program.objects.select_for_update().get(pk=obj.pk)
+                if program.cleanup_in_progress:
+                    self.message_user(request, "Program cleanup is already in progress.", messages.WARNING)
+                    return
+
+                if Rdp.objects.filter(program=program, status=Rdp.PushStatus.PUSH_PENDING).exists():
+                    self.message_user(request, "Cannot clean program while an RDP push is pending.", messages.ERROR)
+                    return
+
+                program.cleanup_in_progress = True
+                program.save(update_fields=["cleanup_in_progress"])
+                job = AsyncJob.objects.create(
+                    description=f"Clean data for program {program.name}",
+                    program=program,
+                    owner=request.user,
+                    type=AsyncJob.JobType.TASK,
+                    action=fqn(clean_program_data),
+                    config={
+                        "deduplication_set_group_reference_id": (
+                            program.unicef_id
+                            if constance_config.DEDUP_API_URL and constance_config.DEDUP_API_TOKEN
+                            else None
+                        ),
+                    },
+                    repeatable=True,
+                )
+                transaction.on_commit(job.queue)
+
+            self.message_user(request, "Job for program data cleaning is scheduled", messages.SUCCESS)
 
         return confirm_action(
             self,
@@ -105,5 +113,5 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
             _action,
             "Confirm action",
             description="Continuing will erase all the data from this program",
-            success_message="Job for program data cleaning is scheduled",
+            error_message="Program cleanup could not be started.",
         )

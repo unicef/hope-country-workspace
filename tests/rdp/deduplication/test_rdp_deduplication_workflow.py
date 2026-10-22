@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine import DeduplicationSetState, FindingStatusCode
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.rdp import RdpWorkflowError
 from country_workspace.rdp.deduplication import workflow
 
@@ -664,6 +664,40 @@ def test_reject_cancelled_rdp_set_schedules_clean_rdp(
 
     assert workflow.reject_cancelled_rdp_set_core(job) == {"rdp_id": rdp.pk}
     schedule.assert_called_once_with(rdp=clean_rdp)
+
+
+def test_reject_cancelled_rdp_set_skips_clean_rdp_during_program_cleanup(
+    rdp: Rdp,
+    biometric_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import RdpFactory
+
+    rdp.status = Rdp.PushStatus.CANCELLED
+    rdp.save(update_fields=["status"])
+    clean_rdp = RdpFactory(program=rdp.program)
+    Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
+    job = mocker.MagicMock(
+        config={
+            "rdp_id": rdp.pk,
+            "deduplication_set_id": str(biometric_operation.id),
+            "clean_rdp_id": clean_rdp.pk,
+        }
+    )
+    mocker.patch.object(workflow, "rdp_for_dedup", return_value=rdp)
+    mocker.patch.object(workflow, "biometric_operation_for_rdp", return_value=biometric_operation)
+    mocker.patch.object(
+        workflow,
+        "retrieve_deduplication_set_state",
+        return_value=DeduplicationSetState.DEDUPLICATED,
+    )
+    reject = mocker.patch.object(workflow, "reject_deduplication_set")
+    schedule = mocker.patch.object(workflow, "schedule_rdp_operations")
+
+    assert workflow.reject_cancelled_rdp_set_core(job) == {"rdp_id": rdp.pk}
+
+    reject.assert_called_once()
+    schedule.assert_not_called()
 
 
 def test_reject_cancelled_rdp_set_rejects_non_pending_clean_rdp(

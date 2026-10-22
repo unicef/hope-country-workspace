@@ -15,6 +15,8 @@ class ProgramDedupSettingsPolicy:
         return self.program.biometric_deduplication_enabled
 
     def update_dedup_settings_check(self) -> ActionCheck:
+        if self.program.cleanup_in_progress:
+            return ActionCheck(False, "Program cleanup is in progress.")
         if not self.program.biometric_deduplication_enabled:
             return ActionCheck(False, "DedupEngine: biometric deduplication is not enabled for this program.")
 

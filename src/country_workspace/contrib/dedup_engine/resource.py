@@ -23,6 +23,12 @@ class CreateMixin[T, R]:
         return result.json()
 
 
+class DeleteMixin:
+    def delete(self: GenericResource) -> None:
+        result = self.session.delete(str(self.endpoint), timeout=TIMEOUT)
+        result.raise_for_status()
+
+
 class ListMixin[R]:
     def list(self: GenericResource, *, params: Mapping[str, str] | None = None) -> R:
         result = self.session.get(str(self.endpoint), params=params, timeout=TIMEOUT)
@@ -103,4 +109,10 @@ class DeduplicationSetGroupConfigItem(
     GenericResource[endpoint.DeduplicationSetGroupConfig],
     RetrieveMixin[response.DeduplicationSetGroupConfig],
     UpdateMixin[request.DeduplicationSetGroupConfig, response.DeduplicationSetGroupConfig],
+): ...
+
+
+class DeduplicationSetGroupItem(
+    GenericResource[endpoint.DeduplicationSetGroup],
+    DeleteMixin,
 ): ...

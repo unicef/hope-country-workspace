@@ -47,10 +47,12 @@ def schedule_rdp_operation(*, operation: RdpOperation, owner_id: int) -> AsyncJo
     return job
 
 
-def retry_failed_rdp_operations(*, rdp_id: int, owner_id: int) -> int:
+def retry_failed_rdp_operations(*, rdp_id: int, owner_id: int) -> int | None:
     """Schedule failed operations of a pending RDP for retry."""
     with transaction.atomic():
         rdp = lock_rdp_for_update(pk=rdp_id)
+        if rdp.program.cleanup_in_progress:
+            return None
         if rdp.status != Rdp.PushStatus.PENDING:
             return 0
 

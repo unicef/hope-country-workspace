@@ -6,7 +6,7 @@ from django.db.models import Subquery, OuterRef, QuerySet
 from django_celery_boost.admin import CeleryTaskModelAdmin
 from django_celery_results.models import TaskResult
 
-from ..models import AsyncJob
+from country_workspace.models import AsyncJob
 from .base import BaseModelAdmin
 from .filters import FailedFilter
 from .mixins import JobErrorDisplayMixin

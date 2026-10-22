@@ -2,8 +2,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth.models import User
-from django.http import HttpRequest
 from django.http.response import HttpResponse
+from django.http import HttpRequest
+from pytest_mock import MockerFixture
 
 from country_workspace.state import state
 from country_workspace.workspaces.admin.transformer import CountryTransformerAdmin, RunTransformerForm
@@ -306,11 +307,10 @@ class TestRunOnExistingRecords:
     def test_post_valid_schedules_job_for_both_in_master_detail(self, transformer_admin):
         request = self._build_request("POST", {"apply": "yes"}, has_perm=True)
         transformer = MagicMock(pk=99, name="Eligibility Rule")
-        program = MagicMock(is_master_detail=True)
+        program = MagicMock(is_master_detail=True, cleanup_in_progress=False)
         batch = MagicMock(pk=10, name="Batch 1", program=program)
         state.tenant = MagicMock()
         state.program = MagicMock()
-
         mock_form = MagicMock()
         mock_form.is_valid.return_value = True
         mock_form.cleaned_data = {
@@ -347,3 +347,36 @@ class TestRunOnExistingRecords:
         }
         job.queue.assert_called_once()
         assert "scheduled" in mock_message_user.call_args.args[1].lower()
+
+    def test_post_valid_rejects_batch_program_cleanup(
+        self,
+        transformer_admin,
+        mocker: MockerFixture,
+    ) -> None:
+        request = self._build_request("POST", {"apply": "yes"}, has_perm=True)
+        transformer = mocker.MagicMock(pk=1, name="T1")
+        program = mocker.MagicMock(cleanup_in_progress=True)
+        batch = mocker.MagicMock(pk=10, program=program)
+        form = mocker.MagicMock()
+        form.is_valid.return_value = True
+        form.cleaned_data = {
+            "batch": batch,
+            "apply_to": RunTransformerForm.ApplyToOptions.INDIVIDUALS,
+        }
+
+        mocker.patch.object(CountryTransformerAdmin, "get_object", return_value=transformer)
+        mocker.patch(
+            "country_workspace.workspaces.admin.transformer.RunTransformerForm",
+            return_value=form,
+        )
+        get_change_url = mocker.patch.object(transformer_admin, "get_change_url", return_value="/change/")
+        message = mocker.patch.object(transformer_admin, "message_user")
+        create = mocker.patch("country_workspace.workspaces.admin.transformer.AsyncJob.objects.create")
+
+        response = transformer_admin.run_on_existing_records(transformer_admin, request, "1")
+
+        assert response.status_code == 302
+        assert response.url == "/change/"
+        get_change_url.assert_called_once_with(request, transformer)
+        assert "cleanup" in message.call_args.args[1].lower()
+        create.assert_not_called()

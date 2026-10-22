@@ -6,7 +6,7 @@ from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.rdi import HopeRdiResetUnconfirmedError, RdiResetResult
-from country_workspace.models import Rdp
+from country_workspace.models import Program, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
@@ -160,6 +160,34 @@ def test_schedule_push_data(
         assert push_pending_rdp.hope_rdi_id is None
 
 
+def test_schedule_push_data_during_program_cleanup(
+    push_pending_rdp: Rdp,
+    mocker: MockerFixture,
+) -> None:
+    push_pending_rdp.hope_rdi_id = "OLD"
+    push_pending_rdp.save(update_fields=["hope_rdi_id"])
+    push_attempt_id = push_pending_rdp.push_attempt_id
+    assert push_attempt_id is not None
+    Program.objects.filter(pk=push_pending_rdp.program_id).update(cleanup_in_progress=True)
+    create = mocker.patch.object(workflow, "get_or_create_rdp_push_data_job")
+    on_commit = mocker.patch.object(workflow.transaction, "on_commit")
+
+    assert (
+        workflow._schedule_push_data(
+            rdp_id=push_pending_rdp.pk,
+            push_attempt_id=push_attempt_id,
+        )
+        is None
+    )
+
+    create.assert_not_called()
+    on_commit.assert_not_called()
+    push_pending_rdp.refresh_from_db()
+    assert push_pending_rdp.hope_rdi_id == "OLD"
+    assert push_pending_rdp.status == Rdp.PushStatus.PUSH_PENDING
+    assert push_pending_rdp.push_attempt_id == push_attempt_id
+
+
 def test_schedule_push_preparation_requires_attempt(rdp: Rdp) -> None:
     with pytest.raises(RuntimeError, match="not initialized"):
         workflow._schedule_push_preparation(rdp=rdp, user_id=1)
@@ -202,6 +230,28 @@ def test_evaluate_rdp_for_push_ignores_non_pending(
 
     assert result["evaluated"] is False
     assert result["outcome"] == Rdp.PushStatus.SUCCESS
+
+
+def test_evaluate_rdp_for_push_during_program_cleanup(
+    rdp: Rdp,
+    mocker: MockerFixture,
+) -> None:
+    Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
+    incomplete = mocker.patch.object(workflow, "has_incomplete_rdp_operations")
+    append_log = mocker.patch.object(workflow, "append_rdp_log")
+    schedule = mocker.patch.object(workflow, "_schedule_push_preparation")
+
+    result = workflow.evaluate_rdp_for_push(rdp_id=rdp.pk)
+
+    assert result["evaluated"] is False
+    assert result["outcome"] == Rdp.PushStatus.PENDING
+    assert "cleanup" in result["reason"]
+    incomplete.assert_not_called()
+    append_log.assert_not_called()
+    schedule.assert_not_called()
+    rdp.refresh_from_db()
+    assert rdp.status == Rdp.PushStatus.PENDING
+    assert rdp.push_attempt_id is None
 
 
 def test_evaluate_rdp_for_push_waits_for_operations(
@@ -373,6 +423,37 @@ def test_claim_push(
     assert append_log.call_args.kwargs["result"]["decision"] == decision
     assert append_log.call_args.kwargs["result"]["user_id"] == str(user.pk)
     schedule.assert_called_once_with(rdp=rdp, user_id=user.pk)
+
+
+@pytest.mark.parametrize(
+    ("method", "status"),
+    [
+        ("claim_review_rdp_push", Rdp.PushStatus.REVIEW_PENDING),
+        ("retry_rdp_push", Rdp.PushStatus.FAILURE),
+    ],
+)
+def test_claim_push_rejects_program_cleanup(
+    rdp: Rdp,
+    mocker: MockerFixture,
+    method: str,
+    status: Rdp.PushStatus,
+) -> None:
+    rdp.status = status
+    rdp.save(update_fields=["status"])
+    Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
+    append_log = mocker.patch.object(workflow, "append_rdp_log")
+    schedule = mocker.patch.object(workflow, "_schedule_push_preparation")
+
+    check, returned = getattr(workflow, method)(rdp.pk, user_id=rdp.pushed_by_id)
+
+    assert check.allowed is False
+    assert "cleanup" in (check.reason or "")
+    assert returned is None
+    append_log.assert_not_called()
+    schedule.assert_not_called()
+    rdp.refresh_from_db()
+    assert rdp.status == status
+    assert rdp.push_attempt_id is None
 
 
 def test_push_existing_rdp_without_reset(

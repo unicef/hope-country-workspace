@@ -3,7 +3,7 @@ from django.db import IntegrityError
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine import DeduplicationSetState
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import lifecycle
 from country_workspace.rdp.exceptions import RdpWorkflowError
@@ -55,6 +55,20 @@ def test_create_rdp_core(rdp: Rdp, mocker: MockerFixture) -> None:
 
     update.return_value.update.assert_called_once_with(rdp=created)
     schedule.assert_called_once_with(rdp=created)
+
+
+def test_create_rdp_core_during_program_cleanup(rdp: Rdp, mocker: MockerFixture) -> None:
+    job = mocker.MagicMock(id=10, program=rdp.program, config={"program_id": rdp.program_id})
+    Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
+    mocker.patch.object(lifecycle, "_validate_rdp_creation")
+    create = mocker.patch.object(lifecycle, "create_rdp")
+    schedule = mocker.patch.object(lifecycle, "_schedule_rdp_processing")
+
+    with pytest.raises(RdpWorkflowError, match="cleanup"):
+        lifecycle.create_rdp_core(job)
+
+    create.assert_not_called()
+    schedule.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -216,18 +230,39 @@ def test_cancel_rdp(
     reject = mocker.patch.object(lifecycle, "schedule_cancelled_rdp_set_rejection")
 
     check, scheduled = lifecycle.cancel_rdp(rdp.pk, user_id=7)
+    should_reject = rejection_set_id is not None
 
     assert check.allowed is True
-    assert scheduled is (rejection_set_id is not None)
+    assert scheduled is should_reject
     cancel.assert_called_once_with()
     assert append.called is logged
-    assert reject.called is (rejection_set_id is not None)
+    assert reject.called is should_reject
 
     if logged:
         assert append.call_args.kwargs["entry_type"] == RdpLogEntryType.REVIEW_DECISION
         result = append.call_args.kwargs["result"]
         assert result["decision"] == "CANCEL"
-        assert result["deduplication_set_rejection"] == ("scheduled" if rejection_set_id else "not_required")
+        assert result["deduplication_set_rejection"] == ("scheduled" if should_reject else "not_required")
+
+
+def test_cancel_rdp_during_program_cleanup(rdp: Rdp, mocker: MockerFixture) -> None:
+    rdp.status = Rdp.PushStatus.FAILURE
+    rdp.save(update_fields=["status"])
+    Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
+
+    policy = mocker.patch.object(lifecycle, "get_rdp_policy").return_value
+    policy.cancel_check.return_value = ActionCheck(True)
+    rejection_check = mocker.patch.object(lifecycle, "_biometric_rejection_check")
+    reject = mocker.patch.object(lifecycle, "schedule_cancelled_rdp_set_rejection")
+
+    check, scheduled = lifecycle.cancel_rdp(rdp.pk, user_id=7)
+
+    assert check.allowed is True
+    assert scheduled is False
+    rejection_check.assert_not_called()
+    reject.assert_not_called()
+    rdp.refresh_from_db()
+    assert rdp.status == Rdp.PushStatus.CANCELLED
 
 
 @pytest.mark.parametrize(
@@ -264,6 +299,20 @@ def test_clean_rdp_check(
 
     if status != Rdp.PushStatus.REVIEW_PENDING or operation_status != RdpOperation.Status.SUCCESS:
         retrieve.assert_not_called()
+
+
+def test_clean_rdp_check_during_program_cleanup(review_pending_rdp: Rdp, mocker: MockerFixture) -> None:
+    review_pending_rdp.program.cleanup_in_progress = True
+    operation = mocker.patch.object(lifecycle, "biometric_operation_for_rdp")
+    retrieve = mocker.patch.object(lifecycle, "retrieve_deduplication_set_state")
+
+    check, result = lifecycle._clean_rdp_check(review_pending_rdp)
+
+    assert check.allowed is False
+    assert "cleanup" in (check.reason or "")
+    assert result is None
+    operation.assert_not_called()
+    retrieve.assert_not_called()
 
 
 def test_clean_rdp_operation_configs(review_pending_rdp: Rdp) -> None:
@@ -309,7 +358,7 @@ def test_create_clean_rdp_rejects_empty_selection(
     assert clean_rdp is None
 
 
-@pytest.mark.parametrize("changed", ["status", "selection"])
+@pytest.mark.parametrize("changed", ["status", "selection", "cleanup"])
 def test_create_clean_rdp_rechecks_state_after_lock(
     review_pending_rdp: Rdp,
     successful_biometric_operation: RdpOperation,
@@ -326,6 +375,13 @@ def test_create_clean_rdp_rechecks_state_after_lock(
 
     if changed == "status":
         review_pending_rdp.status = Rdp.PushStatus.PENDING
+    elif changed == "cleanup":
+
+        def start_cleanup(*, operation: RdpOperation) -> tuple[bool, list[int]]:
+            Program.objects.filter(pk=operation.rdp.program_id).update(cleanup_in_progress=True)
+            return False, [1]
+
+        selection.side_effect = start_cleanup
     else:
         selection.side_effect = [(False, [1]), (False, [2])]
 
@@ -333,6 +389,9 @@ def test_create_clean_rdp_rechecks_state_after_lock(
 
     assert check.allowed is False
     assert clean_rdp is None
+
+    if changed == "cleanup":
+        assert "cleanup" in (check.reason or "")
 
 
 def test_create_clean_rdp(

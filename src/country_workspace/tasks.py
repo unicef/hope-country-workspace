@@ -16,6 +16,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
+from country_workspace.contrib.dedup_engine import make_dedup_client
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
@@ -280,10 +281,41 @@ def _cleanup_batches(
 def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
     job.ensure_not_cancelled(refresh=True)
     program = job.program
+    if program is None:
+        raise ValueError("Program cleanup job requires a program.")
+    if not program.cleanup_in_progress:
+        raise ValueError("Program cleanup is not in progress.")
+
     program_id = program.pk
     current_job_id = job.pk
-    deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
 
+    other_jobs = AsyncJob.objects.filter(program_id=program_id, curr_async_result_id__isnull=False).exclude(
+        pk=current_job_id
+    )
+    completed_statuses = AsyncJob.TERMINATED_STATUSES | {AsyncJob.SUCCESS, AsyncJob.MISSING}
+    if any(job.task_status not in completed_statuses for job in other_jobs):
+        raise ValueError("Cannot clean program while another job is running.")
+
+    if Rdp.objects.filter(program_id=program_id, status=Rdp.PushStatus.PUSH_PENDING).exists():
+        raise ValueError("Cannot clean program while an RDP push is pending.")
+
+    reference_id = job.config.get("deduplication_set_group_reference_id")
+    dedup_configured = bool(constance_config.DEDUP_API_URL and constance_config.DEDUP_API_TOKEN)
+
+    if reference_id and not dedup_configured:
+        raise ValueError("DedupEngine is not configured.")
+
+    if dedup_configured:
+        reference_id = reference_id or program.unicef_id
+        with make_dedup_client(reference_id) as client:
+            client.delete_deduplication_set_group()
+
+        current_reference_id = Program.objects.select_related("country_office").get(pk=program_id).unicef_id
+        if current_reference_id != reference_id:
+            with make_dedup_client(current_reference_id) as client:
+                client.delete_deduplication_set_group()
+
+    deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}
     batch_ids = list(Batch.objects.filter(program_id=program_id).values_list("id", flat=True))
 
     try:
@@ -301,6 +333,11 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
             job.ensure_not_cancelled(refresh=True)
             _, counts = AsyncJob.objects.filter(program_id=program_id).exclude(id=current_job_id).delete()
             deleted_counts["jobs"] = counts.get("country_workspace.AsyncJob", 0)
+
+            with transaction.atomic():
+                program = Program.objects.select_for_update().get(pk=program_id)
+                program.cleanup_in_progress = False
+                program.save(update_fields=["cleanup_in_progress"])
     finally:
         cache_manager.incr_cache_version(program=program)
 

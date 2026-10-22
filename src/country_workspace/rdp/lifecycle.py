@@ -57,7 +57,10 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
 
     try:
         with transaction.atomic():
-            Program.objects.select_for_update().get(pk=config["program_id"])
+            program = Program.objects.select_for_update().get(pk=config["program_id"])
+            if program.cleanup_in_progress:
+                raise RdpWorkflowError({"errors": ["Program cleanup is in progress."]})
+
             rdp = create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)
             _schedule_rdp_processing(rdp=rdp)
@@ -118,22 +121,27 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     if not (check := get_rdp_policy(rdp).cancel_check()).allowed:
         return check, False
 
-    rejection_check, rejection_set_id = _biometric_rejection_check(rdp)
-    if not rejection_check.allowed:
-        return rejection_check, False
+    rejection_set_id = None
+    if not rdp.program.cleanup_in_progress:
+        rejection_check, rejection_set_id = _biometric_rejection_check(rdp)
+        if not rejection_check.allowed:
+            return rejection_check, False
 
     with transaction.atomic():
-        locked = lock_rdp_for_update(pk=rdp_id)
+        rdp = lock_rdp_for_update(pk=rdp_id)
 
-        if not (check := get_rdp_policy(locked).cancel_check()).allowed:
+        if not (check := get_rdp_policy(rdp).cancel_check()).allowed:
             return check, False
 
-        was_review_pending = locked.status == Rdp.PushStatus.REVIEW_PENDING
-        locked.mark_cancelled()
+        if rdp.program.cleanup_in_progress:
+            rejection_set_id = None
+
+        was_review_pending = rdp.status == Rdp.PushStatus.REVIEW_PENDING
+        rdp.mark_cancelled()
 
         if was_review_pending:
             append_rdp_log(
-                rdp=locked,
+                rdp=rdp,
                 entry_type=RdpLogEntryType.REVIEW_DECISION,
                 result={
                     "decision": "CANCEL",
@@ -145,7 +153,7 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
 
         if rejection_set_id:
             schedule_cancelled_rdp_set_rejection(
-                rdp=locked,
+                rdp=rdp,
                 user_id=user_id,
                 deduplication_set_id=rejection_set_id,
             )
@@ -155,6 +163,8 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
 
 def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
     """Check Clean RDP prerequisites and return its biometric operation."""
+    if rdp.program.cleanup_in_progress:
+        return ActionCheck(False, "Program cleanup is in progress."), None
     if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
         return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
 
@@ -204,9 +214,10 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
 
     try:
         with transaction.atomic():
-            Program.objects.select_for_update().get(pk=rdp.program_id)
+            program = Program.objects.select_for_update().get(pk=rdp.program_id)
+            if program.cleanup_in_progress:
+                return ActionCheck(False, "Program cleanup is in progress."), None
             rdp = lock_rdp_for_update(pk=rdp_id)
-
             if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
                 return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
 

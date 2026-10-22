@@ -10,6 +10,7 @@ from .deduplication_status import (
     get_deduplication_status,
     retrieve_deduplication_set_state,
 )
+from .exceptions import DeduplicationSetGroupBusyError
 from .factory import make_client as make_dedup_client
 from .schemas import SYSTEM_ERROR_STATUS_CODES, FindingStatusCode
 
@@ -22,6 +23,7 @@ __all__ = [
     "SYSTEM_ERROR_STATUS_CODES",
     "DedupClientStatus",
     "DedupResponseStatus",
+    "DeduplicationSetGroupBusyError",
     "DeduplicationSetState",
     "FindingStatusCode",
     "get_deduplication_status",

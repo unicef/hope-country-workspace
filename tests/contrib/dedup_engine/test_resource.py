@@ -1,11 +1,16 @@
 import pytest
+import responses
 from pytest_mock import MockerFixture
+from requests import Session
+from responses import matchers
 
+from country_workspace.contrib.dedup_engine.endpoint import DeduplicationSetGroup
 from country_workspace.contrib.dedup_engine.resource import (
     TIMEOUT,
     ActionMixin,
     ApproveDeduplicationSetAction,
     CreateMixin,
+    DeduplicationSetGroupItem,
     ListMixin,
     RetrieveMixin,
     UpdateMixin,
@@ -119,3 +124,16 @@ def test_approve_deduplication_set_action(mocker: MockerFixture) -> None:
 
     session.post.assert_called_once_with(str(endpoint), params=None, timeout=TIMEOUT)
     session.post.return_value.raise_for_status.assert_called_once_with()
+
+
+def test_delete_deduplication_set_group_item(mocked_responses: responses.RequestsMock) -> None:
+    endpoint = DeduplicationSetGroup("https://de/deduplication_set_groups/PROGRAM_ID/")
+    item = DeduplicationSetGroupItem(Session(), endpoint)
+    mocked_responses.add(
+        responses.DELETE,
+        str(endpoint),
+        status=204,
+        match=[matchers.request_kwargs_matcher({"timeout": TIMEOUT})],
+    )
+
+    assert item.delete() is None

@@ -152,12 +152,17 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
             if form.is_valid():
                 batch = form.cleaned_data["batch"]
                 apply_to = form.cleaned_data["apply_to"]
+
                 if not request.user.has_perm("country_workspace.reprocess_batch", batch.program):  # type: ignore[attr-defined]
                     self.message_user(
                         request,
                         _("You do not have permission to run formulas on this batch."),
                         messages.ERROR,
                     )
+                    return HttpResponseRedirect(self.get_change_url(request, obj))
+
+                if batch.program.cleanup_in_progress:
+                    self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
                     return HttpResponseRedirect(self.get_change_url(request, obj))
 
                 config: dict[str, int] = {"batch_id": batch.pk}

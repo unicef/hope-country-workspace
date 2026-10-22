@@ -116,15 +116,16 @@ def test_cancel_requires_confirmation_for_existing_rdi(
     [
         (2, "success"),
         (0, "warning"),
+        (None, "error"),
     ],
-    ids=["scheduled", "nothing_to_retry"],
+    ids=["scheduled", "nothing_to_retry", "cleanup"],
 )
 def test_retry_failed_operations(
     admin_instance,
     mock_request,
     rdp: CountryRdp,
     mocker: MockerFixture,
-    count: int,
+    count: int | None,
     message_method: str,
 ) -> None:
     mocker.patch.object(admin_instance, "get_object", return_value=rdp)
@@ -137,6 +138,8 @@ def test_retry_failed_operations(
 
     retry.assert_called_once_with(rdp_id=rdp.pk, owner_id=mock_request.user.pk)
     message.assert_called_once()
+    if count is None:
+        assert "cleanup" in message.call_args.args[1].lower()
     redirect.assert_called_once_with("/change")
     assert response == "response"
 

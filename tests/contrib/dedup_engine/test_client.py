@@ -1,5 +1,9 @@
+from collections.abc import Iterator
+
 import pytest
+import responses
 from pytest_mock import MockerFixture
+from requests import Session
 from requests.exceptions import (
     ConnectionError as RequestsConnectionError,
     HTTPError,
@@ -9,6 +13,8 @@ from requests.exceptions import (
 
 from country_workspace.contrib.dedup_engine.client import Client
 from country_workspace.contrib.dedup_engine import resource
+from country_workspace.contrib.dedup_engine.endpoint import APIRoot
+from country_workspace.contrib.dedup_engine.exceptions import DeduplicationSetGroupBusyError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 
@@ -18,6 +24,12 @@ def client_ctx(mocker: MockerFixture) -> tuple[Client, object, object]:
     api_root = mocker.MagicMock()
     client = Client("PROGRAM_ID", session, api_root, deduplication_set_id="SET_ID")
     return client, session, api_root
+
+
+@pytest.fixture
+def de_client() -> Iterator[Client]:
+    with Session() as session:
+        yield Client("PROGRAM_ID", session, APIRoot("https://de"))
 
 
 def test_client_create_deduplication_set(
@@ -446,3 +458,28 @@ def test_client_retrieve_findings(
         mocker.call(params={"page": "1"}),
         mocker.call(params={"page": "2"}),
     ]
+
+
+@pytest.mark.parametrize("status_code", [204, 404])
+def test_client_delete_deduplication_set_group(
+    de_client: Client,
+    mocked_responses: responses.RequestsMock,
+    status_code: int,
+) -> None:
+    mocked_responses.add(responses.DELETE, "https://de/deduplication_set_groups/PROGRAM_ID/", status=status_code)
+
+    assert de_client.delete_deduplication_set_group() is None
+
+
+def test_client_delete_deduplication_set_group_busy(
+    de_client: Client,
+    mocked_responses: responses.RequestsMock,
+) -> None:
+    mocked_responses.add(
+        responses.DELETE,
+        "https://de/deduplication_set_groups/PROGRAM_ID/",
+        status=409,
+    )
+
+    with pytest.raises(DeduplicationSetGroupBusyError):
+        de_client.delete_deduplication_set_group()

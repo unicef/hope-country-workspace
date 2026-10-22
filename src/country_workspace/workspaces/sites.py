@@ -19,6 +19,7 @@ from smart_admin.autocomplete import SmartAutocompleteJsonView
 
 from ..models import AsyncJob
 from ..state import state
+from .cleanup import ProgramCleanupSiteMixin
 from .config import conf
 from .forms import SelectProgramForm, SelectTenantForm, TenantAuthenticationForm
 from .utils import get_selected_program, get_selected_tenant, is_tenant_valid
@@ -114,7 +115,7 @@ def force_tenant(view_func: "Callable[...]") -> "Callable[...]":
 
 
 # class TenantAdminSite(SmartAdminSite):
-class TenantAdminSite(admin.AdminSite):
+class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
     enable_nav_sidebar = False
     index_template = "workspace/index.html"
     app_index_template = "workspace/app_index.html"
