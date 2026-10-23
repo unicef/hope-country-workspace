@@ -24,6 +24,7 @@ from .operations.workflow import retry_failed_rdp_operations
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
+from .push.thresholds import is_biometric_threshold_exceeded
 from .push.workflow import (
     claim_review_rdp_push,
     fail_stuck_rdp_push,
@@ -72,6 +73,7 @@ __all__ = [
     "get_rdp_policy",
     "get_validated_rdp_operation_configs",
     "handle_push_ready_callback",
+    "is_biometric_threshold_exceeded",
     "lock_rdp_for_update",
     "push_existing_rdp_core",
     "qs_biometric_affected_individuals",

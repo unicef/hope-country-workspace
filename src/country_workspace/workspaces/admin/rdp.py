@@ -37,6 +37,7 @@ from country_workspace.rdp import (
     failed_rdp_operations,
     get_push_policy,
     get_rdp_policy,
+    is_biometric_threshold_exceeded,
     qs_biometric_affected_individuals,
     retry_failed_rdp_operations,
     retry_rdp_push,
@@ -73,6 +74,15 @@ def _has_failed_operations(btn: StandardButton) -> bool:
     return bool(
         (obj := btn.original) and obj.status == Rdp.PushStatus.PENDING and failed_rdp_operations(rdp_id=obj.pk).exists()
     )
+
+
+def _is_clean_rdp_visible(btn: StandardButton) -> bool:
+    """Return whether the biometric threshold contributed to the pending review."""
+    if (rdp := btn.original) is None or rdp.status != Rdp.PushStatus.REVIEW_PENDING:
+        return False
+    with suppress(RdpWorkflowError):
+        return is_biometric_threshold_exceeded(rdp=rdp)
+    return False
 
 
 @register(CountryRdp, site=workspace)
@@ -390,7 +400,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
-        visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
+        visible=_is_clean_rdp_visible,
         html_attrs={"title": "Create a new RDP excluding beneficiaries affected by biometric findings."},
     )
     def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
