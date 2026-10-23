@@ -8,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0068_ocr_run"),
+        ("country_workspace", "0067_program_cleanup_in_progress"),
     ]
 
     operations = [
