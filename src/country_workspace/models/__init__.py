@@ -6,7 +6,6 @@ from .individual import Individual
 from .jobs import AsyncJob
 from .locations import Area, AreaType, Country
 from .mapping_importer import MappingImporter
-from .ocr_run import OcrRun
 from .office import Office
 from .program import Program
 from .rdi import Rdi
@@ -30,7 +29,6 @@ __all__ = [
     "Household",
     "Individual",
     "MappingImporter",
-    "OcrRun",
     "Office",
     "Program",
     "Rdi",
