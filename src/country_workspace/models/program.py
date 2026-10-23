@@ -137,7 +137,10 @@ class Program(BaseModel):
     class Meta:
         verbose_name = _("Programme")
         verbose_name_plural = _("Programmes")
-        permissions = (("import_program_data", "Can Import beneficiaries"),)
+        permissions = (
+            ("import_program_data", "Can Import beneficiaries"),
+            ("export_import_template", "Can Export import template"),
+        )
 
     @property
     def households(self) -> "QuerySet[Household]":
