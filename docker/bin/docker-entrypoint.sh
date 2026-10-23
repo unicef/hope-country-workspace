@@ -19,6 +19,9 @@ cd /app
 
 case "$1" in
     run)
+      if [ "${INIT_HOPE_STORAGE:-0}" = "1" ]; then
+        django-admin init_hope_storage || echo "init_hope_storage skipped"
+      fi
       django-admin upgrade --with-check
 	    set -- tini -- "$@"
 	    MAPPING=""

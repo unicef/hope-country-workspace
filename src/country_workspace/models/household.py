@@ -10,7 +10,7 @@ from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 
 from .base import BaseModel, Validable
 from .individual import Individual
-from .mixins import FlexFieldGroupingMixin
+from .mixins import FlexFieldGroupingMixin, HopeBlobMixin
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -29,7 +29,9 @@ ROLE_ALTERNATE: Final[str] = "ALTERNATE"
 
 
 @pghistory.track(pghistory.UpdateEvent(condition=pghistory.AnyChange("flex_fields", "flex_files", "removed")))
-class Household(FlexFieldGroupingMixin, Validable, BaseModel):
+class Household(HopeBlobMixin, FlexFieldGroupingMixin, Validable, BaseModel):
+    HOPE_BLOB_ENTITY = "hh"
+
     system_fields = models.JSONField(default=dict, blank=True)
     members: "QuerySet[Individual]"
 
