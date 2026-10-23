@@ -107,7 +107,7 @@ Select **Confirm import** after reviewing the matching report.
 
 Country Workspace schedules a background job that re-reads the archive, rechecks the matches, and writes each successfully matched picture to the selected target field.
 
-Validation results are cleared for updated records, but validation is not started automatically. Validate the affected records separately when new results are required.
+Validation results are cleared for updated records, and validation jobs for these records are scheduled automatically once the pictures are written. Records whose picture did not change are not revalidated. Validation results become available as the separately scheduled validation jobs finish.
 
 Batch reprocessing rebuilds beneficiary fields from the stored source data and does not preserve pictures added through **Import pictures**. After reprocessing, import the pictures again.
 
