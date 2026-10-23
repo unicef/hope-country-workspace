@@ -8,6 +8,7 @@ from .base import BaseModel
 
 class RdpOperationType(models.TextChoices):
     BIOMETRIC_DEDUPLICATION = "BIOMETRIC_DEDUPLICATION", _("Biometric deduplication")
+    OCR = "OCR", _("Identity document OCR")
 
 
 class RdpOperationStatus(models.TextChoices):
@@ -37,7 +38,7 @@ class RdpOperation(BaseModel):
         primary_key=True,
         default=uuid4,
         editable=False,
-        help_text=_("Unique identifier of this RDP operation and its external correlation ID."),
+        help_text=_("Unique identifier of this RDP operation."),
     )
     rdp = models.ForeignKey(
         "Rdp",
