@@ -68,6 +68,11 @@ def _biometric_threshold_result(*, rdp: Rdp) -> OperationLogResult | None:
     )
 
 
+def is_biometric_threshold_exceeded(*, rdp: Rdp) -> bool:
+    """Return whether the biometric review threshold is exceeded."""
+    return bool((result := _biometric_threshold_result(rdp=rdp)) and result["threshold_exceeded"] is True)
+
+
 def _ocr_threshold_result(*, rdp: Rdp) -> OperationLogResult | None:
     """Return OCR review threshold metrics when configured."""
     if (operation := ocr_operation_for_rdp(rdp=rdp)) is None:

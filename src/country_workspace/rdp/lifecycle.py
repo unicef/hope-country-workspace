@@ -15,10 +15,10 @@ from .deduplication.repository import (
     biometric_operation_for_rdp,
 )
 from .deduplication.workflow import schedule_cancelled_rdp_set_rejection
-from .types import ThresholdType
 from .exceptions import RdpWorkflowError
 from .operations.workflow import schedule_rdp_operations
 from .policy import ActionCheck, get_rdp_policy
+from .push.thresholds import is_biometric_threshold_exceeded
 from .push.workflow import schedule_rdp_push_evaluation
 from .repository import (
     append_rdp_log,
@@ -27,7 +27,7 @@ from .repository import (
     set_rdp_beneficiaries_removed,
 )
 from .validation import preflight_errors
-from .types import CreateRdpConfig, CreateRdpOperationConfig, JSONValue
+from .types import CreateRdpConfig, CreateRdpOperationConfig, JSONValue, ThresholdType
 
 
 def _validate_rdp_creation(*, program: Program, config: CreateRdpConfig, exclude_rdp_ids: tuple[int, ...] = ()) -> None:
@@ -48,6 +48,14 @@ def _rdp_creation_error(exc: IntegrityError) -> RdpWorkflowError:
         else "RDP: can not create record"
     )
     return RdpWorkflowError({"errors": [message]})
+
+
+def _schedule_rdp_processing(*, rdp: Rdp) -> None:
+    """Schedule RDP operations or push evaluation when none are configured."""
+    if rdp.operations.exists():
+        schedule_rdp_operations(rdp=rdp)
+    else:
+        schedule_rdp_push_evaluation(rdp=rdp)
 
 
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
@@ -82,14 +90,6 @@ def reset_rdp(*, rdp_id: int) -> ActionCheck:
         rdp.mark_cancelled()
 
     return ActionCheck(True)
-
-
-def _schedule_rdp_processing(*, rdp: Rdp) -> None:
-    """Schedule RDP operations or push evaluation when none are configured."""
-    if rdp.operations.exists():
-        schedule_rdp_operations(rdp=rdp)
-    else:
-        schedule_rdp_push_evaluation(rdp=rdp)
 
 
 def _biometric_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
@@ -161,6 +161,17 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     return ActionCheck(True), rejection_set_id is not None
 
 
+def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
+    """Handle a previously queued RDP cancellation job."""
+    if job.owner_id is None:
+        raise RdpWorkflowError({"errors": ["RDP: cancellation job owner is not set."]})
+
+    rdp_id = job.config["rdp_id"]
+    check, rejection_scheduled = cancel_rdp(rdp_id=rdp_id, user_id=job.owner_id)
+    check.require()
+    return {"rdp_id": rdp_id, "deduplication_set_rejection_scheduled": rejection_scheduled}
+
+
 def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
     """Check Clean RDP prerequisites and return its biometric operation."""
     if rdp.program.cleanup_in_progress:
@@ -171,6 +182,8 @@ def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
     operation = biometric_operation_for_rdp(rdp=rdp)
     if operation is None or operation.status != RdpOperation.Status.SUCCESS:
         return ActionCheck(False, "RDP: successful biometric deduplication is required."), None
+    if not is_biometric_threshold_exceeded(rdp=rdp):
+        return ActionCheck(False, "RDP: biometric review threshold was not exceeded."), None
 
     state = retrieve_deduplication_set_state(
         group_reference_id=rdp.program.unicef_id,
@@ -217,6 +230,7 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
             program = Program.objects.select_for_update().get(pk=rdp.program_id)
             if program.cleanup_in_progress:
                 return ActionCheck(False, "Program cleanup is in progress."), None
+
             rdp = lock_rdp_for_update(pk=rdp_id)
             if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
                 return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
@@ -225,6 +239,7 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
             if (
                 operation is None
                 or operation.status != RdpOperation.Status.SUCCESS
+                or not is_biometric_threshold_exceeded(rdp=rdp)
                 or biometric_clean_rdp_selection(operation=operation) != (master_detail, pks)
             ):
                 return ActionCheck(False, "RDP: biometric result or selection has changed. Please retry."), None
@@ -264,14 +279,3 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
         raise _rdp_creation_error(exc) from exc
 
     return ActionCheck(True), clean_rdp
-
-
-def cancel_existing_rdp_core(job: AsyncJob) -> dict[str, Any]:
-    """Handle a previously queued RDP cancellation job."""
-    if job.owner_id is None:
-        raise RdpWorkflowError({"errors": ["RDP: cancellation job owner is not set."]})
-
-    rdp_id = job.config["rdp_id"]
-    check, rejection_scheduled = cancel_rdp(rdp_id=rdp_id, user_id=job.owner_id)
-    check.require()
-    return {"rdp_id": rdp_id, "deduplication_set_rejection_scheduled": rejection_scheduled}
