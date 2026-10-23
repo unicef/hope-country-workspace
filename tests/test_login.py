@@ -62,3 +62,17 @@ def test_login_usse(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
         is_active=True,
         username="user",
     ).exists()
+
+
+def test_sso_login_uses_post(client, settings: "SettingsWrapper") -> None:
+    """social-auth-app-django >= 6 accepts `social:begin` only as a CSRF-protected POST."""
+    settings.DEBUG = True
+    begin = reverse("social:begin", kwargs={"backend": "azuread-tenant-oauth2"})
+    assert client.get(begin).status_code == 405
+
+    for url in (reverse("workspace:login"), reverse("admin:login")):
+        response = client.get(url)
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert f'action="{begin}"' in content
+        assert f'href="{begin}"' not in content

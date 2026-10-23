@@ -74,7 +74,7 @@ dependencies = [
   "sentry-sdk>=2.7.1",
   "social-auth-app-django",
   "torch>=2.7.1",
-  "unicef-security>=1.5.1",
+  "unicef-security>=1.10",
 ]
 urls.Documentation = "https://unicef.github.io/hope-country-workspace/"
 urls.Homepage = "https://github.com/unicef/hope-country-workspace"
