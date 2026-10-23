@@ -101,14 +101,6 @@ def finish_rdp_operation(
     return True
 
 
-def failed_rdp_operations(*, rdp_id: int) -> QuerySet[RdpOperation]:
-    """Return failed operations for an RDP."""
-    return RdpOperation.objects.filter(
-        rdp_id=rdp_id,
-        status=RdpOperation.Status.FAILURE,
-    )
-
-
 def append_rdp_operation_log(
     *,
     operation_id: UUID,
