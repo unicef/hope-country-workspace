@@ -6,7 +6,6 @@ from uuid import UUID, uuid4, uuid5
 
 from django.db import transaction
 
-from country_workspace.contrib.hope.constants import OCR_BATCH_SIZE
 from country_workspace.models import RdpOperation
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.completion import complete_rdp_operation, finalize_rdp_operation_from_units
@@ -21,6 +20,7 @@ from country_workspace.rdp.operations.repository import (
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
 
+from .constants import OCR_BATCH_SIZE
 from .processor import build_ocr_document_request, iter_ocr_unit_configs
 from .repository import apply_ocr_document_results, create_ocr_units, lock_ocr_operation_for_update
 from .validation import validate_ocr_result

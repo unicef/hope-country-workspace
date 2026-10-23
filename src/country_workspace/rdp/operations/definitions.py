@@ -20,6 +20,7 @@ class RdpOperationDefinition:
     config_form: type[forms.Form]
     is_enabled: Callable[[Program], bool]
     runner: Callable[[RdpOperation], None]
+    can_retry_while_running: bool = False
 
 
 RDP_OPERATION_DEFINITIONS: dict[RdpOperation.Type, RdpOperationDefinition] = {
@@ -34,6 +35,7 @@ RDP_OPERATION_DEFINITIONS: dict[RdpOperation.Type, RdpOperationDefinition] = {
         config_form=OcrConfigForm,
         is_enabled=lambda _program: True,
         runner=run_ocr,
+        can_retry_while_running=True,
     ),
 }
 

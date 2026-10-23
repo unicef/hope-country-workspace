@@ -20,6 +20,16 @@ def ocr_findings_count(*, operation: RdpOperation) -> int:
     return operation.findings.filter(finding_type__in=OCR_AFFECTING_FINDING_TYPES).count()
 
 
+def ocr_affected_individuals_count(*, operation: RdpOperation) -> int:
+    """Return the number of individuals affected by OCR findings."""
+    return (
+        operation.findings.filter(finding_type__in=OCR_AFFECTING_FINDING_TYPES)
+        .values("individual_id")
+        .distinct()
+        .count()
+    )
+
+
 def lock_ocr_operation_for_update(*, rdp_id: int) -> RdpOperation | None:
     """Return the OCR operation locked for update."""
     try:
