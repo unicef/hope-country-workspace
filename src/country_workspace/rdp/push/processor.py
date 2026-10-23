@@ -11,6 +11,12 @@ from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, m
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.validation import preflight_errors
+from country_workspace.services.hope_blob import (
+    RECORD_SELECT_RELATED,
+    image_field_names,
+    substitute_row_images,
+    sync_record_blobs,
+)
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .repository import serializer_for_program
@@ -45,6 +51,7 @@ class PushProcessor:
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
+        self._image_fields_cache: dict[int, list[str]] = {}
 
     @property
     def has_errors(self) -> bool:
@@ -181,14 +188,25 @@ class PushProcessor:
 
     def run_with(self, qs: QuerySet, step: Callable) -> None:
         """Execute a step with the given QuerySet set as self.queryset."""
-        with self._using_qs(qs):
+        with self._using_qs(qs.select_related(RECORD_SELECT_RELATED)):
             step()
+
+    def _image_fields(self, record: CountryHousehold | CountryIndividual) -> list[str]:
+        # Key the cache on the checker FK id: record.checker would fetch the
+        # DataChecker row for every record (N+1), the id comes free with the
+        # select_related program.
+        program = record.program
+        key = program.household_checker_id if isinstance(record, CountryHousehold) else program.individual_checker_id
+        if key not in self._image_fields_cache:
+            self._image_fields_cache[key] = image_field_names(record.checker)
+        return self._image_fields_cache[key]
 
     def _prepare_households_batch(self, batch: Iterable[CountryHousehold]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a households batch: roles mapped, members resolved."""
         ids, rows = [], []
         for hh in batch:
             ids.append(hh.id)
+            paths = sync_record_blobs(hh, self._image_fields(hh))
             flex_fields = hh.apply_grouping()
             for key in HOUSEHOLD_ROLE_REF_FIELDS:
                 flex_fields[key] = map_role_value(self.ind_id_map, self._err, hh.pk, key, flex_fields.get(key))
@@ -198,13 +216,18 @@ class PushProcessor:
             )
             flex_fields["members"] = map_members(self.ind_id_map, self._err, hh.pk, member_ids)
             flex_fields["originating_id"] = hh.originating_id
-            rows.append({k: v for k, v in flex_fields.items() if v is not None})
+            row = {k: v for k, v in flex_fields.items() if v is not None}
+            rows.append(substitute_row_images(hh, row, paths))
         return ids, self.serializer(rows)
 
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'country_workspace_id' per row."""
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            substitute_row_images(
+                ind,
+                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
+                sync_record_blobs(ind, self._image_fields(ind)),
+            )
             for ind in batch
         ]
         ids = [row["country_workspace_id"] for row in rows]
@@ -214,7 +237,11 @@ class PushProcessor:
         """Return (ids, payload) for a people batch; inject 'country_workspace_id' per row."""
         ids = [ind.id for ind in batch]
         rows = [
-            ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+            substitute_row_images(
+                ind,
+                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
+                sync_record_blobs(ind, self._image_fields(ind)),
+            )
             for ind in batch
         ]
         return ids, self.serializer(rows)
@@ -300,7 +327,11 @@ class PushProcessor:
             return
 
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
-            ids, payload = prepare(batch)
+            try:
+                ids, payload = prepare(batch)
+            except (RemoteError, RemoteUnavailableError) as e:
+                self.fail(name, f"prepare failed. {e}")
+                return
             if self.has_errors:
                 return
             if not payload:

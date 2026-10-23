@@ -148,6 +148,11 @@ CONFIG: "dict[str, ConfigItem]" = {
         "django.contrib.staticfiles.storage.StaticFilesStorage",
         setting("storages"),
     ),
+    "FILE_STORAGE_HOPE": (
+        str,
+        "django.core.files.storage.FileSystemStorage",
+        setting("storages"),
+    ),
     "HOPE_API_URL": (
         str,
         "https://hope.unicef.org/api/rest/",
