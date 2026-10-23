@@ -37,7 +37,12 @@
                 </form>
             {% endif %}
             <div class="text-center mt-10">
-                <a class="button primary" href="{% url 'social:begin' 'azuread-tenant-oauth2' %}">{% translate "SSO Login" %}</a>
+                <form method="post" action="{% url 'social:begin' 'azuread-tenant-oauth2' %}">
+                    {% csrf_token %}
+                    <button class="button primary" type="submit">
+                        {% translate "SSO Login" %}
+                    </button>
+                </form>
                 {# <button class="bg-unicef-blue hover:bg-blue text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" #}
                 {# type="submit"> #}
                 {# SSO Login #}
