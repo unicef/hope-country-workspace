@@ -77,6 +77,10 @@ Result: Jane can collect data only for the Cash Transfer Program in Ukraine offi
 
     Allows users to import beneficiary data (Households and Individuals) into the program from various sources (Kobo, Aurora, XLS).
 
+- **`country_workspace.export_import_template`** - Can Export import template
+
+    Allows users to download, from the programme page, an empty `.xlsx` template built from the programme's data checkers. The file has a `Households` and an `Individuals` sheet (or a single `People` sheet for people-only programmes) and can be shared with the country office, then imported back through **Import Data** without changing the import form defaults.
+
 ### Beneficiary (Household/Individual) Permissions
 
 - **`workspaces.validate_beneficiary`** - Can validate Beneficiary Records
