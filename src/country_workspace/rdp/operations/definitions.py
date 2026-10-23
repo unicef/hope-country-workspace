@@ -9,6 +9,8 @@ from django.core.serializers.json import DjangoJSONEncoder
 from country_workspace.models import Program, RdpOperation
 from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
 from country_workspace.rdp.deduplication.workflow import run_biometric_deduplication
+from country_workspace.rdp.ocr.forms import OcrConfigForm
+from country_workspace.rdp.ocr.workflow import run_ocr
 from country_workspace.rdp.types import CreateRdpOperationConfig, JSONValue
 
 
@@ -26,6 +28,12 @@ RDP_OPERATION_DEFINITIONS: dict[RdpOperation.Type, RdpOperationDefinition] = {
         config_form=BiometricDeduplicationConfigForm,
         is_enabled=lambda program: program.biometric_deduplication_enabled,
         runner=run_biometric_deduplication,
+    ),
+    RdpOperation.Type.OCR: RdpOperationDefinition(
+        operation_type=RdpOperation.Type.OCR,
+        config_form=OcrConfigForm,
+        is_enabled=lambda _program: True,
+        runner=run_ocr,
     ),
 }
 

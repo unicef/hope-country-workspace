@@ -13,6 +13,7 @@ from .deduplication.repository import (
 from .deduplication.workflow import get_dedup_callback_base_url, sync_biometric_deduplication_result
 from .exceptions import RdpWorkflowError
 from .lifecycle import cancel_existing_rdp_core, cancel_rdp, create_clean_rdp, create_rdp_core, reset_rdp
+from .ocr.workflow import handle_ocr_result
 from .operations.completion import complete_rdp_operation, finalize_rdp_operation_from_units
 from .operations.definitions import (
     get_enabled_rdp_operation_definitions,
@@ -72,6 +73,7 @@ __all__ = [
     "get_rdp_operation_forms",
     "get_rdp_policy",
     "get_validated_rdp_operation_configs",
+    "handle_ocr_result",
     "handle_push_ready_callback",
     "is_biometric_threshold_exceeded",
     "lock_rdp_for_update",

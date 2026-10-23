@@ -5,7 +5,7 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from streaming.event import Event
 
-from country_workspace.contrib.hope.ocr import handle_ocr_result
+from country_workspace.rdp import handle_ocr_result
 
 logger = logging.getLogger(__name__)
 
