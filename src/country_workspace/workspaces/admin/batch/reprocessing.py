@@ -9,6 +9,10 @@ from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransfo
 from strategy_field.utils import fqn
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+from country_workspace.contrib.ona.import_processing import (
+    build_household_processor as build_ona_household_processor,
+    build_individual_processor as build_ona_individual_processor,
+)
 from country_workspace.contrib.aurora.import_processing import (
     build_household_processor as build_aurora_household_processor,
     build_individual_processor as build_aurora_individual_processor,
@@ -36,6 +40,12 @@ PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[
     Batch.BatchSource.KOBO: {
         Household: (
             "household_id",
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+        ),
+    },
+    Batch.BatchSource.ONA: {
+        Household: (
             HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
             HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
         ),
@@ -79,7 +89,7 @@ def _get_batch_from_job(job: AsyncJob) -> tuple[int, Batch]:
 
 def _sync_household_refs(batch: Batch) -> None:
     match batch.source:
-        case Batch.BatchSource.KOBO:
+        case Batch.BatchSource.KOBO | Batch.BatchSource.ONA:
             _sync_kobo_household_refs(batch)
         case Batch.BatchSource.RDI:
             _sync_rdi_household_refs(batch)
@@ -113,7 +123,6 @@ def _apply_import_processor(
         update_fields.append("identity_hash")
     record.save(update_fields=update_fields)
     return True
-
 
 def _clean_prefix(value: object) -> str | None:
     if isinstance(value, str) and (prefix := value.strip()):
@@ -171,6 +180,11 @@ def _build_processor(
             source=batch.source,
             pre_processors=[_strip_people_prefix(prefix)],
         )
+
+    if batch.source == Batch.BatchSource.ONA:
+        if model is Household:
+            return build_ona_household_processor(program, mapping_id)
+        return build_ona_individual_processor(program, mapping_id)
 
     return build_import_processor(
         program=program,
