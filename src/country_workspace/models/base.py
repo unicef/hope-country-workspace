@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, override
 from collections.abc import Iterable
 from concurrency.fields import IntegerVersionField
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models.base import ModelBase
 from django.urls import reverse
@@ -67,10 +68,13 @@ class Validable(Cachable, models.Model):
     flex_fields = models.JSONField(default=dict, blank=True)
     flex_files = models.BinaryField(null=True, blank=True)
     removed = models.BooleanField(_("Removed"), default=False)
-    # Most likely we will need to changes this when we start using separate table for the flex files.
+    # Keyed by flex field name; value is the checksum of the content last synced
+    # to HOPE_STORAGE (the FlexFieldFile checksum for an offloaded reference, or
+    # a sha256 of the decoded bytes for a legacy inline data-URI).
     blob_hashes = models.JSONField(default=dict, blank=True, editable=False)
     checksum = models.CharField(_("checksum"), max_length=300, blank=True, null=True, db_index=True)
     originating_id = models.CharField(_("Originating ID"), blank=True)
+    flex_field_files = GenericRelation("country_workspace.FlexFieldFile")
 
     objects = ValidableManager()
 

@@ -11,12 +11,7 @@ from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, m
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.validation import preflight_errors
-from country_workspace.services.hope_blob import (
-    RECORD_SELECT_RELATED,
-    image_field_names,
-    substitute_row_images,
-    sync_record_blobs,
-)
+from country_workspace.services.hope_blob import RECORD_SELECT_RELATED, image_field_names, sync_record_blobs
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .repository import serializer_for_program
@@ -51,7 +46,7 @@ class PushProcessor:
         self.queryset: QuerySet | None = None
         self.rdp_id: int = config["rdp_id"]
         self.country_workspace_id: str | None = config.get("country_workspace_id")
-        self._image_fields_cache: dict[int, list[str]] = {}
+        self._image_fields_cache: dict[int, set[str]] = {}
 
     @property
     def has_errors(self) -> bool:
@@ -191,7 +186,7 @@ class PushProcessor:
         with self._using_qs(qs.select_related(RECORD_SELECT_RELATED)):
             step()
 
-    def _image_fields(self, record: CountryHousehold | CountryIndividual) -> list[str]:
+    def _image_fields(self, record: CountryHousehold | CountryIndividual) -> set[str]:
         # Key the cache on the checker FK id: record.checker would fetch the
         # DataChecker row for every record (N+1), the id comes free with the
         # select_related program.
@@ -207,7 +202,7 @@ class PushProcessor:
         for hh in batch:
             ids.append(hh.id)
             paths = sync_record_blobs(hh, self._image_fields(hh))
-            flex_fields = hh.apply_grouping()
+            flex_fields = hh.apply_grouping({**hh.flex_fields, **paths})
             for key in HOUSEHOLD_ROLE_REF_FIELDS:
                 flex_fields[key] = map_role_value(self.ind_id_map, self._err, hh.pk, key, flex_fields.get(key))
             prefetched = getattr(hh, "prefetched_members", None)
@@ -216,18 +211,14 @@ class PushProcessor:
             )
             flex_fields["members"] = map_members(self.ind_id_map, self._err, hh.pk, member_ids)
             flex_fields["originating_id"] = hh.originating_id
-            row = {k: v for k, v in flex_fields.items() if v is not None}
-            rows.append(substitute_row_images(hh, row, paths))
+            rows.append({k: v for k, v in flex_fields.items() if v is not None})
         return ids, self.serializer(rows)
 
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'country_workspace_id' per row."""
         rows = [
-            substitute_row_images(
-                ind,
-                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
-                sync_record_blobs(ind, self._image_fields(ind)),
-            )
+            ind.apply_grouping({**ind.flex_fields, **sync_record_blobs(ind, self._image_fields(ind))})
+            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
             for ind in batch
         ]
         ids = [row["country_workspace_id"] for row in rows]
@@ -237,11 +228,8 @@ class PushProcessor:
         """Return (ids, payload) for a people batch; inject 'country_workspace_id' per row."""
         ids = [ind.id for ind in batch]
         rows = [
-            substitute_row_images(
-                ind,
-                ind.apply_grouping() | {"country_workspace_id": ind.id, "originating_id": ind.originating_id},
-                sync_record_blobs(ind, self._image_fields(ind)),
-            )
+            ind.apply_grouping({**ind.flex_fields, **sync_record_blobs(ind, self._image_fields(ind))})
+            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
             for ind in batch
         ]
         return ids, self.serializer(rows)

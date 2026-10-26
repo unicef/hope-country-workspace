@@ -1,19 +1,22 @@
 import base64
+from uuid import uuid4
 
 import pytest
 from django.utils.functional import empty
 from hope_flex_fields.registry import field_registry
 from pytest_mock import MockerFixture
 
+from country_workspace.exceptions import MissingFlexFileError
+from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.services.hope_blob import (
     decode_data_uri,
     image_field_names,
     is_data_uri,
-    substitute_row_images,
     sync_record_blobs,
 )
 from country_workspace.storages import HOPE_STORAGE
 from country_workspace.utils.flex_fields import Base64ImageField
+from country_workspace.utils.flex_files import write_flex_file
 from testutils.factories import (
     CountryIndividualFactory,
     DataCheckerFactory,
@@ -36,6 +39,7 @@ PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBA
 DATA_URI = f"data:image/png;base64,{PNG_B64}"
 OTHER_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 OTHER_DATA_URI = f"data:image/png;base64,{OTHER_PNG_B64}"
+FILE_CONTENT = b"\x89PNG\r\n\x1a\nfile-content"
 
 
 # ------------------------------- helpers -------------------------------
@@ -84,10 +88,10 @@ def checker_with_image_field():
 
 
 def test_image_field_names_filters_by_type_and_applies_prefix(checker_with_image_field) -> None:
-    assert image_field_names(checker_with_image_field) == ["national_id_photo"]
+    assert image_field_names(checker_with_image_field) == {"national_id_photo"}
 
 
-# ----------------------------- sync_record_blobs -------------------------
+# ----------------------------- sync_record_blobs: legacy inline data-URI ----------
 
 
 @pytest.fixture
@@ -161,40 +165,67 @@ def test_sync_record_blobs_only_scopes_reconcile(individual) -> None:
     assert not HOPE_STORAGE.exists(individual.hope_blob_key("national_id_photo"))
 
 
-# --------------------------- substitute_row_images -----------------------
+# ------------------------ sync_record_blobs: offloaded FlexFieldFile ------------------------
 
 
-def test_substitute_row_images_replaces_top_level_data_uri(individual) -> None:
-    row = {"photo": DATA_URI, "full_name": "John Doe"}
-    paths = {"photo": "AFG/0001/CW_ind_1_photo.png"}
-
-    result = substitute_row_images(individual, row, paths)
-
-    assert result == {"photo": paths["photo"], "full_name": "John Doe"}
-
-
-def test_substitute_row_images_leaves_non_data_uri_values_untouched(individual) -> None:
-    row = {"photo": "", "full_name": "John Doe"}
-
-    result = substitute_row_images(individual, row, paths={})
-
-    assert result == row
+@pytest.fixture
+def offloaded_individual():
+    individual = CountryIndividualFactory(household=None, flex_fields={"photo": ""})
+    reference = write_flex_file(individual, "photo", FILE_CONTENT, "image/png", "photo.png")
+    individual.flex_fields = {"photo": reference}
+    individual.save(update_fields=["flex_fields"])
+    return individual
 
 
-def test_substitute_row_images_replaces_nested_document_images(individual) -> None:
-    row = {
-        "documents": [
-            {"type": "national_id", "document_number": "NI123", "photo": DATA_URI},
-            {"type": "national_passport", "document_number": "NP123", "photo": ""},
-        ],
-    }
-    paths = {"national_id_photo": "AFG/0001/CW_ind_1_national_id_photo.png"}
+def test_sync_record_blobs_uploads_an_offloaded_reference(offloaded_individual) -> None:
+    key = offloaded_individual.hope_blob_key("photo")
 
-    result = substitute_row_images(individual, row, paths)
+    paths = sync_record_blobs(offloaded_individual, ["photo"])
 
-    assert result == {
-        "documents": [
-            {"type": "national_id", "document_number": "NI123", "photo": paths["national_id_photo"]},
-            {"type": "national_passport", "document_number": "NP123", "photo": ""},
-        ],
-    }
+    assert paths == {"photo": key}
+    with HOPE_STORAGE.open(key) as fh:
+        assert fh.read() == FILE_CONTENT
+    offloaded_individual.refresh_from_db()
+    flex_file = FlexFieldFile.objects.get(pk=FlexFieldFile.parse_reference(offloaded_individual.flex_fields["photo"]))
+    assert offloaded_individual.blob_hashes["photo"] == flex_file.checksum
+
+
+def test_sync_record_blobs_reuses_unchanged_hash_for_a_reference(offloaded_individual, mocker: MockerFixture) -> None:
+    sync_record_blobs(offloaded_individual, ["photo"])
+    offloaded_individual.refresh_from_db()
+
+    save_spy = mocker.patch.object(HOPE_STORAGE, "save")
+    paths = sync_record_blobs(offloaded_individual, ["photo"])
+
+    save_spy.assert_not_called()
+    assert paths == {"photo": offloaded_individual.hope_blob_key("photo")}
+
+
+def test_sync_record_blobs_does_not_reupload_after_migrating_to_a_reference(individual, mocker: MockerFixture) -> None:
+    """The same bytes synced first as a data-URI and then as a reference keep the same hash."""
+    sync_record_blobs(individual, ["photo"])
+    individual.refresh_from_db()
+
+    reference = write_flex_file(individual, "photo", decode_data_uri(DATA_URI), "image/png")
+    individual.flex_fields = {"photo": reference}
+    individual.save(update_fields=["flex_fields"])
+    save_spy = mocker.patch.object(HOPE_STORAGE, "save")
+
+    paths = sync_record_blobs(individual, ["photo"])
+
+    save_spy.assert_not_called()
+    assert paths == {"photo": individual.hope_blob_key("photo")}
+
+
+def test_sync_record_blobs_raises_when_the_referenced_file_is_missing() -> None:
+    individual = CountryIndividualFactory(household=None, flex_fields={"photo": "flexfile:%s" % uuid4()})
+
+    with pytest.raises(MissingFlexFileError, match="field 'photo' references missing file"):
+        sync_record_blobs(individual, ["photo"])
+
+
+def test_sync_record_blobs_raises_for_a_reference_owned_by_someone_else(offloaded_individual) -> None:
+    other = CountryIndividualFactory(household=None, flex_fields={"photo": offloaded_individual.flex_fields["photo"]})
+
+    with pytest.raises(MissingFlexFileError, match="field 'photo' references missing file"):
+        sync_record_blobs(other, ["photo"])

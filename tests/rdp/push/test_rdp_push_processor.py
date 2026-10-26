@@ -17,9 +17,8 @@ def push_processor(push_config, mocker: MockerFixture) -> PushProcessor:
 
 @pytest.fixture
 def no_blob_sync(push_processor: PushProcessor, mocker: MockerFixture) -> PushProcessor:
-    mocker.patch.object(push_processor, "_image_fields", return_value=[])
+    mocker.patch.object(push_processor, "_image_fields", return_value=set())
     mocker.patch.object(processor_mod, "sync_record_blobs", return_value={})
-    mocker.patch.object(processor_mod, "substitute_row_images", side_effect=lambda record, row, paths: row)
     return push_processor
 
 
@@ -220,7 +219,7 @@ def test_prepare_people_rows(
     mocker: MockerFixture,
     method: str,
 ) -> None:
-    individual = mocker.MagicMock(id=1, originating_id="OID")
+    individual = mocker.MagicMock(id=1, originating_id="OID", flex_fields={})
     individual.apply_grouping.return_value = {"name": "John"}
     serializer = mocker.Mock(side_effect=lambda rows: rows)
     push_processor.__dict__["serializer"] = serializer
@@ -243,7 +242,7 @@ def test_prepare_households_batch(
     map_members = mocker.patch.object(processor_mod, "map_members", return_value=["MEMBER"])
 
     member = mocker.MagicMock(id=2)
-    household = mocker.MagicMock(id=1, pk=1, originating_id="OID")
+    household = mocker.MagicMock(id=1, pk=1, originating_id="OID", flex_fields={})
     household.apply_grouping.return_value = {"role": 2, "empty": None}
     household.prefetched_members = [member] if prefetched else None
     household.members.values_list.return_value = [2]

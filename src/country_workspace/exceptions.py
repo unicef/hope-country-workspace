@@ -11,3 +11,7 @@ class RemoteUnavailableError(Exception):
 
 class BlobStorageError(RemoteUnavailableError):
     pass
+
+
+class MissingFlexFileError(Exception):
+    """A flex field references a `FlexFieldFile` the record does not own."""

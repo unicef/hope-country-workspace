@@ -71,7 +71,8 @@ def people_rdp(rdp: Rdp) -> tuple[Rdp, list[Individual]]:
 
 
 @pytest.fixture
-def photo_individuals(people_rdp: tuple[Rdp, list[Individual]]) -> list[Individual]:
+def photo_field(rdp: Rdp) -> Rdp:
+    """Register 'photo' as an image-type flex field on the RDP's individual checker."""
     from testutils.factories import (
         DataCheckerFieldsetFactory,
         FieldDefinitionFactory,
@@ -79,7 +80,6 @@ def photo_individuals(people_rdp: tuple[Rdp, list[Individual]]) -> list[Individu
         FlexFieldFactory,
     )
 
-    rdp, individuals = people_rdp
     field_registry.register(Base64ImageField)
     fieldset = FieldsetFactory()
     FlexFieldFactory(
@@ -88,10 +88,58 @@ def photo_individuals(people_rdp: tuple[Rdp, list[Individual]]) -> list[Individu
         definition=FieldDefinitionFactory(field_type=Base64ImageField),
     )
     DataCheckerFieldsetFactory(checker=rdp.program.individual_checker, fieldset=fieldset, prefix="")
+    return rdp
+
+
+@pytest.fixture
+def photo_individuals(people_rdp: tuple[Rdp, list[Individual]], photo_field: Rdp) -> list[Individual]:
+    """Individuals whose photo is still inline, one per legacy shape: set, blank, unset."""
+    _, individuals = people_rdp
     for individual, photo in zip(individuals, (PHOTO_DATA_URI, "", None), strict=True):
         individual.flex_fields = {"photo": photo}
         individual.save(update_fields=["flex_fields"])
     return individuals
+
+
+@pytest.fixture
+def offloaded_photo_individual(people_rdp: tuple[Rdp, list[Individual]], photo_field: Rdp) -> Individual:
+    """An individual whose photo was already offloaded to a `FlexFieldFile` row."""
+    from country_workspace.utils.flex_files import write_flex_file
+
+    _, individuals = people_rdp
+    individual = individuals[0]
+    reference = write_flex_file(individual, "photo", b"\x89PNG\r\n\x1a\nfile-photo", "image/png", "photo.png")
+    individual.flex_fields = {"photo": reference}
+    individual.save(update_fields=["flex_fields"])
+    return individual
+
+
+@pytest.fixture
+def individual_with_missing_photo_reference(people_rdp: tuple[Rdp, list[Individual]], photo_field: Rdp) -> Individual:
+    """An individual whose photo reference points at no row."""
+    _, individuals = people_rdp
+    individual = individuals[0]
+    individual.flex_fields = {"photo": "flexfile:%s" % uuid4()}
+    individual.save(update_fields=["flex_fields"])
+    return individual
+
+
+@pytest.fixture
+def individuals_with_swapped_photo_references(
+    people_rdp: tuple[Rdp, list[Individual]], photo_field: Rdp
+) -> tuple[Individual, Individual]:
+    """Two individuals, each referencing the other's photo file: neither owns what it points to."""
+    from country_workspace.utils.flex_files import write_flex_file
+
+    _, individuals = people_rdp
+    owner, other = individuals[0], individuals[1]
+    owner_ref = write_flex_file(owner, "photo", b"owner", "image/png")
+    other_ref = write_flex_file(other, "photo", b"other", "image/png")
+    owner.flex_fields = {"photo": other_ref}
+    other.flex_fields = {"photo": owner_ref}
+    owner.save(update_fields=["flex_fields"])
+    other.save(update_fields=["flex_fields"])
+    return owner, other
 
 
 @pytest.fixture

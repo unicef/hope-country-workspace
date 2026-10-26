@@ -1,21 +1,22 @@
 import base64
 import binascii
 import hashlib
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Any
 
 from azure.core.exceptions import AzureError
 from django.core.files.base import ContentFile
 
-from country_workspace.exceptions import BlobStorageError
+from country_workspace.exceptions import BlobStorageError, MissingFlexFileError
+from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.storages import HOPE_STORAGE
-from country_workspace.utils.flex_fields import Base64ImageField
+from country_workspace.utils.flex_files import load_flex_files
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
     from country_workspace.models.base import Validable
-    from country_workspace.models.mixins import GroupedItem, HopeBlobMixin
+    from country_workspace.models.mixins import HopeBlobMixin
 
 PREFIX = "data:"
 # hope_blob_key() reads record.country_office and record.program; join them once per query.
@@ -30,23 +31,24 @@ def decode_data_uri(value: str) -> bytes:
     return base64.b64decode(value.partition(";base64,")[2], validate=True)
 
 
-def image_field_names(checker: "DataChecker") -> list[str]:
-    return [
-        fs.prefix % field.name if "%s" in fs.prefix else f"{fs.prefix}{field.name}"
-        for fs, field in checker.get_fields()
-        if field.base_type() == Base64ImageField.__name__
-    ]
+def image_field_names(checker: "DataChecker") -> set[str]:
+    return checker.get_file_field_names()
 
 
 def sync_record_blobs(
     record: "Validable | HopeBlobMixin",
-    image_fields: Sequence[str],
+    image_fields: Collection[str],
     only: set[str] | None = None,
 ) -> dict[str, str]:
     """Reconcile record images with the shared HOPE blob storage.
 
+    Handles both an offloaded `FlexFieldFile` reference and a legacy inline
+    data-URI, and returns the blob key for every image field that has a value.
+
     Raises BlobStorageError when the storage backend is unreachable or fails,
-    or when a flex-field contains a malformed base64 payload.
+    or when a flex-field contains a malformed base64 payload. Raises
+    MissingFlexFileError when a flex-field references a file row the record
+    does not own.
     """
     try:
         return _sync_record_blobs(record, image_fields, only)
@@ -58,26 +60,44 @@ def sync_record_blobs(
 
 def _sync_record_blobs(
     record: "Validable | HopeBlobMixin",
-    image_fields: Sequence[str],
+    image_fields: Collection[str],
     only: set[str] | None,
 ) -> dict[str, str]:
     hashes = dict(record.blob_hashes or {})
     result: dict[str, str] = {}
     present: set[str] = set()
+    names = [name for name in image_fields if only is None or name in only]
 
-    for name in image_fields:
-        if only is not None and name not in only:
-            continue
+    # Reference fields are loaded together up front, so a record with several
+    # offloaded image fields costs one query instead of one per field.
+    reference_ids = {
+        name: file_id
+        for name in names
+        if (file_id := FlexFieldFile.parse_reference(record.flex_fields.get(name))) is not None
+    }
+    files = load_flex_files(record, set(reference_ids.values())) if reference_ids else {}
+
+    for name in names:
         value = record.flex_fields.get(name)
-        if not is_data_uri(value):
+        if name in reference_ids:
+            if (flex_file := files.get(reference_ids[name])) is None:
+                raise MissingFlexFileError(
+                    f"{type(record).__name__} #{record.pk}: field {name!r} references missing file {value}"
+                )
+            new_hash = flex_file.checksum
+            content = flex_file.content_bytes
+        elif is_data_uri(value):
+            content = decode_data_uri(value)
+            new_hash = hashlib.sha256(content).hexdigest()
+        else:
             continue
+
         present.add(name)
         key = record.hope_blob_key(name)
-        new_hash = hashlib.sha256(value.encode()).hexdigest()
         if hashes.get(name) != new_hash:
             # HOPE_STORAGE must be configured with overwrite semantics (enforced by
             # checks.py E004), so save() replaces any existing blob under the same key.
-            HOPE_STORAGE.save(key, ContentFile(decode_data_uri(value)))
+            HOPE_STORAGE.save(key, ContentFile(content))
             hashes[name] = new_hash
         result[name] = key
 
@@ -90,22 +110,3 @@ def _sync_record_blobs(
         record.blob_hashes = hashes
         type(record).objects.filter(pk=record.pk).update(blob_hashes=hashes)
     return result
-
-
-def substitute_row_images(record: "Validable", row: dict, paths: dict[str, str]) -> dict:
-    def repl(name: str, value: Any) -> Any:
-        return paths.get(name, value) if is_data_uri(value) else value
-
-    def repl_item(raw: dict) -> dict:
-        # dict items inside grouped lists always come from apply_grouping(), which
-        # guarantees the 'type' key (see GroupedItem).
-        it = cast("GroupedItem", raw)
-        return {k: repl(f"{it['type']}_{k}", v) for k, v in it.items()}
-
-    out = {}
-    for key, value in row.items():
-        if isinstance(value, list):
-            out[key] = [repl_item(it) if isinstance(it, dict) else it for it in value]
-        else:
-            out[key] = repl(key, value)
-    return out
