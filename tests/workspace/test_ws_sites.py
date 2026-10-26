@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.test import RequestFactory
 from django.urls import resolve, reverse
@@ -69,6 +70,11 @@ def test_flex_file_denies_a_user_without_view_permission(rf):
 
     with pytest.raises(PermissionDenied):
         workspace.flex_file(request, str(flex_file_id))
+
+
+@pytest.mark.parametrize("model", [None, ContentType], ids=["stale_content_type", "unregistered_model"])
+def test_get_model_admin_returns_none_without_a_registered_admin(model) -> None:
+    assert workspace._get_model_admin(model) is None
 
 
 @pytest.mark.django_db

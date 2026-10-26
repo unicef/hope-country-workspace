@@ -2,6 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import BlobStorageError, RemoteError
+from country_workspace.models import Individual
 from country_workspace.rdp.push import processor as processor_mod
 from country_workspace.rdp.push.processor import ERROR_CONFIG, PushProcessor
 
@@ -228,6 +229,17 @@ def test_prepare_people_rows(
 
     assert ids == [1]
     assert payload == [{"name": "John", "country_workspace_id": 1, "originating_id": "OID"}]
+
+
+def test_image_fields_is_resolved_once_per_checker(
+    push_processor: PushProcessor,
+    photo_individuals: list[Individual],
+    mocker: MockerFixture,
+) -> None:
+    spy = mocker.spy(processor_mod, "image_field_names")
+
+    assert [push_processor._image_fields(ind) for ind in photo_individuals] == [{"photo"}] * len(photo_individuals)
+    spy.assert_called_once()
 
 
 @pytest.mark.parametrize("prefetched", [True, False])
