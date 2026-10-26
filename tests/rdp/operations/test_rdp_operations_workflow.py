@@ -183,6 +183,18 @@ def test_retry_rdp_operations_restarts_running_ocr(
     schedule.assert_called_once_with(operation=operation, owner_id=user.pk)
 
 
+def test_retry_rdp_operations_skips_running_operation_if_fail_is_stale(
+    running_ocr_operation: RdpOperation,
+    user: User,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(workflow, "fail_rdp_operation", return_value=False)
+    schedule = mocker.patch.object(workflow, "schedule_rdp_operation")
+
+    assert workflow.retry_rdp_operations(rdp_id=running_ocr_operation.rdp_id, owner_id=user.pk) == 0
+    schedule.assert_not_called()
+
+
 def test_running_biometric_operation_is_not_retryable(
     rdp: Rdp,
     running_biometric_operation: RdpOperation,

@@ -11,6 +11,8 @@ from country_workspace.rdp.operations.repository import (
     get_rdp_operation,
     get_rdp_operation_units_outcome,
     has_incomplete_rdp_operations,
+    has_rdp_operation_units,
+    pending_rdp_operation_units,
     prepare_rdp_operation_units_for_retry,
     record_rdp_operation_error,
 )
@@ -115,6 +117,19 @@ def test_fail_rdp_operation_ignores_non_running(
     )
 
 
+def test_fail_rdp_operation_ignores_stale_attempt(
+    running_biometric_operation: RdpOperation,
+) -> None:
+    assert (
+        fail_rdp_operation(
+            operation_id=running_biometric_operation.id,
+            expected_attempt=running_biometric_operation.attempt + 1,
+            error={"message": "failed"},
+        )
+        is False
+    )
+
+
 def test_finish_rdp_operation(
     running_biometric_operation: RdpOperation,
 ) -> None:
@@ -154,6 +169,18 @@ def test_finish_rdp_operation_ignores_non_running(
         finish_rdp_operation(
             operation_id=biometric_operation.id,
             findings=[],
+        )
+        is False
+    )
+
+
+def test_finish_rdp_operation_ignores_stale_attempt(
+    running_biometric_operation: RdpOperation,
+) -> None:
+    assert (
+        finish_rdp_operation(
+            operation_id=running_biometric_operation.id,
+            expected_attempt=running_biometric_operation.attempt + 1,
         )
         is False
     )
@@ -252,6 +279,16 @@ def test_fail_rdp_operation_units(
     assert pending.error == (error if expected else {})
     assert success.status == RdpOperationUnit.Status.SUCCESS
     assert other.status == RdpOperationUnit.Status.PENDING
+
+
+def test_rdp_operation_unit_queries(running_ocr_operation: RdpOperation) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    pending = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.SUCCESS)
+
+    assert list(pending_rdp_operation_units(operation_id=running_ocr_operation.id)) == [pending]
+    assert has_rdp_operation_units(operation_id=running_ocr_operation.id) is True
 
 
 @pytest.mark.parametrize(
