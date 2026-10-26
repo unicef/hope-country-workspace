@@ -289,6 +289,49 @@ def test_import_bulk_update_file_stores_excel_datetimes_as_strings(
     assert entity.flex_fields["registered_at"] == "2020-01-02 15:04:05"
 
 
+@pytest.mark.parametrize(
+    ("prefix", "column"),
+    [
+        ("national_passport_", "national_passport_issuance_date"),
+        ("%s_passport", "issuance_date_passport"),
+    ],
+    ids=["plain_prefix", "template_prefix"],
+)
+def test_import_bulk_update_file_stores_prefixed_date_fields_as_dates(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    test_data: dict[str, Any],
+    prefix: str,
+    column: str,
+) -> None:
+    from django.forms.fields import DateField
+
+    fieldset = Mock(prefix=prefix)
+    date_field = Mock()
+    date_field.name = "issuance_date"
+    date_field.definition.field_type = DateField
+    checker = Mock()
+    checker.get_fields.return_value = [(fieldset, date_field)]
+    mocker.patch.object(type(job.program), "get_checker_for", return_value=checker)
+
+    entity = test_data["valid_entity"]
+    rows = [
+        {
+            "id": str(entity.id),
+            "version": str(entity.version),
+            column: datetime(2020, 1, 2, 0, 0, 0),  # noqa: DTZ001
+        },
+    ]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = test_data["import_function"](job=job)
+
+    entity.refresh_from_db()
+    assert result["processed"] == 1
+    assert entity.flex_fields[column] == "2020-01-02"
+
+
 def test_validate_date_datetime_fields_with_empty_values():
     row = {
         "birth_date": None,

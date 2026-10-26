@@ -410,7 +410,10 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
 
                     if field_lookup is None:
                         dc: DataChecker = job.program.get_checker_for(entity.__class__)
-                        field_lookup = {field.name: field for _, field in dc.get_fields()}
+                        field_lookup = {
+                            (fs.prefix % field.name if "%s" in fs.prefix else f"{fs.prefix}{field.name}"): field
+                            for fs, field in dc.get_fields()
+                        }
                         file_field_names = get_file_field_names(dc)
                     # a pasted cell must never overwrite a file reference
                     row_data = {k: v for k, v in row_data.items() if k not in file_field_names}  # noqa: PLW2901
