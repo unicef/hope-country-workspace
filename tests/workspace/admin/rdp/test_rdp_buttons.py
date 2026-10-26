@@ -34,7 +34,7 @@ def clean_rdp() -> CountryRdp:
 
 @pytest.mark.parametrize(
     "method",
-    ["cancel", "retry_failed_operations", "push_review", "retry_push", "create_clean_rdp"],
+    ["cancel", "retry_operations", "push_review", "retry_push", "create_clean_rdp"],
 )
 def test_button_redirects_when_rdp_not_found(
     admin_instance,
@@ -120,7 +120,7 @@ def test_cancel_requires_confirmation_for_existing_rdi(
     ],
     ids=["scheduled", "nothing_to_retry", "cleanup"],
 )
-def test_retry_failed_operations(
+def test_retry_operations(
     admin_instance,
     mock_request,
     rdp: CountryRdp,
@@ -130,11 +130,16 @@ def test_retry_failed_operations(
 ) -> None:
     mocker.patch.object(admin_instance, "get_object", return_value=rdp)
     mocker.patch.object(admin_instance, "_change_url", return_value="/change")
-    retry = mocker.patch.object(rdp_admin_mod, "retry_failed_rdp_operations", return_value=count)
+    retry = mocker.patch.object(rdp_admin_mod, "retry_rdp_operations", return_value=count)
     message = mocker.patch.object(rdp_admin_mod.messages, message_method)
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
 
-    response = admin_instance.retry_failed_operations.func(admin_instance, mock_request, pk=str(rdp.pk))
+    def confirm(_admin, request, callback, **_kwargs):
+        return callback(request)
+
+    mocker.patch.object(rdp_admin_mod, "confirm_action", side_effect=confirm)
+
+    response = admin_instance.retry_operations.func(admin_instance, mock_request, pk=str(rdp.pk))
 
     retry.assert_called_once_with(rdp_id=rdp.pk, owner_id=mock_request.user.pk)
     message.assert_called_once()

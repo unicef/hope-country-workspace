@@ -266,13 +266,14 @@ def test_cancel_rdp_during_program_cleanup(rdp: Rdp, mocker: MockerFixture) -> N
 
 
 @pytest.mark.parametrize(
-    ("status", "operation_status", "state", "allowed"),
+    ("status", "operation_status", "threshold_exceeded", "state", "allowed"),
     [
-        (Rdp.PushStatus.PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.DEDUPLICATED, False),
-        (Rdp.PushStatus.REVIEW_PENDING, None, DeduplicationSetState.DEDUPLICATED, False),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.FAILURE, DeduplicationSetState.DEDUPLICATED, False),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.READY, False),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.DEDUPLICATED, True),
+        (Rdp.PushStatus.PENDING, RdpOperation.Status.SUCCESS, True, DeduplicationSetState.DEDUPLICATED, False),
+        (Rdp.PushStatus.REVIEW_PENDING, None, True, DeduplicationSetState.DEDUPLICATED, False),
+        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.FAILURE, True, DeduplicationSetState.DEDUPLICATED, False),
+        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, False, DeduplicationSetState.DEDUPLICATED, False),
+        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, True, DeduplicationSetState.READY, False),
+        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, True, DeduplicationSetState.DEDUPLICATED, True),
     ],
 )
 def test_clean_rdp_check(
@@ -281,6 +282,7 @@ def test_clean_rdp_check(
     mocker: MockerFixture,
     status: Rdp.PushStatus,
     operation_status: RdpOperation.Status | None,
+    threshold_exceeded: bool,
     state: DeduplicationSetState,
     allowed: bool,
 ) -> None:
@@ -290,6 +292,11 @@ def test_clean_rdp_check(
 
     operation = biometric_operation if operation_status is not None else None
     mocker.patch.object(lifecycle, "biometric_operation_for_rdp", return_value=operation)
+    threshold = mocker.patch.object(
+        lifecycle,
+        "is_biometric_threshold_exceeded",
+        return_value=threshold_exceeded,
+    )
     retrieve = mocker.patch.object(lifecycle, "retrieve_deduplication_set_state", return_value=state)
 
     check, result = lifecycle._clean_rdp_check(rdp)
@@ -298,6 +305,9 @@ def test_clean_rdp_check(
     assert (result is biometric_operation) is allowed
 
     if status != Rdp.PushStatus.REVIEW_PENDING or operation_status != RdpOperation.Status.SUCCESS:
+        threshold.assert_not_called()
+        retrieve.assert_not_called()
+    elif not threshold_exceeded:
         retrieve.assert_not_called()
 
 
@@ -372,6 +382,7 @@ def test_create_clean_rdp_rechecks_state_after_lock(
     )
     selection = mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
+    mocker.patch.object(lifecycle, "is_biometric_threshold_exceeded", return_value=True)
 
     if changed == "status":
         review_pending_rdp.status = Rdp.PushStatus.PENDING
@@ -406,6 +417,7 @@ def test_create_clean_rdp(
     )
     mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1, 2]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
+    mocker.patch.object(lifecycle, "is_biometric_threshold_exceeded", return_value=True)
     validate = mocker.patch.object(lifecycle, "_validate_rdp_creation")
     cancel = mocker.patch.object(review_pending_rdp, "mark_cancelled")
     clean_rdp = mocker.MagicMock(pk=123)
@@ -448,6 +460,7 @@ def test_create_clean_rdp_converts_integrity_error(
     )
     mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
+    mocker.patch.object(lifecycle, "is_biometric_threshold_exceeded", return_value=True)
     mocker.patch.object(lifecycle, "_validate_rdp_creation")
     mocker.patch.object(review_pending_rdp, "mark_cancelled")
     mocker.patch.object(

@@ -112,7 +112,7 @@ def test_operations_display_successful_biometric(
     assert admin_instance.operations_display(successful_biometric_operation.rdp) == "rendered"
 
     row = render.call_args.args[1]["rows"][0]
-    assert row["id"] == str(successful_biometric_operation.id)
+    assert row["operation_id"] == str(successful_biometric_operation.id)
     assert row["status"] == successful_biometric_operation.get_status_display()
     assert row["attempts"] == 2
     assert row["findings"] == 1
@@ -293,20 +293,20 @@ def test_deny_if_not_allowed(
 
 
 @pytest.mark.parametrize(
-    ("status", "exists", "expected", "called"),
+    ("status", "retryable", "expected", "called"),
     [
         (None, True, False, False),
         (CountryRdp.PushStatus.SUCCESS, True, False, False),
         (CountryRdp.PushStatus.PENDING, False, False, True),
         (CountryRdp.PushStatus.PENDING, True, True, True),
     ],
-    ids=["no_object", "not_pending", "no_failures", "failed_operations"],
+    ids=["no_object", "not_pending", "no_retryable_operations", "retryable_operations"],
 )
-def test_has_failed_operations(
+def test_has_retryable_operations(
     rdp: CountryRdp,
     mocker: MockerFixture,
     status: str | None,
-    exists: bool,
+    retryable: bool,
     expected: bool,
     called: bool,
 ) -> None:
@@ -314,13 +314,16 @@ def test_has_failed_operations(
     if obj:
         obj.status = status
 
-    failed = mocker.patch.object(rdp_admin_mod, "failed_rdp_operations")
-    failed.return_value.exists.return_value = exists
+    has_retryable = mocker.patch.object(
+        rdp_admin_mod,
+        "has_retryable_rdp_operations",
+        return_value=retryable,
+    )
 
-    result = rdp_admin_mod._has_failed_operations(mocker.MagicMock(original=obj))
+    result = rdp_admin_mod._has_retryable_operations(mocker.MagicMock(original=obj))
 
     assert result is expected
     if called:
-        failed.assert_called_once_with(rdp_id=rdp.pk)
+        has_retryable.assert_called_once_with(rdp_id=rdp.pk)
     else:
-        failed.assert_not_called()
+        has_retryable.assert_not_called()
