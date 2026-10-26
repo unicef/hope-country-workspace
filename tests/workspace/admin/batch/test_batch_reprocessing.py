@@ -66,6 +66,8 @@ def test_resolve_config_object(mocker, object_id: int | None, found: bool, expec
         (Batch.BatchSource.KOBO, Individual, "build_kobo_individual_processor", 12),
         (Batch.BatchSource.AURORA, Household, "build_aurora_household_processor", 21),
         (Batch.BatchSource.AURORA, Individual, "build_aurora_individual_processor", 22),
+        (Batch.BatchSource.ONA, Household, "build_ona_household_processor", 31),
+        (Batch.BatchSource.ONA, Individual, "build_ona_individual_processor", 32),
     ],
 )
 def test_build_processor_uses_source_specific_builders(
@@ -178,6 +180,15 @@ def test_build_processor_keeps_master_detail_field_names(program, batch: Country
             },
         ),
         (Batch.BatchSource.KOBO, Individual, None),
+        (
+            Batch.BatchSource.ONA,
+            Household,
+            {
+                "primary_collector_id": "_preserved_flex_field_0",
+                "alternate_collector_id": "_preserved_flex_field_1",
+            },
+        ),
+        (Batch.BatchSource.ONA, Individual, None),
         (Batch.BatchSource.RDI, Household, None),
     ],
 )
@@ -358,6 +369,7 @@ def test_run_import_processors_processes_records(mocker, mapping_name: str | Non
     ("source", "expected_syncer_name"),
     [
         (Batch.BatchSource.KOBO, "_sync_kobo_household_refs"),
+        (Batch.BatchSource.ONA, "_sync_kobo_household_refs"),
         (Batch.BatchSource.RDI, "_sync_rdi_household_refs"),
         (Batch.BatchSource.AURORA, None),
     ],
@@ -436,13 +448,19 @@ def test_sync_kobo_household_refs_resolves_first_matching_members(program) -> No
     assert household.flex_fields[fields.alternate_collector] == alternate.pk
 
 
-def test_sync_kobo_household_refs_keeps_preserved_external_collector_refs(program) -> None:
+@pytest.mark.parametrize("source", [Batch.BatchSource.KOBO, Batch.BatchSource.ONA])
+def test_sync_household_refs_keeps_preserved_external_collector_refs(program, source) -> None:
     from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
 
     fields = HOUSEHOLD_ROLE_REF_FIELDS
-    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.KOBO)
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=source)
+    collector_batch = CountryBatchFactory(
+        program=program,
+        country_office=program.country_office,
+        source=source,
+    )
     collector = CountryIndividualFactory(
-        batch=batch,
+        batch=collector_batch,
         household=None,
         flex_fields={"relationship": "NON_BENEFICIARY", "role": "PRIMARY"},
     )
@@ -455,7 +473,7 @@ def test_sync_kobo_household_refs_keeps_preserved_external_collector_refs(progra
     )
     head = CountryIndividualFactory(batch=batch, household=household, flex_fields={"relationship": "HEAD"})
 
-    _sync_kobo_household_refs(batch)
+    _sync_household_refs(batch)
 
     household.refresh_from_db()
     assert household.flex_fields[fields.head_of_household] == head.pk

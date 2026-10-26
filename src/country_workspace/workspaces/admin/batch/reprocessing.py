@@ -9,6 +9,10 @@ from django.db.models.fields.json import JSONField, KeyTextTransform, KeyTransfo
 from strategy_field.utils import fqn
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
+from country_workspace.contrib.ona.import_processing import (
+    build_household_processor as build_ona_household_processor,
+    build_individual_processor as build_ona_individual_processor,
+)
 from country_workspace.contrib.aurora.import_processing import (
     build_household_processor as build_aurora_household_processor,
     build_individual_processor as build_aurora_individual_processor,
@@ -36,6 +40,12 @@ PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[
     Batch.BatchSource.KOBO: {
         Household: (
             "household_id",
+            HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
+            HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
+        ),
+    },
+    Batch.BatchSource.ONA: {
+        Household: (
             HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
             HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
         ),
@@ -79,7 +89,7 @@ def _get_batch_from_job(job: AsyncJob) -> tuple[int, Batch]:
 
 def _sync_household_refs(batch: Batch) -> None:
     match batch.source:
-        case Batch.BatchSource.KOBO:
+        case Batch.BatchSource.KOBO | Batch.BatchSource.ONA:
             _sync_kobo_household_refs(batch)
         case Batch.BatchSource.RDI:
             _sync_rdi_household_refs(batch)
@@ -153,14 +163,12 @@ def _build_processor(
     people_prefix: str | None = None,
 ) -> Callable[[Any], dict[str, Any]]:
     if batch.source == Batch.BatchSource.KOBO:
-        if model is Household:
-            return build_kobo_household_processor(program, mapping_id)
-        return build_kobo_individual_processor(program, mapping_id)
+        builder = build_kobo_household_processor if model is Household else build_kobo_individual_processor
+        return builder(program, mapping_id)
 
     if batch.source == Batch.BatchSource.AURORA:
-        if model is Household:
-            return build_aurora_household_processor(program, mapping_id)
-        return build_aurora_individual_processor(program, mapping_id)
+        builder = build_aurora_household_processor if model is Household else build_aurora_individual_processor
+        return builder(program, mapping_id)
 
     prefix = _clean_prefix(people_prefix)
     if model is Individual and prefix and batch.source == Batch.BatchSource.RDI and not program.is_master_detail:
@@ -171,6 +179,10 @@ def _build_processor(
             source=batch.source,
             pre_processors=[_strip_people_prefix(prefix)],
         )
+
+    if batch.source == Batch.BatchSource.ONA:
+        builder = build_ona_household_processor if model is Household else build_ona_individual_processor
+        return builder(program, mapping_id)
 
     return build_import_processor(
         program=program,

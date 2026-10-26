@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     atomic = False
     dependencies = [
         ("contenttypes", "0002_remove_content_type_name"),
-        ("country_workspace", "0068_blob_hashes"),
+        ("country_workspace", "0069_blob_hashes"),
     ]
 
     operations = [
