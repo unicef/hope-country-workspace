@@ -1,28 +1,22 @@
 import pytest
 from pytest_mock import MockerFixture
 
+from country_workspace.models import Individual
 from country_workspace.rdp.deduplication.processor import BiometricDedupProcessor
+from country_workspace.storages import HOPE_STORAGE
 
 
 pytestmark = pytest.mark.django_db
 
 
-def test_iter_images(rdp) -> None:
-    from testutils.factories import IndividualFactory
-
-    rdp.program.beneficiary_group.master_detail = False
-    rdp.program.beneficiary_group.save(update_fields=["master_detail"])
-
-    individuals = [
-        IndividualFactory(household=None, batch__program=rdp.program, flex_fields={"photo": " a.jpg "}),
-        IndividualFactory(household=None, batch__program=rdp.program, flex_fields={"photo": ""}),
-        IndividualFactory(household=None, batch__program=rdp.program, flex_fields={"photo": None}),
-    ]
-    rdp.individuals.set(individuals)
+def test_iter_images(rdp, photo_individuals: list[Individual]) -> None:
+    with_photo = photo_individuals[0]
+    key = with_photo.hope_blob_key("photo")
 
     assert list(BiometricDedupProcessor(rdp)._iter_images()) == [
-        {"reference_pk": str(individuals[0].pk), "filename": "a.jpg"},
+        {"reference_pk": str(with_photo.pk), "filename": key},
     ]
+    assert HOPE_STORAGE.exists(key)
 
 
 @pytest.mark.parametrize(("images", "expected"), [([], False), ([{"reference_pk": "1", "filename": "1.jpg"}], True)])

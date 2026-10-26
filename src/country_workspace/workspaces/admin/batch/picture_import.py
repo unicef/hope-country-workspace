@@ -7,16 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from constance import config as constance_config
-from django.core.files.storage import storages
 from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
 from PIL import Image, UnidentifiedImageError
 
 from country_workspace.models import AsyncJob
 from ...models import CountryBatch, CountryIndividual
+from ....storages import MEDIA_STORAGE
 from ....utils.flex_fields import Base64ImageField
-
-media_storage = storages["media"]
 
 
 class PictureImportLimitError(ValueError):
@@ -207,11 +205,11 @@ def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
 
     service = BatchPictureImportService(batch)
     try:
-        with media_storage.open(zip_file_name, "rb") as zip_stream:
+        with MEDIA_STORAGE.open(zip_file_name, "rb") as zip_stream:
             preview = service.build_preview(match_field, zip_stream, include_data_uri=True)
         updated = service.apply_assignments(target_field, preview.get("assignments", []))
         return {"updated": updated}
     finally:
         # Always clear draft state + temp ZIP after the job run.
         batch.finish_picture_import()
-        media_storage.delete(zip_file_name)
+        MEDIA_STORAGE.delete(zip_file_name)

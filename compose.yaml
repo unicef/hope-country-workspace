@@ -3,7 +3,7 @@ x-env: &env
     - DEBUG=true
     - ADMIN_EMAIL=adm@hcw.org
     - ADMIN_PASSWORD=123
-    - ALLOWED_HOSTS=localhost
+    - ALLOWED_HOSTS=*
     - CSRF_COOKIE_SECURE=False
     - CSRF_TRUSTED_ORIGINS=http://localhost
     - AUTHENTICATION_BACKENDS=country_workspace.security.backends.AnyUserAuthBackend
@@ -15,6 +15,8 @@ x-env: &env
     - MEDIA_ROOT=/var/country_workspace/media
     - SECRET_KEY=sensitive-secret-key
     - STATIC_ROOT=/var/country_workspace/static
+    - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    - INIT_HOPE_STORAGE=1
 
 x-common: &common
   build:
@@ -34,6 +36,8 @@ x-common: &common
     db:
       condition: service_healthy
     redis:
+      condition: service_healthy
+    azurite:
       condition: service_healthy
 
 services:
@@ -72,8 +76,8 @@ services:
       - POSTGRES_DB=country_workspace
     volumes:
       - postgres_data14:/var/lib/postgresql14/data/
-    #    ports:
-    #      - 5432:5432
+    ports:
+      - 5432:5432
     restart: always
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "hcw", "-d", "country_workspace" ]
@@ -85,8 +89,8 @@ services:
 
   redis:
     image: redis:7.2
-    #    ports:
-    #      - 6379:6379
+    ports:
+     - 6379:6379
     restart: always
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -96,6 +100,23 @@ services:
       timeout: 4s
       retries: 5
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck
+    ports:
+      - 10010:10000
+    volumes:
+      - azurite_data:/data
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "127.0.0.1", "10000" ]
+      start_period: 5s
+      start_interval: 1s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+
 
 volumes:
   postgres_data14:
+  azurite_data:

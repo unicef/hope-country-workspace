@@ -2,8 +2,15 @@ from uuid import uuid4
 
 import pytest
 
+from hope_flex_fields.registry import field_registry
+
 from country_workspace.models import Individual, Program, Rdp, RdpOperation
 from country_workspace.rdp.push.types import PushWorkflowConfig
+from country_workspace.utils.flex_fields import Base64ImageField
+
+PHOTO_DATA_URI = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 @pytest.fixture
@@ -61,6 +68,30 @@ def people_rdp(rdp: Rdp) -> tuple[Rdp, list[Individual]]:
     individuals = [IndividualFactory(household=None, batch__program=rdp.program) for _ in range(3)]
     rdp.individuals.set(individuals)
     return rdp, individuals
+
+
+@pytest.fixture
+def photo_individuals(people_rdp: tuple[Rdp, list[Individual]]) -> list[Individual]:
+    from testutils.factories import (
+        DataCheckerFieldsetFactory,
+        FieldDefinitionFactory,
+        FieldsetFactory,
+        FlexFieldFactory,
+    )
+
+    rdp, individuals = people_rdp
+    field_registry.register(Base64ImageField)
+    fieldset = FieldsetFactory()
+    FlexFieldFactory(
+        fieldset=fieldset,
+        name="photo",
+        definition=FieldDefinitionFactory(field_type=Base64ImageField),
+    )
+    DataCheckerFieldsetFactory(checker=rdp.program.individual_checker, fieldset=fieldset, prefix="")
+    for individual, photo in zip(individuals, (PHOTO_DATA_URI, "", None), strict=True):
+        individual.flex_fields = {"photo": photo}
+        individual.save(update_fields=["flex_fields"])
+    return individuals
 
 
 @pytest.fixture
