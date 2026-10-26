@@ -40,7 +40,6 @@ CHOICE_FIELDS: Final[list[str]] = [
 CHOICE_FIELDS_WITH_EMPTY_DISPLAY: Final[list[str]] = [
     "Disability",
     "HOPE IND Sex",
-    "HOPE IND Relationship",
 ]
 
 

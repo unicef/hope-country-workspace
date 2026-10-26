@@ -12,9 +12,9 @@ from country_workspace.utils.flex_fields import (
 )
 from country_workspace.versioning.management.manager import Manager
 
-script = import_module("country_workspace.versioning.scripts.0034_case_insensitive_choice_fields")
+script = import_module("country_workspace.versioning.scripts.0035_case_insensitive_choice_fields")
 
-VERSION_BEFORE_THIS_SCRIPT = 33
+VERSION_BEFORE_THIS_SCRIPT = 34
 
 
 def _field_types(names: list[str]) -> dict[str, type]:
