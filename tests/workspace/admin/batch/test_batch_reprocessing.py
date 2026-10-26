@@ -66,6 +66,8 @@ def test_resolve_config_object(mocker, object_id: int | None, found: bool, expec
         (Batch.BatchSource.KOBO, Individual, "build_kobo_individual_processor", 12),
         (Batch.BatchSource.AURORA, Household, "build_aurora_household_processor", 21),
         (Batch.BatchSource.AURORA, Individual, "build_aurora_individual_processor", 22),
+        (Batch.BatchSource.ONA, Household, "build_ona_household_processor", 31),
+        (Batch.BatchSource.ONA, Individual, "build_ona_individual_processor", 32),
     ],
 )
 def test_build_processor_uses_source_specific_builders(
