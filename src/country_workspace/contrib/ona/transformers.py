@@ -71,11 +71,7 @@ def flatten_ona_data(data: Mapping[str, Any], prefix: str = "") -> dict[str, Any
 
 def filter_ona_sys_fields(data: Mapping[str, Any]) -> dict[str, Any]:
     """Remove ONA/ODK system fields such as _id, _uuid, and _submission_time."""
-    return {
-        key: value
-        for key, value in data.items()
-        if not key.split("/")[-1].startswith("_")
-    }
+    return {key: value for key, value in data.items() if not key.split("/")[-1].startswith("_")}
 
 
 def transform_submission_to_records(

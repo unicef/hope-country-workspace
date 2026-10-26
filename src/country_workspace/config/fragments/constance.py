@@ -174,14 +174,14 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "AURORA_HH_FIELDS_TO_IGNORE",
         "AURORA_IND_FIELDS_TO_IGNORE",
     ),
-"Remote System Settings - ONA": (
-    "ONA_API_TOKEN",
-    "ONA_API_URL",
-    "ONA_APPROVED_FORMS",
-    "ONA_IMPORT_TIMEBOX_MINUTES",
-    "ONA_HH_FIELDS_TO_IGNORE",
-    "ONA_IND_FIELDS_TO_IGNORE",
-),
+    "Remote System Settings - ONA": (
+        "ONA_API_TOKEN",
+        "ONA_API_URL",
+        "ONA_APPROVED_FORMS",
+        "ONA_IMPORT_TIMEBOX_MINUTES",
+        "ONA_HH_FIELDS_TO_IGNORE",
+        "ONA_IND_FIELDS_TO_IGNORE",
+    ),
     "Remote System Settings - HOPE": (
         "HOPE_API_TOKEN",
         "HOPE_API_URL",
