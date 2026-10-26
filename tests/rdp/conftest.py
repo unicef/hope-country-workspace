@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from country_workspace.models import Individual, Program, Rdp, RdpOperation
+from country_workspace.models import Individual, Program, Rdp, RdpOperation, RdpOperationUnit
 from country_workspace.rdp.push.types import PushWorkflowConfig
 
 
@@ -50,6 +50,34 @@ def failed_biometric_operation(rdp: Rdp) -> RdpOperation:
         status=RdpOperation.Status.FAILURE,
         error={"message": "failed"},
     )
+
+
+@pytest.fixture
+def ocr_operation(rdp: Rdp) -> RdpOperation:
+    from testutils.factories import OcrRdpOperationFactory
+
+    return OcrRdpOperationFactory(rdp=rdp)
+
+
+@pytest.fixture
+def running_ocr_operation(rdp: Rdp) -> RdpOperation:
+    from testutils.factories import OcrRdpOperationFactory
+
+    return OcrRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, attempt=2)
+
+
+@pytest.fixture
+def successful_ocr_operation(rdp: Rdp) -> RdpOperation:
+    from testutils.factories import OcrRdpOperationFactory
+
+    return OcrRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
+
+
+@pytest.fixture
+def ocr_unit(running_ocr_operation: RdpOperation) -> RdpOperationUnit:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    return OcrRdpOperationUnitFactory(operation=running_ocr_operation)
 
 
 @pytest.fixture

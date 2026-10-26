@@ -296,12 +296,12 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         html_attrs={"title": "Retry failed or stuck RDP operations."},
     )
     def retry_operations(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Retry failed or stuck RDP operations."""
+        """Retry RDP operations that require manual recovery."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        def apply(_: HttpRequest) -> HttpResponse:
+        def apply(__: HttpRequest) -> HttpResponse:
             count = retry_rdp_operations(rdp_id=obj.pk, owner_id=request.user.pk)
             if count is None:
                 messages.error(request, _("Program cleanup is in progress."))
@@ -315,11 +315,11 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             self,
             request,
             apply,
-            message="Retry RDP operations?",
+            message="Retry available RDP operations?",
             description=(
-                "Use this to recover operations that have failed or stopped making progress. "
-                "If an operation is still running, continue only when you are sure "
-                "its current result is no longer expected."
+                "Failed operations will be retried first. "
+                "If no operation has failed, a running operation that supports manual retry may be restarted. "
+                "Retry a running operation only when its current result is no longer expected."
             ),
             template="workspace/admin_extra_buttons/confirm.html",
         )
