@@ -35,6 +35,7 @@ class RdpLogEntryType(models.TextChoices):
     PUSH_TO_HOPE = "PUSH_TO_HOPE", _("Push to HOPE")
     REVIEW_REQUIRED = "REVIEW_REQUIRED", _("Review required")
     REVIEW_DECISION = "REVIEW_DECISION", _("Review decision")
+    START_OCR = "START_OCR", _("Start OCR")
 
 
 class Rdp(BaseModel):
@@ -111,6 +112,7 @@ class Rdp(BaseModel):
             ("create_rdp", _("Can create RDP from selected beneficiaries")),
             ("push_rdp_to_hope", _("Can push RDP to HOPE")),
             ("reset_rdp", _("Can reset RDP")),
+            ("run_ocr_rdp", _("Can run RDP OCR")),
         ]
         verbose_name = _("Registration Data Push")
         verbose_name_plural = _("Registration Data Pushes")
