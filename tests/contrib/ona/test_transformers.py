@@ -5,6 +5,7 @@ from country_workspace.contrib.ona.transformers import (
     filter_ona_sys_fields,
     flatten_ona_data,
     get_nested_value,
+    remove_nested_value,
     transform_submission_to_records,
 )
 
@@ -175,6 +176,50 @@ def test_transform_submission_removes_nested_individuals_from_household():
         "household": {"name": "Ahmad Household"},
         "group": {"other_field": "keep-me"},
     }
+
+
+def test_get_nested_value_returns_none_when_path_is_not_a_mapping():
+    assert get_nested_value({"group": "scalar"}, "group/individuals") is None
+
+
+def test_remove_nested_value_keeps_data_when_path_is_not_a_mapping():
+    data = {"group": "scalar", "keep": 1}
+
+    assert remove_nested_value(data, "group/individuals") == data
+    assert data == {"group": "scalar", "keep": 1}
+
+
+def test_transform_submission_uses_empty_individuals_when_group_is_missing():
+    result = transform_submission_to_records(
+        {"household/name": "Ahmad Household"},
+        master_detail=True,
+        individuals_key="individuals",
+    )
+
+    assert result["individuals"] == []
+    assert result["household"]["fields"] == {"household/name": "Ahmad Household"}
+
+
+def test_transform_submission_wraps_single_individual_mapping():
+    result = transform_submission_to_records(
+        {"individuals": {"name": "Ahmad Ali"}},
+        master_detail=True,
+    )
+
+    assert result["individuals"] == [
+        {
+            "fields": {"name": "Ahmad Ali"},
+            "raw_data": {"name": "Ahmad Ali"},
+        }
+    ]
+
+
+def test_transform_submission_rejects_non_mapping_individual():
+    with pytest.raises(OnaMappingError, match="Invalid individual at index 0"):
+        transform_submission_to_records(
+            {"individuals": ["not-a-record"]},
+            master_detail=True,
+        )
 
 
 def test_transform_submission_to_records_rejects_invalid_individuals_group():
