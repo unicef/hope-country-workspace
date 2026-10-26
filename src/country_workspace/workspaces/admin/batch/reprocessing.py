@@ -124,6 +124,7 @@ def _apply_import_processor(
     record.save(update_fields=update_fields)
     return True
 
+
 def _clean_prefix(value: object) -> str | None:
     if isinstance(value, str) and (prefix := value.strip()):
         return prefix
@@ -162,14 +163,12 @@ def _build_processor(
     people_prefix: str | None = None,
 ) -> Callable[[Any], dict[str, Any]]:
     if batch.source == Batch.BatchSource.KOBO:
-        if model is Household:
-            return build_kobo_household_processor(program, mapping_id)
-        return build_kobo_individual_processor(program, mapping_id)
+        builder = build_kobo_household_processor if model is Household else build_kobo_individual_processor
+        return builder(program, mapping_id)
 
     if batch.source == Batch.BatchSource.AURORA:
-        if model is Household:
-            return build_aurora_household_processor(program, mapping_id)
-        return build_aurora_individual_processor(program, mapping_id)
+        builder = build_aurora_household_processor if model is Household else build_aurora_individual_processor
+        return builder(program, mapping_id)
 
     prefix = _clean_prefix(people_prefix)
     if model is Individual and prefix and batch.source == Batch.BatchSource.RDI and not program.is_master_detail:
@@ -182,9 +181,8 @@ def _build_processor(
         )
 
     if batch.source == Batch.BatchSource.ONA:
-        if model is Household:
-            return build_ona_household_processor(program, mapping_id)
-        return build_ona_individual_processor(program, mapping_id)
+        builder = build_ona_household_processor if model is Household else build_ona_individual_processor
+        return builder(program, mapping_id)
 
     return build_import_processor(
         program=program,

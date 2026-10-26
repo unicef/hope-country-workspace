@@ -112,8 +112,7 @@ class ImportDataMixin:
         context["form_aurora"] = form_aurora
         context["form_kobo"] = form_kobo
         context["form_ona"] = form_ona
-        if extra_context:
-            context.update(extra_context)
+        context.update(extra_context or {})
 
         return render(request, self.import_data_template, context)
 
