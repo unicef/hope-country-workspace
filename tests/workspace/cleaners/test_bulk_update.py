@@ -312,6 +312,7 @@ def test_import_bulk_update_file_stores_prefixed_date_fields_as_dates(
     date_field.definition.field_type = DateField
     checker = Mock()
     checker.get_fields.return_value = [(fieldset, date_field)]
+    checker.get_file_field_names.return_value = set()
     mocker.patch.object(type(job.program), "get_checker_for", return_value=checker)
 
     entity = test_data["valid_entity"]
