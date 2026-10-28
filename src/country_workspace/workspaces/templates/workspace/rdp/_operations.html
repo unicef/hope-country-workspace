@@ -47,15 +47,22 @@
                             {{ row.attempts }}
                         </td>
                     </tr>
-                    {% if row.findings is not None %}
-                        <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Findings" %}
-                            </th>
-                            <td class="py-2">
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Findings" %}
+                        </th>
+                        <td class="py-2">
+                            {% if row.findings_url %}
+                                <a href="{{ row.findings_url }}" class="hover:underline">{{ row.findings }}</a>
+                            {% else %}
                                 {{ row.findings }}
-                            </td>
-                        </tr>
+                            {% endif %}
+                            {% if not row.results_complete %}
+                                <span>({% translate "saved so far" %})</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if row.affected_individuals is not None %}
                         <tr>
                             <th class="py-2 pr-8 whitespace-nowrap">
                                 {% translate "Affected individuals" %}

@@ -1,0 +1,126 @@
+{% extends "workspace/_base.html" %}
+{% load i18n %}
+{% block page-title %}
+    &rsaquo; <a href="{% url 'workspace:workspaces_countryrdp_change' original.pk %}">{{ original }}</a>
+    &rsaquo; {{ operation.get_operation_type_display }}
+    &rsaquo; {% translate "Findings" %}
+{% endblock page-title %}
+{% block content %}
+    <div id="content-main" class="space-y-4">
+        <p>
+            <strong>{% translate "Operation status" %}:</strong> {{ operation.get_status_display }}
+            {% if not filter_form.errors %}
+                &middot; <strong>{% translate "Matching findings" %}:</strong> {{ page.paginator.count }}
+            {% endif %}
+        </p>
+        {% if not results_complete %}
+            <p>
+                {% translate "This operation has not completed successfully. The list shows findings saved so far." %}
+            </p>
+        {% endif %}
+        <form method="get" action="{{ request.path }}" class="flex flex-wrap items-end gap-4">
+            {{ filter_form.as_div }}
+            <button type="submit" class="button">
+                {% translate "Apply filters" %}
+            </button>
+            <a href="{{ request.path }}" class="hover:underline">{% translate "Reset" %}</a>
+        </form>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-left">
+                <thead>
+                    <tr>
+                        <th class="py-2 pr-8">
+                            {% translate "Individual" %}
+                        </th>
+                        <th class="py-2 pr-8">
+                            {% translate "Finding" %}
+                        </th>
+                        <th class="py-2">
+                            {% translate "Details" %}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for finding in page %}
+                        <tr>
+                            <td class="py-2 pr-8 align-top">
+                                <a href="{{ finding.individual_url }}" class="hover:underline">
+                                    {{ finding.individual_id }}
+                                    {% if finding.individual__name %}
+                                        — {{ finding.individual__name }}
+                                    {% endif %}
+                                </a>
+                            </td>
+                            <td class="py-2 pr-8 align-top">
+                                {{ finding.label }}
+                            </td>
+                            <td class="py-2 align-top">
+                                {% if finding.field_name %}
+                                    <p>
+                                        {% translate "Field" %}: {{ finding.field_name }}
+                                    </p>
+                                {% endif %}
+                                {% if finding.details.document_type %}
+                                    <p>
+                                        {% translate "Document type" %}: {{ finding.details.document_type }}
+                                    </p>
+                                {% endif %}
+                                {% if finding.related_individual_id %}
+                                    <p>
+                                        {% translate "Related individual" %}: {{ finding.related_individual_id }}
+                                    </p>
+                                {% elif operation.operation_type == "BIOMETRIC_DEDUPLICATION" and finding.finding_type == "DUPLICATE" %}
+                                    <p>
+                                        {% translate "Local counterpart unavailable" %}
+                                    </p>
+                                {% endif %}
+                                {% if finding.details.score is not None %}
+                                    <p>
+                                        {% translate "Score" %}: {{ finding.details.score }}
+                                    </p>
+                                {% endif %}
+                                {% if finding.details.error %}
+                                    <details>
+                                        <summary class="cursor-pointer">
+                                            {{ finding.details.error|truncatechars:120 }}
+                                        </summary>
+                                        <p class="whitespace-pre-wrap break-words">
+                                            {{ finding.details.error }}
+                                        </p>
+                                    </details>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="3" class="py-4">
+                                {% if filter_form.errors %}
+                                    {% translate "Correct the filters to view findings." %}
+                                {% else %}
+                                    {% translate "No findings." %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if page.has_other_pages %}
+            <nav class="flex items-center gap-4" aria-label="{% translate 'Pagination' %}">
+                {% if page.has_previous %}
+                    <a href="{% querystring page=page.previous_page_number %}" class="hover:underline">
+                        {% translate "Previous" %}
+                    </a>
+                {% endif %}
+                <span>
+                    {% blocktranslate with number=page.number total=page.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktranslate %}
+                </span>
+                {% if page.has_next %}
+                    <a href="{% querystring page=page.next_page_number %}" class="hover:underline">
+                        {% translate "Next" %}
+                    </a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    </div>
+{% endblock content %}

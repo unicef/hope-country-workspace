@@ -3,17 +3,20 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db.models import QuerySet
+from django.core.exceptions import PermissionDenied
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
-from django.urls import NoReverseMatch, reverse
+from django.template.response import TemplateResponse
+from django.urls import NoReverseMatch, URLPattern, URLResolver, path, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
@@ -24,6 +27,7 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
+    RDP_OPERATION_DEFINITIONS,
     RdpActionPolicy,
     RdpWorkflowError,
     cancel_rdp,
@@ -39,13 +43,13 @@ from country_workspace.rdp import (
     retry_rdp_push,
 )
 from country_workspace.state import state
-from country_workspace.workspaces.models import CountryRdp
+from country_workspace.workspaces.models import CountryIndividual, CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
+from .forms import RdpFindingsFilterForm
 from .hh_ind import SelectedProgramMixin
-
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
 
@@ -148,9 +152,66 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
+    def get_urls(self) -> list[URLPattern | URLResolver]:
+        return [
+            path(
+                "<int:rdp_id>/operations/<uuid:operation_id>/findings/",
+                self.admin_site.admin_view(self.findings_view, cacheable=False),
+                name="workspaces_countryrdp_findings",
+            ),
+        ] + super().get_urls()
+
+    def findings_view(self, request: HttpRequest, rdp_id: int, operation_id: UUID) -> HttpResponse:
+        """Display saved findings for an operation in the selected workspace context."""
+        rdp = get_object_or_404(self.get_queryset(request), pk=rdp_id, country_office=state.tenant)
+        individual_admin = self.admin_site.get_model_admin(CountryIndividual)
+        if not self.has_view_permission(request, rdp) or not individual_admin.has_view_permission(request):
+            raise PermissionDenied
+
+        operation = get_object_or_404(rdp.operations, pk=operation_id)
+        definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
+        labels = {value: str(label) for value, label in definition.finding_types.choices} if definition else {}
+        filter_form = RdpFindingsFilterForm(request.GET, finding_types=list(labels.items()))
+
+        findings = operation.findings.order_by("pk")
+        if filter_form.is_valid():
+            if finding_type := filter_form.cleaned_data["finding_type"]:
+                findings = findings.filter(finding_type=finding_type)
+            if individual_id := filter_form.cleaned_data["individual_id"]:
+                findings = findings.filter(Q(individual_id=individual_id) | Q(related_individual_id=individual_id))
+        else:
+            findings = findings.none()
+
+        rows = findings.values(
+            "individual_id", "individual__name", "finding_type", "field_name", "related_individual_id", "details"
+        )
+        page = self.get_paginator(request, rows, 50).get_page(request.GET.get("page"))
+        for finding in page:
+            finding["label"] = labels.get(finding["finding_type"], finding["finding_type"])
+            finding["individual_url"] = reverse(
+                "workspace:workspaces_countryindividual_change",
+                args=[finding["individual_id"]],
+                query={"rdp_id": rdp.pk},
+            )
+
+        context = self.get_common_context(
+            request,
+            str(rdp.pk),
+            title=_("Findings"),
+            operation=operation,
+            page=page,
+            filter_form=filter_form,
+            results_complete=operation.status == RdpOperation.Status.SUCCESS,
+        )
+        context["original"] = rdp
+        return TemplateResponse(request, "workspace/rdp/findings.html", context)
+
     @display(description="")
     def operations_display(self, obj: CountryRdp) -> str:
         """Return RDP operation execution details."""
+        can_view_findings = bool(
+            state.request and self.admin_site.get_model_admin(CountryIndividual).has_view_permission(state.request)
+        )
         rows = []
         for operation in obj.operations.order_by("operation_type"):
             successful = operation.status == RdpOperation.Status.SUCCESS
@@ -174,7 +235,11 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     "config": json.dumps(operation.config, indent=2, ensure_ascii=False) if operation.config else "",
                     "error": json.dumps(operation.error, indent=2, ensure_ascii=False) if operation.error else "",
                     "log": [self._format_log_entry(entry) for entry in operation.log],
-                    "findings": operation.findings.count() if successful else None,
+                    "findings": operation.findings.count(),
+                    "findings_url": reverse("workspace:workspaces_countryrdp_findings", args=[obj.pk, operation.pk])
+                    if can_view_findings
+                    else "",
+                    "results_complete": successful,
                     "affected_individuals": affected_individuals,
                 }
             )

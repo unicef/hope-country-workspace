@@ -1,10 +1,7 @@
-from enum import StrEnum
 from typing import Literal, ReadOnly, TypedDict
 
-
-class OcrFindingType(StrEnum):
-    NO_MATCH = "NO_MATCH"
-    OCR_ERROR = "OCR_ERROR"
+from django.db.models import TextChoices
+from django.utils.translation import gettext_lazy as _
 
 
 class OcrUnitConfig(TypedDict):
@@ -41,3 +38,8 @@ class OcrResultMessage(TypedDict):
     batch_index: int
     batch_total: int
     documents: list[OcrDocumentResult]
+
+
+class OcrFindingType(TextChoices):
+    NO_MATCH = "NO_MATCH", _("No match")
+    OCR_ERROR = "OCR_ERROR", _("OCR error")
