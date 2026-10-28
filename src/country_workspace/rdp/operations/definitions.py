@@ -5,11 +5,14 @@ from typing import Any, cast
 
 from django import forms
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import TextChoices
 
 from country_workspace.models import Program, RdpOperation
 from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.types import BiometricFindingType
 from country_workspace.rdp.deduplication.workflow import run_biometric_deduplication
 from country_workspace.rdp.ocr.forms import OcrConfigForm
+from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.ocr.workflow import run_ocr
 from country_workspace.rdp.types import CreateRdpOperationConfig, JSONValue
 
@@ -18,22 +21,25 @@ from country_workspace.rdp.types import CreateRdpOperationConfig, JSONValue
 class RdpOperationDefinition:
     operation_type: RdpOperation.Type
     config_form: type[forms.Form]
+    finding_types: type[TextChoices]
     is_enabled: Callable[[Program], bool]
     runner: Callable[[RdpOperation], None]
     can_retry_while_running: bool = False
 
 
-RDP_OPERATION_DEFINITIONS: dict[RdpOperation.Type, RdpOperationDefinition] = {
+RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
     RdpOperation.Type.BIOMETRIC_DEDUPLICATION: RdpOperationDefinition(
         operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
         config_form=BiometricDeduplicationConfigForm,
+        finding_types=BiometricFindingType,
         is_enabled=lambda program: program.biometric_deduplication_enabled,
         runner=run_biometric_deduplication,
     ),
     RdpOperation.Type.OCR: RdpOperationDefinition(
         operation_type=RdpOperation.Type.OCR,
         config_form=OcrConfigForm,
-        is_enabled=lambda _program: True,
+        finding_types=OcrFindingType,
+        is_enabled=lambda __: True,
         runner=run_ocr,
         can_retry_while_running=True,
     ),

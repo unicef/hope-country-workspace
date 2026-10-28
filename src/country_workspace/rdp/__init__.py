@@ -13,7 +13,11 @@ from .exceptions import RdpWorkflowError
 from .lifecycle import cancel_rdp, create_clean_rdp, create_rdp_core, reset_rdp
 from .ocr.repository import ocr_affected_individuals_count
 from .ocr.workflow import handle_ocr_result
-from .operations.definitions import get_rdp_operation_forms, get_validated_rdp_operation_configs
+from .operations.definitions import (
+    RDP_OPERATION_DEFINITIONS,
+    get_rdp_operation_forms,
+    get_validated_rdp_operation_configs,
+)
 from .operations.workflow import has_retryable_rdp_operations, retry_rdp_operations
 from .policy import RdpActionPolicy, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
@@ -27,6 +31,7 @@ __all__ = [
     "DEDUP_CALLBACK_SALT",
     "PUSH_READY_CALLBACK_MAX_AGE",
     "PUSH_READY_CALLBACK_SALT",
+    "RDP_OPERATION_DEFINITIONS",
     "CreateRdpConfig",
     "RdpActionPolicy",
     "RdpWorkflowError",

@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from django import forms
+from django.http import QueryDict
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import BeneficiaryGroup, Program
@@ -208,3 +209,18 @@ class CreateRDPForm(BaseActionForm):
     batch_name = forms.CharField(
         required=False, help_text="Label for this RDP creation. Defaults is the current date and time."
     )
+
+
+class RdpFindingsFilterForm(forms.Form):
+    finding_type = forms.ChoiceField(label=_("Finding type"), required=False)
+    individual_id = forms.IntegerField(
+        label=_("Individual ID"),
+        required=False,
+        min_value=1,
+        max_value=2**63 - 1,
+        help_text=_("Also matches related individuals."),
+    )
+
+    def __init__(self, data: QueryDict | None = None, *, finding_types: list[tuple[str, str]]) -> None:
+        super().__init__(data=data)
+        cast("forms.ChoiceField", self.fields["finding_type"]).choices = [("", _("All types")), *finding_types]
