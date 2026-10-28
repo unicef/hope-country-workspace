@@ -1,2 +1,2 @@
 class NoDataCheckerError(ValueError):
-    """No sheet can be generated: the programme has no data checker for its beneficiary layout."""
+    """The programme lacks a data checker for one of the sheets its import reads."""

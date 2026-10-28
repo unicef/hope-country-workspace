@@ -79,22 +79,30 @@ def test_export_import_template_downloads_workbook_matching_the_program(
     assert response["Content-Disposition"].startswith("attachment; filename=")
     assert response["Content-Disposition"].endswith('_import_template.xlsx"')
     workbook = load_workbook(BytesIO(b"".join(response.streaming_content)))
-    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "visible"] == ["Households", "Individuals"]
+    assert [ws.title for ws in workbook.worksheets if ws.title != "Choices"] == ["Households", "Individuals"]
 
 
-def test_export_import_template_without_data_checker_is_refused(user: User, client, country_program) -> None:
-    country_program.household_checker = None
-    country_program.individual_checker = None
-    country_program.save(update_fields=["household_checker", "individual_checker"])
-    url = reverse("workspace:workspaces_countryprogram_export_import_template", args=[country_program.pk])
+@pytest.mark.parametrize("missing", ["household_checker", "individual_checker"])
+def test_export_import_template_needs_both_checkers_of_a_master_detail_program(
+    user: User, client, country_program_md_true, missing: str
+) -> None:
+    program = country_program_md_true
+    setattr(program, missing, None)
+    program.save(update_fields=[missing])
+    export_url = reverse("workspace:workspaces_countryprogram_export_import_template", args=[program.pk])
+    change_url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
     client.force_login(user)
 
-    with user_grant_permissions(user, "country_workspace.export_import_template", country_program):
-        client.post(reverse("workspace:select_tenant"), data={"tenant": country_program.country_office.pk})
-        response = client.get(url)
+    with user_grant_permissions(
+        user, ["workspaces.change_countryprogram", "country_workspace.export_import_template"], program
+    ):
+        client.post(reverse("workspace:select_tenant"), data={"tenant": program.country_office.pk})
+        page = client.get(change_url)
+        response = client.get(export_url)
 
+    assert export_url not in page.content.decode()
     assert response.status_code == 302
-    assert response.url == reverse("workspace:workspaces_countryprogram_change", args=[country_program.pk])
+    assert response.url == change_url
 
 
 @pytest.mark.parametrize("permission_granted", [True, False], ids=["with_permission", "without_permission"])

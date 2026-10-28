@@ -15,6 +15,7 @@ HOUSEHOLD_ID_COLUMN: Final[str] = "household_id"
 INDIVIDUAL_ID_COLUMN: Final[str] = "individual_id"
 PEOPLE_PREFIX: Final[str] = "pp_"
 PEOPLE_ID_COLUMN: Final[str] = f"{PEOPLE_PREFIX}index_id"
+CHOICES_SHEET_NAME: Final[str] = "Choices"
 
 
 class IdColumn(NamedTuple):
@@ -84,6 +85,7 @@ def _is_master_detail(program: "Program") -> bool:
 
 
 def get_sheet_plans(program: "Program") -> list[SheetPlan]:
+    """Plan every sheet the import reads; nothing unless the programme has a data checker for each of them."""
     specs = MASTER_DETAIL_SHEETS if _is_master_detail(program) else PEOPLE_ONLY_SHEETS
     plans = [SheetPlan(spec, getattr(program, spec.checker_attr)) for spec in specs]
-    return [plan for plan in plans if plan.checker]
+    return plans if all(plan.checker for plan in plans) else []

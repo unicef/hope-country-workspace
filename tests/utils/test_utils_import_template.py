@@ -11,10 +11,21 @@ from openpyxl.worksheet.worksheet import Worksheet
 from country_workspace.datasources.rdi.config import Config, SheetName
 from country_workspace.datasources.rdi.processors import read_sheets
 from country_workspace.utils import import_template as tpl
+from country_workspace.utils.flex_fields import CustomMultipleChoiceField
 from country_workspace.workspaces.admin.forms import ImportFileForm
 
 Checker = SimpleNamespace
 Factory = Callable[..., Checker]
+
+
+def _bare_checker(id_field: str) -> Checker:
+    form_class = type("BareForm", (forms.Form,), {id_field: forms.CharField()})
+    return SimpleNamespace(get_form_class=lambda: form_class)
+
+
+# fill the other sheet of a master/detail programme, which cannot be exported with a single checker
+BARE_HOUSEHOLD = _bare_checker("household_id")
+BARE_INDIVIDUAL = _bare_checker("individual_id")
 
 
 @pytest.fixture
@@ -81,8 +92,8 @@ def validations(sheet: Worksheet) -> dict[str, Any]:
     ("master_detail", "household", "individual", "expected"),
     [
         (True, True, True, [SheetName.HOUSEHOLDS, SheetName.INDIVIDUALS]),
-        (True, True, False, [SheetName.HOUSEHOLDS]),
-        (True, False, True, [SheetName.INDIVIDUALS]),
+        (True, True, False, []),
+        (True, False, True, []),
         (True, False, False, []),
         (False, True, True, [SheetName.PEOPLE]),
         (False, True, False, []),
@@ -108,12 +119,17 @@ def test_sheets_follow_the_selected_data_checkers(
     assert [plan.name for plan in tpl.get_sheet_plans(prog)] == expected
 
 
-def test_build_requires_a_data_checker(program: Callable[..., Any]) -> None:
-    with pytest.raises(tpl.NoDataCheckerError, match="no data checker"):
-        tpl.build_import_template(program(master_detail=True, household=None, individual=None))
+@pytest.mark.parametrize("with_household", [True, False], ids=["household-only", "none"])
+def test_master_detail_needs_both_data_checkers(
+    program: Callable[..., Any], household_checker: Checker, with_household: bool
+) -> None:
+    prog = program(master_detail=True, household=household_checker if with_household else None, individual=None)
+
+    with pytest.raises(tpl.NoDataCheckerError, match="missing a data checker"):
+        tpl.build_import_template(prog)
 
 
-def test_master_detail_has_two_visible_pages_and_hidden_choices(
+def test_master_detail_has_two_data_pages_and_a_choices_legend(
     program: Callable[..., Any], household_checker: Checker, individual_checker: Checker
 ) -> None:
     wb = build(program(master_detail=True, household=household_checker, individual=individual_checker))
@@ -121,16 +137,16 @@ def test_master_detail_has_two_visible_pages_and_hidden_choices(
     assert [(ws.title, ws.sheet_state) for ws in wb.worksheets] == [
         ("Households", "visible"),
         ("Individuals", "visible"),
-        ("Choices", "hidden"),
+        ("Choices", "visible"),
     ]
 
 
-def test_people_only_has_one_visible_page_with_prefixed_columns(
+def test_people_only_has_one_data_page_with_prefixed_columns(
     program: Callable[..., Any], individual_checker: Checker
 ) -> None:
     wb = build(program(master_detail=False, household=None, individual=individual_checker))
 
-    assert [ws.title for ws in wb.worksheets if ws.sheet_state == "visible"] == ["People"]
+    assert [ws.title for ws in wb.worksheets if ws.title != "Choices"] == ["People"]
     assert headers(wb["People"]) == [
         "pp_index_id",
         "pp_individual_id",
@@ -145,9 +161,9 @@ def test_people_only_has_one_visible_page_with_prefixed_columns(
 
 
 def test_no_choices_sheet_without_choice_fields(program: Callable[..., Any], household_checker: Checker) -> None:
-    wb = build(program(master_detail=True, household=household_checker, individual=None))
+    wb = build(program(master_detail=True, household=household_checker, individual=BARE_INDIVIDUAL))
 
-    assert wb.sheetnames == ["Households"]
+    assert wb.sheetnames == ["Households", "Individuals"]
 
 
 def test_identifiers_come_first_and_are_not_duplicated(
@@ -181,7 +197,7 @@ def test_header_notes_describe_the_field(
 def test_head_of_household_points_at_the_individuals_sheet(
     program: Callable[..., Any], household_checker: Checker
 ) -> None:
-    sheet = build(program(master_detail=True, household=household_checker, individual=None))["Households"]
+    sheet = build(program(master_detail=True, household=household_checker, individual=BARE_INDIVIDUAL))["Households"]
 
     assert "Individuals" in sheet["C1"].comment.text
 
@@ -205,24 +221,49 @@ def test_constraints_match_field_types(
 def test_single_choice_is_a_dropdown_and_multiple_choice_is_not(
     program: Callable[..., Any], individual_checker: Checker
 ) -> None:
-    wb = build(program(master_detail=True, household=None, individual=individual_checker))
+    wb = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individual_checker))
 
     ind = validations(wb["Individuals"])
     assert ind["E"].type == "list"
-    assert ind["E"].formula1.startswith("Choices!")
+    assert ind["E"].formula1 == "choices_0"
     assert "F" not in ind
     assert [c.value for c in wb["Choices"]["A"]][1:3] == ["MALE", "FEMALE"]
     assert "A, B" in wb["Individuals"]["F1"].comment.text
+    assert "Choices sheet" in wb["Individuals"]["F1"].comment.text
+
+
+def test_comma_separated_values_are_only_suggested_where_the_field_parses_them(
+    program: Callable[..., Any], checker: Factory
+) -> None:
+    choices = [("A", "a"), ("B", "b")]
+    individuals = checker(
+        plain=forms.MultipleChoiceField(choices=choices),
+        parsing=CustomMultipleChoiceField(choices=choices),
+    )
+
+    sheet = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individuals))["Individuals"]
+
+    assert "separated by a comma" not in sheet["C1"].comment.text
+    assert "separated by a comma" in sheet["D1"].comment.text
+
+
+def test_pictures_are_to_be_placed_over_the_cell(program: Callable[..., Any], checker: Factory) -> None:
+    individuals = checker(photo=forms.ImageField(required=False))
+
+    sheet = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individuals))["Individuals"]
+
+    assert "over the cell" in sheet["C1"].comment.text
 
 
 def test_long_choice_lists_are_stored_on_the_choices_sheet(program: Callable[..., Any], checker: Factory) -> None:
     choices = [(f"AF{i:04d}", f"AF{i:04d} - A rather long area name {i}") for i in range(500)]
     individuals = checker(admin1=forms.ChoiceField(choices=[("", "None"), *choices]))
 
-    wb = build(program(master_detail=True, household=None, individual=individuals))
+    wb = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individuals))
 
     dv = validations(wb["Individuals"])["C"]
-    assert dv.formula1 == "Choices!$A$2:$A$501"
+    assert dv.formula1 == "choices_0"
+    assert wb.defined_names["choices_0"].attr_text == "Choices!$A$2:$A$501"
     assert wb["Choices"].max_row == len(choices) + 1
     assert wb["Choices"]["A2"].value == "AF0000"
     assert wb["Choices"]["B2"].value == "AF0000 - A rather long area name 0"
@@ -233,13 +274,13 @@ def test_option_groups_are_flattened(program: Callable[..., Any], checker: Facto
         kind=forms.ChoiceField(choices=[("Group", [("A", "a"), ("B", "b")]), ("C", "c")]),
     )
 
-    wb = build(program(master_detail=True, household=None, individual=individuals))
+    wb = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individuals))
 
     assert [c.value for c in wb["Choices"]["A"]][1:] == ["A", "B", "C"]
 
 
 def test_text_columns_are_formatted_as_text(program: Callable[..., Any], individual_checker: Checker) -> None:
-    sheet = build(program(master_detail=True, household=None, individual=individual_checker))["Individuals"]
+    sheet = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individual_checker))["Individuals"]
 
     assert sheet.column_dimensions["H"].number_format == "@"
     assert sheet.column_dimensions["A"].number_format == "General"
@@ -248,7 +289,7 @@ def test_text_columns_are_formatted_as_text(program: Callable[..., Any], individ
 def test_header_is_frozen_and_required_columns_are_highlighted(
     program: Callable[..., Any], individual_checker: Checker
 ) -> None:
-    sheet = build(program(master_detail=True, household=None, individual=individual_checker))["Individuals"]
+    sheet = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individual_checker))["Individuals"]
 
     assert sheet.freeze_panes == "A2"
     assert sheet["C1"].fill.fgColor.rgb != sheet["H1"].fill.fgColor.rgb
@@ -257,7 +298,7 @@ def test_header_is_frozen_and_required_columns_are_highlighted(
 def test_references_to_other_sheets_accept_any_identifier(
     program: Callable[..., Any], household_checker: Checker
 ) -> None:
-    sheet = build(program(master_detail=True, household=household_checker, individual=None))["Households"]
+    sheet = build(program(master_detail=True, household=household_checker, individual=BARE_INDIVIDUAL))["Households"]
 
     assert "C" not in validations(sheet)  # head_of_household_id is an integer field, but ids may be text
     assert sheet.column_dimensions["C"].number_format == "General"
@@ -266,7 +307,7 @@ def test_references_to_other_sheets_accept_any_identifier(
 def test_header_text_is_never_interpreted_as_a_formula(program: Callable[..., Any], checker: Factory) -> None:
     individuals = checker(**{"=SUM(A1)": forms.CharField(required=False)})
 
-    sheet = build(program(master_detail=True, household=None, individual=individuals))["Individuals"]
+    sheet = build(program(master_detail=True, household=BARE_HOUSEHOLD, individual=individuals))["Individuals"]
 
     assert sheet["C1"].value == "=SUM(A1)"
     assert sheet["C1"].data_type == "s"

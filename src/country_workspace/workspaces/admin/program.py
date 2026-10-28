@@ -642,7 +642,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         except NoDataCheckerError:
             self.message_user(
                 request,
-                _("Select a data checker on the programme to export an import template."),
+                _("Select the data checkers required by the programme to export an import template."),
                 messages.ERROR,
             )
             return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))

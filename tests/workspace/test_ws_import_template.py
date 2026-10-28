@@ -95,7 +95,7 @@ def test_master_detail_template_imports_without_touching_the_form_defaults(
     app: "DjangoTestApp", md_program: "CountryProgram"
 ) -> None:
     workbook = download_template(app, md_program)
-    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "visible"] == ["Households", "Individuals"]
+    assert [ws.title for ws in workbook.worksheets if ws.title != "Choices"] == ["Households", "Individuals"]
     fill(workbook["Households"], {"household_id": 1, "size": 2, "head_of_household_id": 1})
     fill(workbook["Individuals"], {"individual_id": 1, "household_id": 1, "full_name": "Jeff Rogers"})
     fill(workbook["Individuals"], {"individual_id": 2, "household_id": 1, "full_name": "Ann Rogers"})
@@ -113,7 +113,7 @@ def test_people_template_imports_without_touching_the_form_defaults(
     app: "DjangoTestApp", people_program: "CountryProgram"
 ) -> None:
     workbook = download_template(app, people_program)
-    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "visible"] == ["People"]
+    assert [ws.title for ws in workbook.worksheets if ws.title != "Choices"] == ["People"]
     fill(workbook["People"], {"pp_index_id": 1, "pp_full_name": "Jane Doe"})
     fill(workbook["People"], {"pp_index_id": 2, "pp_full_name": "John Doe"})
 

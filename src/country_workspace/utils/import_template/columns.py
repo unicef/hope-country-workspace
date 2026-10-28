@@ -7,7 +7,9 @@ from typing import Any, Final
 from django import forms
 from django.utils.translation import gettext as _
 
-from .layout import SheetPlan, SheetSpec
+from country_workspace.utils.flex_fields import CustomMultipleChoiceField
+
+from .layout import CHOICES_SHEET_NAME, SheetPlan, SheetSpec
 
 Properties = Mapping[str, Any]
 
@@ -57,7 +59,14 @@ def constrain(form_field: forms.Field) -> Constraint:
 
 @constrain.register(forms.FileField)
 def _constrain_file(form_field: forms.FileField) -> Constraint:
-    return Constraint(notes=(_("Insert the picture inside the cell."),))
+    return Constraint(
+        notes=(
+            _(
+                'Insert the picture over the cell ("Place over cells", not "Place in cell"), '
+                "with its top-left corner inside the cell."
+            ),
+        )
+    )
 
 
 @constrain.register(forms.ModelChoiceField)
@@ -72,6 +81,12 @@ def _constrain_choice(form_field: forms.ChoiceField) -> Constraint:
 
 @constrain.register(forms.MultipleChoiceField)
 def _constrain_multiple_choice(form_field: forms.MultipleChoiceField) -> Constraint:
+    return _choice_constraint(form_field, dropdown=False)
+
+
+@constrain.register(CustomMultipleChoiceField)
+def _constrain_parsed_multiple_choice(form_field: CustomMultipleChoiceField) -> Constraint:
+    """Only this field parses a cell holding several values."""
     return _choice_constraint(
         form_field,
         dropdown=False,
@@ -129,7 +144,10 @@ def _choice_constraint(form_field: forms.ChoiceField, *, dropdown: bool, notes: 
     if choices:
         shown = ", ".join(value for value, _label in choices[:MAX_NOTE_VALUES])
         more = ", ..." if len(choices) > MAX_NOTE_VALUES else ""
-        allowed = (_("Allowed values: %(values)s") % {"values": shown + more},)
+        allowed = (
+            _("Allowed values: %(values)s\nAll of them, with their labels, are listed in the %(sheet)s sheet.")
+            % {"values": shown + more, "sheet": CHOICES_SHEET_NAME},
+        )
     return Constraint(
         cell_format=TEXT_FORMAT,
         choices=choices,
