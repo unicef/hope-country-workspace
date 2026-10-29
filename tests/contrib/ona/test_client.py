@@ -256,6 +256,45 @@ def test_get_preserves_errors_after_retry_budget(status, exception):
         assert len(mocked.calls) == (1 if status == 403 else 4)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/api/v1/files/1152251?filename=user/attachments/form/photo.jpg",
+        "https://data.inform.unicef.org/api/v1/files/1152251?filename=user/attachments/form/photo.jpg",
+    ],
+)
+def test_download_returns_attachment_content(url):
+    with responses.RequestsMock() as mocked:
+        mocked.get(
+            "https://data.inform.unicef.org/api/v1/files/1152251",
+            body=b"\xff\xd8\xffphoto",
+            content_type="image/jpeg",
+            match=[responses.matchers.query_param_matcher({"filename": "user/attachments/form/photo.jpg"})],
+        )
+        client = OnaClient(base_url="https://data.inform.unicef.org/", token="test-token")
+
+        assert client.download(url) == b"\xff\xd8\xffphoto"
+        assert mocked.calls[0].request.headers["Authorization"] == "Token test-token"
+
+
+def test_download_refuses_a_url_outside_the_ona_server():
+    with responses.RequestsMock():
+        client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token")
+
+        with pytest.raises(OnaApiError, match="outside"):
+            client.download("https://data.inform.unicef.org.evil.example/api/v1/files/1")
+
+
+@pytest.mark.parametrize(("status", "exception"), [(404, OnaApiError), (401, OnaAuthenticationError)])
+def test_download_raises_on_error_status(status, exception):
+    with responses.RequestsMock() as mocked:
+        mocked.get("https://data.inform.unicef.org/api/v1/files/1", status=status)
+        client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token")
+
+        with pytest.raises(exception):
+            client.download("/api/v1/files/1")
+
+
 def test_retry_backoff_and_retry_after():
     from urllib3.response import HTTPResponse
 

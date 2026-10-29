@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from requests import Session
 from requests.adapters import HTTPAdapter
@@ -11,6 +12,8 @@ from .exceptions import OnaApiError, OnaAuthenticationError, OnaRateLimitError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from requests import Response
 
 
 class OnaClient:
@@ -53,7 +56,29 @@ class OnaClient:
             params=params or {},
             timeout=self.timeout,
         )
+        self._raise_for_status(response)
 
+        return response.json()
+
+    def download(self, url: str) -> bytes:
+        """Return the content of an attachment `download_url`, relative or absolute."""
+        if urlsplit(url).netloc:
+            if not url.startswith(f"{self.base_url}/"):
+                raise OnaApiError(f"ONA attachment URL is outside {self.base_url}: {url}")
+        else:
+            url = f"{self.base_url}/{url.lstrip('/')}"
+
+        response = self.session.get(
+            url,
+            headers={"Authorization": f"Token {self.token}"},
+            timeout=self.timeout,
+        )
+        self._raise_for_status(response)
+
+        return response.content
+
+    @staticmethod
+    def _raise_for_status(response: Response) -> None:
         if response.status_code in (401, 403):
             raise OnaAuthenticationError("ONA authentication failed")
 
@@ -62,8 +87,6 @@ class OnaClient:
 
         if response.status_code >= 400:
             raise OnaApiError(f"ONA API error {response.status_code}: {response.text[:500]}")
-
-        return response.json()
 
     def get_form_metadata(self, form_id: str | int) -> dict[str, Any]:
         return self.get(f"/api/v1/forms/{form_id}")
