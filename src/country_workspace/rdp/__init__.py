@@ -6,7 +6,6 @@ from .deduplication.repository import (
     biometric_findings_for_individual,
     biometric_operation_for_rdp,
     qs_biometric_affected_individuals,
-    qs_biometric_duplicate_individuals,
 )
 from .deduplication.workflow import sync_biometric_deduplication_result
 from .exceptions import RdpWorkflowError
@@ -55,7 +54,6 @@ __all__ = [
     "is_biometric_threshold_exceeded",
     "ocr_affected_individuals_count",
     "qs_biometric_affected_individuals",
-    "qs_biometric_duplicate_individuals",
     "reset_rdp",
     "retry_rdp_operations",
     "retry_rdp_push",

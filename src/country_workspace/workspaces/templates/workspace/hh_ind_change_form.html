@@ -1,135 +1,135 @@
 {% extends "workspace/change_form.html" %}
-{% load admin_modify i18n static workspace_modify workspace_urls %}
+{% load admin_modify i18n static workspace_modify %}
 {% block content_title %}
 {% endblock %}
-{# {% block coltype %}colMX{% endblock %} #}
 {% block content %}
     {% block object-tools %}
         {{ block.super }}
     {% endblock object-tools %}
     <div id="content">
         <div id="content-main">
-            <form class="min-w-full beneficiary-form"
-                  {% if has_file_field %}enctype="multipart/form-data" {% endif %}
-                  {% if form_url %}action="{{ form_url }}" {% endif %}
-                  method="post"
-                  id="{{ opts.model_name }}_form"
-                  novalidate>
-                {% csrf_token %}
-                {% block form_top %}
-                {% endblock %}
-                <div class="min-w-full">
-                    {% if is_popup %}
-                        <input type="hidden" name="{{ is_popup_var }}" value="1" />
-                    {% endif %}
-                    {% if to_field %}
-                        <input type="hidden" name="{{ to_field_var }}" value="{{ to_field }}" />
-                    {% endif %}
-                    {% if save_on_top %}
-                        {% block submit_buttons_top %}
+            <div class="min-w-full">
+                {% include "workspace/includes/rdp_context.html" %}
+                <form class="min-w-full beneficiary-form"
+                      {% if has_file_field %}enctype="multipart/form-data" {% endif %}
+                      {% if form_url %}action="{{ form_url }}" {% endif %}
+                      method="post"
+                      id="{{ opts.model_name }}_form"
+                      novalidate>
+                    {% csrf_token %}
+                    {% block form_top %}
+                    {% endblock %}
+                    <div class="min-w-full">
+                        {% if is_popup %}
+                            <input type="hidden" name="{{ is_popup_var }}" value="1" />
+                        {% endif %}
+                        {% if to_field %}
+                            <input type="hidden" name="{{ to_field_var }}" value="{{ to_field }}" />
+                        {% endif %}
+                        {% if save_on_top %}
+                            {% block submit_buttons_top %}
+                                {% submit_row %}
+                            {% endblock %}
+                        {% endif %}
+                        {% if errors %}
+                            <p class="errornote">
+                                {% blocktranslate count counter=errors|length %}
+                                    Please correct the error below.
+                                {% plural %}
+                                    Please correct the errors below.
+                                {% endblocktranslate %}
+                            </p>
+                            {{ adminform.form.non_field_errors }}
+                        {% endif %}
+                        {% if original.errors %}
+                            <div class="errors">
+                                Record does not validate and cannot be sent to HOPE
+                            </div>
+                            <ul>
+                                {% for e in original.errors.dct %}
+                                    <li class="errors">
+                                        {{ e }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                        {% block field_sets %}
+                            {% include "workspace/includes/operation_findings.html" %}
+                            <table class="min-w-full">
+                                {% block pre_checker_form %}
+                                    {% if dedup_member_count is not None %}
+                                        <tbody>
+                                            <tr>
+                                                <th {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% translate "Duplicate members" %}
+                                                </th>
+                                                <td {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {{ dedup_duplicate_member_count }}/{{ dedup_member_count }}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {% translate "Image issue members" %}
+                                                </th>
+                                                <td {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                    {{ dedup_image_issue_member_count }}/{{ dedup_member_count }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    {% elif dedup_duplicates is not None or dedup_image_issues is not None %}
+                                        <tbody>
+                                            {% if dedup_duplicates is not None %}
+                                                <tr>
+                                                    <th {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                        {% translate "Duplicates" %}
+                                                    </th>
+                                                    <td {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                        {% if dedup_duplicates %}
+                                                            {% for duplicate in dedup_duplicates %}
+                                                                <a href="{{ duplicate.url }}" class="hover:underline">{{ duplicate.pk }}</a>
+                                                                {% if not forloop.last %}
+                                                                    ,
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            -
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                            {% if dedup_image_issues is not None %}
+                                                <tr>
+                                                    <th {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
+                                                        {% translate "Image issues" %}
+                                                    </th>
+                                                    <td {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
+                                                        {% if dedup_image_issues %}
+                                                            {{ dedup_image_issues|join:", " }}
+                                                        {% else %}
+                                                            -
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    {% endif %}
+                                    {% include "workspace/includes/flex_field_form.html" with form=checker_form fields=original.flex_fields %}
+                                {% endblock %}
+                            </table>
+                        {% endblock field_sets %}
+                        {% block after_related_objects %}
+                        {% endblock %}
+                        {% block submit_buttons_bottom %}
                             {% submit_row %}
                         {% endblock %}
-                    {% endif %}
-                    {% if errors %}
-                        <p class="errornote">
-                            {% blocktranslate count counter=errors|length %}
-                                Please correct the error below.
-                            {% plural %}
-                                Please correct the errors below.
-                            {% endblocktranslate %}
-                        </p>
-                        {{ adminform.form.non_field_errors }}
-                    {% endif %}
-                    {% if original.errors %}
-                        <div class="errors">
-                            Record does not validate and cannot be sent to HOPE
-                        </div>
-                        <ul>
-                            {% for e in original.errors.dct %}
-                                <li class="errors">
-                                    {{ e }}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% endif %}
-                    {% block field_sets %}
-                        <table class="min-w-full">
-                            {% block pre_checker_form %}
-                                {% if dedup_member_count is not None %}
-                                    <tbody>
-                                        <tr>
-                                            <th {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
-                                                {% translate "Duplicate members" %}
-                                            </th>
-                                            <td {% if dedup_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
-                                                {{ dedup_duplicate_member_count }}/{{ dedup_member_count }}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <th {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
-                                                {% translate "Image issue members" %}
-                                            </th>
-                                            <td {% if dedup_image_issue_member_count %}class="bg-red-50 text-red-800"{% endif %}>
-                                                {{ dedup_image_issue_member_count }}/{{ dedup_member_count }}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                {% endif %}
-                                {% if dedup_duplicates is not None or dedup_image_issues is not None %}
-                                    <tbody>
-                                        {% if dedup_duplicates is not None %}
-                                            <tr>
-                                                <th {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
-                                                    {% translate "Duplicates" %}
-                                                </th>
-                                                <td {% if dedup_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
-                                                    {% if dedup_duplicates %}
-                                                        {% for duplicate in dedup_duplicates %}
-                                                            <a href="{{ duplicate.url }}" class="hover:underline">
-                                                                {{ duplicate.pk }}
-                                                            </a>
-                                                            {% if not forloop.last %}
-                                                                ,
-                                                            {% endif %}
-                                                        {% endfor %}
-                                                    {% else %}
-                                                        -
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                        {% endif %}
-                                        {% if dedup_image_issues is not None %}
-                                            <tr>
-                                                <th {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
-                                                    {% translate "Image issues" %}
-                                                </th>
-                                                <td {% if dedup_image_issues %}class="bg-red-50 text-red-800"{% endif %}>
-                                                    {% if dedup_image_issues %}
-                                                        {{ dedup_image_issues|join:", " }}
-                                                    {% else %}
-                                                        -
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                        {% endif %}
-                                    </tbody>
-                                {% endif %}
-                                {% include "workspace/includes/flex_field_form.html" with form=checker_form fields=original.flex_fields %}
-                            {% endblock %}
-                        </table>
-                    {% endblock field_sets %}
-                    {% block after_related_objects %}
-                    {% endblock %}
-                    {% block submit_buttons_bottom %}
-                        {% submit_row %}
-                    {% endblock %}
-                    {% block admin_change_form_document_ready %}
-                        <script id="django-admin-form-add-constants" src="{% static 'workspace/js/change_form.js' %}" {% if adminform and add %}data-model-name="{{ opts.model_name }}"{% endif %} async>
-                        </script>
-                    {% endblock admin_change_form_document_ready %}
-                    {% prepopulated_fields_js %}
-                </div>
-            </form>
+                        {% block admin_change_form_document_ready %}
+                            <script id="django-admin-form-add-constants" src="{% static 'workspace/js/change_form.js' %}" {% if adminform and add %}data-model-name="{{ opts.model_name }}"{% endif %} async>
+                            </script>
+                        {% endblock admin_change_form_document_ready %}
+                        {% prepopulated_fields_js %}
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 {% endblock content %}

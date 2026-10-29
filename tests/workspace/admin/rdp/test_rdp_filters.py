@@ -11,7 +11,7 @@ from country_workspace.workspaces.admin.filters import (
     ImageIssueMembersFilter,
     RdpContextFilter,
     get_rdp_context,
-    show_biometric_columns,
+    show_program_biometric_results,
 )
 from country_workspace.workspaces.models import CountryIndividual, CountryRdp
 
@@ -169,23 +169,23 @@ def test_biometric_filters(
     queryset.filter.assert_called_once_with(**expected)
 
 
-def test_show_biometric_columns_without_program(rf) -> None:
+def test_show_program_biometric_results_without_program(rf) -> None:
     with state.set(program=None):
-        assert show_biometric_columns(rf.get("/")) is False
+        assert show_program_biometric_results(rf.get("/")) is False
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_show_biometric_columns_uses_program_setting_without_rdp(
+def test_show_program_biometric_results_uses_program_setting_without_rdp(
     rf,
     program,
     enabled: bool,
 ) -> None:
     program.biometric_deduplication_enabled = enabled
 
-    assert show_biometric_columns(rf.get("/")) is enabled
+    assert show_program_biometric_results(rf.get("/")) is enabled
 
 
-def test_show_biometric_columns_uses_rdp_operation(
+def test_show_program_biometric_results_uses_rdp_operation(
     rf,
     rdp: CountryRdp,
     biometric_operation: RdpOperation,
@@ -193,14 +193,14 @@ def test_show_biometric_columns_uses_rdp_operation(
     rdp.program.biometric_deduplication_enabled = False
     request = rf.get("/", {"rdp_id": str(rdp.pk)})
 
-    assert show_biometric_columns(request) is True
+    assert show_program_biometric_results(request) is True
 
 
-def test_show_biometric_columns_ignores_program_setting_for_rdp(
+def test_show_program_biometric_results_ignores_program_setting_for_rdp(
     rf,
     rdp: CountryRdp,
 ) -> None:
     rdp.program.biometric_deduplication_enabled = True
     request = rf.get("/", {"rdp_id": str(rdp.pk)})
 
-    assert show_biometric_columns(request) is False
+    assert show_program_biometric_results(request) is False
