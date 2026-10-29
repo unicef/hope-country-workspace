@@ -9,7 +9,9 @@ from country_workspace.rdp.deduplication.repository import (
     biometric_findings_count,
     biometric_findings_for_individual,
     biometric_operation_for_rdp,
+    clean_rdp_selection,
     has_biometric_image_issues,
+    qs_affected_individuals,
     qs_biometric_affected_individuals,
     qs_biometric_duplicate_individuals,
     qs_successful_biometric_operations,
@@ -323,3 +325,50 @@ def test_biometric_findings_for_individual_uses_latest_rdp_for_duplicate(people_
         {individuals[1].pk: newer_rdp.pk},
         [],
     )
+
+
+def test_affected_individuals_dispatch_by_operation_type(people_rdp) -> None:
+    from testutils.factories import (
+        BiographicRdpOperationFactory,
+        BiographicRdpOperationFindingFactory,
+        BiometricRdpOperationFactory,
+        BiometricRdpOperationFindingFactory,
+    )
+
+    rdp, individuals = people_rdp
+    biometric = BiometricRdpOperationFactory(rdp=rdp)
+    biographic = BiographicRdpOperationFactory(rdp=rdp)
+    BiometricRdpOperationFindingFactory(operation=biometric, individual=individuals[0])
+    BiographicRdpOperationFindingFactory(operation=biographic, individual=individuals[1])
+
+    assert list(qs_affected_individuals(operation=biometric)) == [individuals[0]]
+    assert list(qs_affected_individuals(operation=biographic)) == [individuals[1]]
+
+
+def test_clean_selection_excludes_individuals_affected_by_any_operation(people_rdp) -> None:
+    from testutils.factories import (
+        BiographicRdpOperationFactory,
+        BiographicRdpOperationFindingFactory,
+        BiometricRdpOperationFactory,
+        BiometricRdpOperationFindingFactory,
+    )
+
+    rdp, individuals = people_rdp
+    biometric = BiometricRdpOperationFactory(rdp=rdp)
+    biographic = BiographicRdpOperationFactory(rdp=rdp)
+    BiometricRdpOperationFindingFactory(operation=biometric, individual=individuals[0])
+    BiographicRdpOperationFindingFactory(operation=biographic, individual=individuals[1])
+
+    master_detail, pks = clean_rdp_selection(rdp=rdp, operations=[biometric, biographic])
+
+    assert master_detail is False
+    assert pks == [individual.pk for individual in individuals[2:]]
+
+
+def test_clean_selection_without_operations_keeps_everyone(people_rdp) -> None:
+    rdp, individuals = people_rdp
+
+    master_detail, pks = clean_rdp_selection(rdp=rdp, operations=[])
+
+    assert master_detail is False
+    assert pks == [individual.pk for individual in individuals]

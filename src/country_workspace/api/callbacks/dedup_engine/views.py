@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from country_workspace.rdp import (
     DEDUP_CALLBACK_MAX_AGE,
     DEDUP_CALLBACK_SALT,
-    sync_biometric_deduplication_result,
+    sync_rdp_operation_result,
 )
 
 from .responses import (
@@ -21,7 +21,7 @@ from .serializers import DedupEngineRdpCallbackPayloadSerializer
 
 
 class DedupEngineRdpStateChangedCallbackView(APIView):
-    """Synchronize an RDP operation after a DedupEngine state change."""
+    """Synchronize an RDP deduplication operation after a DedupEngine state change."""
 
     authentication_classes = ()
     permission_classes = (AllowAny,)
@@ -49,7 +49,7 @@ class DedupEngineRdpStateChangedCallbackView(APIView):
             return invalid_callback_token_response()
 
         return dedup_callback_response(
-            synchronized=sync_biometric_deduplication_result(
+            synchronized=sync_rdp_operation_result(
                 operation_id=serializer.validated_data["operation_id"],
             )
         )
