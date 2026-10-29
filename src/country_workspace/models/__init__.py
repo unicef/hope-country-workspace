@@ -1,6 +1,7 @@
 from .batch import Batch
 from .beneficiary_group import BeneficiaryGroup
 from .data_serializer import DataSerializer
+from .flex_file import FlexFieldFile
 from .household import Household
 from .individual import Individual
 from .jobs import AsyncJob
@@ -25,6 +26,7 @@ __all__ = [
     "BeneficiaryGroup",
     "Country",
     "DataSerializer",
+    "FlexFieldFile",
     "Household",
     "Individual",
     "MappingImporter",

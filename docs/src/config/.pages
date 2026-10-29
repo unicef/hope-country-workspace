@@ -1,4 +1,5 @@
 nav:
   - Constance: constance.md
   - Data Sync: data_sync.md
+  - Blob Storage: storage.md
   - User Roles: user_roles.md
