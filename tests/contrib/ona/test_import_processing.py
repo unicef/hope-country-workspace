@@ -485,6 +485,37 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
     assert create_individual.call_args_list[1].kwargs["household"] is household
 
 
+def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
+    from country_workspace.contrib.ona import import_processing
+
+    program = mocker.MagicMock()
+    processor = mocker.MagicMock()
+    build_import_processor = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_import_processor",
+        return_value=processor,
+    )
+
+    assert import_processing.build_individual_processor(program, mapping_id=11) is processor
+    assert import_processing.build_household_processor(program) is processor
+
+    assert build_import_processor.call_args_list[0].kwargs == {
+        "program": program,
+        "model": import_processing.Individual,
+        "mapping_id": 11,
+        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "post_processors": (),
+        "source": import_processing.Batch.BatchSource.ONA,
+    }
+    assert build_import_processor.call_args_list[1].kwargs == {
+        "program": program,
+        "model": import_processing.Household,
+        "mapping_id": None,
+        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "post_processors": (),
+        "source": import_processing.Batch.BatchSource.ONA,
+    }
+
+
 @pytest.mark.parametrize("master_detail", [True, False])
 def test_validation_queryset_uses_import_mode(mocker: MockerFixture, config: Config, master_detail: bool) -> None:
     batch = mocker.MagicMock()
