@@ -1,0 +1,9 @@
+{% load i18n %}
+{% if selected_rdp_url %}
+    <div class="mb-4 flex flex-wrap items-center gap-2 rounded border border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <span class="text-sm text-gray-500">{% translate "RDP context:" %}</span>
+        <a href="{{ selected_rdp_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
+            #{{ selected_rdp.pk }}
+        </a>
+    </div>
+{% endif %}

@@ -6,6 +6,7 @@ from typing import Any, cast
 from django import forms
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import TextChoices
+from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import Program, RdpOperation
 from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
@@ -24,6 +25,7 @@ class RdpOperationDefinition:
     finding_types: type[TextChoices]
     is_enabled: Callable[[Program], bool]
     runner: Callable[[RdpOperation], None]
+    operation_id_label: str = _("Operation ID")
     can_retry_while_running: bool = False
 
 
@@ -34,6 +36,7 @@ RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
         finding_types=BiometricFindingType,
         is_enabled=lambda program: program.biometric_deduplication_enabled,
         runner=run_biometric_deduplication,
+        operation_id_label=_("Deduplication set ID"),
     ),
     RdpOperation.Type.OCR: RdpOperationDefinition(
         operation_type=RdpOperation.Type.OCR,

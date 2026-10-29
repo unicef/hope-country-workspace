@@ -3,37 +3,42 @@ from typing import TYPE_CHECKING, Any
 from admin_extra_buttons.decorators import button
 from adminfilters.mixin import AdminAutoCompleteSearchMixin
 from django.contrib import messages
+from django.contrib.admin import display
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
-from django.db.models import Model, QuerySet
+from django.db.models import Count, Model, OuterRef, Q, QuerySet, Subquery
+from django.db.models.functions import Coalesce
 from django.forms import Form
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.template.defaultfilters import capfirst
 from django.template.response import TemplateResponse
 from django.urls import reverse
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from ...cache.manager import cache_manager
-from ...state import state
+from country_workspace.cache.manager import cache_manager
+from country_workspace.models import Batch, Individual, Rdp, RdpOperationFinding
+from country_workspace.state import state
+from country_workspace.utils.flex_fields import Base64ImageField, get_checker_fields
+from country_workspace.utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
+from country_workspace.utils.imports import validate_alien_fields
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryRdp
+from country_workspace.workspaces.options import WorkspaceModelAdmin
+from country_workspace.workspaces.permissions import can_import_program_data
+
 from ._import_data import ImportDataMixin
-from ..options import WorkspaceModelAdmin
-from ..models import CountryHousehold, CountryIndividual
-from ..permissions import can_import_program_data
-from ...models import Batch, Individual, Rdp
-from .filters import get_rdp_context
-from ...utils.imports import validate_alien_fields
-from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from ...utils.flex_fields import Base64ImageField, get_checker_fields
+from .filters import get_rdp_context, get_requested_rdp_id
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
     from hope_flex_fields.models import DataChecker
 
-    from ...models.base import Validable
-    from ...types import Beneficiary
+    from country_workspace.models.base import Validable
+    from country_workspace.types import Beneficiary
+
     from .program import CountryProgram
 
 
@@ -94,6 +99,10 @@ class BeneficiaryBaseAdmin(
     def title_member_plural(self) -> str | None:
         return self._get_title_label("member_label_plural")
 
+    def _get_title_label(self, attr: str) -> str | None:
+        program = state.program
+        return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
+
     def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
         _actions = super().get_actions(request)
         if (
@@ -137,22 +146,25 @@ class BeneficiaryBaseAdmin(
 
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
-        if prg := self.get_selected_program(request):
-            rdp = get_rdp_context(request)
-            qs = qs.filter(batch__program=prg, batch__status=Batch.BatchStatus.COMPLETE)
-            if ("rdp_id" in request.GET or "rdp__exact" in request.GET) and rdp is None:
-                return qs.none()
-            if rdp:
-                if issubclass(self.model, Individual) and rdp.program.is_master_detail:
-                    return qs.filter(household__rdp=rdp)
-                return qs.filter(rdp=rdp)
-            return qs.filter(removed=False)
-        return qs.none()
+        if not (program := self.get_selected_program(request)):
+            return qs.none()
+
+        rdp = get_rdp_context(request)
+        qs = qs.filter(batch__program=program, batch__status=Batch.BatchStatus.COMPLETE)
+
+        if get_requested_rdp_id(request) is not None and rdp is None:
+            return qs.none()
+        if rdp:
+            if issubclass(self.model, Individual) and rdp.program.is_master_detail:
+                return qs.filter(household__rdp=rdp)
+            return qs.filter(rdp=rdp)
+        return qs.filter(removed=False)
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         context = super().get_common_context(request, pk, **kwargs)
         program = self.get_selected_program(request)
-        return {
+        rdp = get_rdp_context(request)
+        context = {
             **context,
             "modeladmin": self,
             "datachecker": self.get_checker(request, context.get("original")),
@@ -162,11 +174,68 @@ class BeneficiaryBaseAdmin(
             "title_member_plural": self.title_member_plural,
             "master_detail": program.beneficiary_group.master_detail if program and program.beneficiary_group else None,
             **kwargs,
+            "selected_rdp": rdp,
+            "selected_rdp_url": (
+                reverse("workspace:workspaces_countryrdp_change", args=[rdp.pk])
+                if rdp and self.admin_site.get_model_admin(CountryRdp).has_view_permission(request, rdp)
+                else None
+            ),
+        }
+        context.update(self._get_operation_findings_context(request, context["original"], rdp))
+        return context
+
+    def _get_operation_findings_context(
+        self, request: HttpRequest, obj: "Beneficiary | None", rdp: Rdp | None
+    ) -> dict[str, Any]:
+        if obj is None or rdp is None or not self._can_view_operation_findings(request, rdp, obj):
+            return {"operation_findings": []}
+
+        is_individual = isinstance(obj, Individual)
+        field = "pk" if is_individual else "household_id"
+        filter_name = "individual_id" if is_individual else "household_id"
+        finding_filter = Q(**{f"findings__individual__{field}": obj.pk}) | Q(
+            **{f"findings__related_individual__{field}": obj.pk}
+        )
+        operations = (
+            rdp.operations.only("id", "rdp_id", "operation_type", "status")
+            .annotate(findings_count=Count("findings", filter=finding_filter))
+            .order_by("operation_type")
+        )
+
+        rows: list[dict[str, str | int]] = []
+        for operation in operations:
+            row = {
+                "type": operation.get_operation_type_display(),
+                "status": operation.get_status_display(),
+                "findings": operation.findings_count,
+                "url": reverse(
+                    "workspace:workspaces_countryrdp_findings",
+                    args=[rdp.pk, operation.pk],
+                    query={filter_name: obj.pk},
+                ),
+            }
+            if not is_individual:
+                findings = operation.findings.order_by()
+                member_ids = findings.filter(individual__household_id=obj.pk).values_list("individual_id", flat=True)
+                related_member_ids = findings.filter(related_individual__household_id=obj.pk).values_list(
+                    "related_individual_id", flat=True
+                )
+                row["members"] = member_ids.union(related_member_ids).count()
+            rows.append(row)
+
+        return {
+            "operation_findings": rows,
+            "show_finding_members": not is_individual,
         }
 
-    def _get_title_label(self, attr: str) -> str | None:
-        program = state.program
-        return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
+    def _can_view_operation_findings(self, request: HttpRequest, rdp: Rdp, obj: "Beneficiary | None" = None) -> bool:
+        return bool(
+            state.tenant
+            and rdp.country_office_id == state.tenant.pk
+            and self.has_view_permission(request, obj)
+            and self.admin_site.get_model_admin(CountryIndividual).has_view_permission(request)
+            and self.admin_site.get_model_admin(CountryRdp).has_view_permission(request, rdp)
+        )
 
     @button(
         label=_("Validate"),
@@ -242,10 +311,57 @@ class BeneficiaryBaseAdmin(
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
         if program := self.get_selected_program(request):
-            cols = program.get_columns_for(self.model)
+            columns = program.get_columns_for(self.model)
         else:
-            cols = list(self.list_display)
-        return cols + ["is_valid"]
+            columns = list(self.list_display)
+        columns = [column for column in columns if column != "operation_findings"] + ["is_valid"]
+        if (rdp := get_rdp_context(request)) is not None and self._can_view_operation_findings(request, rdp):
+            columns.append("operation_findings")
+        return columns
+
+    def prepare_operation_findings(self, request: HttpRequest, queryset: "QuerySet[Beneficiary]") -> None:
+        """Prepare finding counts for the current changelist page."""
+        if (rdp := get_rdp_context(request)) is None or not self._can_view_operation_findings(request, rdp):
+            return
+        if not (records := list(queryset)):
+            return
+
+        field = "pk" if issubclass(self.model, Individual) else "household_id"
+        findings = (
+            RdpOperationFinding.objects.filter(operation__rdp=rdp)
+            .filter(
+                Q(**{f"individual__{field}": OuterRef("pk")}) | Q(**{f"related_individual__{field}": OuterRef("pk")})
+            )
+            .order_by()
+            .values("operation__rdp_id")
+            .annotate(total=Count("pk"))
+            .values("total")
+        )
+        counts = dict(
+            self.model._default_manager.filter(pk__in=[obj.pk for obj in records])
+            .annotate(_operation_findings_count=Coalesce(Subquery(findings), 0))
+            .values_list("pk", "_operation_findings_count")
+        )
+        preserved_filters = request.GET.urlencode()
+
+        for obj in records:
+            obj._operation_findings_count = counts.get(obj.pk, 0)
+            obj._operation_findings_filters = preserved_filters
+
+    @display(description=_("Saved findings"))
+    def operation_findings(self, obj: "Beneficiary") -> str:
+        if (count := getattr(obj, "_operation_findings_count", None)) is None:
+            return "-"
+        if not count:
+            return "0"
+
+        url = reverse(
+            f"{self.admin_site.name}:{self.opts.app_label}_{self.opts.model_name}_change",
+            args=[obj.pk],
+            query={"_changelist_filters": obj._operation_findings_filters},
+            fragment="operation-findings",
+        )
+        return format_html('<a href="{}">{} ({})</a>', url, _("View"), count)
 
     def get_changelist(self, request: HttpRequest, **kwargs: Any) -> type:
         from ..changelist import FlexFieldsChangeList

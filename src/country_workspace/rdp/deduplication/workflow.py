@@ -101,18 +101,25 @@ def _build_biometric_findings(
         .values_list("pk", flat=True)
     )
 
-    return [
-        RdpOperationFinding(
-            finding_type=status.name,
-            individual_id=individual_id,
-            related_individual_id=related_id if related_id in local_related_pks else None,
-            field_name="photo",
-            details={"score": score}
-            if status == FindingStatusCode.DUPLICATE and (score := finding.get("score")) is not None
-            else {},
+    result: list[RdpOperationFinding] = []
+    for finding, status, individual_id, related_id in parsed:
+        details: dict[str, JSONValue] = {}
+        if status == FindingStatusCode.DUPLICATE:
+            details["related_reference_pk"] = related_id
+            if (score := finding.get("score")) is not None:
+                details["score"] = score
+
+        result.append(
+            RdpOperationFinding(
+                finding_type=status.name,
+                individual_id=individual_id,
+                related_individual_id=related_id if related_id in local_related_pks else None,
+                field_name="photo",
+                details=details,
+            )
         )
-        for finding, status, individual_id, related_id in parsed
-    ]
+
+    return result
 
 
 def _system_error_findings(findings: list[Finding]) -> list[dict[str, JSONValue]]:

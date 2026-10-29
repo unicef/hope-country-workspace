@@ -1,119 +1,127 @@
 {% load i18n %}
-<div class="space-y-6">
+<div class="space-y-5">
     {% for row in rows %}
-        <div>
-            <h3 class="text-lg font-medium mb-3">
-                {{ row.type }}
-            </h3>
-            <table class="text-left">
-                <tbody>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Status" %}
-                        </th>
-                        <td class="py-2">
-                            <strong>{{ row.status }}</strong>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Operation ID" %}
-                        </th>
-                        <td class="py-2">
-                            {{ row.operation_id }}
-                        </td>
-                    </tr>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Started" %}
-                        </th>
-                        <td class="py-2">
-                            {{ row.started_at }}
-                        </td>
-                    </tr>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Finished" %}
-                        </th>
-                        <td class="py-2">
-                            {{ row.finished_at }}
-                        </td>
-                    </tr>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Attempts" %}
-                        </th>
-                        <td class="py-2">
-                            {{ row.attempts }}
-                        </td>
-                    </tr>
-                    <tr>
-                        <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Findings" %}
-                        </th>
-                        <td class="py-2">
-                            {% if row.findings_url %}
-                                <a href="{{ row.findings_url }}" class="hover:underline">{{ row.findings }}</a>
-                            {% else %}
-                                {{ row.findings }}
-                            {% endif %}
-                            {% if not row.results_complete %}
-                                <span>({% translate "saved so far" %})</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% if row.affected_individuals is not None %}
+        <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 bg-gray-50 px-5 py-3">
+                <h3 class="text-lg font-semibold">
+                    {{ row.type }}
+                </h3>
+                <div class="min-w-32 rounded border border-gray-300 bg-white px-4 py-2">
+                    <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
+                        {% translate "Status" %}
+                    </div>
+                    <div class="mt-1 text-base font-bold">
+                        {{ row.status }}
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3">
+                <table class="text-left">
+                    <tbody>
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Affected individuals" %}
+                            <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                {% translate "Findings" %}
                             </th>
                             <td class="py-2">
-                                {{ row.affected_individuals }}
+                                {% if row.findings_url %}
+                                    <a href="{{ row.findings_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
+                                        {% translate "View findings" %} ({{ row.findings }})
+                                    </a>
+                                {% else %}
+                                    <span class="font-semibold">{{ row.findings }}</span>
+                                {% endif %}
+                                {% if not row.results_complete %}
+                                    <span class="ml-1 text-sm text-gray-500">
+                                        ({% translate "saved so far" %})
+                                    </span>
+                                {% endif %}
                             </td>
                         </tr>
-                    {% endif %}
-                    {% if row.config %}
+                        {% if row.affected_individuals is not None %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                    {% translate "Affected individuals" %}
+                                </th>
+                                <td class="py-2 font-semibold">
+                                    {{ row.affected_individuals }}
+                                </td>
+                            </tr>
+                        {% endif %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Config" %}
+                            <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                {% translate "Attempts" %}
+                            </th>
+                            <td class="py-2 font-semibold">
+                                {{ row.attempts }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                {% translate "Started" %}
                             </th>
                             <td class="py-2">
-                                <details>
-                                    <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
-                                        {% translate "Show config" %}
-                                    </summary>
-                                    <pre class="mt-2 overflow-x-auto">{{ row.config }}</pre>
-                                </details>
+                                {{ row.started_at }}
                             </td>
                         </tr>
-                    {% endif %}
-                    {% if row.error %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Last error" %}
+                            <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                {% translate "Finished" %}
                             </th>
                             <td class="py-2">
-                                <details>
-                                    <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
-                                        {% translate "Show last error" %}
-                                    </summary>
-                                    <pre class="mt-2 overflow-x-auto">{{ row.error }}</pre>
-                                </details>
+                                {{ row.finished_at }}
                             </td>
                         </tr>
-                    {% endif %}
-                    {% if row.log %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Log" %}
+                            <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                {{ row.operation_id_label }}
                             </th>
-                            <td class="py-2">
-                                {% include "workspace/rdp/_log.html" with rows=row.log only %}
+                            <td class="py-2 break-all">
+                                {{ row.operation_id }}
                             </td>
                         </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
+                        {% if row.config %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap align-top font-medium text-gray-600">
+                                    {% translate "Config" %}
+                                </th>
+                                <td class="py-2">
+                                    <details>
+                                        <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
+                                            {% translate "Show config" %}
+                                        </summary>
+                                        <pre class="mt-3 overflow-x-auto rounded bg-gray-50 p-3">{{ row.config }}</pre>
+                                    </details>
+                                </td>
+                            </tr>
+                        {% endif %}
+                        {% if row.error %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap align-top font-medium text-gray-600">
+                                    {% translate "Last error" %}
+                                </th>
+                                <td class="py-2">
+                                    <details>
+                                        <summary class="cursor-pointer select-none font-medium text-[var(--link-fg)] hover:underline">
+                                            {% translate "Show last error" %}
+                                        </summary>
+                                        <pre class="mt-3 overflow-x-auto rounded bg-gray-50 p-3">{{ row.error }}</pre>
+                                    </details>
+                                </td>
+                            </tr>
+                        {% endif %}
+                        {% if row.log %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap align-top font-medium text-gray-600">
+                                    {% translate "Log" %}
+                                </th>
+                                <td class="py-2">
+                                    {% include "workspace/rdp/_log.html" with rows=row.log only %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     {% endfor %}
 </div>

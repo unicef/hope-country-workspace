@@ -12,8 +12,7 @@ from django.utils.translation import gettext_lazy as _
 
 from country_workspace.admin.filters import IsValidFilter
 from country_workspace.admin.job import FailedFilter
-from country_workspace.models import Batch, Household, Rdp
-from country_workspace.rdp import biometric_operation_for_rdp
+from country_workspace.models import Batch, Rdp
 from country_workspace.state import state
 
 if TYPE_CHECKING:
@@ -135,16 +134,23 @@ class MultiValueFilter(MultiValueTextFieldFilter):
         return val
 
 
+def get_requested_rdp_id(request: HttpRequest) -> str | None:
+    """Return the RDP ID supplied directly or through preserved filters."""
+    if (rdp_id := request.GET.get("rdp_id")) is not None:
+        return rdp_id
+    if (rdp_id := request.GET.get("rdp__exact")) is not None:
+        return rdp_id
+
+    preserved = parse_qs(request.GET.get("_changelist_filters", ""))
+    return preserved.get("rdp_id", preserved.get("rdp__exact", [None]))[-1]
+
+
 def get_rdp_context(request: HttpRequest) -> Rdp | None:
     """Resolve an RDP belonging to the selected program."""
-    rdp_id = request.GET.get("rdp_id")
-    if rdp_id is None:
-        rdp_id = request.GET.get("rdp__exact")
-    if rdp_id is None:
-        preserved = parse_qs(request.GET.get("_changelist_filters", ""))
-        rdp_id = preserved.get("rdp_id", preserved.get("rdp__exact", [None]))[-1]
+    rdp_id = get_requested_rdp_id(request)
     if not rdp_id or not rdp_id.isascii() or not rdp_id.isdecimal() or len(rdp_id) > 19:
         return None
+
     pk = int(rdp_id)
     if pk > 2**63 - 1:
         return None
@@ -159,29 +165,6 @@ class WorkspaceSimpleComboFilter(SimpleListFilter):
     def get_title(self) -> str:
         """Return the filter title."""
         return str(self.title)
-
-
-class RdpContextFilter(WorkspaceSimpleComboFilter):
-    title = _("RDP")
-    parameter_name = "rdp_id"
-
-    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        if selected := get_rdp_context(request):
-            return [(str(selected.pk), selected.name or f"RDP {selected.pk}")]
-        return []
-
-    def has_output(self) -> bool:
-        """Hide the RDP context from the filter sidebar."""
-        return False
-
-    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() is None:
-            return queryset
-        if (rdp := get_rdp_context(request)) is None:
-            return queryset.none()
-        if not issubclass(queryset.model, Household) and rdp.program.is_master_detail:
-            return queryset.filter(household__rdp=rdp)
-        return queryset.filter(rdp=rdp)
 
 
 class DuplicateFilter(WorkspaceSimpleComboFilter):
@@ -256,10 +239,8 @@ class ImageIssueMembersFilter(WorkspaceSimpleComboFilter):
         return queryset
 
 
-def show_biometric_columns(request: HttpRequest) -> bool:
-    """Show biometric results when biometric deduplication applies."""
-    if not state.program:
-        return False
-    if rdp := get_rdp_context(request):
-        return biometric_operation_for_rdp(rdp=rdp) is not None
-    return state.program.biometric_deduplication_enabled
+def show_program_biometric_results(request: HttpRequest) -> bool:
+    """Show program-level biometric results outside an RDP context."""
+    return bool(
+        state.program and get_requested_rdp_id(request) is None and state.program.biometric_deduplication_enabled
+    )

@@ -296,7 +296,7 @@ def test_biometric_columns_visibility(
 ) -> None:
     request = rf.get("/")
     mocker.patch.object(BeneficiaryBaseAdmin, "get_list_display", return_value=["name"])
-    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(household_admin_mod, "show_program_biometric_results", return_value=visible)
 
     columns = set(household_admin.get_list_display(request))
 
@@ -320,7 +320,7 @@ def test_biometric_filters_visibility(
     expected: set[str],
 ) -> None:
     mocker.patch.object(BeneficiaryBaseAdmin, "get_list_filter", return_value=[])
-    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(household_admin_mod, "show_program_biometric_results", return_value=visible)
 
     filters = household_admin.get_list_filter(rf.get("/"))
     names = {filter_.__name__ for filter_ in filters if isinstance(filter_, type)}
@@ -341,7 +341,7 @@ def test_queryset_biometric_annotations(
     state.program = program
     queryset = mocker.MagicMock()
     base = mocker.patch.object(BeneficiaryBaseAdmin, "get_queryset", return_value=queryset)
-    mocker.patch.object(household_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(household_admin_mod, "show_program_biometric_results", return_value=visible)
     rdp = mocker.Mock()
     get_rdp = mocker.patch.object(household_admin_mod, "get_rdp_context", return_value=rdp)
     annotate = mocker.patch.object(

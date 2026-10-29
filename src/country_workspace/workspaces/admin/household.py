@@ -9,20 +9,19 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from country_workspace.rdp import annotate_biometric_households
+from country_workspace.state import state
+from country_workspace.workspaces.models import CountryHousehold
+from country_workspace.workspaces.sites import workspace
 
-from ...state import state
-from ..models import CountryHousehold
-from ..sites import workspace
 from .filters import (
     CWLinkedAutoCompleteFilter,
     DuplicateMembersFilter,
     ImageIssueMembersFilter,
     MultiValueFilter,
-    RdpContextFilter,
     WIsValidFilter,
     WJsonFieldFilter,
     get_rdp_context,
-    show_biometric_columns,
+    show_program_biometric_results,
 )
 from .hh_ind import BeneficiaryBaseAdmin
 
@@ -38,7 +37,6 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     list_filter = (
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         WIsValidFilter,
-        RdpContextFilter,
         ("id", MultiValueFilter),
         ("flex_fields", WJsonFieldFilter),
     )
@@ -48,21 +46,6 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
     def title_plural(self) -> str:
         return super().title_group_plural or ""
 
-    def get_list_filter(self, request: HttpRequest) -> list[Any]:
-        filters = list(super().get_list_filter(request))
-        if show_biometric_columns(request):
-            filters.extend((DuplicateMembersFilter, ImageIssueMembersFilter))
-        return filters
-
-    def get_list_display(self, request: HttpRequest) -> list[str]:
-        columns = super().get_list_display(request)
-        if show_biometric_columns(request):
-            if "duplicate_members" not in columns:
-                columns.append("duplicate_members")
-            if "image_issue_members" not in columns:
-                columns.append("image_issue_members")
-        return columns
-
     def get_queryset(self, request: HttpRequest) -> "QuerySet[CountryHousehold]":
         qs = (
             super()
@@ -71,10 +54,40 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
         return (
-            annotate_biometric_households(qs, program=state.program, rdp=get_rdp_context(request))
-            if show_biometric_columns(request)
+            annotate_biometric_households(qs, program=state.program, rdp=None)
+            if show_program_biometric_results(request)
             else qs
         )
+
+    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_common_context(request, pk, **kwargs)
+        original = context["original"]
+        context["dedup_member_count"] = None
+        context["dedup_duplicate_member_count"] = None
+        context["dedup_image_issue_member_count"] = None
+
+        if context["selected_rdp"] is not None or original is None or not getattr(original, "_result_available", False):
+            return context
+
+        context["dedup_member_count"] = original._member_count
+        context["dedup_duplicate_member_count"] = original._duplicate_member_count
+        context["dedup_image_issue_member_count"] = original._image_issue_member_count
+        return context
+
+    def get_list_filter(self, request: HttpRequest) -> list[Any]:
+        filters = list(super().get_list_filter(request))
+        if show_program_biometric_results(request):
+            filters.extend((DuplicateMembersFilter, ImageIssueMembersFilter))
+        return filters
+
+    def get_list_display(self, request: HttpRequest) -> list[str]:
+        columns = super().get_list_display(request)
+        if show_program_biometric_results(request):
+            if "duplicate_members" not in columns:
+                columns.append("duplicate_members")
+            if "image_issue_members" not in columns:
+                columns.append("image_issue_members")
+        return columns
 
     @display(description="Duplicate members")
     def duplicate_members(self, obj: CountryHousehold) -> str:
@@ -86,11 +99,8 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
         if not obj._duplicate_member_count:
             return value
 
-        params = {"household__exact": obj.pk, "duplicates": "with"}
-        if obj._selected_rdp_id is not None:
-            params["rdp_id"] = obj._selected_rdp_id
-
         url = reverse("workspace:workspaces_countryindividual_changelist")
+        params = {"household__exact": obj.pk, "duplicates": "with"}
         return format_html('<a href="{}?{}">{}</a>', url, urlencode(params), value)
 
     @display(description="Image issue members")
@@ -100,29 +110,12 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
             return "-"
         return f"{obj._image_issue_member_count}/{obj._member_count}"
 
-    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
-        context = super().get_common_context(request, pk, **kwargs)
-        original = context["original"]
-
-        context["dedup_member_count"] = None
-        context["dedup_duplicate_member_count"] = None
-        context["dedup_image_issue_member_count"] = None
-
-        if original is None or not getattr(original, "_result_available", False):
-            return context
-
-        context["dedup_member_count"] = original._member_count
-        context["dedup_duplicate_member_count"] = original._duplicate_member_count
-        context["dedup_image_issue_member_count"] = original._image_issue_member_count
-        return context
-
     @link(change_list=False, html_attrs={"title": "Shows related members."})
     def members(self, btn: LinkButton) -> None:
-        base = reverse("workspace:workspaces_countryindividual_changelist")
         obj = btn.context["original"]
         if obj:
             params = {"household__exact": obj.pk}
-            if (rdp_id := getattr(obj, "_selected_rdp_id", None)) is not None:
-                params["rdp_id"] = rdp_id
-            btn.href = f"{base}?{urlencode(params)}"
+            if rdp := get_rdp_context(btn.request):
+                params["rdp_id"] = rdp.pk
+            btn.href = reverse("workspace:workspaces_countryindividual_changelist", query=params)
         btn.label = self.title_member_plural

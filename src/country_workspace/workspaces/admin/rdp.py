@@ -4,6 +4,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any
 from uuid import UUID
+from urllib.parse import urlencode
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
@@ -43,7 +44,7 @@ from country_workspace.rdp import (
     retry_rdp_push,
 )
 from country_workspace.state import state
-from country_workspace.workspaces.models import CountryIndividual, CountryRdp
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
@@ -171,7 +172,14 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         operation = get_object_or_404(rdp.operations, pk=operation_id)
         definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
         labels = {value: str(label) for value, label in definition.finding_types.choices} if definition else {}
-        filter_form = RdpFindingsFilterForm(request.GET, finding_types=list(labels.items()))
+
+        household_admin = self.admin_site.get_model_admin(CountryHousehold)
+        can_view_households = rdp.program.is_master_detail and household_admin.has_view_permission(request)
+        filter_form = RdpFindingsFilterForm(
+            request.GET,
+            finding_types=list(labels.items()),
+            include_household=can_view_households,
+        )
 
         findings = operation.findings.order_by("pk")
         if filter_form.is_valid():
@@ -179,20 +187,40 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 findings = findings.filter(finding_type=finding_type)
             if individual_id := filter_form.cleaned_data["individual_id"]:
                 findings = findings.filter(Q(individual_id=individual_id) | Q(related_individual_id=individual_id))
+            if household_id := filter_form.cleaned_data.get("household_id"):
+                findings = findings.filter(
+                    Q(individual__household_id=household_id) | Q(related_individual__household_id=household_id)
+                )
         else:
             findings = findings.none()
 
         rows = findings.values(
-            "individual_id", "individual__name", "finding_type", "field_name", "related_individual_id", "details"
+            "individual_id",
+            "individual__name",
+            "individual__household_id",
+            "finding_type",
+            "field_name",
+            "related_individual_id",
+            "related_individual__name",
+            "related_individual__household_id",
+            "details",
         )
-        page = self.get_paginator(request, rows, 50).get_page(request.GET.get("page"))
+        page = self.get_paginator(request, rows, self.list_per_page).get_page(request.GET.get("page"))
+        query = {"_changelist_filters": urlencode({"rdp_id": rdp.pk})}
+
         for finding in page:
             finding["label"] = labels.get(finding["finding_type"], finding["finding_type"])
             finding["individual_url"] = reverse(
-                "workspace:workspaces_countryindividual_change",
-                args=[finding["individual_id"]],
-                query={"rdp_id": rdp.pk},
+                "workspace:workspaces_countryindividual_change", args=[finding["individual_id"]], query=query
             )
+            if related_id := finding["related_individual_id"]:
+                finding["related_individual_url"] = reverse(
+                    "workspace:workspaces_countryindividual_change", args=[related_id], query=query
+                )
+            if can_view_households and (household_id := finding["individual__household_id"]):
+                finding["household_url"] = reverse(
+                    "workspace:workspaces_countryhousehold_change", args=[household_id], query=query
+                )
 
         context = self.get_common_context(
             request,
@@ -202,6 +230,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             page=page,
             filter_form=filter_form,
             results_complete=operation.status == RdpOperation.Status.SUCCESS,
+            show_households=can_view_households,
         )
         context["original"] = rdp
         return TemplateResponse(request, "workspace/rdp/findings.html", context)
@@ -215,6 +244,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         rows = []
         for operation in obj.operations.order_by("operation_type"):
             successful = operation.status == RdpOperation.Status.SUCCESS
+            definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
 
             affected_individuals = None
             if successful:
@@ -227,6 +257,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             rows.append(
                 {
                     "operation_id": str(operation.id),
+                    "operation_id_label": definition.operation_id_label if definition else _("Operation ID"),
                     "type": operation.get_operation_type_display(),
                     "status": operation.get_status_display(),
                     "attempts": operation.attempt,

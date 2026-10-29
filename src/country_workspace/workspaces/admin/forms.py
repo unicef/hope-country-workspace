@@ -4,7 +4,7 @@ from django import forms
 from django.http import QueryDict
 from django.utils.translation import gettext_lazy as _
 
-from country_workspace.models import BeneficiaryGroup, Program
+from country_workspace.models import BeneficiaryGroup, Household, Individual, Program
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
 
@@ -217,10 +217,25 @@ class RdpFindingsFilterForm(forms.Form):
         label=_("Individual ID"),
         required=False,
         min_value=1,
-        max_value=2**63 - 1,
+        validators=Individual._meta.pk.validators,
         help_text=_("Also matches related individuals."),
     )
+    household_id = forms.IntegerField(
+        label=_("Household ID"),
+        required=False,
+        min_value=1,
+        validators=Household._meta.pk.validators,
+        help_text=_("Also matches households of related individuals."),
+    )
 
-    def __init__(self, data: QueryDict | None = None, *, finding_types: list[tuple[str, str]]) -> None:
+    def __init__(
+        self,
+        data: QueryDict | None = None,
+        *,
+        finding_types: list[tuple[str, str]],
+        include_household: bool = True,
+    ) -> None:
         super().__init__(data=data)
         cast("forms.ChoiceField", self.fields["finding_type"]).choices = [("", _("All types")), *finding_types]
+        if not include_household:
+            self.fields.pop("household_id")

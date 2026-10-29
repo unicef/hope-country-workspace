@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 import pytest
-from pytest_mock import MockerFixture
 from django.core.exceptions import ValidationError
 from django.urls import reverse
+from pytest_mock import MockerFixture
 from testutils.utils import select_office
 
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Rdp
 from country_workspace.state import state
 from country_workspace.workspaces.admin import individual as individual_admin_mod
 from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
@@ -222,8 +222,13 @@ def test_common_context_without_biometric_result(
     mocker.patch.object(
         BeneficiaryBaseAdmin,
         "get_common_context",
-        return_value={"original": individual},
+        return_value={
+            "original": individual,
+            "selected_rdp": None,
+            "master_detail": False,
+        },
     )
+    mocker.patch.object(individual_admin, "_get_navigation_context", return_value={})
     findings = mocker.patch.object(individual_admin_mod, "biometric_findings_for_individual")
 
     context = individual_admin.get_common_context(rf.get("/"))
@@ -233,45 +238,56 @@ def test_common_context_without_biometric_result(
     findings.assert_not_called()
 
 
-@pytest.mark.parametrize("removed", [False, True], ids=["active", "removed"])
+@pytest.mark.parametrize(
+    ("selected_rdp", "removed", "preserved"),
+    [
+        (False, False, False),
+        (False, True, True),
+        (True, False, True),
+    ],
+    ids=["active-without-rdp", "removed-without-rdp", "active-with-rdp"],
+)
 def test_common_context_duplicate_url(
     individual_admin: CountryIndividualAdmin,
     individual: "CountryIndividual",
     rf,
     mocker: MockerFixture,
+    selected_rdp: bool,
     removed: bool,
+    preserved: bool,
 ) -> None:
     from testutils.factories import CountryIndividualFactory
 
     duplicate = CountryIndividualFactory(household=None, batch=individual.batch, removed=removed)
     individual._result_available = True
+    rdp = mocker.Mock(pk=101) if selected_rdp else None
 
     mocker.patch.object(
         BeneficiaryBaseAdmin,
         "get_common_context",
-        return_value={"original": individual},
+        return_value={
+            "original": individual,
+            "selected_rdp": rdp,
+            "master_detail": False,
+        },
     )
-    mocker.patch.object(individual_admin, "get_selected_household", return_value=individual.household)
-
-    rdp = mocker.sentinel.rdp
-    mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
+    mocker.patch.object(individual_admin, "_get_navigation_context", return_value={})
     findings = mocker.patch.object(
         individual_admin_mod,
         "biometric_findings_for_individual",
         return_value=({duplicate.pk: 101}, ["BAD_IMAGE_QUALITY"]),
     )
-
-    base_url = f"/individuals/{duplicate.pk}/"
-    mocker.patch.object(individual_admin_mod, "reverse", return_value=base_url)
+    reverse_mock = mocker.patch.object(individual_admin_mod, "reverse", return_value="/individual/")
 
     context = individual_admin.get_common_context(rf.get("/"))
 
-    expected_url = base_url
-    if removed:
-        preserved = urlencode({"_changelist_filters": urlencode({"rdp_id": 101})})
-        expected_url = f"{base_url}?{preserved}"
-
-    assert context["dedup_duplicates"] == [{"pk": duplicate.pk, "url": expected_url}]
+    query = {"_changelist_filters": urlencode({"rdp_id": 101})} if preserved else None
+    reverse_mock.assert_called_once_with(
+        "workspace:workspaces_countryindividual_change",
+        args=[duplicate.pk],
+        query=query,
+    )
+    assert context["dedup_duplicates"] == [{"pk": duplicate.pk, "url": "/individual/"}]
     assert context["dedup_image_issues"] == ["BAD_IMAGE_QUALITY"]
     findings.assert_called_once_with(individual=individual, rdp=rdp)
 
@@ -291,7 +307,7 @@ def test_biometric_columns_visibility(
     expected: set[str],
 ) -> None:
     mocker.patch.object(BeneficiaryBaseAdmin, "get_list_display", return_value=["name"])
-    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(individual_admin_mod, "show_program_biometric_results", return_value=visible)
 
     columns = set(individual_admin.get_list_display(rf.get("/")))
 
@@ -315,7 +331,7 @@ def test_biometric_filters_visibility(
     expected: set[str],
 ) -> None:
     mocker.patch.object(BeneficiaryBaseAdmin, "get_list_filter", return_value=[])
-    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(individual_admin_mod, "show_program_biometric_results", return_value=visible)
 
     filters = individual_admin.get_list_filter(rf.get("/"))
     names = {filter_.__name__ for filter_ in filters if isinstance(filter_, type)}
@@ -336,7 +352,7 @@ def test_queryset_biometric_annotations(
     state.program = program
     queryset = mocker.MagicMock()
     base = mocker.patch.object(BeneficiaryBaseAdmin, "get_queryset", return_value=queryset)
-    mocker.patch.object(individual_admin_mod, "show_biometric_columns", return_value=visible)
+    mocker.patch.object(individual_admin_mod, "show_program_biometric_results", return_value=visible)
     rdp = mocker.Mock()
     get_rdp = mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
     annotate = mocker.patch.object(
@@ -372,35 +388,6 @@ def test_get_object_without_object_id(
 
 
 @pytest.mark.parametrize(
-    "status",
-    [None, RdpOperation.Status.PENDING],
-    ids=["missing-operation", "operation-not-successful"],
-)
-def test_get_object_requires_successful_biometric_operation(
-    individual_admin: CountryIndividualAdmin,
-    rf,
-    mocker: MockerFixture,
-    status: RdpOperation.Status | None,
-) -> None:
-    rdp = mocker.sentinel.rdp
-    operation = RdpOperation(status=status) if status is not None else None
-
-    mocker.patch.object(BeneficiaryBaseAdmin, "get_object", return_value=None)
-    mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
-    get_operation = mocker.patch.object(
-        individual_admin_mod,
-        "biometric_operation_for_rdp",
-        return_value=operation,
-    )
-    duplicates = mocker.patch.object(individual_admin_mod, "qs_biometric_duplicate_individuals")
-
-    assert individual_admin.get_object(rf.get("/"), "1") is None
-
-    get_operation.assert_called_once_with(rdp=rdp)
-    duplicates.assert_not_called()
-
-
-@pytest.mark.parametrize(
     "error_type",
     [ValidationError, ValueError],
     ids=["validation-error", "value-error"],
@@ -411,18 +398,12 @@ def test_get_object_invalid_object_id(
     mocker: MockerFixture,
     error_type: type[Exception],
 ) -> None:
-    rdp = mocker.sentinel.rdp
-    operation = RdpOperation(status=RdpOperation.Status.SUCCESS)
-
     mocker.patch.object(BeneficiaryBaseAdmin, "get_object", return_value=None)
-    mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
-    mocker.patch.object(individual_admin_mod, "biometric_operation_for_rdp", return_value=operation)
+    mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=mocker.sentinel.rdp)
+    mocker.patch.object(individual_admin, "_can_view_operation_findings", return_value=True)
     mocker.patch.object(individual_admin.model._meta.pk, "to_python", side_effect=error_type("invalid"))
-    duplicates = mocker.patch.object(individual_admin_mod, "qs_biometric_duplicate_individuals")
 
     assert individual_admin.get_object(rf.get("/"), "invalid") is None
-
-    duplicates.assert_not_called()
 
 
 def test_ind_change_missing_object_redirects(app: "DjangoTestApp", individual: "CountryIndividual") -> None:
@@ -434,15 +415,17 @@ def test_ind_change_missing_object_redirects(app: "DjangoTestApp", individual: "
     assert response.status_code == 302
 
 
+@pytest.mark.parametrize("removed", [False, True], ids=["active", "removed"])
 @pytest.mark.parametrize(
     "rdp_status",
     [Rdp.PushStatus.SUCCESS, Rdp.PushStatus.REVIEW_PENDING],
     ids=["historical", "review-pending"],
 )
-def test_ind_change_opens_removed_biometric_duplicate_from_rdp(
+def test_ind_change_opens_related_individual_from_rdp_finding(
     app: "DjangoTestApp",
     program,
     rdp_status: Rdp.PushStatus,
+    removed: bool,
 ) -> None:
     from testutils.factories import (
         BiometricRdpOperationFactory,
@@ -468,7 +451,7 @@ def test_ind_change_opens_removed_biometric_duplicate_from_rdp(
         batch__program=program,
         batch__country_office=program.country_office,
         batch__status=Batch.BatchStatus.COMPLETE,
-        removed=True,
+        removed=removed,
     )
     unrelated = CountryIndividualFactory(
         household=None,
@@ -503,9 +486,11 @@ def test_ind_change_opens_removed_biometric_duplicate_from_rdp(
 
         assert duplicate_response.status_code == 200
         assert duplicate_response.context["original"].pk == duplicate.pk
-        assert duplicate_response.context["has_change_permission"] is False
-        assert duplicate_response.context["show_save_invalid"] is False
-        assert 'name="_save_invalid"' not in duplicate_response.text
+
+        if removed:
+            assert duplicate_response.context["has_change_permission"] is False
+            assert duplicate_response.context["show_save_invalid"] is False
+            assert 'name="_save_invalid"' not in duplicate_response.text
 
         unrelated_url = reverse("workspace:workspaces_countryindividual_change", args=[unrelated.pk])
         app.get(
