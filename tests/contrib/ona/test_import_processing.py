@@ -5,6 +5,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models.jobs import GracefulJobCancellationError
+from country_workspace.utils.flex_files import FlexFileContent, pending_marker
 
 from country_workspace.contrib.ona.import_processing import (
     Config,
@@ -220,8 +221,12 @@ def test_import_data_calls_client_and_aggregates(
     )
     client_cls.return_value.iter_submissions.assert_called_once_with(config["form_id"], last_id=None)
 
-    import_submission_mock.assert_any_call(batch=batch, submission={"_id": 1, "_uuid": "uuid-1"}, config=job.config)
-    import_submission_mock.assert_any_call(batch=batch, submission={"_id": 2, "_uuid": "uuid-2"}, config=job.config)
+    import_submission_mock.assert_any_call(
+        batch=batch, submission={"_id": 1, "_uuid": "uuid-1"}, config=job.config, files={}
+    )
+    import_submission_mock.assert_any_call(
+        batch=batch, submission={"_id": 2, "_uuid": "uuid-2"}, config=job.config, files={}
+    )
 
     postprocessing.assert_called_once_with(
         batch,
@@ -903,3 +908,69 @@ def test_import_data_cancellation_preserves_committed_cursor_without_continuatio
     validation_jobs.assert_not_called()
     ona_data_imported_signal.assert_not_called()
     batch_cls.objects.create.return_value.save.assert_not_called()
+
+
+PHOTO = FlexFileContent(content=b"\xff\xd8\xffphoto", mimetype="image/jpeg", filename="photo.jpg")
+
+
+def test_import_data_passes_downloaded_attachments_to_import(mocker: MockerFixture, job) -> None:
+    _mock_atomic(mocker)
+    mocker.patch("country_workspace.contrib.ona.import_processing.Batch")
+    mocker.patch("country_workspace.contrib.ona.import_processing.run_batch_postprocessing")
+    client_cls = mocker.patch("country_workspace.contrib.ona.import_processing.OnaClient")
+    client = client_cls.return_value
+    attachment = {"name": "photo.jpg", "mimetype": "image/jpeg", "download_url": "/api/v1/files/1"}
+    client.iter_submissions.return_value = [{"_id": 1, "photo": "photo.jpg", "_attachments": [attachment]}]
+    client.download.return_value = PHOTO.content
+    import_submission_mock = mocker.patch(
+        "country_workspace.contrib.ona.import_processing.import_submission", return_value=ImportResult(people=1)
+    )
+
+    import_data(job)
+
+    client.download.assert_called_once_with("/api/v1/files/1")
+    kwargs = import_submission_mock.call_args.kwargs
+    assert kwargs["submission"]["photo"] == pending_marker("photo.jpg")
+    assert kwargs["files"] == {"photo.jpg": PHOTO}
+
+
+@pytest.mark.parametrize(("created", "materialized"), [(True, True), (False, False)])
+def test_create_individual_keeps_the_files_of_a_reused_collector(
+    mocker: MockerFixture, config: Config, created: bool, materialized: bool
+) -> None:
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_individual_processor",
+        return_value=mocker.MagicMock(return_value={"relationship": "NON_BENEFICIARY"}),
+    )
+    collector = mocker.MagicMock()
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.get_or_create_collector", return_value=(collector, created)
+    )
+    materialize = mocker.patch("country_workspace.contrib.ona.import_processing.materialize_pending_files")
+    files = {"photo.jpg": PHOTO}
+
+    result = create_individual(
+        batch=mocker.MagicMock(), row={}, raw_data={}, config=config, originating_id="ONA#1#IND0", files=files
+    )
+
+    assert result.created is created
+    assert materialize.called is materialized
+    if materialized:
+        materialize.assert_called_once_with(collector, files)
+
+
+def test_create_household_materializes_its_files(mocker: MockerFixture, config: Config) -> None:
+    mocker.patch(
+        "country_workspace.contrib.ona.import_processing.build_household_processor",
+        return_value=mocker.MagicMock(return_value={}),
+    )
+    household_cls = mocker.patch("country_workspace.contrib.ona.import_processing.Household")
+    materialize = mocker.patch("country_workspace.contrib.ona.import_processing.materialize_pending_files")
+    files = {"consent.jpg": PHOTO}
+
+    household = create_household(
+        batch=mocker.MagicMock(), row={}, raw_data={}, config=config, originating_id="ONA#1#HH0", files=files
+    )
+
+    assert household is household_cls.objects.create.return_value
+    materialize.assert_called_once_with(household, files)

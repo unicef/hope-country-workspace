@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 from constance import config as constance_config
+from country_workspace.contrib.ona.attachments import download_attachments
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import (
     filter_ona_sys_fields,
@@ -25,6 +26,7 @@ from country_workspace.models.household import (
     ROLE_PRIMARY,
 )
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
+from country_workspace.utils.flex_files import materialize_pending_files
 from country_workspace.utils.import_flow import (
     build_import_processor,
     get_or_create_collector,
@@ -38,6 +40,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from django.db.models import QuerySet
+
+    from country_workspace.utils.flex_files import FlexFileContent
 
 
 def get_ona_sync_log_name(form_id: str | int) -> str:
@@ -63,6 +67,7 @@ class ImportResult(NamedTuple):
 class ImportedIndividual(NamedTuple):
     individual: Individual
     fields: dict[str, Any]
+    created: bool = True
 
 
 def import_data(job: AsyncJob) -> ImportResult:
@@ -186,14 +191,15 @@ def import_submissions(
     time_exhausted = False
 
     try:
-        for submission in client.iter_submissions(config["form_id"], last_id=last_id):
+        for raw_submission in client.iter_submissions(config["form_id"], last_id=last_id):
             job.ensure_not_cancelled(refresh=True)
-            current_submission_id = get_ona_submission_cursor_id(submission)
+            current_submission_id = get_ona_submission_cursor_id(raw_submission)
             if last_id is not None and current_submission_id <= last_id:
                 continue
 
+            submission, files = download_attachments(client.download, raw_submission)
             # import_submission commits the whole submission before returning.
-            imported = import_submission(batch=batch, submission=submission, config=config)
+            imported = import_submission(batch=batch, submission=submission, config=config, files=files)
             total_people += imported.people
             total_households += imported.households
             last_successful_id = current_submission_id
@@ -233,6 +239,7 @@ def import_submission(
     batch: Batch,
     submission: Mapping[str, Any],
     config: Config,
+    files: Mapping[str, FlexFileContent] | None = None,
 ) -> ImportResult:
     originating_id = get_ona_originating_id(submission)
 
@@ -253,6 +260,7 @@ def import_submission(
                 raw_data=household_record["raw_data"],
                 config=config,
                 originating_id=f"{originating_id}#HH0",
+                files=files,
             )
 
             people_counter = 0
@@ -265,6 +273,7 @@ def import_submission(
                     config=config,
                     originating_id=f"{originating_id}#IND{index}",
                     household=household,
+                    files=files,
                 )
                 imported_individuals.append(imported_individual)
                 people_counter += 1
@@ -283,6 +292,7 @@ def import_submission(
                 raw_data=individual_record["raw_data"],
                 config=config,
                 originating_id=f"{originating_id}#IND{index}",
+                files=files,
             )
             people_counter += 1
 
@@ -300,6 +310,7 @@ def create_individual(  # noqa: PLR0913
     config: Config,
     originating_id: str,
     household: Household | None = None,
+    files: Mapping[str, FlexFileContent] | None = None,
 ) -> ImportedIndividual:
     individual_row_processor = build_individual_processor(
         batch.program,
@@ -308,7 +319,7 @@ def create_individual(  # noqa: PLR0913
     individual_fields = individual_row_processor(row)
 
     if individual_fields.get("relationship") == RELATIONSHIP_NON_BENEFICIARY:
-        individual, _created = get_or_create_collector(
+        individual, created = get_or_create_collector(
             program=batch.program,
             batch=batch,
             individual_fields=individual_fields,
@@ -324,10 +335,16 @@ def create_individual(  # noqa: PLR0913
             flex_fields=individual_fields,
             raw_data=dict(raw_data),
         )
+        created = True
+
+    # a reused collector keeps the files of the import that created it
+    if created and files:
+        materialize_pending_files(individual, files)
 
     return ImportedIndividual(
         individual=individual,
         fields=individual_fields,
+        created=created,
     )
 
 
@@ -361,26 +378,30 @@ def set_roles_and_relationships(
     household.save(update_fields=["flex_fields"])
 
 
-def create_household(
+def create_household(  # noqa: PLR0913
     *,
     batch: Batch,
     row: Mapping[str, Any],
     raw_data: Mapping[str, Any],
     config: Config,
     originating_id: str,
+    files: Mapping[str, FlexFileContent] | None = None,
 ) -> Household:
     household_row_processor = build_household_processor(
         batch.program,
         mapping_id=config.get("household_mapping_id"),
     )
 
-    return Household.objects.create(
+    household = Household.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
         flex_fields=household_row_processor(row),
         raw_data=dict(raw_data),
     )
+    if files:
+        materialize_pending_files(household, files)
+    return household
 
 
 def get_ona_submission_id(submission: Mapping[str, Any]) -> str:
