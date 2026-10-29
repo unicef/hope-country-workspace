@@ -3,17 +3,21 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime
 from typing import Any
+from uuid import UUID
+from urllib.parse import urlencode
 
 import sentry_sdk
 from admin_extra_buttons.api import button, link
 from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
-from django.db.models import QuerySet
+from django.core.exceptions import PermissionDenied
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
-from django.urls import NoReverseMatch, reverse
+from django.template.response import TemplateResponse
+from django.urls import NoReverseMatch, URLPattern, URLResolver, path, reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
 from django.utils.dateparse import parse_datetime
@@ -24,26 +28,29 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
+    RDP_OPERATION_DEFINITIONS,
     RdpActionPolicy,
     RdpWorkflowError,
     cancel_rdp,
-    create_clean_rdp as create_clean_rdp_workflow,
     claim_review_rdp_push,
-    failed_rdp_operations,
+    create_clean_rdp as create_clean_rdp_workflow,
     get_push_policy,
     get_rdp_policy,
+    has_retryable_rdp_operations,
+    is_biometric_threshold_exceeded,
+    ocr_affected_individuals_count,
     qs_biometric_affected_individuals,
-    retry_failed_rdp_operations,
+    retry_rdp_operations,
     retry_rdp_push,
 )
 from country_workspace.state import state
-from country_workspace.workspaces.models import CountryRdp
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
+from .forms import RdpFindingsFilterForm
 from .hh_ind import SelectedProgramMixin
-
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
 
@@ -64,10 +71,19 @@ def _is_allowed(btn: StandardButton, policy_getter: PolicyGetter, action: str) -
         return False
 
 
-def _has_failed_operations(btn: StandardButton) -> bool:
+def _has_retryable_operations(btn: StandardButton) -> bool:
     return bool(
-        (obj := btn.original) and obj.status == Rdp.PushStatus.PENDING and failed_rdp_operations(rdp_id=obj.pk).exists()
+        (rdp := btn.original) and rdp.status == Rdp.PushStatus.PENDING and has_retryable_rdp_operations(rdp_id=rdp.pk)
     )
+
+
+def _is_clean_rdp_visible(btn: StandardButton) -> bool:
+    """Return whether the biometric threshold contributed to the pending review."""
+    if (rdp := btn.original) is None or rdp.status != Rdp.PushStatus.REVIEW_PENDING:
+        return False
+    with suppress(RdpWorkflowError):
+        return is_biometric_threshold_exceeded(rdp=rdp)
+    return False
 
 
 @register(CountryRdp, site=workspace)
@@ -113,8 +129,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         fieldsets = [
             (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
         ]
+
         if obj and obj.operations.exists():
             fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
+
         fieldsets.extend(
             [
                 (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
@@ -135,19 +153,111 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
 
+    def get_urls(self) -> list[URLPattern | URLResolver]:
+        return [
+            path(
+                "<int:rdp_id>/operations/<uuid:operation_id>/findings/",
+                self.admin_site.admin_view(self.findings_view, cacheable=False),
+                name="workspaces_countryrdp_findings",
+            ),
+        ] + super().get_urls()
+
+    def findings_view(self, request: HttpRequest, rdp_id: int, operation_id: UUID) -> HttpResponse:
+        """Display saved findings for an operation in the selected workspace context."""
+        rdp = get_object_or_404(self.get_queryset(request), pk=rdp_id, country_office=state.tenant)
+        individual_admin = self.admin_site.get_model_admin(CountryIndividual)
+        if not self.has_view_permission(request, rdp) or not individual_admin.has_view_permission(request):
+            raise PermissionDenied
+
+        operation = get_object_or_404(rdp.operations, pk=operation_id)
+        definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
+        labels = {value: str(label) for value, label in definition.finding_types.choices} if definition else {}
+
+        household_admin = self.admin_site.get_model_admin(CountryHousehold)
+        can_view_households = rdp.program.is_master_detail and household_admin.has_view_permission(request)
+        filter_form = RdpFindingsFilterForm(
+            request.GET,
+            finding_types=list(labels.items()),
+            include_household=can_view_households,
+        )
+
+        findings = operation.findings.order_by("pk")
+        if filter_form.is_valid():
+            if finding_type := filter_form.cleaned_data["finding_type"]:
+                findings = findings.filter(finding_type=finding_type)
+            if individual_id := filter_form.cleaned_data["individual_id"]:
+                findings = findings.filter(Q(individual_id=individual_id) | Q(related_individual_id=individual_id))
+            if household_id := filter_form.cleaned_data.get("household_id"):
+                findings = findings.filter(
+                    Q(individual__household_id=household_id) | Q(related_individual__household_id=household_id)
+                )
+        else:
+            findings = findings.none()
+
+        rows = findings.values(
+            "individual_id",
+            "individual__name",
+            "individual__household_id",
+            "finding_type",
+            "field_name",
+            "related_individual_id",
+            "related_individual__name",
+            "related_individual__household_id",
+            "details",
+        )
+        page = self.get_paginator(request, rows, self.list_per_page).get_page(request.GET.get("page"))
+        query = {"_changelist_filters": urlencode({"rdp_id": rdp.pk})}
+
+        for finding in page:
+            finding["label"] = labels.get(finding["finding_type"], finding["finding_type"])
+            finding["individual_url"] = reverse(
+                "workspace:workspaces_countryindividual_change", args=[finding["individual_id"]], query=query
+            )
+            if related_id := finding["related_individual_id"]:
+                finding["related_individual_url"] = reverse(
+                    "workspace:workspaces_countryindividual_change", args=[related_id], query=query
+                )
+            if can_view_households and (household_id := finding["individual__household_id"]):
+                finding["household_url"] = reverse(
+                    "workspace:workspaces_countryhousehold_change", args=[household_id], query=query
+                )
+
+        context = self.get_common_context(
+            request,
+            str(rdp.pk),
+            title=_("Findings"),
+            operation=operation,
+            page=page,
+            filter_form=filter_form,
+            results_complete=operation.status == RdpOperation.Status.SUCCESS,
+            show_households=can_view_households,
+        )
+        context["original"] = rdp
+        return TemplateResponse(request, "workspace/rdp/findings.html", context)
+
     @display(description="")
     def operations_display(self, obj: CountryRdp) -> str:
         """Return RDP operation execution details."""
-        operations = list(obj.operations.order_by("operation_type"))
-        if not operations:
-            return "-"
+        can_view_findings = bool(
+            state.request and self.admin_site.get_model_admin(CountryIndividual).has_view_permission(state.request)
+        )
         rows = []
-        for operation in operations:
+        for operation in obj.operations.order_by("operation_type"):
             successful = operation.status == RdpOperation.Status.SUCCESS
-            biometric = operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION
+            definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
+
+            affected_individuals = None
+            if successful:
+                match operation.operation_type:
+                    case RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+                        affected_individuals = qs_biometric_affected_individuals(operation=operation).count()
+                    case RdpOperation.Type.OCR:
+                        affected_individuals = ocr_affected_individuals_count(operation=operation)
+
             rows.append(
                 {
-                    "id": str(operation.id),
+                    "operation_id": str(operation.id),
+                    "operation_id_label": definition.operation_id_label if definition else _("Operation ID"),
                     "type": operation.get_operation_type_display(),
                     "status": operation.get_status_display(),
                     "attempts": operation.attempt,
@@ -156,15 +266,16 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     "config": json.dumps(operation.config, indent=2, ensure_ascii=False) if operation.config else "",
                     "error": json.dumps(operation.error, indent=2, ensure_ascii=False) if operation.error else "",
                     "log": [self._format_log_entry(entry) for entry in operation.log],
-                    "findings": operation.findings.count() if biometric and successful else None,
-                    "affected_individuals": (
-                        qs_biometric_affected_individuals(operation=operation).count()
-                        if biometric and successful
-                        else None
-                    ),
+                    "findings": operation.findings.count(),
+                    "findings_url": reverse("workspace:workspaces_countryrdp_findings", args=[obj.pk, operation.pk])
+                    if can_view_findings
+                    else "",
+                    "results_complete": successful,
+                    "affected_individuals": affected_individuals,
                 }
             )
-        return render_to_string("workspace/rdp/_operations.html", {"rows": rows})
+
+        return render_to_string("workspace/rdp/_operations.html", {"rows": rows}) if rows else "-"
 
     @display(description="")
     def processing_history(self, obj: CountryRdp) -> str:
@@ -193,7 +304,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             with suppress(TypeError, ValueError):
                 action = RdpLogEntryType(action).label
             rows.append(self._format_log_entry(entry, action=str(action)))
-
         return render_to_string("workspace/rdp/_log.html", {"rows": rows}) if rows else "-"
 
     def _change_url(self, obj: CountryRdp) -> str:
@@ -274,28 +384,41 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         return apply_cancel(request)
 
     @button(
-        label="Retry failed operations",
+        label="Retry operations",
         change_form=True,
         change_list=False,
         permission="country_workspace.create_rdp",
-        visible=_has_failed_operations,
-        html_attrs={"title": "Retry failed RDP operations."},
+        visible=_has_retryable_operations,
+        html_attrs={"title": "Retry failed or stuck RDP operations."},
     )
-    def retry_failed_operations(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Retry failed RDP operations."""
+    def retry_operations(self, request: HttpRequest, pk: str) -> HttpResponse:
+        """Retry RDP operations that require manual recovery."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        count = retry_failed_rdp_operations(rdp_id=obj.pk, owner_id=request.user.pk)
-        if count is None:
-            messages.error(request, _("Program cleanup is in progress."))
-        elif count:
-            messages.success(request, f"{count} failed operation(s) scheduled for retry.")
-        else:
-            messages.warning(request, "No failed operations available for retry.")
+        def apply(__: HttpRequest) -> HttpResponse:
+            count = retry_rdp_operations(rdp_id=obj.pk, owner_id=request.user.pk)
+            if count is None:
+                messages.error(request, _("Program cleanup is in progress."))
+            elif count:
+                messages.success(request, f"{count} operation(s) scheduled for retry.")
+            else:
+                messages.warning(request, "No operations available for retry.")
+            return redirect(self._change_url(obj))
 
-        return redirect(self._change_url(obj))
+        return confirm_action(
+            self,
+            request,
+            apply,
+            message="Retry available RDP operations?",
+            description=(
+                "Failed operations will be retried first. "
+                "If no operation has failed, a running operation that supports manual retry may be restarted. "
+                "Retry a running operation only when its current result is no longer expected."
+            ),
+            template="workspace/admin_extra_buttons/confirm.html",
+        )
 
     @button(
         label="Push all to HOPE",
@@ -361,7 +484,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
-        visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
+        visible=_is_clean_rdp_visible,
         html_attrs={"title": "Create a new RDP excluding beneficiaries affected by biometric findings."},
     )
     def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:

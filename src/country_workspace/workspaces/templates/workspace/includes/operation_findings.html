@@ -1,0 +1,54 @@
+{% load i18n %}
+{% if operation_findings %}
+    <section id="operation-findings" class="mb-6 overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
+            <h2 class="text-lg font-semibold">
+                {% translate "Operation findings" %}
+            </h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-left">
+                <thead class="border-b border-gray-200 bg-gray-50">
+                    <tr>
+                        <th class="px-5 py-3 font-medium">
+                            {% translate "Operation" %}
+                        </th>
+                        <th class="px-5 py-3 font-medium">
+                            {% translate "Status" %}
+                        </th>
+                        <th class="px-5 py-3 font-medium">
+                            {% translate "Findings" %}
+                        </th>
+                        {% if show_finding_members %}
+                            <th class="px-5 py-3 font-medium">
+                                {% translate "Members with findings" %}
+                            </th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for row in operation_findings %}
+                        <tr>
+                            <td class="px-5 py-3 font-medium">
+                                {{ row.type }}
+                            </td>
+                            <td class="px-5 py-3 font-semibold">
+                                {{ row.status }}
+                            </td>
+                            <td class="px-5 py-3">
+                                <a href="{{ row.url }}" class="font-medium text-[var(--link-fg)] hover:underline">
+                                    {% translate "View findings" %} ({{ row.findings }})
+                                </a>
+                            </td>
+                            {% if show_finding_members %}
+                                <td class="px-5 py-3">
+                                    {{ row.members }}
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endif %}

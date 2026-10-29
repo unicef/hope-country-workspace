@@ -30,7 +30,7 @@ class RdpOperationFinding(BaseModel):
     )
     related_individual = models.ForeignKey(
         "Individual",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="related_rdp_operation_findings",
         null=True,
         blank=True,

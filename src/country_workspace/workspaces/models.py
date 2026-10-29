@@ -44,7 +44,7 @@ class CountryHousehold(Household):
         return cast("CountryProgram", self.batch.program)
 
     @cached_property
-    def country_office(self) -> "DataChecker":
+    def country_office(self) -> "Office":
         return self.batch.program.country_office
 
 

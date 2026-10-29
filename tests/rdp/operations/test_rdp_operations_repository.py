@@ -1,15 +1,20 @@
 import pytest
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
-from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding, RdpOperationUnit
 from country_workspace.rdp.operations.repository import (
     append_rdp_operation_log,
     claim_rdp_operation,
     fail_rdp_operation,
-    failed_rdp_operations,
+    fail_rdp_operation_units,
     finish_rdp_operation,
     get_rdp_operation,
+    get_rdp_operation_units_outcome,
     has_incomplete_rdp_operations,
+    has_rdp_operation_units,
+    pending_rdp_operation_units,
+    prepare_rdp_operation_units_for_retry,
+    record_rdp_operation_error,
 )
 
 
@@ -112,6 +117,19 @@ def test_fail_rdp_operation_ignores_non_running(
     )
 
 
+def test_fail_rdp_operation_ignores_stale_attempt(
+    running_biometric_operation: RdpOperation,
+) -> None:
+    assert (
+        fail_rdp_operation(
+            operation_id=running_biometric_operation.id,
+            expected_attempt=running_biometric_operation.attempt + 1,
+            error={"message": "failed"},
+        )
+        is False
+    )
+
+
 def test_finish_rdp_operation(
     running_biometric_operation: RdpOperation,
 ) -> None:
@@ -156,10 +174,16 @@ def test_finish_rdp_operation_ignores_non_running(
     )
 
 
-def test_failed_rdp_operations(
-    failed_biometric_operation: RdpOperation,
+def test_finish_rdp_operation_ignores_stale_attempt(
+    running_biometric_operation: RdpOperation,
 ) -> None:
-    assert list(failed_rdp_operations(rdp_id=failed_biometric_operation.rdp_id)) == [failed_biometric_operation]
+    assert (
+        finish_rdp_operation(
+            operation_id=running_biometric_operation.id,
+            expected_attempt=running_biometric_operation.attempt + 1,
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -190,3 +214,146 @@ def test_append_rdp_operation_log(
         assert "result" not in entry
     else:
         assert entry["result"] == result
+
+
+@pytest.mark.parametrize(
+    ("attempt_offset", "expected", "retry_status"),
+    [
+        (0, True, RdpOperationUnit.Status.PENDING),
+        (1, False, RdpOperationUnit.Status.FAILURE),
+    ],
+    ids=["current", "stale"],
+)
+def test_prepare_rdp_operation_units_for_retry(
+    running_ocr_operation: RdpOperation,
+    attempt_offset: int,
+    expected: bool,
+    retry_status: RdpOperationUnit.Status,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    success = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.SUCCESS)
+    retry = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.FAILURE)
+
+    assert (
+        prepare_rdp_operation_units_for_retry(
+            operation_id=running_ocr_operation.id,
+            expected_attempt=running_ocr_operation.attempt + attempt_offset,
+        )
+        is expected
+    )
+
+    success.refresh_from_db()
+    retry.refresh_from_db()
+    assert success.status == RdpOperationUnit.Status.SUCCESS
+    assert retry.status == retry_status
+
+
+@pytest.mark.parametrize(("attempt_offset", "expected"), [(0, 1), (1, 0)], ids=["current", "stale"])
+def test_fail_rdp_operation_units(
+    running_ocr_operation: RdpOperation,
+    attempt_offset: int,
+    expected: int,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    pending = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    success = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.SUCCESS)
+    other = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    error = {"message": "failed"}
+
+    assert (
+        fail_rdp_operation_units(
+            operation_id=running_ocr_operation.id,
+            expected_attempt=running_ocr_operation.attempt + attempt_offset,
+            unit_ids=[pending.pk, success.pk],
+            error=error,
+        )
+        == expected
+    )
+
+    pending.refresh_from_db()
+    success.refresh_from_db()
+    other.refresh_from_db()
+    assert pending.status == (RdpOperationUnit.Status.FAILURE if expected else RdpOperationUnit.Status.PENDING)
+    assert pending.error == (error if expected else {})
+    assert success.status == RdpOperationUnit.Status.SUCCESS
+    assert other.status == RdpOperationUnit.Status.PENDING
+
+
+def test_rdp_operation_unit_queries(running_ocr_operation: RdpOperation) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    pending = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.SUCCESS)
+
+    assert list(pending_rdp_operation_units(operation_id=running_ocr_operation.id)) == [pending]
+    assert has_rdp_operation_units(operation_id=running_ocr_operation.id) is True
+
+
+@pytest.mark.parametrize(
+    ("statuses", "expected"),
+    [
+        ([], None),
+        ([RdpOperationUnit.Status.PENDING], None),
+        ([RdpOperationUnit.Status.SUCCESS], RdpOperation.Status.SUCCESS),
+        ([RdpOperationUnit.Status.SUCCESS, RdpOperationUnit.Status.FAILURE], RdpOperation.Status.FAILURE),
+    ],
+    ids=["empty", "pending", "success", "failure"],
+)
+def test_get_rdp_operation_units_outcome(
+    running_ocr_operation: RdpOperation,
+    statuses: list[RdpOperationUnit.Status],
+    expected: RdpOperation.Status | None,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    for status in statuses:
+        OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=status)
+
+    assert get_rdp_operation_units_outcome(operation_id=running_ocr_operation.id) == expected
+
+
+@pytest.mark.parametrize(
+    ("with_pending", "expected_status"),
+    [
+        (True, RdpOperation.Status.RUNNING),
+        (False, RdpOperation.Status.FAILURE),
+    ],
+)
+def test_record_rdp_operation_error(
+    running_ocr_operation: RdpOperation,
+    with_pending: bool,
+    expected_status: RdpOperation.Status,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    if with_pending:
+        OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+
+    error = {"message": "failed"}
+    assert record_rdp_operation_error(
+        operation_id=running_ocr_operation.id,
+        expected_attempt=running_ocr_operation.attempt,
+        error=error,
+    )
+
+    running_ocr_operation.refresh_from_db()
+    assert running_ocr_operation.status == expected_status
+    assert running_ocr_operation.error == error
+    assert running_ocr_operation.log[-1]["action"] == "EXECUTION_ERROR"
+    assert (running_ocr_operation.finished_at is None) is with_pending
+
+
+def test_record_rdp_operation_error_ignores_stale_attempt(running_ocr_operation: RdpOperation) -> None:
+    assert (
+        record_rdp_operation_error(
+            operation_id=running_ocr_operation.id,
+            expected_attempt=running_ocr_operation.attempt + 1,
+            error={"message": "failed"},
+        )
+        is False
+    )
+
+    running_ocr_operation.refresh_from_db()
+    assert running_ocr_operation.status == RdpOperation.Status.RUNNING

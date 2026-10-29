@@ -1,37 +1,75 @@
 {% extends "workspace/actions/base.html" %}
 {% load i18n workspace_urls %}
 {% block action-content %}
-    {{ intro_text|default:"Selected beneficiaries will be included in the new RDP." }}
-    <div>
-        <form method="post" id="create-rdp-form">
+    <div class="max-w-5xl space-y-6">
+        <p class="text-lg text-gray-700">
+            {{ intro_text|default:"Selected beneficiaries will be included in the new RDP." }}
+        </p>
+        <form method="post" id="create-rdp-form" class="space-y-6">
             {% csrf_token %}
-            <table>
-                {{ form.as_table }}
-                {% for definition, operation_form in operation_forms %}
-                    <tr>
-                        <th colspan="2">
-                            {{ definition.operation_type.label }}
-                        </th>
-                    </tr>
-                    {% for field in operation_form %}
-                        <tr class="form-row{% if field.errors %} errors{% endif %}">
-                            <th>
-                                {{ field.label_tag }}
-                            </th>
-                            <td>
-                                {{ field.errors }}
-                                {{ field }}
-                                {% if field.help_text %}
-                                    <div class="help">
-                                        {{ field.help_text|safe }}
+            <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
+                    <h2 class="text-lg font-semibold">
+                        {% translate "RDP details" %}
+                    </h2>
+                </div>
+                <div class="px-5 py-4">
+                    <table class="w-full">
+                        {{ form.as_table }}
+                    </table>
+                </div>
+            </section>
+            {% if operation_forms %}
+                <div>
+                    <h2 class="text-xl font-semibold">
+                        {% translate "Operations" %}
+                    </h2>
+                    <p class="mt-1 text-sm text-gray-500">
+                        {% translate "Configure the review threshold for each operation." %}
+                    </p>
+                </div>
+                <div class="space-y-5">
+                    {% for definition, operation_form in operation_forms %}
+                        <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+                            <div class="border-b border-gray-200 bg-gray-50 px-5 py-4">
+                                <h3 class="text-lg font-semibold">
+                                    {{ definition.operation_type.label }}
+                                </h3>
+                            </div>
+                            <div class="px-5 py-4">
+                                {% if operation_form.non_field_errors %}
+                                    <div class="mb-4">
+                                        {{ operation_form.non_field_errors }}
                                     </div>
                                 {% endif %}
-                            </td>
-                        </tr>
+                                <table class="w-full">
+                                    {% for field in operation_form %}
+                                        {% if field.is_hidden %}
+                                            {{ field }}
+                                        {% else %}
+                                            <tr class="form-row{% if field.errors %} errors{% endif %}">
+                                                <th class="w-56 align-top">
+                                                    {{ field.label_tag }}
+                                                </th>
+                                                <td>
+                                                    {{ field.errors }}
+                                                    {{ field }}
+                                                    {% if field.help_text %}
+                                                        <div class="help">
+                                                            {{ field.help_text|safe }}
+                                                        </div>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                </table>
+                            </div>
+                        </section>
                     {% endfor %}
-                {% endfor %}
-            </table>
-            <div class="submit-row">
+                </div>
+            {% endif %}
+            <div class="submit-row !m-0">
                 <input type="submit"
                        value="{% firstof submit_label 'Create RDP' %}"
                        class="default"

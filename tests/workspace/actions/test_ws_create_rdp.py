@@ -8,7 +8,7 @@ from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, Office, RdpOperation
 from country_workspace.rdp import create_rdp_core
-from country_workspace.rdp.deduplication.types import ThresholdType
+from country_workspace.rdp.types import ThresholdType
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram
 from testutils.utils import select_office
@@ -80,6 +80,8 @@ def create_rdp_job(
     app: DjangoTestApp,
     program: CountryProgram,
     beneficiary: CountryHousehold | CountryIndividual,
+    *,
+    fields: dict[str, str] | None = None,
 ) -> AsyncJob:
     model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
     url = reverse(f"workspace:workspaces_{model_name}_changelist")
@@ -91,6 +93,8 @@ def create_rdp_job(
 
         create_form = form.submit().forms["create-rdp-form"]
         create_form["batch_name"] = "Test Batch"
+        for name, value in (fields or {}).items():
+            create_form[name] = value
         response = create_form.submit("_create")
 
     assert response.status_code == 302
@@ -116,7 +120,15 @@ def test_create_rdp_action(
         "country_office_id": program.country_office.id,
         "program_id": program.id,
         "pushed_by_id": app._user.id,
-        "operations": [],
+        "operations": [
+            {
+                "operation_type": RdpOperation.Type.OCR,
+                "config": {
+                    "threshold_type": ThresholdType.COUNT,
+                    "threshold_value": "0",
+                },
+            }
+        ],
     }
 
 
@@ -129,24 +141,16 @@ def test_create_rdp_action_with_biometric_deduplication(
     program.biometric_deduplication_enabled = True
     program.save(update_fields=["biometric_deduplication_enabled"])
 
-    model_name = "countryhousehold" if program.beneficiary_group.master_detail else "countryindividual"
-    url = reverse(f"workspace:workspaces_{model_name}_changelist")
+    job = create_rdp_job(
+        app,
+        program,
+        beneficiary,
+        fields={
+            "biometric_deduplication-threshold_type": ThresholdType.COUNT,
+            "biometric_deduplication-threshold_value": "1",
+        },
+    )
 
-    with select_office(app, program.country_office, program):
-        form = app.get(url).forms["changelist-form"]
-        form.set("_selected_action", [str(beneficiary.pk)])
-        form["action"].select("create_rdp")
-
-        create_form = form.submit().forms["create-rdp-form"]
-        create_form["batch_name"] = "Test Batch"
-        create_form["biometric_deduplication-threshold_type"] = ThresholdType.COUNT
-        create_form["biometric_deduplication-threshold_value"] = "1"
-
-        response = create_form.submit("_create")
-
-    assert response.status_code == 302
-
-    job = program.jobs.latest("pk")
     assert job.config["operations"] == [
         {
             "operation_type": RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
@@ -154,7 +158,14 @@ def test_create_rdp_action_with_biometric_deduplication(
                 "threshold_type": ThresholdType.COUNT,
                 "threshold_value": "1",
             },
-        }
+        },
+        {
+            "operation_type": RdpOperation.Type.OCR,
+            "config": {
+                "threshold_type": ThresholdType.COUNT,
+                "threshold_value": "0",
+            },
+        },
     ]
 
 
