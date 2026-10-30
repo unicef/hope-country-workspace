@@ -7,11 +7,12 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.db.models import Field, QuerySet
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.html import format_html_join
+from django.utils.text import slugify
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
@@ -20,10 +21,11 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
 from country_workspace.state import state
+from country_workspace.utils.import_template import NoDataCheckerError, build_import_template, get_sheet_plans
 from ._import_data import ImportDataMixin
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
 from .forms import BulkUpdateImportForm, MassDefaultsForm, DedupSettingsForm
-from ..permissions import can_change_country_program, can_import_program_data
+from ..permissions import can_change_country_program, can_export_import_template, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
@@ -34,6 +36,7 @@ if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 
 DEDUP_SETTINGS_FETCH_TIMEOUT: Final[tuple[int, int]] = (2, 3)
+XLSX_CONTENT_TYPE: Final[str] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class SelectColumnsForm(forms.Form):
@@ -620,3 +623,34 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
         program: "CountryProgram" = self.get_object(request, pk)
         return self._render_import_data(request, program=program, pk=pk)
+
+    @button(
+        label=_("Export Import Template"),
+        permission=can_export_import_template,
+        visible=lambda btn: bool((program := btn.context.get("original")) and get_sheet_plans(program)),
+        html_attrs={
+            "title": "Download an .xlsx file, built from the programme's data checkers, "
+            "to share with the country office and import back through Import Data."
+        },
+    )
+    def export_import_template(self, request: HttpRequest, pk: str) -> HttpResponse:
+        program: CountryProgram | None = self.get_object(request, pk)
+        if program is None:
+            raise Http404
+
+        try:
+            template = build_import_template(program)
+        except NoDataCheckerError:
+            self.message_user(
+                request,
+                _("Select the data checkers required by the programme to export an import template."),
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(reverse("workspace:workspaces_countryprogram_change", args=[program.pk]))
+
+        return FileResponse(
+            template,
+            as_attachment=True,
+            filename=f"{slugify(program.name) or 'programme'}_import_template.xlsx",
+            content_type=XLSX_CONTENT_TYPE,
+        )
