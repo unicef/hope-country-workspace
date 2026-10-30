@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from django import forms
-from django.http import QueryDict
 from django.utils.translation import gettext_lazy as _
 
-from country_workspace.models import BeneficiaryGroup, Household, Individual, Program
+from country_workspace.models import BeneficiaryGroup, Program
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
-
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -209,33 +207,3 @@ class CreateRDPForm(BaseActionForm):
     batch_name = forms.CharField(
         required=False, help_text="Label for this RDP creation. Defaults is the current date and time."
     )
-
-
-class RdpFindingsFilterForm(forms.Form):
-    finding_type = forms.ChoiceField(label=_("Finding type"), required=False)
-    individual_id = forms.IntegerField(
-        label=_("Individual ID"),
-        required=False,
-        min_value=1,
-        validators=Individual._meta.pk.validators,
-        help_text=_("Also matches related individuals."),
-    )
-    household_id = forms.IntegerField(
-        label=_("Household ID"),
-        required=False,
-        min_value=1,
-        validators=Household._meta.pk.validators,
-        help_text=_("Also matches households of related individuals."),
-    )
-
-    def __init__(
-        self,
-        data: QueryDict | None = None,
-        *,
-        finding_types: list[tuple[str, str]],
-        include_household: bool = True,
-    ) -> None:
-        super().__init__(data=data)
-        cast("forms.ChoiceField", self.fields["finding_type"]).choices = [("", _("All types")), *finding_types]
-        if not include_household:
-            self.fields.pop("household_id")

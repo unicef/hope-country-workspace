@@ -1,0 +1,46 @@
+{% extends "workspace/actions/base.html" %}
+{% load i18n %}
+{% block action-content %}
+    <div class="max-w-4xl">
+        <p class="mb-6 text-lg text-gray-700">
+            {% translate "Choose which exceeded operation findings must be cleaned before data is sent to HOPE." %}
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="form-row errors mb-4">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+            <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
+                    <h2 class="text-lg font-semibold">
+                        {% translate "Exceeded operations" %}
+                    </h2>
+                </div>
+                <div class="px-5 py-4">
+                    <div class="form-row{% if form.clean_operations.errors %} errors{% endif %}">
+                        {{ form.clean_operations.errors }}
+                        {{ form.clean_operations }}
+                        {% if form.clean_operations.help_text %}
+                            <p class="help mt-3">
+                                {{ form.clean_operations.help_text }}
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+            {% if original.hope_rdi_id and original.hope_rdi_id != "N/A" %}
+                <div class="mt-5 rounded border border-gray-200 bg-gray-50 px-4 py-3">
+                    {% blocktranslate with rdi_id=original.hope_rdi_id %}
+                        This RDP is linked to HOPE RDI {{ rdi_id }}. Confirm that it has been deleted manually in HOPE before creating the clean RDP.
+                    {% endblocktranslate %}
+                </div>
+            {% endif %}
+            <div class="submit-row !m-0 mt-6">
+                <input type="submit" value="{% translate 'Create clean RDP' %}" class="default" />
+                <input type="button" class="button closelink" onclick="history.back()" value="{% translate 'Go back' %}" />
+            </div>
+        </form>
+    </div>
+{% endblock action-content %}

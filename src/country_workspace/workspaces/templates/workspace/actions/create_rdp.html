@@ -1,11 +1,11 @@
 {% extends "workspace/actions/base.html" %}
 {% load i18n workspace_urls %}
 {% block action-content %}
-    <div class="max-w-5xl space-y-6">
-        <p class="text-lg text-gray-700">
+    <div class="max-w-4xl">
+        <p class="mb-6 text-lg text-gray-700">
             {{ intro_text|default:"Selected beneficiaries will be included in the new RDP." }}
         </p>
-        <form method="post" id="create-rdp-form" class="space-y-6">
+        <form method="post" id="create-rdp-form">
             {% csrf_token %}
             <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
                 <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
@@ -20,56 +20,81 @@
                 </div>
             </section>
             {% if operation_forms %}
-                <div>
+                <div class="mt-6 mb-3">
                     <h2 class="text-xl font-semibold">
                         {% translate "Operations" %}
                     </h2>
                     <p class="mt-1 text-sm text-gray-500">
-                        {% translate "Configure the review threshold for each operation." %}
+                        {% translate "Set the finding threshold that triggers review for each operation before the RDP is pushed to HOPE." %}
                     </p>
                 </div>
-                <div class="space-y-5">
+                <div class="space-y-4">
                     {% for definition, operation_form in operation_forms %}
-                        <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-                            <div class="border-b border-gray-200 bg-gray-50 px-5 py-4">
-                                <h3 class="text-lg font-semibold">
-                                    {{ definition.operation_type.label }}
-                                </h3>
-                            </div>
-                            <div class="px-5 py-4">
-                                {% if operation_form.non_field_errors %}
-                                    <div class="mb-4">
-                                        {{ operation_form.non_field_errors }}
-                                    </div>
-                                {% endif %}
-                                <table class="w-full">
-                                    {% for field in operation_form %}
-                                        {% if field.is_hidden %}
-                                            {{ field }}
-                                        {% else %}
-                                            <tr class="form-row{% if field.errors %} errors{% endif %}">
-                                                <th class="w-56 align-top">
-                                                    {{ field.label_tag }}
-                                                </th>
-                                                <td>
-                                                    {{ field.errors }}
-                                                    {{ field }}
-                                                    {% if field.help_text %}
-                                                        <div class="help">
-                                                            {{ field.help_text|safe }}
-                                                        </div>
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                        {% endif %}
+                        {% with threshold_type=operation_form.threshold_type threshold_value=operation_form.threshold_value %}
+                            <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
+                                <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
+                                    <h3 class="text-lg font-semibold">
+                                        {{ definition.operation_type.label }}
+                                    </h3>
+                                </div>
+                                <div class="px-5 py-4">
+                                    {% for hidden in operation_form.hidden_fields %}
+                                        {{ hidden }}
                                     {% endfor %}
-                                </table>
-                            </div>
-                        </section>
+                                    {% if operation_form.non_field_errors %}
+                                        <div class="mb-3">
+                                            {{ operation_form.non_field_errors }}
+                                        </div>
+                                    {% endif %}
+                                    <table class="w-full">
+                                        <tr class="align-top">
+                                            <th class="w-56 py-2 pr-6 text-left">
+                                                {{ threshold_type.label_tag }}
+                                            </th>
+                                            <td class="py-2">
+                                                {{ threshold_type.errors }}
+                                                <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                                    {% for radio in threshold_type %}
+                                                        <div class="inline-flex items-center gap-2">
+                                                            <label for="{{ radio.id_for_label }}" class="inline-flex cursor-pointer items-center gap-2">
+                                                                {{ radio.tag }}
+                                                                <span>{{ radio.choice_label }}</span>
+                                                            </label>
+                                                            {% if radio.data.value == "rate" and operation_form.rate_help_text %}
+                                                                <span class="group relative inline-flex" tabindex="0" aria-label="{{ operation_form.rate_help_text }}">
+                                                                    <span class="cursor-help text-gray-400">ⓘ</span>
+                                                                    <span class="pointer-events-none absolute right-0 top-full z-10 mt-1 hidden w-64 rounded bg-gray-800 px-3 py-2 text-sm font-normal text-white shadow-lg group-hover:block group-focus:block">
+                                                                        {{ operation_form.rate_help_text }}
+                                                                    </span>
+                                                                </span>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr class="align-top">
+                                            <th class="w-56 py-2 pr-6 text-left">
+                                                {{ threshold_value.label_tag }}
+                                            </th>
+                                            <td class="py-2">
+                                                {{ threshold_value.errors }}
+                                                {{ threshold_value }}
+                                                {% if threshold_value.help_text %}
+                                                    <p class="help mt-2">
+                                                        {{ threshold_value.help_text|safe }}
+                                                    </p>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </section>
+                        {% endwith %}
                     {% endfor %}
                 </div>
             {% endif %}
-            <div class="submit-row !m-0">
+            <div class="submit-row !m-0 mt-6">
                 <input type="submit"
                        value="{% firstof submit_label 'Create RDP' %}"
                        class="default"
