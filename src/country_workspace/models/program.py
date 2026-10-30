@@ -194,15 +194,13 @@ class Program(BaseModel):
         data: dict[str, Any],
         mapping_id: int | None = None,
     ) -> dict[str, Any]:
-        """Apply mapping importer(s)."""
+        """Apply the selected mapping importer; do nothing when none is selected."""
         from country_workspace.models import MappingImporter
 
-        if mapping_id is not None:
-            if importer := MappingImporter.objects.filter(id=mapping_id).first():
-                data = importer.apply(data)
-        elif checker := self.get_checker_for(m):
-            for importer in checker.mapping_importers.filter(office=self.country_office):
-                data = importer.apply(data)
+        if mapping_id is None:
+            return data
+        if importer := MappingImporter.objects.filter(id=mapping_id).first():
+            data = importer.apply(data)
         return data
 
     def get_default_fields_for(self, m: type[Validable] | Validable) -> dict[str, Any]:
