@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from concurrency.utils import fqn
 from constance import config
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Model, QuerySet, Prefetch
 from django.db.models.query import prefetch_related_objects
 
@@ -175,28 +176,31 @@ def create_validation_jobs(
     total_chunks = math.ceil(total_records / chunk_size)
     validation_run_id = uuid.uuid4().hex
 
-    # Create every job first and queue them afterwards: if queueing fails midway,
-    # the remaining jobs already exist and can be queued again without redoing the caller's work.
-    jobs = []
-    for chunk in batched(queryset, chunk_size):
-        job = AsyncJob.objects.create(
-            description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
-            type=AsyncJob.JobType.ACTION,
-            owner=owner,
-            action=fqn(validate_queryset),
-            program=program,
-            batch_id=batch_id,
-            config={
-                "pks": chunk,
-                "model_name": opts.label,
-                "kwargs": {
-                    "validation_scope": validation_scope,
-                    "validation_run_id": validation_run_id,
-                    "validation_total_chunks": total_chunks,
+    # Create every job in one transaction, so either all chunks get a job or none does
+    # (a missing chunk could not be recovered by requeueing). Queue them only afterwards, outside
+    # the transaction: if queueing fails midway, the jobs already exist and can be queued again
+    # without redoing the caller's work.
+    with transaction.atomic():
+        jobs = [
+            AsyncJob.objects.create(
+                description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
+                type=AsyncJob.JobType.ACTION,
+                owner=owner,
+                action=fqn(validate_queryset),
+                program=program,
+                batch_id=batch_id,
+                config={
+                    "pks": chunk,
+                    "model_name": opts.label,
+                    "kwargs": {
+                        "validation_scope": validation_scope,
+                        "validation_run_id": validation_run_id,
+                        "validation_total_chunks": total_chunks,
+                    },
                 },
-            },
-        )
-        jobs.append(job)
+            )
+            for chunk in batched(queryset, chunk_size)
+        ]
 
     for job in jobs:
         job.queue()
