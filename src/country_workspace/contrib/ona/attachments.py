@@ -31,17 +31,24 @@ def fetch_attachment(
 ) -> FlexFileContent | None:
     """Return the file of `attachment`, or `None` when it is missing media.
 
-    An attachment that is gone or over the size limit must not block the import
-    of its submission. Any other download error propagates.
+    An attachment that has no download URL, is gone or is over the size limit
+    must not block the import of its submission. Any other download error propagates.
     """
     name = get_attachment_name(attachment)
-    try:
-        content = download(attachment["download_url"])
-    except (OnaNotFoundError, OnaAttachmentTooLargeError) as exc:
+
+    def skip(reason: str) -> None:
         logger.warning(
             "ONA attachment skipped",
-            extra={"submission_id": submission_id, "attachment": name, "reason": str(exc)},
+            extra={"submission_id": submission_id, "attachment": name, "reason": reason},
         )
+
+    if not (url := attachment.get("download_url")):
+        skip("ONA attachment has no download_url")
+        return None
+    try:
+        content = download(url)
+    except (OnaNotFoundError, OnaAttachmentTooLargeError) as exc:
+        skip(str(exc))
         return None
     return FlexFileContent(content=content, mimetype=attachment.get("mimetype") or DEFAULT_MIMETYPE, filename=name)
 
@@ -61,7 +68,7 @@ def download_attachments(
     attachments = {
         name: attachment
         for attachment in submission.get(ATTACHMENTS_KEY) or []
-        if (name := get_attachment_name(attachment)) and attachment.get("download_url")
+        if (name := get_attachment_name(attachment))
     }
     if not attachments:
         return dict(submission), {}
