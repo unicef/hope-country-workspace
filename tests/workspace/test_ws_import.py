@@ -12,7 +12,7 @@ from webtest import Upload, forms
 from django import forms as django_forms
 
 from country_workspace.contrib.hope.constants import PEOPLE_CHECKER_NAME
-from country_workspace.models import Office, Individual, Household, Batch
+from country_workspace.models import Office, Individual, Household, Batch, MappingImporter
 from country_workspace.state import state
 from tests.contrib.aurora import stub
 from tests.extras.testutils.factories import DataCheckerFactory
@@ -215,6 +215,13 @@ def _test_import_rdi_hh_and_individuals(
         pytest.skip("Test requires master_detail=True")
 
     form_import_rdi["rdi-household_id_column"] = "household_id"
+    # Mapping importers are applied only when explicitly selected
+    form_import_rdi["rdi-household_mapping"].force_value(
+        MappingImporter.objects.get(data_checker=program.get_checker_for(Household)).pk
+    )
+    form_import_rdi["rdi-individual_mapping"].force_value(
+        MappingImporter.objects.get(data_checker=program.get_checker_for(Individual)).pk
+    )
     res = form_import_rdi.submit()
 
     assert res.status_code == 302
