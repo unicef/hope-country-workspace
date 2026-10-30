@@ -15,11 +15,6 @@ def ocr_operation_for_rdp(*, rdp: Rdp) -> RdpOperation | None:
     return rdp.operations.filter(operation_type=RdpOperation.Type.OCR).first()
 
 
-def ocr_findings_count(*, operation: RdpOperation) -> int:
-    """Return the number of OCR findings affecting the RDP review decision."""
-    return operation.findings.filter(finding_type__in=OCR_AFFECTING_FINDING_TYPES).count()
-
-
 def ocr_affected_individuals_count(*, operation: RdpOperation) -> int:
     """Return the number of individuals affected by OCR findings."""
     return (

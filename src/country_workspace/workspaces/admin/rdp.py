@@ -29,15 +29,17 @@ from country_workspace.models import Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
     RDP_OPERATION_DEFINITIONS,
+    CleanRdpForm,
     RdpActionPolicy,
+    RdpFindingsFilterForm,
     RdpWorkflowError,
     cancel_rdp,
     claim_review_rdp_push,
     create_clean_rdp as create_clean_rdp_workflow,
+    exceeded_operation_thresholds,
     get_push_policy,
     get_rdp_policy,
     has_retryable_rdp_operations,
-    is_biometric_threshold_exceeded,
     ocr_affected_individuals_count,
     qs_biometric_affected_individuals,
     retry_rdp_operations,
@@ -49,7 +51,6 @@ from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
 
 from .filters import ChoiceFilter
-from .forms import RdpFindingsFilterForm
 from .hh_ind import SelectedProgramMixin
 
 type PolicyGetter = Callable[[CountryRdp], RdpActionPolicy]
@@ -75,15 +76,6 @@ def _has_retryable_operations(btn: StandardButton) -> bool:
     return bool(
         (rdp := btn.original) and rdp.status == Rdp.PushStatus.PENDING and has_retryable_rdp_operations(rdp_id=rdp.pk)
     )
-
-
-def _is_clean_rdp_visible(btn: StandardButton) -> bool:
-    """Return whether the biometric threshold contributed to the pending review."""
-    if (rdp := btn.original) is None or rdp.status != Rdp.PushStatus.REVIEW_PENDING:
-        return False
-    with suppress(RdpWorkflowError):
-        return is_biometric_threshold_exceeded(rdp=rdp)
-    return False
 
 
 @register(CountryRdp, site=workspace)
@@ -484,39 +476,58 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_form=True,
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
-        visible=_is_clean_rdp_visible,
-        html_attrs={"title": "Create a new RDP excluding beneficiaries affected by biometric findings."},
+        visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
+        html_attrs={"title": "Create a new RDP after reviewing exceeded operation findings."},
     )
     def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Cancel this RDP and create a new one without beneficiaries affected by biometric findings."""
+        """Create a replacement RDP using the selected operation finding decisions."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
 
-        def apply(_: HttpRequest) -> HttpResponse:
-            try:
-                check, clean_rdp = create_clean_rdp_workflow(rdp_id=obj.pk, user_id=request.user.pk)
-            except RemoteUnavailableError as exc:
-                sentry_sdk.capture_exception(exc)
-                messages.error(request, str(exc))
-            except RemoteError as exc:
-                messages.error(request, str(exc))
-            except RdpWorkflowError as exc:
-                messages.error(request, "; ".join(exc.args[0]["errors"]))
-            else:
-                if check.allowed and clean_rdp is not None:
-                    messages.success(request, "Clean RDP created. DedupEngine rejection task scheduled.")
-                    return redirect(self._change_url(clean_rdp))
-                messages.error(request, check.reason or "Action is not allowed.")
+        try:
+            operation_thresholds = exceeded_operation_thresholds(rdp=obj)
+        except RdpWorkflowError as exc:
+            messages.error(request, "; ".join(exc.args[0]["errors"]))
             return redirect(self._change_url(obj))
 
-        message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
-        if obj.hope_rdi_id not in {None, "N/A"}:
-            message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
-        message += "The old DedupEngine set will be scheduled for rejection."
-        return confirm_action(
-            self, request, apply, message=message, template="workspace/admin_extra_buttons/confirm.html"
+        if not operation_thresholds:
+            messages.error(request, "No exceeded operation thresholds found.")
+            return redirect(self._change_url(obj))
+
+        form = CleanRdpForm(
+            request.POST if request.method == "POST" else None,
+            operations=operation_thresholds,
         )
+
+        if request.method == "POST" and form.is_valid():
+            try:
+                check, clean_rdp = create_clean_rdp_workflow(
+                    rdp_id=obj.pk,
+                    user_id=request.user.pk,
+                    clean_operation_ids=set(form.cleaned_data["clean_operations"]),
+                )
+            except RemoteUnavailableError as exc:
+                sentry_sdk.capture_exception(exc)
+                form.add_error(None, str(exc))
+            except RemoteError as exc:
+                form.add_error(None, str(exc))
+            except RdpWorkflowError as exc:
+                form.add_error(None, "; ".join(exc.args[0]["errors"]))
+            else:
+                if check.allowed and clean_rdp is not None:
+                    messages.success(request, "Clean RDP created.")
+                    return redirect(self._change_url(clean_rdp))
+                form.add_error(None, check.reason or "Action is not allowed.")
+
+        context = self.get_common_context(
+            request,
+            str(obj.pk),
+            title=_("Create clean RDP"),
+            form=form,
+        )
+        context["original"] = obj
+        return TemplateResponse(request, "workspace/rdp/clean.html", context)
 
     @link(change_list=False, html_attrs={"title": "Shows related beneficiary records."})
     def records(self, btn: LinkButton) -> None:
