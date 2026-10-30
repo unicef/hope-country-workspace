@@ -2,6 +2,7 @@ import pytest
 from django.db import IntegrityError
 from pytest_mock import MockerFixture
 
+from country_workspace.contrib.biographic_dedup import BiographicSetState
 from country_workspace.contrib.dedup_engine import DeduplicationSetState
 from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
@@ -295,10 +296,58 @@ def test_clean_rdp_check(
     check, result = lifecycle._clean_rdp_check(rdp)
 
     assert check.allowed is allowed
-    assert (result is biometric_operation) is allowed
+    assert result == ([biometric_operation] if allowed else [])
 
     if status != Rdp.PushStatus.REVIEW_PENDING or operation_status != RdpOperation.Status.SUCCESS:
         retrieve.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("state", "allowed"),
+    [
+        (BiographicSetState.DEDUPLICATED, True),
+        (BiographicSetState.APPROVED, False),
+        (None, False),
+    ],
+)
+def test_clean_rdp_check_with_biographic_operation(
+    review_pending_rdp: Rdp,
+    mocker: MockerFixture,
+    state: BiographicSetState | None,
+    allowed: bool,
+) -> None:
+    from testutils.factories import BiographicRdpOperationFactory
+
+    operation = BiographicRdpOperationFactory(
+        rdp=review_pending_rdp,
+        status=RdpOperation.Status.SUCCESS,
+        external_id="17",
+    )
+    retrieve = mocker.patch.object(lifecycle, "retrieve_biographic_set_state", return_value=state)
+
+    check, result = lifecycle._clean_rdp_check(review_pending_rdp)
+
+    assert check.allowed is allowed
+    assert result == ([operation] if allowed else [])
+    retrieve.assert_called_once_with(review_pending_rdp.program, "17")
+
+
+def test_clean_rdp_check_requires_both_operations_deduplicated(
+    review_pending_rdp: Rdp,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import BiographicRdpOperationFactory, BiometricRdpOperationFactory
+
+    BiometricRdpOperationFactory(rdp=review_pending_rdp, status=RdpOperation.Status.SUCCESS)
+    BiographicRdpOperationFactory(rdp=review_pending_rdp, status=RdpOperation.Status.SUCCESS, external_id="17")
+    mocker.patch.object(lifecycle, "retrieve_deduplication_set_state", return_value=DeduplicationSetState.DEDUPLICATED)
+    mocker.patch.object(lifecycle, "retrieve_biographic_set_state", return_value=BiographicSetState.INDEXING)
+
+    check, result = lifecycle._clean_rdp_check(review_pending_rdp)
+
+    assert check.allowed is False
+    assert "Biographic DedupEngine" in (check.reason or "")
+    assert result == []
 
 
 def test_clean_rdp_check_during_program_cleanup(review_pending_rdp: Rdp, mocker: MockerFixture) -> None:
@@ -310,7 +359,7 @@ def test_clean_rdp_check_during_program_cleanup(review_pending_rdp: Rdp, mocker:
 
     assert check.allowed is False
     assert "cleanup" in (check.reason or "")
-    assert result is None
+    assert result == []
     operation.assert_not_called()
     retrieve.assert_not_called()
 
@@ -335,7 +384,7 @@ def test_clean_rdp_operation_configs(review_pending_rdp: Rdp) -> None:
 
 def test_create_clean_rdp_rejects_failed_check(review_pending_rdp: Rdp, mocker: MockerFixture) -> None:
     check = ActionCheck(False, "blocked")
-    mocker.patch.object(lifecycle, "_clean_rdp_check", return_value=(check, None))
+    mocker.patch.object(lifecycle, "_clean_rdp_check", return_value=(check, []))
 
     assert lifecycle.create_clean_rdp(review_pending_rdp.pk, user_id=1) == (check, None)
 
@@ -348,9 +397,9 @@ def test_create_clean_rdp_rejects_empty_selection(
     mocker.patch.object(
         lifecycle,
         "_clean_rdp_check",
-        return_value=(ActionCheck(True), successful_biometric_operation),
+        return_value=(ActionCheck(True), [successful_biometric_operation]),
     )
-    mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, []))
+    mocker.patch.object(lifecycle, "clean_rdp_selection", return_value=(False, []))
 
     check, clean_rdp = lifecycle.create_clean_rdp(review_pending_rdp.pk, user_id=1)
 
@@ -368,17 +417,17 @@ def test_create_clean_rdp_rechecks_state_after_lock(
     mocker.patch.object(
         lifecycle,
         "_clean_rdp_check",
-        return_value=(ActionCheck(True), successful_biometric_operation),
+        return_value=(ActionCheck(True), [successful_biometric_operation]),
     )
-    selection = mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1]))
+    selection = mocker.patch.object(lifecycle, "clean_rdp_selection", return_value=(False, [1]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
 
     if changed == "status":
         review_pending_rdp.status = Rdp.PushStatus.PENDING
     elif changed == "cleanup":
 
-        def start_cleanup(*, operation: RdpOperation) -> tuple[bool, list[int]]:
-            Program.objects.filter(pk=operation.rdp.program_id).update(cleanup_in_progress=True)
+        def start_cleanup(*, rdp: Rdp, operations: list[RdpOperation]) -> tuple[bool, list[int]]:
+            Program.objects.filter(pk=rdp.program_id).update(cleanup_in_progress=True)
             return False, [1]
 
         selection.side_effect = start_cleanup
@@ -402,9 +451,9 @@ def test_create_clean_rdp(
     mocker.patch.object(
         lifecycle,
         "_clean_rdp_check",
-        return_value=(ActionCheck(True), successful_biometric_operation),
+        return_value=(ActionCheck(True), [successful_biometric_operation]),
     )
-    mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1, 2]))
+    mocker.patch.object(lifecycle, "clean_rdp_selection", return_value=(False, [1, 2]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
     validate = mocker.patch.object(lifecycle, "_validate_rdp_creation")
     cancel = mocker.patch.object(review_pending_rdp, "mark_cancelled")
@@ -426,6 +475,7 @@ def test_create_clean_rdp(
         rdp=review_pending_rdp,
         user_id=7,
         deduplication_set_id=str(successful_biometric_operation.id),
+        biographic_operation_id=None,
         clean_rdp_id=123,
     )
     assert append.call_args.kwargs["result"]["new_rdp_id"] == 123
@@ -444,9 +494,9 @@ def test_create_clean_rdp_converts_integrity_error(
     mocker.patch.object(
         lifecycle,
         "_clean_rdp_check",
-        return_value=(ActionCheck(True), successful_biometric_operation),
+        return_value=(ActionCheck(True), [successful_biometric_operation]),
     )
-    mocker.patch.object(lifecycle, "biometric_clean_rdp_selection", return_value=(False, [1]))
+    mocker.patch.object(lifecycle, "clean_rdp_selection", return_value=(False, [1]))
     mocker.patch.object(lifecycle, "lock_rdp_for_update", return_value=review_pending_rdp)
     mocker.patch.object(lifecycle, "_validate_rdp_creation")
     mocker.patch.object(review_pending_rdp, "mark_cancelled")

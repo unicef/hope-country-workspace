@@ -10,9 +10,13 @@ from django.utils.html import format_html
 
 from country_workspace.models import Batch
 from country_workspace.rdp import (
+    annotate_biographic_individuals,
     annotate_biometric_individuals,
+    biographic_findings_for_individual,
+    biographic_operation_for_rdp,
     biometric_findings_for_individual,
     biometric_operation_for_rdp,
+    qs_biographic_duplicate_individuals,
     qs_biometric_duplicate_individuals,
 )
 
@@ -21,6 +25,7 @@ from ...state import state
 from ..models import CountryHousehold, CountryIndividual
 from ..sites import workspace
 from .filters import (
+    BiographicDuplicateFilter,
     CWLinkedAutoCompleteFilter,
     DuplicateFilter,
     HouseholdFilter,
@@ -30,6 +35,7 @@ from .filters import (
     WIsValidFilter,
     WJsonFieldFilter,
     get_rdp_context,
+    show_biographic_columns,
     show_biometric_columns,
 )
 from .hh_ind import BeneficiaryBaseAdmin
@@ -79,7 +85,12 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         if from_field is not None or (rdp := get_rdp_context(request)) is None:
             return None
 
-        if (operation := biometric_operation_for_rdp(rdp=rdp)) is None or operation.status != operation.Status.SUCCESS:
+        operations = [
+            operation
+            for operation in (biometric_operation_for_rdp(rdp=rdp), biographic_operation_for_rdp(rdp=rdp))
+            if operation is not None and operation.status == operation.Status.SUCCESS
+        ]
+        if not operations:
             return None
 
         try:
@@ -87,7 +98,11 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         except (ValidationError, ValueError):
             return None
 
-        duplicate_pks = qs_biometric_duplicate_individuals(operation=operation).values_list("pk", flat=True)
+        duplicate_pks = {
+            duplicate_pk
+            for operation in operations
+            for duplicate_pk in self._duplicate_individuals(operation=operation).values_list("pk", flat=True)
+        }
         qs = CountryIndividual.objects.filter(
             pk=pk,
             pk__in=duplicate_pks,
@@ -96,12 +111,25 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             batch__program_id=rdp.program_id,
             batch__status=Batch.BatchStatus.COMPLETE,
         )
-        return annotate_biometric_individuals(qs, program=rdp.program, rdp=rdp).first()
+        if biometric_operation_for_rdp(rdp=rdp) is not None:
+            qs = annotate_biometric_individuals(qs, program=rdp.program, rdp=rdp)
+        if biographic_operation_for_rdp(rdp=rdp) is not None:
+            qs = annotate_biographic_individuals(qs, program=rdp.program, rdp=rdp)
+        return qs.first()
+
+    @staticmethod
+    def _duplicate_individuals(*, operation: Any) -> QuerySet[CountryIndividual]:
+        """Return individuals marked duplicate by a biometric or biographic operation."""
+        if operation.operation_type == operation.Type.BIOGRAPHIC_DEDUPLICATION:
+            return qs_biographic_duplicate_individuals(operation=operation)
+        return qs_biometric_duplicate_individuals(operation=operation)
 
     def get_list_filter(self, request: HttpRequest) -> list[Any]:
         filters = list(super().get_list_filter(request))
         if show_biometric_columns(request):
             filters.extend((DuplicateFilter, ImageIssueFilter))
+        if show_biographic_columns(request):
+            filters.append(BiographicDuplicateFilter)
         return filters
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
@@ -111,6 +139,8 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
                 columns.append("is_duplicate")
             if "has_image_issue" not in columns:
                 columns.append("has_image_issue")
+        if show_biographic_columns(request) and "is_biographic_duplicate" not in columns:
+            columns.append("is_biographic_duplicate")
         return columns
 
     @display(description="Name", ordering="name")
@@ -127,16 +157,21 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
-        return (
-            annotate_biometric_individuals(qs, program=state.program, rdp=get_rdp_context(request))
-            if show_biometric_columns(request)
-            else qs
-        )
+        if show_biometric_columns(request):
+            qs = annotate_biometric_individuals(qs, program=state.program, rdp=get_rdp_context(request))
+        if show_biographic_columns(request):
+            qs = annotate_biographic_individuals(qs, program=state.program, rdp=get_rdp_context(request))
+        return qs
 
     @display(description="Duplicate", boolean=True)
     def is_duplicate(self, obj: CountryIndividual) -> bool | None:
         """Display whether the individual has a duplicate finding."""
         return obj._is_duplicate if getattr(obj, "_result_available", False) else None
+
+    @display(description="Biographic duplicate", boolean=True)
+    def is_biographic_duplicate(self, obj: CountryIndividual) -> bool | None:
+        """Display whether the individual has a biographic duplicate finding."""
+        return obj._is_biographic_duplicate if getattr(obj, "_biographic_result_available", False) else None
 
     @display(description="Image issue", boolean=True)
     def has_image_issue(self, obj: CountryIndividual) -> bool | None:
@@ -166,27 +201,41 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         original = context["original"]
         context["dedup_duplicates"] = None
         context["dedup_image_issues"] = None
+        context["dedup_biographic_duplicates"] = None
 
-        if original is None or not getattr(original, "_result_available", False):
+        if original is None:
             return context
 
-        duplicate_rdp_ids, image_issues = biometric_findings_for_individual(
-            individual=original,
-            rdp=get_rdp_context(request),
-        )
+        rdp = get_rdp_context(request)
 
-        removed_duplicate_pks = set(
-            CountryIndividual.objects.filter(pk__in=duplicate_rdp_ids, removed=True).values_list("pk", flat=True)
-        )
+        if getattr(original, "_result_available", False):
+            duplicate_rdp_ids, image_issues = biometric_findings_for_individual(individual=original, rdp=rdp)
+            context["dedup_duplicates"] = self._duplicate_links(
+                [{"pk": pk_, "rdp_id": rdp_id} for pk_, rdp_id in duplicate_rdp_ids.items()]
+            )
+            context["dedup_image_issues"] = image_issues
 
-        duplicates = []
-        for duplicate_pk, rdp_id in duplicate_rdp_ids.items():
-            url = reverse("workspace:workspaces_countryindividual_change", args=[duplicate_pk])
-            if duplicate_pk in removed_duplicate_pks:
-                preserved = urlencode({"rdp_id": rdp_id})
-                url = f"{url}?{urlencode({'_changelist_filters': preserved})}"
-            duplicates.append({"pk": duplicate_pk, "url": url})
+        if getattr(original, "_biographic_result_available", False):
+            context["dedup_biographic_duplicates"] = self._duplicate_links(
+                biographic_findings_for_individual(individual=original, rdp=rdp)
+            )
 
-        context["dedup_duplicates"] = duplicates
-        context["dedup_image_issues"] = image_issues
         return context
+
+    @staticmethod
+    def _duplicate_links(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Return the matches with a link to each counterpart, preserving the RDP of removed ones."""
+        removed_pks = set(
+            CountryIndividual.objects.filter(pk__in=[m["pk"] for m in matches], removed=True).values_list(
+                "pk", flat=True
+            )
+        )
+        links = []
+        for match in matches:
+            url = reverse("workspace:workspaces_countryindividual_change", args=[match["pk"]])
+            if match["pk"] in removed_pks:
+                url = f"{url}?{urlencode({'_changelist_filters': urlencode({'rdp_id': match['rdp_id']})})}"
+            links.append(
+                {"pk": match["pk"], "url": url} | {k: v for k, v in match.items() if k not in {"pk", "rdp_id"}}
+            )
+        return links

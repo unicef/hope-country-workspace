@@ -2,7 +2,7 @@
 
 RDP operations are processing steps that run after an **[RDP](../index.md)** is created and before it can be pushed to HOPE Core.
 
-The operations enabled for an RDP depend on the selected Program. Currently, **[biometric deduplication](deduplication.md)** is supported.
+The operations enabled for an RDP depend on the selected Program. Currently, **[biometric deduplication](deduplication.md)** and **[biographic deduplication](biographic-deduplication.md)** are supported.
 
 ## Configuration
 
@@ -10,7 +10,7 @@ During **[RDP creation](../create.md#configure-rdp-processing)**, Country Worksp
 
 The submitted settings are validated and stored with each configured operation. This configuration belongs to that RDP operation and is reused if the operation is retried.
 
-For example, biometric deduplication stores the **[findings threshold](deduplication.md#configuration)** that is later used to decide whether manual review is required.
+For example, biometric and biographic deduplication each store the **[findings threshold](deduplication.md#configuration)** that is later used to decide whether manual review is required.
 
 The configured operations are created together with the RDP and start processing automatically after creation.
 

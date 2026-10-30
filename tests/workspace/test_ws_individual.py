@@ -557,6 +557,7 @@ def test_get_object_requires_successful_biometric_operation(
         "biometric_operation_for_rdp",
         return_value=operation,
     )
+    mocker.patch.object(individual_admin_mod, "biographic_operation_for_rdp", return_value=None)
     duplicates = mocker.patch.object(individual_admin_mod, "qs_biometric_duplicate_individuals")
 
     assert individual_admin.get_object(rf.get("/"), "1") is None
@@ -582,6 +583,7 @@ def test_get_object_invalid_object_id(
     mocker.patch.object(BeneficiaryBaseAdmin, "get_object", return_value=None)
     mocker.patch.object(individual_admin_mod, "get_rdp_context", return_value=rdp)
     mocker.patch.object(individual_admin_mod, "biometric_operation_for_rdp", return_value=operation)
+    mocker.patch.object(individual_admin_mod, "biographic_operation_for_rdp", return_value=None)
     mocker.patch.object(individual_admin.model._meta.pk, "to_python", side_effect=error_type("invalid"))
     duplicates = mocker.patch.object(individual_admin_mod, "qs_biometric_duplicate_individuals")
 

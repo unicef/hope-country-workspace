@@ -45,7 +45,7 @@ RDP operations are processing steps that run before the RDP can be pushed to HOP
 
 The operations enabled for an RDP depend on the Program configuration.
 
-Currently, **[biometric deduplication](operations/deduplication.md)** is supported.
+Currently, **[biometric deduplication](operations/deduplication.md)** and **[biographic deduplication](operations/biographic-deduplication.md)** are supported.
 
 See **[RDP operations](operations/index.md)** for the common operation flow.
 

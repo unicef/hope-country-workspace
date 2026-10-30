@@ -177,3 +177,17 @@ def successful_rdp(rdp: Rdp) -> Rdp:
     rdp.status = Rdp.PushStatus.SUCCESS
     rdp.save(update_fields=["status"])
     return rdp
+
+
+@pytest.fixture
+def biographic_operation(rdp: Rdp) -> RdpOperation:
+    from testutils.factories import BiographicRdpOperationFactory
+
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, external_id="7")
+
+
+@pytest.fixture
+def successful_biographic_operation(rdp: Rdp) -> RdpOperation:
+    from testutils.factories import BiographicRdpOperationFactory
+
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS, external_id="7")

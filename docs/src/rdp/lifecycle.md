@@ -80,7 +80,7 @@ See **[Push to HOPE Core](push.md)** for retrying a failed push and **[Troublesh
 
 Cancellation is blocked only while an RDP operation is `RUNNING`. Operations that have not started yet do not block cancellation.
 
-For biometric RDPs, Country Workspace also schedules cleanup of the associated DedupEngine set when required.
+For biometric and biographic RDPs, Country Workspace also schedules cleanup of the associated DedupEngine sets when required.
 
 See **[RDP operations](operations/index.md#operation-statuses)** for operation statuses and **[Biometric deduplication](operations/deduplication.md)** for biometric processing.
 

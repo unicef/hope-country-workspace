@@ -18,8 +18,12 @@ from .transformer import TransformerFactory  # noqa
 from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .rdp import CountryRdpFactory, RdpFactory  # noqa
-from .rdp_operation import BiometricRdpOperationFactory, RdpOperationFactory  # noqa
-from .rdp_operation_finding import BiometricRdpOperationFindingFactory, RdpOperationFindingFactory  # noqa
+from .rdp_operation import BiographicRdpOperationFactory, BiometricRdpOperationFactory, RdpOperationFactory  # noqa
+from .rdp_operation_finding import (  # noqa
+    BiographicRdpOperationFindingFactory,
+    BiometricRdpOperationFindingFactory,
+    RdpOperationFindingFactory,
+)
 from .smart_fields import (
     DataCheckerFactory,  # noqa
     DataCheckerFieldsetFactory,  # noqa
