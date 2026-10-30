@@ -14,6 +14,7 @@ IMPORT_FORMS = {
     "rdi": "ImportFileForm",
     "aurora": "ImportAuroraForm",
     "kobo": "ImportKoboForm",
+    "ona": "ImportOnaForm",
 }
 
 
@@ -82,6 +83,93 @@ def test_import_kobo_schedules_job(program_admin, mock_request, mocker: MockerFi
         level=messages.SUCCESS,
     )
     assert result is None
+
+
+def test_import_ona_schedules_job_with_defaults(program_admin, mock_request, mocker: MockerFixture) -> None:
+    program = program_admin._program
+    form = mocker.MagicMock()
+    form.is_valid.return_value = True
+    form.cleaned_data = {
+        "batch_name": "",
+        "validate_after_import": True,
+        "form_id": "9153",
+        "individuals_key": "",
+        "household_mapping": None,
+        "individual_mapping": None,
+        "household_transformer": None,
+        "individual_transformer": None,
+    }
+    mocker.patch.object(import_data_mod, "ImportOnaForm", return_value=form)
+    mocker.patch.object(import_data_mod, "batch_name_default", return_value="AUTO-BATCH")
+    job = mocker.MagicMock()
+    job.id = 77
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create", return_value=job)
+
+    result = program_admin.import_ona(mock_request, program)
+
+    create.assert_called_once_with(
+        description=f"ONA / INFORM import: {program.name}",
+        type=import_data_mod.AsyncJob.JobType.TASK,
+        action=import_data_mod.fqn(import_data_mod.import_from_ona),
+        file=None,
+        program=program,
+        owner=mock_request.user,
+        config={
+            "batch_name": "AUTO-BATCH",
+            "validate_after_import": True,
+            "form_id": "9153",
+            "master_detail": True,
+            "individuals_key": "individuals",
+            "household_mapping_id": None,
+            "individual_mapping_id": None,
+            "household_transformer_id": None,
+            "individual_transformer_id": None,
+        },
+    )
+    job.queue.assert_called_once_with()
+    program_admin.message_user.assert_called_once_with(
+        mock_request,
+        "The ONA / INFORM data import task has been successfully queued. Job #77.",
+        level=messages.SUCCESS,
+    )
+    assert result is None
+
+
+def test_import_ona_schedules_job_with_explicit_config(program_admin, mock_request, mocker: MockerFixture) -> None:
+    program = program_admin._program
+    program.beneficiary_group = None
+    form = mocker.MagicMock()
+    form.is_valid.return_value = True
+    form.cleaned_data = {
+        "batch_name": "Named batch",
+        "validate_after_import": False,
+        "form_id": "9153",
+        "individuals_key": "members",
+        "household_mapping": mocker.Mock(id=1),
+        "individual_mapping": mocker.Mock(id=2),
+        "household_transformer": mocker.Mock(id=3),
+        "individual_transformer": mocker.Mock(id=4),
+    }
+    mocker.patch.object(import_data_mod, "ImportOnaForm", return_value=form)
+    job = mocker.MagicMock()
+    job.id = 78
+    create = mocker.patch.object(import_data_mod.AsyncJob.objects, "create", return_value=job)
+
+    result = program_admin.import_ona(mock_request, program)
+
+    assert result is None
+    assert create.call_args.kwargs["config"] == {
+        "batch_name": "Named batch",
+        "validate_after_import": False,
+        "form_id": "9153",
+        "master_detail": False,
+        "individuals_key": "members",
+        "household_mapping_id": 1,
+        "individual_mapping_id": 2,
+        "household_transformer_id": 3,
+        "individual_transformer_id": 4,
+    }
+    job.queue.assert_called_once_with()
 
 
 def test_set_defaults_get(program_admin, mock_request, mocker: MockerFixture) -> None:

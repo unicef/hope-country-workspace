@@ -1,7 +1,8 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.exceptions import RemoteError
+from country_workspace.exceptions import BlobStorageError, RemoteError
+from country_workspace.models import Individual
 from country_workspace.rdp.push import processor as processor_mod
 from country_workspace.rdp.push.processor import ERROR_CONFIG, PushProcessor
 
@@ -13,6 +14,13 @@ pytestmark = pytest.mark.django_db
 def push_processor(push_config, mocker: MockerFixture) -> PushProcessor:
     mocker.patch.object(processor_mod, "HopeApi")
     return PushProcessor(push_config)
+
+
+@pytest.fixture
+def no_blob_sync(push_processor: PushProcessor, mocker: MockerFixture) -> PushProcessor:
+    mocker.patch.object(push_processor, "_image_fields", return_value=set())
+    mocker.patch.object(processor_mod, "sync_record_blobs", return_value={})
+    return push_processor
 
 
 @pytest.mark.parametrize(
@@ -208,10 +216,11 @@ def test_run_with_restores_queryset_on_error(
 @pytest.mark.parametrize("method", ["_prepare_individuals_batch", "_prepare_people_batch"])
 def test_prepare_people_rows(
     push_processor: PushProcessor,
+    no_blob_sync: PushProcessor,
     mocker: MockerFixture,
     method: str,
 ) -> None:
-    individual = mocker.MagicMock(id=1, originating_id="OID")
+    individual = mocker.MagicMock(id=1, originating_id="OID", flex_fields={})
     individual.apply_grouping.return_value = {"name": "John"}
     serializer = mocker.Mock(side_effect=lambda rows: rows)
     push_processor.__dict__["serializer"] = serializer
@@ -222,9 +231,21 @@ def test_prepare_people_rows(
     assert payload == [{"name": "John", "country_workspace_id": 1, "originating_id": "OID"}]
 
 
+def test_image_fields_is_resolved_once_per_checker(
+    push_processor: PushProcessor,
+    photo_individuals: list[Individual],
+    mocker: MockerFixture,
+) -> None:
+    spy = mocker.spy(processor_mod, "image_field_names")
+
+    assert [push_processor._image_fields(ind) for ind in photo_individuals] == [{"photo"}] * len(photo_individuals)
+    spy.assert_called_once()
+
+
 @pytest.mark.parametrize("prefetched", [True, False])
 def test_prepare_households_batch(
     push_processor: PushProcessor,
+    no_blob_sync: PushProcessor,
     mocker: MockerFixture,
     prefetched: bool,
 ) -> None:
@@ -233,7 +254,7 @@ def test_prepare_households_batch(
     map_members = mocker.patch.object(processor_mod, "map_members", return_value=["MEMBER"])
 
     member = mocker.MagicMock(id=2)
-    household = mocker.MagicMock(id=1, pk=1, originating_id="OID")
+    household = mocker.MagicMock(id=1, pk=1, originating_id="OID", flex_fields={})
     household.apply_grouping.return_value = {"role": 2, "empty": None}
     household.prefetched_members = [member] if prefetched else None
     household.members.values_list.return_value = [2]
@@ -416,6 +437,24 @@ def test_push_batched_stops_on_prepare_error(
     push_processor._push_batched("People", prepare, post, mocker.Mock())
 
     post.assert_not_called()
+
+
+def test_push_batched_collects_blob_storage_failure(
+    push_processor: PushProcessor,
+    mocker: MockerFixture,
+) -> None:
+    push_processor.hope_rdi_id = "RID"
+    push_processor.queryset = mocker.MagicMock()
+    push_processor.queryset.iterator.return_value = iter([1])
+    prepare = mocker.Mock(side_effect=BlobStorageError("blob sync failed for CountryHousehold #1"))
+    post = mocker.Mock()
+    process = mocker.Mock()
+
+    push_processor._push_batched("Households", prepare, post, process)
+
+    assert "prepare failed. blob sync failed" in push_processor.total["errors"][0]
+    post.assert_not_called()
+    process.assert_not_called()
 
 
 def test_push_batched_stops_on_remote_failure(

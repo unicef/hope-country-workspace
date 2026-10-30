@@ -1,6 +1,6 @@
 import io
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 from django.db.models import Case, When, Value, Q, CharField
@@ -24,6 +24,7 @@ from country_workspace.models import AsyncJob, Program, Country
 from country_workspace.models.base import Validable
 from country_workspace.state import state
 from country_workspace.storages import MEDIA_STORAGE
+from country_workspace.utils.flex_fields import CaseInsensitiveChoiceField, get_file_field_names
 from country_workspace.workspaces.admin.cleaners.exceptions import BulkImportError, BulkImportFileProcessingError
 from django.db.models import QuerySet
 
@@ -113,6 +114,7 @@ class ValidateList(XlsValidateRule):
 TYPES = {
     forms.IntegerField: ValidateInteger,
     forms.ChoiceField: ValidateList,
+    CaseInsensitiveChoiceField: ValidateList,
     forms.BooleanField: ValidateBool,
 }
 
@@ -144,6 +146,23 @@ def _validate_datetime_format(value: str) -> bool:
         else:
             return True
     return False
+
+
+def _coerce_imported_value(value: Any, field: FlexField | None) -> Any:
+    """Turn spreadsheet date values into strings JSON can store."""
+    if isinstance(value, datetime):
+        field_type = getattr(getattr(field, "definition", None), "field_type", None)
+        if field_type is DateField:
+            return value.date().isoformat()
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
+def _coerce_imported_row(row_data: dict, field_lookup: dict[str, FlexField]) -> None:
+    for key, value in row_data.items():
+        row_data[key] = _coerce_imported_value(value, field_lookup.get(key.split("__")[-1]))
 
 
 def validate_date_datetime_fields(
@@ -191,6 +210,9 @@ def create_bulk_update_template(queryset: "QuerySet[Beneficiary]", program: Prog
     out = BytesIO()
     dc: DataChecker = program.get_checker_for(queryset.model)
     field_lookup = {field.name: field for _, field in dc.get_fields()}
+    # files are neither exportable nor editable as a cell, so they stay out of the round trip
+    file_field_names = get_file_field_names(dc)
+    columns = [column for column in columns if column not in file_field_names]
 
     with Workbook(out, {"in_memory": True, "default_date_format": "yyyy/mm/dd"}) as workbook:
         header_format = _get_header_format(workbook)
@@ -372,6 +394,7 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
 
         with transaction.atomic():
             field_lookup: dict[str, FlexField] | None = None
+            file_field_names: set[str] = set()
             for line_number, row_data in enumerate(rows, start=1):
                 try:
                     if not row_data or all(v in (None, "", []) for v in row_data.values()):
@@ -386,14 +409,22 @@ def import_bulk_update_file(job: AsyncJob, entity_getter: Callable[[int], Any]) 
                             total["version_mismatch"].append(entity_id)
                             continue
 
+                    if field_lookup is None:
+                        dc: DataChecker = job.program.get_checker_for(entity.__class__)
+                        field_lookup = {
+                            (fs.prefix % field.name if "%s" in fs.prefix else f"{fs.prefix}{field.name}"): field
+                            for fs, field in dc.get_fields()
+                        }
+                        file_field_names = get_file_field_names(dc)
+                    # a pasted cell must never overwrite a file reference
+                    row_data = {k: v for k, v in row_data.items() if k not in file_field_names}  # noqa: PLW2901
+
                     _drop_export_status_columns(row_data)
 
                     if row_data:
-                        if field_lookup is None:
-                            dc: DataChecker = job.program.get_checker_for(entity.__class__)
-                            field_lookup = {field.name: field for _, field in dc.get_fields()}
                         validate_date_datetime_fields(row_data, field_lookup, line_number, total["errors"])
                         validate_individual_reference_ids(row_data, line_number, total["errors"])
+                        _coerce_imported_row(row_data, field_lookup)
 
                         _drop_export_status_columns(entity.flex_fields)
                         entity.flex_fields.update(**row_data)

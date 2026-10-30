@@ -10,11 +10,14 @@ from adminfilters.autocomplete import AutoCompleteFilter
 from adminfilters.mixin import AdminFiltersMixin
 from django import forms
 from django.conf import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin import ShowFacets
+from django.contrib.admin.utils import unquote
 from django.db.models import Model
+from django.db.models.options import Options
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from smart_admin.mixins import SmartFilterMixin
 
 from country_workspace.workspaces.templatetags.workspace_urls import add_preserved_filters
@@ -166,6 +169,14 @@ class WorkspaceModelAdmin(ExtraButtonsMixin, AdminFiltersMixin, SmartFilterMixin
             args=[obj.pk],
             current_app=self.admin_site.name,
         )
+
+    def _get_obj_does_not_exist_redirect(self, request: HttpRequest, opts: Options, object_id: str) -> HttpResponse:
+        msg = _('%(name)s with ID "%(key)s" does not exist. Perhaps it was deleted?') % {
+            "name": opts.verbose_name,
+            "key": unquote(object_id),
+        }
+        self.message_user(request, msg, messages.WARNING)
+        return HttpResponseRedirect(self.get_changelist_url())
 
     def get_changelist(self, request: "HttpRequest", **kwargs: Any) -> "type[WorkspaceChangeList]":
         from .changelist import WorkspaceChangeList

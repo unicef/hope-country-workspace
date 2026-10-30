@@ -1,14 +1,14 @@
-from base64 import b64encode
 import hashlib
 import json
-from typing import TYPE_CHECKING, Generator, Literal
+from typing import TYPE_CHECKING, Any, Generator
 
 from django import forms
-from django.core.files.uploadedfile import UploadedFile
+from django.utils.choices import flatten_choices
 
+import hope_flex_fields.fields
 from hope_flex_fields.models import DataChecker
 
-from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
+from country_workspace.contrib.hope.required_choice_field import ChoiceFieldWithEmptyDisplay
 
 if TYPE_CHECKING:
     from country_workspace.models.base import Validable
@@ -17,13 +17,24 @@ if TYPE_CHECKING:
 FLEX_FILES_PREFIX = 8192  # bytes
 
 
-def get_checker_fields(checker: DataChecker, with_fs_prefix: bool = False) -> Generator[tuple[str, str], None, None]:
+def get_checker_fields(
+    checker: DataChecker,
+    with_fs_prefix: bool = False,
+    include_files: bool = True,
+) -> Generator[tuple[str, str], None, None]:
     for fs in checker.members.select_related("fieldset").order_by("fieldset_id", "prefix").all():
         for field in fs.fieldset.get_fields():
+            if not include_files and field.is_file:
+                continue
             yield (
                 f"{fs.prefix if with_fs_prefix else ''}{field.name}",
                 f"{fs.prefix if with_fs_prefix else ''}{(field.attrs.get('label', field.name) or field.name)}",
             )
+
+
+def get_file_field_names(checker: DataChecker) -> set[str]:
+    """File field names, both prefixed and bare, as callers key on either form."""
+    return checker.get_file_field_names() | checker.get_file_field_names(with_prefix=False)
 
 
 def get_obj_checksum(obj: "Validable") -> str:
@@ -35,25 +46,12 @@ def get_obj_checksum(obj: "Validable") -> str:
     return h.hexdigest()
 
 
-class Base64ImageInput(forms.ClearableFileInput):
-    template_name = "workspace/base64_image_widget.html"
+class Base64ImageField(hope_flex_fields.fields.Base64ImageField):
+    """Deprecated: superseded by `hope_flex_fields.fields.FlexImageField`, kept for one release.
 
-    def is_initial(self, value: str | None) -> bool:
-        # we need to override this as base method looks for url
-        return bool(value)
-
-
-class Base64ImageField(forms.ImageField):
-    widget = Base64ImageInput
-
-    def clean(self, data: UploadedFile | Literal[False] | None, initial: str | None = None) -> str | None:
-        if cleaned_data := super().clean(data, initial):
-            if hasattr(cleaned_data, "read"):
-                content = b64encode(cleaned_data.read()).decode()
-                return VALUE_FORMAT.format(mimetype=data.content_type, content=content)
-            return cleaned_data
-
-        return ""
+    Stored field definitions reference this class by its import path, so it stays
+    defined here rather than being an alias of the library class.
+    """
 
 
 def split_options(value: str) -> list[str]:
@@ -70,6 +68,40 @@ def split_options(value: str) -> list[str]:
     return [stripped]
 
 
+class CaseInsensitiveChoiceMixin(forms.Field):
+    """Match values against the choice keys ignoring letter case and return the key as defined."""
+
+    choices: Any
+
+    def _match_choice(self, value: Any) -> Any:
+        if not isinstance(value, str) or not value:
+            return value
+        keys = [str(key) for key, __ in flatten_choices(self.choices)]
+        if value in keys:
+            return value
+        folded = value.casefold()
+        return next((key for key in keys if key.casefold() == folded), value)
+
+    def _match_choices(self, value: Any) -> Any:
+        if isinstance(value, list):
+            return [self._match_choice(item) for item in value]
+        return self._match_choice(value)
+
+    def to_python(self, value: Any) -> Any:
+        return self._match_choices(super().to_python(value))
+
+    def prepare_value(self, value: Any) -> Any:
+        return self._match_choices(super().prepare_value(value))
+
+
+class CaseInsensitiveChoiceField(CaseInsensitiveChoiceMixin, forms.ChoiceField):
+    """Choice field that accepts values in any letter case."""
+
+
+class CaseInsensitiveChoiceFieldWithEmptyDisplay(CaseInsensitiveChoiceMixin, ChoiceFieldWithEmptyDisplay):
+    """Choice field with an explicit empty option that accepts values in any letter case."""
+
+
 class CustomMultipleChoiceField(forms.MultipleChoiceField):
     def to_python(self, value: str | list[str] | None) -> list[str]:
         if isinstance(value, str):
@@ -84,9 +116,9 @@ class CustomMultipleChoiceField(forms.MultipleChoiceField):
         return super().prepare_value(value)
 
 
-class ConsentSharingChoice(CustomMultipleChoiceField):
+class ConsentSharingChoice(CaseInsensitiveChoiceMixin, CustomMultipleChoiceField):
     """Consent sharing multiple choice field."""
 
 
-class ObservedDisabilityChoice(CustomMultipleChoiceField):
+class ObservedDisabilityChoice(CaseInsensitiveChoiceMixin, CustomMultipleChoiceField):
     """Observed Disability multiple choice field."""

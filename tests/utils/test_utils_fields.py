@@ -1,18 +1,42 @@
+from base64 import b64decode
+from io import BytesIO
 from unittest.mock import Mock, call
+from uuid import UUID
 
 import pytest
+from django import forms
+from PIL import Image
+from concurrency.utils import fqn
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from hope_flex_fields.fields import FlexImageField
 from pytest_mock import MockerFixture
 
 
-from country_workspace.contrib.kobo.api.data.helpers import VALUE_FORMAT
 from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
-    Base64ImageInput,
     Base64ImageField,
+    CaseInsensitiveChoiceField,
+    CaseInsensitiveChoiceFieldWithEmptyDisplay,
     ConsentSharingChoice,
+    ObservedDisabilityChoice,
     split_options,
 )
+
+SEVERITY_CHOICES = [("", "None"), ("LOT_DIFFICULTY", "A lot"), ("CANNOT_DO", "Cannot"), ("SOME_DIFFICULTY", "Some")]
+DISABILITY_CHOICES = [("disabled", "disabled"), ("not disabled", "not disabled")]
+OBSERVED_DISABILITY_CHOICES = [("NONE", "None"), ("SEEING", "Seeing"), ("HEARING", "Hearing")]
+
+FILE_ID = UUID("0f3b6a1e-2d0d-4a1e-9a4a-3f5a2d1c8b70")
+REFERENCE = "flexfile:%s" % FILE_ID
+
+
+@pytest.fixture
+def png_upload() -> SimpleUploadedFile:
+    """A real one-pixel PNG, so that image validation runs for real."""
+    buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(buffer, format="PNG")
+    return SimpleUploadedFile("photo.png", buffer.getvalue(), content_type="image/png")
 
 
 @pytest.mark.parametrize(
@@ -36,46 +60,25 @@ def test_clean_field_names(mocker: MockerFixture) -> None:
     clean_field_name_mock.assert_called_once_with(key)
 
 
-@pytest.mark.parametrize("value", [None, "", "test"])
-def test_base64_image_input(value: str | None) -> None:
-    input_ = Base64ImageInput()
-    assert input_.is_initial(value) == bool(value)
+def test_flex_image_widget_links_to_the_workspace_file_view() -> None:
+    context = FlexImageField().widget.get_context("photo", REFERENCE, None)
+
+    assert context["widget"]["image_src"] == reverse("workspace:flex_file", args=[FILE_ID])
 
 
-def test_base64_image_field_file_was_cleared(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    super_clean_mock.return_value = False
-    instance = Mock(spec=Base64ImageField)
-    initial_data = None
-
-    assert Base64ImageField.clean(instance, False, initial_data) == ""
-    super_clean_mock.assert_called_once_with(False, initial_data)
+def test_base64_image_field_keeps_its_stored_import_path() -> None:
+    """Field definitions saved before the library took the field over still name this path."""
+    assert fqn(Base64ImageField) == "country_workspace.utils.flex_fields.Base64ImageField"
 
 
-def test_base64_image_field_content_is_encoded(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    b64encode_mock = mocker.patch("country_workspace.utils.flex_fields.b64encode")
-    b64encode_mock.return_value.decode.return_value = (data := "decoded")
-    file = SimpleUploadedFile("test.txt", content := b"test", content_type=(content_type := "text/plain"))
-    super_clean_mock.return_value = file
-    instance = Mock(spec=Base64ImageField)
-    initial_data = None
+def test_base64_image_field_still_encodes_the_upload_inline(png_upload: SimpleUploadedFile) -> None:
+    content = png_upload.read()
+    png_upload.seek(0)
 
-    assert Base64ImageField.clean(instance, file, initial_data) == VALUE_FORMAT.format(
-        mimetype=content_type, content=data
-    )
-    super_clean_mock.assert_called_once_with(file, initial_data)
-    b64encode_mock.assert_called_once_with(content)
+    cleaned = Base64ImageField(required=False).clean(png_upload, None)
 
-
-def test_base64_image_field_content_is_unchanged(mocker: MockerFixture) -> None:
-    super_clean_mock = mocker.patch("country_workspace.utils.flex_fields.forms.ImageField.clean")
-    super_clean_mock.return_value = (initial_data := "initial_data")
-    instance = Mock(spec=Base64ImageField)
-    data = None
-
-    assert Base64ImageField.clean(instance, data, initial_data) == initial_data
-    super_clean_mock.assert_called_once_with(data, initial_data)
+    assert cleaned.startswith("data:image/png;base64,")
+    assert b64decode(cleaned.split(",", 1)[1]) == content
 
 
 @pytest.mark.parametrize(
@@ -127,6 +130,78 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_split_options(
     ConsentSharingChoice.prepare_value(instance, value)
 
     split_options_mock.assert_has_calls([c := call(value), c])
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("SOME_DIFFICULTY", "SOME_DIFFICULTY", id="exact"),
+        pytest.param("some_difficulty", "SOME_DIFFICULTY", id="lowercase"),
+        pytest.param("Cannot_Do", "CANNOT_DO", id="mixed-case"),
+        pytest.param("", "", id="empty"),
+        pytest.param(None, "", id="none"),
+    ],
+)
+def test_case_insensitive_choice_field_returns_choice_key(value: str | None, expected: str) -> None:
+    field = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    assert field.clean(value) == expected
+
+
+def test_case_insensitive_choice_field_rejects_unknown_value() -> None:
+    field = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    with pytest.raises(forms.ValidationError):
+        field.clean("some difficulty")
+
+
+def test_case_insensitive_choice_field_keeps_lowercase_choice_keys() -> None:
+    field = CaseInsensitiveChoiceFieldWithEmptyDisplay(choices=DISABILITY_CHOICES, required=False)
+
+    assert field.clean("DISABLED") == "disabled"
+    assert field.clean("Not Disabled") == "not disabled"
+
+
+def test_case_insensitive_choice_field_with_empty_display_still_requires_value() -> None:
+    field = CaseInsensitiveChoiceFieldWithEmptyDisplay(choices=DISABILITY_CHOICES, required=True)
+
+    with pytest.raises(forms.ValidationError):
+        field.clean("")
+
+
+def test_case_insensitive_choice_field_matches_grouped_choices() -> None:
+    field = CaseInsensitiveChoiceField(choices=[("Group", [("MARRIED", "Married"), ("SINGLE", "Single")])])
+
+    assert field.clean("single") == "SINGLE"
+
+
+def test_case_insensitive_choice_field_selects_stored_lowercase_value() -> None:
+    class TestForm(forms.Form):
+        seeing_disability = CaseInsensitiveChoiceField(choices=SEVERITY_CHOICES, required=False)
+
+    html = str(TestForm(initial={"seeing_disability": "some_difficulty"})["seeing_disability"])
+
+    assert '<option value="SOME_DIFFICULTY" selected>' in html
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("seeing, Hearing", ["SEEING", "HEARING"], id="string"),
+        pytest.param(["none"], ["NONE"], id="list"),
+        pytest.param("", [], id="empty"),
+    ],
+)
+def test_observed_disability_choice_returns_choice_keys(value: str | list[str], expected: list[str]) -> None:
+    field = ObservedDisabilityChoice(choices=OBSERVED_DISABILITY_CHOICES, required=False)
+
+    assert field.clean(value) == expected
+
+
+def test_consent_sharing_choice_returns_choice_keys() -> None:
+    field = ConsentSharingChoice(choices=[("UNICEF", "UNICEF"), ("PRIVATE_PARTNER", "Private")], required=False)
+
+    assert field.clean("unicef private_partner") == ["UNICEF", "PRIVATE_PARTNER"]
 
 
 @pytest.mark.parametrize(

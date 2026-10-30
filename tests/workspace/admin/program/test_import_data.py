@@ -6,11 +6,12 @@ from country_workspace.workspaces.admin import _import_data as import_data_mod
 
 pytestmark = pytest.mark.django_db
 
-TABS = ("rdi", "aurora", "kobo")
+TABS = ("rdi", "aurora", "kobo", "ona")
 FORM_CLASSES = {
     "rdi": "ImportFileForm",
     "aurora": "ImportAuroraForm",
     "kobo": "ImportKoboForm",
+    "ona": "ImportOnaForm",
 }
 
 

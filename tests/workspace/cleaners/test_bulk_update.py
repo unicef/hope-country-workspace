@@ -1,17 +1,22 @@
 import io
+from datetime import date, datetime
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from constance.test import override_config
+from openpyxl import load_workbook
 from pytest_mock import MockerFixture
 
 from country_workspace.state import state
 from country_workspace.models import AsyncJob, Country
+from country_workspace.utils.flex_files import write_flex_file
 from country_workspace.workspaces.admin.cleaners.bulk_update import (
+    create_bulk_update_template,
     import_household_updates,
     import_individual_updates,
     validate_date_datetime_fields,
+    _coerce_imported_value,
     _validate_datetime_format,
     _validate_date_format,
     _write_country_choices,
@@ -19,6 +24,9 @@ from country_workspace.workspaces.admin.cleaners.bulk_update import (
     _add_choices_worksheet,
     _extract_choices_from_field,
 )
+from country_workspace.workspaces.models import CountryIndividual
+
+PHOTO = b"\x89PNG\r\n\x1a\nphoto"
 
 
 @pytest.fixture
@@ -244,6 +252,87 @@ def test_validate_date_datetime_fields():
     assert errors["Invalid datetime format for field 'flex_fields__created_at' on line"] == [line_number]
 
 
+def test_coerce_imported_value_turns_dates_into_strings():
+    from django.forms.fields import DateField
+
+    date_field = Mock()
+    date_field.definition.field_type = DateField
+
+    assert _coerce_imported_value(datetime(2020, 1, 2, 15, 4, 5), None) == "2020-01-02 15:04:05"  # noqa: DTZ001
+    assert _coerce_imported_value(datetime(2020, 1, 2, 0, 0, 0), date_field) == "2020-01-02"  # noqa: DTZ001
+    assert _coerce_imported_value(date(2020, 1, 2), None) == "2020-01-02"
+    assert _coerce_imported_value("already-text", None) == "already-text"
+
+
+def test_import_bulk_update_file_stores_excel_datetimes_as_strings(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    test_data: dict[str, Any],
+) -> None:
+    entity = test_data["valid_entity"]
+    rows = [
+        {
+            "id": str(entity.id),
+            "version": str(entity.version),
+            "birth_date": datetime(2020, 1, 2, 0, 0, 0),  # noqa: DTZ001
+            "registered_at": datetime(2020, 1, 2, 15, 4, 5),  # noqa: DTZ001
+        },
+    ]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = test_data["import_function"](job=job)
+
+    entity.refresh_from_db()
+    assert result["processed"] == 1
+    assert entity.flex_fields["birth_date"] == "2020-01-02 00:00:00"
+    assert entity.flex_fields["registered_at"] == "2020-01-02 15:04:05"
+
+
+@pytest.mark.parametrize(
+    ("prefix", "column"),
+    [
+        ("national_passport_", "national_passport_issuance_date"),
+        ("%s_passport", "issuance_date_passport"),
+    ],
+    ids=["plain_prefix", "template_prefix"],
+)
+def test_import_bulk_update_file_stores_prefixed_date_fields_as_dates(
+    mocker: MockerFixture,
+    job: AsyncJob,
+    test_data: dict[str, Any],
+    prefix: str,
+    column: str,
+) -> None:
+    from django.forms.fields import DateField
+
+    fieldset = Mock(prefix=prefix)
+    date_field = Mock()
+    date_field.name = "issuance_date"
+    date_field.definition.field_type = DateField
+    checker = Mock()
+    checker.get_fields.return_value = [(fieldset, date_field)]
+    checker.get_file_field_names.return_value = set()
+    mocker.patch.object(type(job.program), "get_checker_for", return_value=checker)
+
+    entity = test_data["valid_entity"]
+    rows = [
+        {
+            "id": str(entity.id),
+            "version": str(entity.version),
+            column: datetime(2020, 1, 2, 0, 0, 0),  # noqa: DTZ001
+        },
+    ]
+    mocker.patch("country_workspace.workspaces.admin.cleaners.bulk_update.open_xls", return_value=rows)
+
+    with override_config(CONCURRENCY_GUARD=True):
+        result = test_data["import_function"](job=job)
+
+    entity.refresh_from_db()
+    assert result["processed"] == 1
+    assert entity.flex_fields[column] == "2020-01-02"
+
+
 def test_validate_date_datetime_fields_with_empty_values():
     row = {
         "birth_date": None,
@@ -461,3 +550,76 @@ def test_extract_choices_for_admin_fields():
 
     result = _extract_choices_from_field(fake_field)
     assert result == DummyFieldType().choices
+
+
+@pytest.fixture
+def photo_program(office, photo_checker):
+    """A program whose individual checker has an image field next to a text field."""
+    from testutils.factories import CountryProgramFactory
+
+    return CountryProgramFactory(
+        country_office=office,
+        individual_checker=photo_checker,
+        individual_columns="id\nfamily_name\nphoto",
+        beneficiary_group__master_detail=False,
+    )
+
+
+@pytest.fixture
+def individual_with_photo(photo_program):
+    from testutils.factories import CountryIndividualFactory
+
+    individual = CountryIndividualFactory(
+        batch__program=photo_program, household=None, flex_fields={"family_name": "Smith"}
+    )
+    individual.flex_fields["photo"] = write_flex_file(individual, "photo", PHOTO, "image/png")
+    individual.save(update_fields=["flex_fields"])
+    return individual
+
+
+@pytest.fixture
+def photo_job(photo_program) -> AsyncJob:
+    from testutils.factories import AsyncJobFactory
+
+    job = AsyncJobFactory(program=photo_program)
+    job.file = io.BytesIO(b"dummy content")
+    return job
+
+
+def test_create_bulk_update_template_leaves_file_columns_out(
+    individual_with_photo: CountryIndividual, photo_program
+) -> None:
+    out = create_bulk_update_template(
+        CountryIndividual.objects.filter(pk=individual_with_photo.pk),
+        photo_program,
+        ["id", "family_name", "photo"],
+    )
+
+    header = [cell.value for cell in next(load_workbook(out).worksheets[0].iter_rows())]
+    assert "family_name" in header
+    assert "photo" not in header
+
+
+def test_import_bulk_update_file_ignores_file_columns(
+    mocker: MockerFixture, photo_job: AsyncJob, individual_with_photo: CountryIndividual
+) -> None:
+    reference = individual_with_photo.flex_fields["photo"]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.bulk_update.open_xls",
+        return_value=[
+            {
+                "id": str(individual_with_photo.pk),
+                "version": str(individual_with_photo.version),
+                "family_name": "Jones",
+                "photo": "pasted by hand",
+            }
+        ],
+    )
+
+    with override_config(CONCURRENCY_GUARD=True):
+        total = import_individual_updates(job=photo_job)
+
+    assert total["processed"] == 1
+    individual_with_photo.refresh_from_db()
+    assert individual_with_photo.flex_fields["family_name"] == "Jones"
+    assert individual_with_photo.flex_fields["photo"] == reference
