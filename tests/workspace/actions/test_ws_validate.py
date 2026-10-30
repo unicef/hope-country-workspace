@@ -1,4 +1,5 @@
 import datetime
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import freezegun
@@ -234,6 +235,135 @@ def test_create_validation_jobs_skips_batch_when_records_span_batches(program, f
 
     assert first.batch_id != second.batch_id
     assert create_mock.call_args.kwargs["batch_id"] is None
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_creates_all_jobs_before_queueing(program, force_migrated_records, mocker):
+    from types import SimpleNamespace
+
+    from testutils.factories import IndividualFactory
+
+    individuals = [
+        IndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+        )
+        for _ in range(2)
+    ]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.config",
+        SimpleNamespace(CHUNK_SIZE_FOR_VALIDATION_TASK=1),
+    )
+    calls: list[str] = []
+
+    @contextmanager
+    def tracked_atomic():
+        calls.append("begin")
+        yield
+        calls.append("commit")
+
+    def make_job(**kwargs):
+        job = mocker.Mock()
+        job.queue.side_effect = lambda: calls.append("queue")
+        calls.append("create")
+        return job
+
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.transaction",
+        SimpleNamespace(atomic=tracked_atomic),
+    )
+    mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create", side_effect=make_job)
+
+    create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.filter(pk__in=[i.pk for i in individuals]),
+    )
+
+    # all jobs are created inside one transaction; queueing happens only after it is committed
+    assert calls == ["begin", "create", "create", "commit", "queue", "queue"]
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_creates_no_jobs_when_creation_fails_midway(program, force_migrated_records, mocker):
+    from types import SimpleNamespace
+
+    from testutils.factories import IndividualFactory
+
+    from country_workspace.models import AsyncJob
+
+    individuals = [
+        IndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+        )
+        for _ in range(3)
+    ]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.config",
+        SimpleNamespace(CHUNK_SIZE_FOR_VALIDATION_TASK=1),
+    )
+    real_create = AsyncJob.objects.create
+    attempts = 0
+
+    def flaky_create(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 2:
+            raise RuntimeError("db error")
+        return real_create(**kwargs)
+
+    mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create", flaky_create)
+    queue = mocker.patch("country_workspace.models.AsyncJob.queue")
+    before = AsyncJob.objects.count()
+
+    with pytest.raises(RuntimeError, match="db error"):
+        create_validation_jobs(
+            description="Validate records",
+            owner=None,
+            program=program,
+            queryset=Individual.objects.filter(pk__in=[i.pk for i in individuals]),
+        )
+
+    assert AsyncJob.objects.count() == before
+    queue.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_keeps_created_jobs_when_queueing_fails(program, force_migrated_records, mocker):
+    from types import SimpleNamespace
+
+    from testutils.factories import IndividualFactory
+
+    from country_workspace.models import AsyncJob
+
+    individuals = [
+        IndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+        )
+        for _ in range(2)
+    ]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.config",
+        SimpleNamespace(CHUNK_SIZE_FOR_VALIDATION_TASK=1),
+    )
+    mocker.patch("country_workspace.models.AsyncJob.queue", side_effect=RuntimeError("broker down"))
+    before = AsyncJob.objects.count()
+
+    with pytest.raises(RuntimeError, match="broker down"):
+        create_validation_jobs(
+            description="Validate records",
+            owner=None,
+            program=program,
+            queryset=Individual.objects.filter(pk__in=[i.pk for i in individuals]),
+        )
+
+    assert AsyncJob.objects.count() == before + 2
 
 
 @pytest.mark.django_db
