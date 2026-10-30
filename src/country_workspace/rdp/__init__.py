@@ -1,3 +1,14 @@
+from .biographic.forms import BiographicDeduplicationConfigForm
+from .biographic.repository import (
+    annotate_biographic_households,
+    annotate_biographic_individuals,
+    biographic_findings_for_individual,
+    biographic_operation_for_rdp,
+    qs_biographic_affected_individuals,
+    qs_biographic_duplicate_individuals,
+    qs_successful_biographic_operations,
+)
+from .biographic.workflow import sync_biographic_deduplication_result
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.forms import BiometricDeduplicationConfigForm
 from .deduplication.policy import get_program_dedup_settings_policy
@@ -7,6 +18,7 @@ from .deduplication.repository import (
     annotate_biometric_individuals,
     biometric_findings_for_individual,
     biometric_operation_for_rdp,
+    qs_affected_individuals,
     qs_biometric_affected_individuals,
     qs_biometric_duplicate_individuals,
     qs_successful_biometric_operations,
@@ -28,6 +40,7 @@ from .operations.definitions import (
     get_enabled_rdp_operation_definitions,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
+    sync_rdp_operation_result,
 )
 from .operations.repository import failed_rdp_operations
 from .operations.workflow import retry_failed_rdp_operations
@@ -44,14 +57,19 @@ __all__ = [
     "DEDUP_CALLBACK_SALT",
     "PUSH_READY_CALLBACK_MAX_AGE",
     "PUSH_READY_CALLBACK_SALT",
+    "BiographicDeduplicationConfigForm",
     "BiometricDeduplicationConfigForm",
     "CreateRdpConfig",
     "RdpActionPolicy",
     "RdpWorkflowError",
     "ThresholdType",
+    "annotate_biographic_households",
+    "annotate_biographic_individuals",
     "annotate_biometric_households",
     "annotate_biometric_individuals",
     "append_rdp_log",
+    "biographic_findings_for_individual",
+    "biographic_operation_for_rdp",
     "biometric_findings_for_individual",
     "biometric_operation_for_rdp",
     "cancel_existing_rdp_core",
@@ -72,12 +90,18 @@ __all__ = [
     "handle_push_ready_callback",
     "lock_rdp_for_update",
     "push_existing_rdp_core",
+    "qs_affected_individuals",
+    "qs_biographic_affected_individuals",
+    "qs_biographic_duplicate_individuals",
     "qs_biometric_affected_individuals",
     "qs_biometric_duplicate_individuals",
     "qs_individuals_for_rdp",
+    "qs_successful_biographic_operations",
     "qs_successful_biometric_operations",
     "reset_rdp",
     "retry_failed_rdp_operations",
     "retry_rdp_push",
+    "sync_biographic_deduplication_result",
     "sync_biometric_deduplication_result",
+    "sync_rdp_operation_result",
 ]

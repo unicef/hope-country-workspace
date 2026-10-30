@@ -50,7 +50,7 @@ Use **Retry push to HOPE** to start a new push attempt. See **[Retry a failed pu
 
 ## DedupEngine approval failed after a successful push
 
-For biometric RDPs, Country Workspace attempts to approve the Deduplication Set after the HOPE push succeeds.
+For biometric and biographic RDPs, Country Workspace attempts to approve the DedupEngine set after the HOPE push succeeds.
 
 An approval failure does not change the RDP from `SUCCESS`; the beneficiary data has already been pushed successfully. Do not retry the HOPE push for this reason alone.
 

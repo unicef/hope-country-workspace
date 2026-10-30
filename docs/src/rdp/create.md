@@ -23,7 +23,9 @@ The creation page shows configuration for the RDP operations enabled for the sel
 
 For example, when biometric deduplication is enabled, the form includes the biometric findings threshold used to decide whether manual review is required.
 
-See **[RDP operations](operations/index.md)** for the common operation flow and **[Biometric deduplication](operations/deduplication.md)** for biometric settings.
+When biographic deduplication is enabled, the form also includes its own threshold, counted in individuals with duplicates.
+
+See **[RDP operations](operations/index.md)** for the common operation flow, **[Biometric deduplication](operations/deduplication.md)** and **[Biographic deduplication](operations/biographic-deduplication.md)** for their settings.
 
 ## Create the RDP
 

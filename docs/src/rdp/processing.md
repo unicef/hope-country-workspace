@@ -34,6 +34,13 @@ sequenceDiagram
             OP->>OP: Store biometric findings
         end
 
+        opt Biographic deduplication
+            OP->>DE: Create/resume dataset
+            OP->>DE: Upload individuals and start processing
+            DE-->>OP: Processing result
+            OP->>OP: Store biographic findings
+        end
+
         alt Operation succeeds
             OP->>OP: Set SUCCESS
         else Technical failure
@@ -79,6 +86,10 @@ sequenceDiagram
         opt Biometric deduplication
             CW->>DE: Approve Deduplication Set
         end
+
+        opt Biographic deduplication
+            CW->>DE: Approve dataset
+        end
     end
 ```
 
@@ -92,7 +103,7 @@ See **[RDP operations](operations/index.md)** for configuration, statuses, retri
 
 An operation can complete successfully while still producing findings that affect the next RDP step.
 
-For **[biometric deduplication](operations/deduplication.md)**, Country Workspace evaluates the stored findings against the configured threshold after all operations have completed successfully.
+For **[biometric](operations/deduplication.md)** and **[biographic](operations/biographic-deduplication.md)** deduplication, Country Workspace evaluates the stored findings against each configured threshold after all operations have completed successfully. The RDP requires manual review when any threshold is exceeded.
 
 If manual review is not required, processing continues automatically to the **[HOPE Core push](push.md)**. Otherwise, the RDP moves to `REVIEW_PENDING`.
 

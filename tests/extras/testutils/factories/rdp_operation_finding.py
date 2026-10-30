@@ -5,7 +5,7 @@ from country_workspace.models import RdpOperationFinding
 
 from .base import AutoRegisterModelFactory
 from .individual import IndividualFactory
-from .rdp_operation import BiometricRdpOperationFactory
+from .rdp_operation import BiographicRdpOperationFactory, BiometricRdpOperationFactory
 
 
 class RdpOperationFindingFactory(AutoRegisterModelFactory):
@@ -20,3 +20,9 @@ class BiometricRdpOperationFindingFactory(RdpOperationFindingFactory):
     operation = factory.SubFactory(BiometricRdpOperationFactory)
     # Use a standalone finding by default; duplicate findings require related_individual.
     finding_type = FindingStatusCode.BAD_IMAGE_QUALITY.name
+
+
+class BiographicRdpOperationFindingFactory(RdpOperationFindingFactory):
+    operation = factory.SubFactory(BiographicRdpOperationFactory)
+    related_individual = factory.SubFactory(IndividualFactory)
+    finding_type = "DUPLICATE"

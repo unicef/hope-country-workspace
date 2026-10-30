@@ -32,7 +32,7 @@ from country_workspace.rdp import (
     failed_rdp_operations,
     get_push_policy,
     get_rdp_policy,
-    qs_biometric_affected_individuals,
+    qs_affected_individuals,
     retry_failed_rdp_operations,
     retry_rdp_push,
 )
@@ -144,7 +144,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         rows = []
         for operation in operations:
             successful = operation.status == RdpOperation.Status.SUCCESS
-            biometric = operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION
+            deduplication = operation.operation_type in {
+                RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+                RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+            }
             rows.append(
                 {
                     "id": str(operation.id),
@@ -156,11 +159,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     "config": json.dumps(operation.config, indent=2, ensure_ascii=False) if operation.config else "",
                     "error": json.dumps(operation.error, indent=2, ensure_ascii=False) if operation.error else "",
                     "log": [self._format_log_entry(entry) for entry in operation.log],
-                    "findings": operation.findings.count() if biometric and successful else None,
+                    "findings": operation.findings.count() if deduplication and successful else None,
                     "affected_individuals": (
-                        qs_biometric_affected_individuals(operation=operation).count()
-                        if biometric and successful
-                        else None
+                        qs_affected_individuals(operation=operation).count() if deduplication and successful else None
                     ),
                 }
             )
@@ -362,10 +363,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         change_list=False,
         permission="country_workspace.push_rdp_to_hope",
         visible=lambda btn: bool((obj := btn.original) and obj.status == Rdp.PushStatus.REVIEW_PENDING),
-        html_attrs={"title": "Create a new RDP excluding beneficiaries affected by biometric findings."},
+        html_attrs={"title": "Create a new RDP excluding beneficiaries affected by deduplication findings."},
     )
     def create_clean_rdp(self, request: HttpRequest, pk: str) -> HttpResponse:
-        """Cancel this RDP and create a new one without beneficiaries affected by biometric findings."""
+        """Cancel this RDP and create a new one without beneficiaries affected by deduplication findings."""
         if (obj := self.get_object(request, pk)) is None:
             messages.error(request, "RDP not found")
             return redirect("workspace:workspaces_countryrdp_changelist")
@@ -387,7 +388,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 messages.error(request, check.reason or "Action is not allowed.")
             return redirect(self._change_url(obj))
 
-        message = "Cancel this RDP and create a new one excluding beneficiaries affected by biometric findings? "
+        message = "Cancel this RDP and create a new one excluding beneficiaries affected by deduplication findings? "
         if obj.hope_rdi_id not in {None, "N/A"}:
             message += f"Confirm HOPE RDI {obj.hope_rdi_id} has been deleted manually. "
         message += "The old DedupEngine set will be scheduled for rejection."

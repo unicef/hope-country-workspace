@@ -38,7 +38,7 @@ def test_dedup_callback(
     url, operation_id = callback_url
     sync = mocker.patch.object(
         views,
-        "sync_biometric_deduplication_result",
+        "sync_rdp_operation_result",
         return_value=synchronized,
     )
 
@@ -51,7 +51,7 @@ def test_dedup_callback(
 
 
 def test_dedup_callback_rejects_invalid_signature(client: Client, mocker: MockerFixture) -> None:
-    sync = mocker.patch.object(views, "sync_biometric_deduplication_result")
+    sync = mocker.patch.object(views, "sync_rdp_operation_result")
     url = reverse(VIEW_NAME, kwargs={"signed_token": "invalid"})
 
     response = client.get(url)
@@ -65,7 +65,7 @@ def test_dedup_callback_rejects_invalid_signature(client: Client, mocker: Mocker
 def test_dedup_callback_rejects_invalid_payload(client: Client, mocker: MockerFixture) -> None:
     token = signing.dumps({"operation_id": "invalid"}, salt=DEDUP_CALLBACK_SALT)
     url = reverse(VIEW_NAME, kwargs={"signed_token": token})
-    sync = mocker.patch.object(views, "sync_biometric_deduplication_result")
+    sync = mocker.patch.object(views, "sync_rdp_operation_result")
 
     response = client.get(url)
 
@@ -83,7 +83,7 @@ def test_dedup_callback_returns_server_error(
     url, _ = callback_url
     mocker.patch.object(
         views,
-        "sync_biometric_deduplication_result",
+        "sync_rdp_operation_result",
         side_effect=RuntimeError("boom"),
     )
     client.raise_request_exception = False

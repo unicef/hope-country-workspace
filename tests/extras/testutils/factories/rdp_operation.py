@@ -23,3 +23,13 @@ class BiometricRdpOperationFactory(RdpOperationFactory):
             "threshold_value": "0",
         }
     )
+
+
+class BiographicRdpOperationFactory(RdpOperationFactory):
+    operation_type = RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION
+    config = factory.LazyFunction(
+        lambda: {
+            "threshold_type": ThresholdType.COUNT.value,
+            "threshold_value": "0",
+        }
+    )
