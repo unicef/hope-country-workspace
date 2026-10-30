@@ -1325,8 +1325,53 @@ def test_import_pictures_for_batch_skips_validation_when_nothing_updated(batch: 
         config={"batch_id": batch.pk},
     )
 
-    assert import_pictures_for_batch(job) == {"updated": 0}
+    assert import_pictures_for_batch(job) == {"updated": 0, "validation_scheduled": 0}
     create_jobs.assert_not_called()
+
+
+def test_import_pictures_for_batch_does_not_fail_when_validation_scheduling_fails(
+    batch: CountryBatch, user, mocker
+) -> None:
+    from testutils.factories import CountryHouseholdFactory, CountryIndividualFactory
+
+    mocker.patch(
+        "country_workspace.workspaces.admin.batch.picture_import.create_validation_jobs",
+        side_effect=RuntimeError("broker down"),
+    )
+    capture = mocker.patch("country_workspace.workspaces.admin.batch.picture_import.sentry_sdk.capture_exception")
+    hh = CountryHouseholdFactory(batch=batch, individuals=0)
+    individual = CountryIndividualFactory(batch=batch, household=hh, raw_data={"beneficiary_id": "A-1"})
+    zip_name = MEDIA_STORAGE.save(
+        "batch-picture-import/job-sched-fail.zip",
+        ContentFile(_make_zip_upload({"A-1.jpg": _make_image_bytes("PNG")}).read()),
+    )
+    batch.picture_import_state = {
+        "batch_id": batch.pk,
+        "match_field": "beneficiary_id",
+        "target_field": "photo",
+        "zip_file_name": zip_name,
+        "created_by_id": user.pk,
+    }
+    batch.save(update_fields=["picture_import_state"])
+    job = AsyncJob.objects.create(
+        description="Import pictures job",
+        type=AsyncJob.JobType.TASK,
+        owner=user,
+        action=fqn(import_pictures_for_batch),
+        program=batch.program,
+        batch=batch,
+        config={"batch_id": batch.pk},
+    )
+
+    result = import_pictures_for_batch(job)
+
+    assert result == {"updated": 1, "validation_scheduled": 0}
+    capture.assert_called_once()
+    batch.refresh_from_db()
+    individual.refresh_from_db()
+    assert individual.flex_fields.get("photo")
+    assert batch.get_picture_import_state() == {}
+    assert not MEDIA_STORAGE.exists(zip_name)
 
 
 def test_import_pictures_for_batch_rebuilds_assignments_from_current_db(batch: CountryBatch, user, mocker) -> None:

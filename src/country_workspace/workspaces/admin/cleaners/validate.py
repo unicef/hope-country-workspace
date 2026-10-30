@@ -175,6 +175,9 @@ def create_validation_jobs(
     total_chunks = math.ceil(total_records / chunk_size)
     validation_run_id = uuid.uuid4().hex
 
+    # Create every job first and queue them afterwards: if queueing fails midway,
+    # the remaining jobs already exist and can be queued again without redoing the caller's work.
+    jobs = []
     for chunk in batched(queryset, chunk_size):
         job = AsyncJob.objects.create(
             description=f"{description} (PKs {chunk[0]} - {chunk[-1]})",
@@ -193,4 +196,7 @@ def create_validation_jobs(
                 },
             },
         )
+        jobs.append(job)
+
+    for job in jobs:
         job.queue()

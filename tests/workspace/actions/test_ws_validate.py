@@ -237,6 +237,78 @@ def test_create_validation_jobs_skips_batch_when_records_span_batches(program, f
 
 
 @pytest.mark.django_db
+def test_create_validation_jobs_creates_all_jobs_before_queueing(program, force_migrated_records, mocker):
+    from types import SimpleNamespace
+
+    from testutils.factories import IndividualFactory
+
+    individuals = [
+        IndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+        )
+        for _ in range(2)
+    ]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.config",
+        SimpleNamespace(CHUNK_SIZE_FOR_VALIDATION_TASK=1),
+    )
+    calls: list[str] = []
+
+    def make_job(**kwargs):
+        job = mocker.Mock()
+        job.queue.side_effect = lambda: calls.append("queue")
+        calls.append("create")
+        return job
+
+    mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create", side_effect=make_job)
+
+    create_validation_jobs(
+        description="Validate records",
+        owner=mocker.Mock(),
+        program=program,
+        queryset=Individual.objects.filter(pk__in=[i.pk for i in individuals]),
+    )
+
+    assert calls == ["create", "create", "queue", "queue"]
+
+
+@pytest.mark.django_db
+def test_create_validation_jobs_keeps_created_jobs_when_queueing_fails(program, force_migrated_records, mocker):
+    from types import SimpleNamespace
+
+    from testutils.factories import IndividualFactory
+
+    from country_workspace.models import AsyncJob
+
+    individuals = [
+        IndividualFactory(
+            household=None,
+            batch__program=program,
+            batch__country_office=program.country_office,
+        )
+        for _ in range(2)
+    ]
+    mocker.patch(
+        "country_workspace.workspaces.admin.cleaners.validate.config",
+        SimpleNamespace(CHUNK_SIZE_FOR_VALIDATION_TASK=1),
+    )
+    mocker.patch("country_workspace.models.AsyncJob.queue", side_effect=RuntimeError("broker down"))
+    before = AsyncJob.objects.count()
+
+    with pytest.raises(RuntimeError, match="broker down"):
+        create_validation_jobs(
+            description="Validate records",
+            owner=None,
+            program=program,
+            queryset=Individual.objects.filter(pk__in=[i.pk for i in individuals]),
+        )
+
+    assert AsyncJob.objects.count() == before + 2
+
+
+@pytest.mark.django_db
 def test_create_validation_jobs_skips_empty_queryset(program, force_migrated_records, mocker):
     create_mock = mocker.patch("country_workspace.workspaces.admin.cleaners.validate.AsyncJob.objects.create")
 

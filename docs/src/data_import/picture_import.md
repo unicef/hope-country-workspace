@@ -109,6 +109,8 @@ Country Workspace schedules a background job that re-reads the archive, rechecks
 
 Validation results are cleared for updated records, and validation jobs for these records are scheduled automatically once the pictures are written. Records whose picture did not change are not revalidated. Validation results become available as the separately scheduled validation jobs finish.
 
+Scheduling validation does not affect the import result. If the validation jobs cannot be queued, the pictures are still imported and the picture import job reports `validation_scheduled: 0`. Validation jobs created before the failure remain in the Batch jobs list and can be queued again, or the affected records can be validated manually.
+
 Batch reprocessing rebuilds beneficiary fields from the stored source data and does not preserve pictures added through **Import pictures**. After reprocessing, import the pictures again.
 
 If the matching session expires before confirmation, run the matching step again. The temporary ZIP archive and matching data are removed after the job finishes, including when it fails.

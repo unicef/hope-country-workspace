@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import zipfile
 from collections import defaultdict
@@ -5,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import sentry_sdk
 from constance import config as constance_config
 from django import forms
 from django.db import transaction
@@ -16,6 +18,8 @@ from country_workspace.workspaces.admin.cleaners.validate import create_validati
 from ...models import CountryBatch, CountryIndividual
 from ....storages import MEDIA_STORAGE
 from ....utils.flex_files import FlexFileContent, write_flex_file
+
+logger = logging.getLogger(__name__)
 
 
 class PictureImportLimitError(ValueError):
@@ -199,17 +203,28 @@ class BatchPictureImportService:
         return updated
 
 
-def _schedule_validation(job: AsyncJob, batch: CountryBatch, individual_ids: list[int]) -> None:
-    """Re-validate individuals whose pictures changed (their check state was reset on import)."""
+def _schedule_validation(job: AsyncJob, batch: CountryBatch, individual_ids: list[int]) -> int:
+    """Re-validate individuals whose pictures changed (their check state was reset on import).
+
+    Pictures are already saved when this runs, so a scheduling failure must not fail the import.
+    The error is logged and reported to Sentry, and 0 is returned so it is visible in the job result.
+    Validation jobs that were created before the failure stay in the jobs list and can be queued again.
+    """
     if not individual_ids:
-        return
-    create_validation_jobs(
-        description=f"Validate records for batch {batch.pk} after picture import",
-        owner=job.owner,
-        program=batch.program,
-        queryset=Individual.objects.filter(pk__in=individual_ids),
-        validation_scope="batch",
-    )
+        return 0
+    try:
+        create_validation_jobs(
+            description=f"Validate records for batch {batch.pk} after picture import",
+            owner=job.owner,
+            program=batch.program,
+            queryset=Individual.objects.filter(pk__in=individual_ids),
+            validation_scope="batch",
+        )
+    except Exception as exc:
+        logger.exception("Failed to schedule validation after picture import for batch %s", batch.pk)
+        sentry_sdk.capture_exception(exc)
+        return 0
+    return len(individual_ids)
 
 
 def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
@@ -233,8 +248,8 @@ def import_pictures_for_batch(job: AsyncJob) -> dict[str, int]:
         with MEDIA_STORAGE.open(zip_file_name, "rb") as zip_stream:
             preview = service.build_preview(match_field, zip_stream, include_content=True)
         updated_ids = service.apply_assignments_and_get_ids(target_field, preview.get("assignments", []))
-        _schedule_validation(job, batch, updated_ids)
-        return {"updated": len(updated_ids)}
+        validation_scheduled = _schedule_validation(job, batch, updated_ids)
+        return {"updated": len(updated_ids), "validation_scheduled": validation_scheduled}
     finally:
         # Always clear draft state + temp ZIP after the job run.
         batch.finish_picture_import()
