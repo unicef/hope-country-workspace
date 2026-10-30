@@ -113,9 +113,11 @@ def import_data(job: AsyncJob) -> ImportResult:
             batch.status = Batch.BatchStatus.LOADING
             batch.save(update_fields=["status"])
 
+    attachment_max_mb = constance_config.ONA_ATTACHMENT_MAX_MB
     client = OnaClient(
         base_url=constance_config.ONA_API_URL,
         token=constance_config.ONA_API_TOKEN,
+        max_download_bytes=attachment_max_mb * 1024 * 1024 if attachment_max_mb > 0 else None,
     )
 
     timebox_minutes = getattr(constance_config, "ONA_IMPORT_TIMEBOX_MINUTES", 0) or 0

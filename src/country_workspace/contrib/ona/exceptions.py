@@ -12,3 +12,11 @@ class OnaRateLimitError(OnaApiError):
 
 class OnaMappingError(OnaApiError):
     pass
+
+
+class OnaNotFoundError(OnaApiError):
+    pass
+
+
+class OnaAttachmentTooLargeError(OnaApiError):
+    pass

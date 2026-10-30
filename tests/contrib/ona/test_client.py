@@ -7,7 +7,9 @@ import responses
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.exceptions import (
     OnaApiError,
+    OnaAttachmentTooLargeError,
     OnaAuthenticationError,
+    OnaNotFoundError,
     OnaRateLimitError,
 )
 
@@ -285,13 +287,44 @@ def test_download_refuses_a_url_outside_the_ona_server():
             client.download("https://data.inform.unicef.org.evil.example/api/v1/files/1")
 
 
-@pytest.mark.parametrize(("status", "exception"), [(404, OnaApiError), (401, OnaAuthenticationError)])
+@pytest.mark.parametrize(
+    ("status", "exception"),
+    [(404, OnaNotFoundError), (410, OnaNotFoundError), (401, OnaAuthenticationError), (500, OnaApiError)],
+)
 def test_download_raises_on_error_status(status, exception):
     with responses.RequestsMock() as mocked:
         mocked.get("https://data.inform.unicef.org/api/v1/files/1", status=status)
         client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token")
 
         with pytest.raises(exception):
+            client.download("/api/v1/files/1")
+
+
+@pytest.mark.parametrize(
+    ("max_download_bytes", "size"),
+    [(None, 1024 * 1024), (1024 * 1024, 1024 * 1024)],
+)
+def test_download_accepts_attachment_within_limit(max_download_bytes, size):
+    with responses.RequestsMock() as mocked:
+        mocked.get("https://data.inform.unicef.org/api/v1/files/1", body=b"x" * size)
+        client = OnaClient(
+            base_url="https://data.inform.unicef.org", token="test-token", max_download_bytes=max_download_bytes
+        )
+
+        assert len(client.download("/api/v1/files/1")) == size
+
+
+@pytest.mark.parametrize("declared", [True, False], ids=["content_length", "streamed"])
+def test_download_refuses_attachment_over_limit(declared):
+    with responses.RequestsMock() as mocked:
+        mocked.get(
+            "https://data.inform.unicef.org/api/v1/files/1",
+            body=b"x" * (200 * 1024),
+            auto_calculate_content_length=declared,
+        )
+        client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token", max_download_bytes=100 * 1024)
+
+        with pytest.raises(OnaAttachmentTooLargeError, match="exceeds 102400 bytes"):
             client.download("/api/v1/files/1")
 
 

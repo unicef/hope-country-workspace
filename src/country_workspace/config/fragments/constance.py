@@ -59,6 +59,11 @@ CONSTANCE_CONFIG = {
     "ONA_API_TOKEN": (ONA_API_TOKEN, "ONA API Access Token", "write_only_text_input"),
     "ONA_API_URL": (ONA_API_URL, "ONA API Server address", str),
     "ONA_IMPORT_TIMEBOX_MINUTES": (30, "Max minutes before ONA import reschedules itself; 0 disables", int),
+    "ONA_ATTACHMENT_MAX_MB": (
+        10,
+        "Maximum size in MB of a single ONA attachment; larger ones are skipped. 0 disables",
+        int,
+    ),
     "ONA_APPROVED_FORMS": (
         ONA_APPROVED_FORMS,
         "JSON mapping of approved ONA / INFORM forms to CW programmes/offices",
@@ -179,6 +184,7 @@ CONSTANCE_CONFIG_FIELDSETS = {
         "ONA_API_URL",
         "ONA_APPROVED_FORMS",
         "ONA_IMPORT_TIMEBOX_MINUTES",
+        "ONA_ATTACHMENT_MAX_MB",
         "ONA_HH_FIELDS_TO_IGNORE",
         "ONA_IND_FIELDS_TO_IGNORE",
     ),
