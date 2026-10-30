@@ -125,16 +125,22 @@ def test_download_attachments_skips_an_unanswered_attachment(
     assert downloads == []
 
 
-def test_download_attachments_skips_an_attachment_without_download_url(
-    download: Callable[[str], bytes], downloads: list[str]
+@pytest.mark.parametrize("download_url", ["", None, ...], ids=["empty", "null", "absent"])
+def test_download_attachments_empties_the_answer_of_an_attachment_without_download_url(
+    download: Callable[[str], bytes], downloads: list[str], download_url: str | None
 ) -> None:
-    submission = {"photo": "photo.jpg", "_attachments": [attachment(1, "photo.jpg", download_url="")]}
+    entry = attachment(1, "photo.jpg", download_url=download_url)
+    if download_url is ...:
+        del entry["download_url"]
+    other = attachment(2, "other.jpg")
+    submission = {"photo": "photo.jpg", "other": "other.jpg", "_attachments": [entry, other]}
 
     marked, files = download_attachments(download, submission)
 
-    assert marked["photo"] == "photo.jpg"
-    assert files == {}
-    assert downloads == []
+    assert marked["photo"] == ""
+    assert marked["other"] == pending_marker("other.jpg")
+    assert list(files) == ["other.jpg"]
+    assert downloads == [other["download_url"]]
 
 
 @pytest.mark.parametrize("submission", [{"_id": 1, "photo": "photo.jpg"}, {"photo": "photo.jpg", "_attachments": None}])
