@@ -3,7 +3,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0067_program_cleanup_in_progress"),
+        ("country_workspace", "0070_flexfieldfile"),
     ]
 
     operations = [
