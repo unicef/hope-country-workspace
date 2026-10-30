@@ -5,6 +5,12 @@ import pytest
 from hope_flex_fields.references import DEFAULT_MIMETYPE
 
 from country_workspace.contrib.ona.attachments import download_attachments, get_attachment_name
+from country_workspace.contrib.ona.exceptions import (
+    OnaApiError,
+    OnaAttachmentTooLargeError,
+    OnaAuthenticationError,
+    OnaNotFoundError,
+)
 from country_workspace.utils.flex_files import pending_marker
 
 PHOTO = b"\xff\xd8\xffphoto"
@@ -145,6 +151,51 @@ def test_download_attachments_defaults_the_mimetype(download: Callable[[str], by
     _marked, files = download_attachments(download, submission)
 
     assert files["photo.jpg"].mimetype == DEFAULT_MIMETYPE
+
+
+@pytest.mark.parametrize(
+    "error", [OnaNotFoundError("gone"), OnaAttachmentTooLargeError("too large")], ids=["missing", "too_large"]
+)
+def test_download_attachments_empties_the_answers_of_a_skipped_attachment(
+    household_submission: dict[str, Any], downloads: list[str], error: Exception
+) -> None:
+    def download(url: str) -> bytes:
+        downloads.append(url)
+        if "/11?" in url:
+            raise error
+        return PHOTO
+
+    marked, files = download_attachments(download, household_submission)
+
+    first, second = marked["individual_questions"]
+    assert first["individual_questions/individual_details/photo_i_c"] == ""
+    assert first["individual_questions/identification/national_id_photo_i_c"] == pending_marker("national_id_1_0.jpg")
+    assert second["individual_questions/individual_details/photo_i_c"] == pending_marker("photo_1_1.jpg")
+    assert set(files) == {"consent_1.jpg", "national_id_1_0.jpg", "photo_1_1.jpg"}
+    assert len(downloads) == 4
+
+
+def test_download_attachments_tries_a_skipped_attachment_once(downloads: list[str]) -> None:
+    def download(url: str) -> bytes:
+        downloads.append(url)
+        raise OnaNotFoundError("gone")
+
+    submission = {"photo": "photo.jpg", "copy": "photo.jpg", "_attachments": [attachment(1, "photo.jpg")]}
+
+    marked, files = download_attachments(download, submission)
+
+    assert marked["photo"] == marked["copy"] == ""
+    assert files == {}
+    assert len(downloads) == 1
+
+
+@pytest.mark.parametrize("error", [OnaAuthenticationError("denied"), OnaApiError("server error")])
+def test_download_attachments_propagates_other_errors(household_submission: dict[str, Any], error: Exception) -> None:
+    def download(url: str) -> bytes:
+        raise error
+
+    with pytest.raises(type(error)):
+        download_attachments(download, household_submission)
 
 
 @pytest.mark.parametrize(
