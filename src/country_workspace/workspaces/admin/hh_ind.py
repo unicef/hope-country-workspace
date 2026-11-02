@@ -413,7 +413,7 @@ class BeneficiaryBaseAdmin(
             history = []
             prev = {}
             field_names = [f.name for __, f in obj.checker.get_fields()]
-            for entry in obj.events.select_related("pgh_context").all():
+            for entry in obj.events.select_related("pgh_context").order_by("pgh_id"):
                 changes = {}
                 for field_name in field_names:
                     old_value = prev.get(field_name, "")
