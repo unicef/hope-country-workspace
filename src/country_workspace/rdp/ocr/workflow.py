@@ -19,8 +19,9 @@ from country_workspace.rdp.operations.repository import (
 )
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
+from country_workspace.utils.flex_files import prefetch_flex_files
 
-from .constants import OCR_BATCH_SIZE
+from .constants import OCR_BATCH_SIZE, OCR_UNIT_BULK_CREATE_BATCH_SIZE
 from .processor import build_ocr_document_request, iter_ocr_unit_configs
 from .repository import apply_ocr_document_results, create_ocr_units, lock_ocr_operation_for_update
 from .validation import validate_ocr_result
@@ -41,7 +42,11 @@ def _prepare_ocr_units(operation: RdpOperation) -> bool:
     if has_rdp_operation_units(operation_id=operation.id):
         return prepare_rdp_operation_units_for_retry(operation_id=operation.id, expected_attempt=operation.attempt)
 
-    individuals = qs_individuals_for_rdp(rdp=operation.rdp).only("id", "flex_fields").iterator()
+    individuals = (
+        qs_individuals_for_rdp(rdp=operation.rdp)
+        .only("id", "flex_fields")
+        .iterator(chunk_size=OCR_UNIT_BULK_CREATE_BATCH_SIZE)
+    )
     return create_ocr_units(operation=operation, unit_configs=list(iter_ocr_unit_configs(individuals)))
 
 
@@ -79,7 +84,10 @@ def run_ocr(operation: RdpOperation) -> None:
         complete_rdp_operation(operation=operation)
         return
 
-    units = pending_rdp_operation_units(operation_id=operation.id)
+    units = prefetch_flex_files(
+        pending_rdp_operation_units(operation_id=operation.id),
+        prefix="individual",
+    )
     unit_count = units.count()
     if not unit_count:
         finalize_rdp_operation_from_units(operation=operation)

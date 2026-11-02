@@ -194,10 +194,15 @@ def resolve_flex_files(record: "Validable", payload: dict[str, Any] | None = Non
     return data
 
 
-def prefetch_flex_files(queryset: "QuerySet[Any]") -> "QuerySet[Any]":
-    return queryset.prefetch_related(
-        Prefetch(PREFETCH_NAME, queryset=FlexFieldFile.objects.with_content()),
-    )
+def resolve_flex_file(record: "Validable", field_name: str) -> str | None:
+    """Return one flex file value with its reference expanded into a data URI."""
+    value = resolve_flex_files(record, {field_name: (record.flex_fields or {}).get(field_name)}).get(field_name)
+    return value if isinstance(value, str) else None
+
+
+def prefetch_flex_files(queryset: "QuerySet[Any]", *, prefix: str = "") -> "QuerySet[Any]":
+    lookup = f"{prefix}__{PREFETCH_NAME}" if prefix else PREFETCH_NAME
+    return queryset.prefetch_related(Prefetch(lookup, queryset=FlexFieldFile.objects.with_content()))
 
 
 def _resolve_markers(

@@ -1,7 +1,10 @@
 from collections.abc import Iterable, Iterator
 
+from hope_flex_fields.references import parse_reference
+
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
 from country_workspace.models import Individual, RdpOperationUnit
+from country_workspace.utils.flex_files import resolve_flex_file
 
 from .constants import DATA_URI_BASE64_MARKER
 from .types import OcrDocumentRequest, OcrUnitConfig
@@ -20,7 +23,9 @@ def get_ocr_unit_config(individual: Individual) -> OcrUnitConfig | None:
         pattern = individual.flex_fields.get(f"{document_type}_document_number")
         if not (isinstance(pattern, str) and pattern.strip()):
             continue
-        if extract_base64_content(individual.flex_fields.get(f"{document_type}_image")) is not None:
+
+        image = individual.flex_fields.get(f"{document_type}_image")
+        if parse_reference(image) is not None or extract_base64_content(image) is not None:
             return {"document_type": document_type}
     return None
 
@@ -39,7 +44,7 @@ def build_ocr_document_request(unit: RdpOperationUnit) -> OcrDocumentRequest | N
 
     fields = unit.individual.flex_fields
     pattern = fields.get(f"{document_type}_document_number")
-    content = extract_base64_content(fields.get(f"{document_type}_image"))
+    content = extract_base64_content(resolve_flex_file(unit.individual, f"{document_type}_image"))
 
     if not (isinstance(pattern, str) and (pattern := pattern.strip()) and content):
         return None
