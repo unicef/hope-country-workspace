@@ -136,11 +136,13 @@ def materialize_pending_files(
     files: Mapping[str, FlexFileContent],
     *,
     save: bool = True,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Replace the pending markers of a freshly imported record with references.
 
     Both `flex_fields` and `raw_data` are scanned, so a mapped file column ends
     up referenced under its flex field name and under its source column name.
+    Markers are found at any depth, since importers keep nested groups and
+    repeated rows as they are.
     """
     if not files:
         return {}
@@ -203,19 +205,39 @@ def _resolve_markers(
     payload: Mapping[str, Any],
     files: Mapping[str, FlexFileContent],
     references: dict[str, str],
-) -> dict[str, str]:
-    resolved: dict[str, str] = {}
+) -> dict[str, Any]:
+    """Return the top-level entries of `payload` that hold a marker, resolved."""
+    resolved: dict[str, Any] = {}
     for name, value in payload.items():
-        key = _parse_pending_marker(value)
-        if key is None:
-            continue
+        if (resolved_value := _resolve_value(record, name, value, files, references)) is not value:
+            resolved[name] = resolved_value
+    return resolved
+
+
+def _resolve_value(
+    record: "Validable",
+    name: str,
+    value: Any,
+    files: Mapping[str, FlexFileContent],
+    references: dict[str, str],
+) -> Any:
+    """Return `value` with its markers resolved, or `value` itself when it holds none.
+
+    A file is stored under the key of the mapping that holds its marker.
+    """
+    if (key := _parse_pending_marker(value)) is not None:
         if key not in references:
             if (item := files.get(key)) is None:
-                resolved[name] = ""
-                continue
+                return ""
             references[key] = write_flex_file(record, name, item.content, item.mimetype, item.filename)
-        resolved[name] = references[key]
-    return resolved
+        return references[key]
+    if isinstance(value, Mapping):
+        mapping = {k: _resolve_value(record, str(k), v, files, references) for k, v in value.items()}
+        return mapping if any(mapping[k] is not v for k, v in value.items()) else value
+    if isinstance(value, list):
+        items = [_resolve_value(record, name, item, files, references) for item in value]
+        return items if any(new is not old for new, old in zip(items, value, strict=True)) else value
+    return value
 
 
 def load_flex_files(record: "Validable", file_ids: set[UUID]) -> dict[UUID, FlexFieldFile]:

@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import pytest
@@ -82,5 +83,42 @@ def test_import_submission_stores_the_files_of_each_record(
     assert first.raw_data[f"{MEMBER}/photo_i_c"] == first.flex_fields["photo_i_c"]
     assert household.flex_fields["consent_sign_h_c"] == stored[(household.pk, "consent_sign_h_c")].reference
     for record in (household, first, second):
-        values = [*record.flex_fields.values(), *record.raw_data.values()]
-        assert not [value for value in values if isinstance(value, str) and value.startswith(PENDING_PREFIX)]
+        assert PENDING_PREFIX not in json.dumps([record.flex_fields, record.raw_data])
+
+
+@pytest.mark.django_db
+def test_import_submission_resolves_files_of_a_repeat_group_in_people_only_mode(
+    batch: Batch, files: dict[str, FlexFileContent], submission: dict[str, Any]
+) -> None:
+    import_submission(
+        batch=batch,
+        submission=submission,
+        config={"batch_name": "ONA batch", "validate_after_import": False, "form_id": "13591", "master_detail": False},
+        files=files,
+    )
+
+    individual = batch.individual_set.get()
+    stored = {
+        flex_file.reference: flex_file
+        for flex_file in FlexFieldFile.objects.with_content().filter(
+            object_id=individual.pk, content_type__model="individual"
+        )
+    }
+    first, second = individual.raw_data["individual_questions"]
+    assert {
+        name: (stored[reference].field_name, stored[reference].content_bytes)
+        for name, reference in {
+            "consent": individual.raw_data["consent/consent_sign_h_c"],
+            "photo_0": first[f"{MEMBER}/photo_i_c"],
+            "national_id_0": first[f"{MEMBER}/national_id_photo_i_c"],
+            "photo_1": second[f"{MEMBER}/photo_i_c"],
+        }.items()
+    } == {
+        "consent": ("consent_sign_h_c", b"consent.jpg"),
+        "photo_0": (f"{MEMBER}/photo_i_c", b"photo_0.jpg"),
+        "national_id_0": (f"{MEMBER}/national_id_photo_i_c", b"national_id_0.jpg"),
+        "photo_1": (f"{MEMBER}/photo_i_c", b"photo_1.jpg"),
+    }
+    assert len(stored) == 4
+    assert individual.flex_fields["consent_sign_h_c"] == individual.raw_data["consent/consent_sign_h_c"]
+    assert PENDING_PREFIX not in json.dumps([individual.flex_fields, individual.raw_data])
