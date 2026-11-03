@@ -13,6 +13,7 @@ from country_workspace.utils.flex_files import (
     as_data_uri,
     attach_flex_files,
     materialize_pending_files,
+    pending_marker,
     prefetch_flex_files,
     resolve_flex_files,
     write_flex_file,
@@ -106,6 +107,61 @@ def test_materialize_pending_files_blanks_a_marker_whose_content_is_missing(
     assert record_with_pending_photo.flex_fields["photo"] == ""
     assert record_with_pending_photo.raw_data["beneficiary_photo"] == ""
     assert not record_with_pending_photo.flex_field_files.exists()
+
+
+@pytest.mark.django_db
+def test_materialize_pending_files_resolves_nested_markers(record: Individual, photo_content: FlexFileContent) -> None:
+    document = FlexFileContent(content=b"%PDF-1.7 document", mimetype="application/pdf", filename="document.pdf")
+    record.flex_fields = {**record.flex_fields, "photo": pending_marker("img-1")}
+    record.raw_data = {
+        **record.raw_data,
+        "household": {"photo": pending_marker("img-1"), "name": "Taylor"},
+        "members": [{"members/document": pending_marker("doc-1"), "members/name": "John"}, {"members/name": "Jane"}],
+    }
+    record.save(update_fields=["flex_fields", "raw_data"])
+
+    materialize_pending_files(record, {"img-1": photo_content, "doc-1": document})
+
+    record.refresh_from_db()
+    photo = record.flex_fields["photo"]
+    assert record.raw_data["household"] == {"photo": photo, "name": "Taylor"}
+    first, second = record.raw_data["members"]
+    assert FlexFieldFile.is_reference(first["members/document"])
+    assert first["members/name"] == "John"
+    assert second == {"members/name": "Jane"}
+    assert dict(record.flex_field_files.values_list("field_name", "mimetype")) == {
+        "photo": photo_content.mimetype,
+        "members/document": document.mimetype,
+    }
+
+
+@pytest.mark.django_db
+def test_materialize_pending_files_blanks_a_nested_marker_whose_content_is_missing(
+    record: Individual, photo_content: FlexFileContent
+) -> None:
+    record.raw_data = {**record.raw_data, "members": [{"members/photo": pending_marker("missing")}]}
+    record.save(update_fields=["raw_data"])
+
+    materialize_pending_files(record, {"img-1": photo_content})
+
+    record.refresh_from_db()
+    assert record.raw_data["members"] == [{"members/photo": ""}]
+    assert not record.flex_field_files.exists()
+
+
+@pytest.mark.django_db
+def test_materialize_pending_files_keeps_nested_values_without_markers(
+    record: Individual, photo_content: FlexFileContent
+) -> None:
+    nested = {"members": [{"members/name": "John", "members/age": 35}], "group": {"items": [1, 2]}}
+    record.raw_data = {**record.raw_data, **nested}
+    record.save(update_fields=["raw_data"])
+
+    assert materialize_pending_files(record, {"img-1": photo_content}) == {}
+
+    record.refresh_from_db()
+    assert record.raw_data == {"individual_id": "I-1", **nested}
+    assert not record.flex_field_files.exists()
 
 
 @pytest.mark.django_db
