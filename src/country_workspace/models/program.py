@@ -202,7 +202,15 @@ class Program(BaseModel):
 
         if mapping_id is None:
             return data
-        if importer := MappingImporter.objects.filter(id=mapping_id).first():
+        checker = self.get_checker_for(m)
+        if checker is None:
+            return data
+        importer = MappingImporter.objects.filter(
+            id=mapping_id,
+            office=self.country_office,
+            data_checker=checker,
+        ).first()
+        if importer:
             data = importer.apply(data)
         return data
 
