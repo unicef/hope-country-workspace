@@ -2,9 +2,8 @@ from typing import Any
 
 import pytest
 from django.core.exceptions import ImproperlyConfigured
-from pytest_mock import MockerFixture
 
-from country_workspace.models import DataSerializer, Household, Individual, MappingImporter, Program
+from country_workspace.models import DataSerializer, Household, Individual, Program
 from tests.extras.testutils.factories import (
     HouseholdFactory,
     IndividualFactory,
@@ -234,104 +233,78 @@ def test_program_apply_default_fields_applies_only_missing_or_none(program: Prog
     assert result == {"a": "keep", "b": 2, "c": 3}
 
 
-def test_apply_mapping_importer_with_mapping_id(program: Program, mocker: MockerFixture) -> None:
-    mapping_id = 123
-    data: dict[str, Any] = {"name": "Test"}
-    importer = mocker.MagicMock(spec=MappingImporter)
-    importer.apply.return_value = data
+def test_apply_mapping_importer_with_mapping_id(program: Program) -> None:
+    importer = MappingImporterFactory(
+        office=program.country_office,
+        data_checker=program.household_checker,
+        rules="gender=sex",
+    )
 
-    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
-    mapping_filter.return_value.first.return_value = importer
+    result = program.apply_mapping_importer(Household, {"gender": "M"}, mapping_id=importer.pk)
 
-    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
-
-    mapping_filter.assert_called_once_with(id=mapping_id)
-    importer.apply.assert_called_once_with(data)
-    assert result == data
-
-
-def test_apply_mapping_importer_with_invalid_mapping_id(program: Program, mocker: MockerFixture) -> None:
-    mapping_id = 999
-    data: dict[str, Any] = {"name": "Test"}
-
-    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
-    mapping_filter.return_value.first.return_value = None
-
-    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
-
-    mapping_filter.assert_called_once_with(id=mapping_id)
-    assert result == data
-
-
-def test_apply_mapping_importer_from_checker(program: Program, mocker: MockerFixture) -> None:
-    data: dict[str, Any] = {"name": "Test"}
-    office = program.country_office
-    other_office = OfficeFactory()
-
-    importer1 = MappingImporterFactory(office=office)
-    importer1.apply = mocker.MagicMock(return_value=data)
-
-    importer2 = MappingImporterFactory(office=office)
-    importer2.apply = mocker.MagicMock(return_value=data)
-
-    importer3 = MappingImporterFactory(office=other_office)
-    importer3.apply = mocker.MagicMock()
-
-    checker = mocker.MagicMock()
-    checker.mapping_importers.filter.return_value = [importer1, importer2]
-
-    get_checker = mocker.patch.object(program, "get_checker_for", return_value=checker)
-
-    result = program.apply_mapping_importer(Household, data)
-
-    get_checker.assert_called_once_with(Household)
-    checker.mapping_importers.filter.assert_called_once_with(office=office)
-    importer1.apply.assert_called_once_with(data)
-    importer2.apply.assert_called_once_with(data)
-    importer3.apply.assert_not_called()
-    assert result == data
-
-
-def test_apply_mapping_importer_returns_early_when_checker_is_none(program: Program, mocker: MockerFixture) -> None:
-    data: dict[str, Any] = {"name": "Test"}
-
-    get_checker = mocker.patch.object(program, "get_checker_for", return_value=None)
-    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
-
-    result = program.apply_mapping_importer(Household, data)
-
-    get_checker.assert_called_once_with(Household)
-    mapping_filter.assert_not_called()
-    assert result == data
-
-
-def test_apply_mapping_importer_mapping_id_only(program: Program, mocker: MockerFixture) -> None:
-    mapping_id = 123
-    data: dict[str, Any] = {"gender": "M"}
-    importer = mocker.MagicMock(spec=MappingImporter)
-    importer.apply.return_value = {"sex": "M"}
-
-    mapping_filter = mocker.patch("country_workspace.models.MappingImporter.objects.filter")
-    mapping_filter.return_value.first.return_value = importer
-
-    result = program.apply_mapping_importer(Household, data, mapping_id=mapping_id)
-
-    mapping_filter.assert_called_once_with(id=mapping_id)
-    importer.apply.assert_called_once_with(data)
     assert result == {"sex": "M"}
 
 
-def test_apply_mapping_importer_checker_with_no_mappings(program: Program, mocker: MockerFixture) -> None:
+def test_apply_mapping_importer_with_individual_mapping_id(program: Program) -> None:
+    importer = MappingImporterFactory(
+        office=program.country_office,
+        data_checker=program.individual_checker,
+        rules="gender=sex",
+    )
+
+    result = program.apply_mapping_importer(Individual, {"gender": "M"}, mapping_id=importer.pk)
+
+    assert result == {"sex": "M"}
+
+
+def test_apply_mapping_importer_with_invalid_mapping_id(program: Program) -> None:
+    data: dict[str, Any] = {"name": "Test"}
+
+    assert program.apply_mapping_importer(Household, data, mapping_id=999999) == data
+
+
+def test_apply_mapping_importer_without_mapping_id_applies_nothing(program: Program) -> None:
+    MappingImporterFactory(
+        office=program.country_office,
+        data_checker=program.household_checker,
+        rules="gender=sex",
+    )
     data: dict[str, Any] = {"gender": "M"}
-    checker = mocker.MagicMock()
-    checker.mapping_importers.filter.return_value = []
 
-    mocker.patch.object(program, "get_checker_for", return_value=checker)
+    assert program.apply_mapping_importer(Household, data) == {"gender": "M"}
 
-    result = program.apply_mapping_importer(Household, data)
 
-    checker.mapping_importers.filter.assert_called_once_with(office=program.country_office)
-    assert result == data
+def test_apply_mapping_importer_ignores_mapping_from_other_office(program: Program) -> None:
+    importer = MappingImporterFactory(
+        office=OfficeFactory(),
+        data_checker=program.household_checker,
+        rules="gender=sex",
+    )
+
+    result = program.apply_mapping_importer(Household, {"gender": "M"}, mapping_id=importer.pk)
+
+    assert result == {"gender": "M"}
+
+
+def test_apply_mapping_importer_ignores_mapping_for_other_checker(program: Program) -> None:
+    importer = MappingImporterFactory(
+        office=program.country_office,
+        data_checker=program.individual_checker,
+        rules="gender=sex",
+    )
+
+    result = program.apply_mapping_importer(Household, {"gender": "M"}, mapping_id=importer.pk)
+
+    assert result == {"gender": "M"}
+
+
+def test_apply_mapping_importer_without_checker_applies_nothing(program: Program) -> None:
+    importer = MappingImporterFactory(office=program.country_office, rules="gender=sex")
+    program.household_checker = None
+
+    result = program.apply_mapping_importer(Household, {"gender": "M"}, mapping_id=importer.pk)
+
+    assert result == {"gender": "M"}
 
 
 @pytest.mark.parametrize(
