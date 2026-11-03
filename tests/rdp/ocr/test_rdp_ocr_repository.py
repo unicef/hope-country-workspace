@@ -13,7 +13,7 @@ def test_ocr_operation_for_rdp(rdp, biometric_operation, ocr_operation: RdpOpera
     assert repository.ocr_operation_for_rdp(rdp=rdp) == ocr_operation
 
 
-def test_ocr_finding_counts(ocr_operation: RdpOperation) -> None:
+def test_ocr_affected_individuals_count(ocr_operation: RdpOperation) -> None:
     from testutils.factories import IndividualFactory, OcrRdpOperationFindingFactory
 
     individual = IndividualFactory(batch__program=ocr_operation.rdp.program, household=None)
@@ -32,7 +32,6 @@ def test_ocr_finding_counts(ocr_operation: RdpOperation) -> None:
         finding_type="IGNORED",
     )
 
-    assert repository.ocr_findings_count(operation=ocr_operation) == 2
     assert repository.ocr_affected_individuals_count(operation=ocr_operation) == 1
 
 

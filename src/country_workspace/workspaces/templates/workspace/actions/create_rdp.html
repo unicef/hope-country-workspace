@@ -61,12 +61,10 @@
                                                                 <span>{{ radio.choice_label }}</span>
                                                             </label>
                                                             {% if radio.data.value == "rate" and operation_form.rate_help_text %}
-                                                                <span class="group relative inline-flex" tabindex="0" aria-label="{{ operation_form.rate_help_text }}">
-                                                                    <span class="cursor-help text-gray-400">ⓘ</span>
-                                                                    <span class="pointer-events-none absolute right-0 top-full z-10 mt-1 hidden w-64 rounded bg-gray-800 px-3 py-2 text-sm font-normal text-white shadow-lg group-hover:block group-focus:block">
-                                                                        {{ operation_form.rate_help_text }}
-                                                                    </span>
-                                                                </span>
+                                                                <span class="cursor-help text-gray-400"
+                                                                      tabindex="0"
+                                                                      title="{{ operation_form.rate_help_text }}"
+                                                                      aria-label="{{ operation_form.rate_help_text }}">ⓘ</span>
                                                             {% endif %}
                                                         </div>
                                                     {% endfor %}

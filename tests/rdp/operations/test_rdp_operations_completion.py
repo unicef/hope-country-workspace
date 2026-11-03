@@ -37,15 +37,26 @@ def test_complete_rdp_operation_not_finished(
     schedule.assert_not_called()
 
 
-@pytest.mark.parametrize("incomplete", [True, False])
-def test_complete_rdp_operation_schedules_evaluation_when_operations_complete(
+@pytest.mark.parametrize(
+    ("cleanup_in_progress", "incomplete", "schedules"),
+    [
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+    ],
+    ids=["complete", "incomplete", "cleanup"],
+)
+def test_complete_rdp_operation_schedules_evaluation(
     running_biometric_operation,
     mocker: MockerFixture,
+    cleanup_in_progress: bool,
     incomplete: bool,
+    schedules: bool,
 ) -> None:
     findings: list[RdpOperationFinding] = []
     mocker.patch.object(completion, "finish_rdp_operation", return_value=True)
     rdp = running_biometric_operation.rdp
+    rdp.program.cleanup_in_progress = cleanup_in_progress
     mocker.patch.object(completion, "lock_rdp_for_update", return_value=rdp)
     mocker.patch.object(completion, "has_incomplete_rdp_operations", return_value=incomplete)
     schedule = mocker.patch.object(completion, "schedule_rdp_push_evaluation")
@@ -55,7 +66,7 @@ def test_complete_rdp_operation_schedules_evaluation_when_operations_complete(
         findings=findings,
     )
 
-    assert schedule.called is not incomplete
+    assert schedule.called is schedules
 
 
 def test_complete_rdp_operation_records_error(

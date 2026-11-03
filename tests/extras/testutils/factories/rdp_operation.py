@@ -40,7 +40,12 @@ class OcrRdpOperationFactory(RdpOperationFactory):
 
 
 class RdpOperationFindingFactory(AutoRegisterModelFactory):
-    individual = factory.SubFactory(IndividualFactory)
+    individual = factory.LazyAttribute(
+        lambda obj: IndividualFactory(
+            household=None,
+            batch__program=obj.operation.rdp.program,
+        )
+    )
 
     class Meta:
         model = RdpOperationFinding
@@ -50,6 +55,7 @@ class RdpOperationFindingFactory(AutoRegisterModelFactory):
 class BiometricRdpOperationFindingFactory(RdpOperationFindingFactory):
     operation = factory.SubFactory(BiometricRdpOperationFactory)
     finding_type = FindingStatusCode.BAD_IMAGE_QUALITY.name
+    field_name = "photo"
 
 
 class OcrRdpOperationFindingFactory(RdpOperationFindingFactory):

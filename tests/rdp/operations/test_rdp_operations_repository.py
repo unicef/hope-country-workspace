@@ -233,7 +233,11 @@ def test_prepare_rdp_operation_units_for_retry(
     from testutils.factories import OcrRdpOperationUnitFactory
 
     success = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.SUCCESS)
-    retry = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.FAILURE)
+    retry = OcrRdpOperationUnitFactory(
+        operation=running_ocr_operation,
+        status=RdpOperationUnit.Status.FAILURE,
+        error={"message": "old"},
+    )
 
     assert (
         prepare_rdp_operation_units_for_retry(
@@ -247,6 +251,7 @@ def test_prepare_rdp_operation_units_for_retry(
     retry.refresh_from_db()
     assert success.status == RdpOperationUnit.Status.SUCCESS
     assert retry.status == retry_status
+    assert retry.error == ({} if expected else {"message": "old"})
 
 
 @pytest.mark.parametrize(("attempt_offset", "expected"), [(0, 1), (1, 0)], ids=["current", "stale"])
@@ -345,11 +350,26 @@ def test_record_rdp_operation_error(
     assert (running_ocr_operation.finished_at is None) is with_pending
 
 
-def test_record_rdp_operation_error_ignores_stale_attempt(running_ocr_operation: RdpOperation) -> None:
+@pytest.mark.parametrize(
+    ("rdp_status", "attempt_offset"),
+    [
+        (Rdp.PushStatus.PENDING, 1),
+        (Rdp.PushStatus.CANCELLED, 0),
+    ],
+    ids=["stale-attempt", "rdp-not-pending"],
+)
+def test_record_rdp_operation_error_ignores_inactive_operation(
+    running_ocr_operation: RdpOperation,
+    rdp_status: Rdp.PushStatus,
+    attempt_offset: int,
+) -> None:
+    running_ocr_operation.rdp.status = rdp_status
+    running_ocr_operation.rdp.save(update_fields=["status"])
+
     assert (
         record_rdp_operation_error(
             operation_id=running_ocr_operation.id,
-            expected_attempt=running_ocr_operation.attempt + 1,
+            expected_attempt=running_ocr_operation.attempt + attempt_offset,
             error={"message": "failed"},
         )
         is False

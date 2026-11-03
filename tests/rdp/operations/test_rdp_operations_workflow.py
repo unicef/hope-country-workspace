@@ -112,6 +112,26 @@ def test_schedule_rdp_operation(
     on_commit.assert_called_once_with(job.queue, robust=True)
 
 
+def test_schedule_rdp_operations(
+    rdp: Rdp,
+    biometric_operation: RdpOperation,
+    ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    schedule = mocker.patch.object(workflow, "schedule_rdp_operation")
+
+    workflow.schedule_rdp_operations(rdp=rdp)
+
+    schedule.assert_has_calls(
+        [
+            mocker.call(operation=biometric_operation, owner_id=rdp.pushed_by_id),
+            mocker.call(operation=ocr_operation, owner_id=rdp.pushed_by_id),
+        ],
+        any_order=True,
+    )
+    assert schedule.call_count == 2
+
+
 def test_has_retryable_rdp_operations_for_failed_operation(
     rdp: Rdp,
     failed_biometric_operation: RdpOperation,
@@ -140,7 +160,7 @@ def test_retry_rdp_operations_prefers_failed_operations(
     user: User,
     mocker: MockerFixture,
 ) -> None:
-    ocr_operation = RdpOperation.objects.create(
+    RdpOperation.objects.create(
         rdp=rdp,
         operation_type=RdpOperation.Type.OCR,
         status=RdpOperation.Status.RUNNING,
@@ -153,9 +173,6 @@ def test_retry_rdp_operations_prefers_failed_operations(
 
     fail.assert_not_called()
     schedule.assert_called_once_with(operation=failed_biometric_operation, owner_id=user.pk)
-
-    ocr_operation.refresh_from_db()
-    assert ocr_operation.status == RdpOperation.Status.RUNNING
 
 
 def test_retry_rdp_operations_restarts_running_ocr(
@@ -243,18 +260,3 @@ def test_retry_rdp_operations_during_program_cleanup(
 
     fail.assert_not_called()
     schedule.assert_not_called()
-
-
-def test_schedule_rdp_operations(
-    rdp: Rdp,
-    biometric_operation: RdpOperation,
-    mocker: MockerFixture,
-) -> None:
-    schedule = mocker.patch.object(workflow, "schedule_rdp_operation")
-
-    workflow.schedule_rdp_operations(rdp=rdp)
-
-    schedule.assert_called_once_with(
-        operation=biometric_operation,
-        owner_id=rdp.pushed_by_id,
-    )

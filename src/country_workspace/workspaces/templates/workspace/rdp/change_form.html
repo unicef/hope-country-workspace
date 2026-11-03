@@ -1,7 +1,19 @@
 {% extends "workspace/change_form.html" %}
 {% load admin_modify i18n static workspace_modify workspace_urls %}
 {% block page-title %}
-    {% url "workspace:workspaces_countryrdp_changelist" as wcl %}
-    &rsaquo; <a href="{% add_preserved_filters wcl %}">Rdps</a>{% admin_url modeladmin %}
-    &rsaquo; {{ original }}{% admin_url original %}
+    <div class="flex items-center justify-between gap-6">
+        <div>
+            {% url "workspace:workspaces_countryrdp_changelist" as wcl %}
+            &rsaquo; <a href="{% add_preserved_filters wcl %}">Rdps</a>{% admin_url modeladmin %}
+            &rsaquo; {{ original }}{% admin_url original %}
+        </div>
+        <div class="flex-none rounded border-2 px-5 py-2 text-center">
+            <div class="text-xs font-semibold uppercase">
+                RDP status
+            </div>
+            <div class="text-xl font-bold">
+                {{ original.get_status_display }}
+            </div>
+        </div>
+    </div>
 {% endblock page-title %}

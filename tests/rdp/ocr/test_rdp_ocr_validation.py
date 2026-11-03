@@ -134,6 +134,24 @@ def test_validate_ocr_result_normalizes_valid_documents() -> None:
             TypeError,
             "string, number",
         ),
+        (
+            _payload(
+                documents=[
+                    {"individual_id": 1, "status": "ok", "found": True, "match": "ID-1", "error": None},
+                ]
+            ),
+            TypeError,
+            "expected list or null",
+        ),
+        (
+            _payload(
+                documents=[
+                    {"individual_id": 1, "status": "ok", "found": "yes", "match": None, "error": None},
+                ]
+            ),
+            TypeError,
+            "invalid field types",
+        ),
     ],
 )
 def test_validate_ocr_result_rejects_invalid_payload(

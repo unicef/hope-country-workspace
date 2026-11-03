@@ -24,19 +24,31 @@ def test_extract_base64_content(value: object, expected: str | None) -> None:
     assert extract_base64_content(value) == expected
 
 
-def test_get_ocr_unit_config_uses_first_eligible_document(mocker: MockerFixture) -> None:
+@pytest.mark.parametrize(
+    ("first_image", "use_second"),
+    [
+        ("data:image/jpeg;base64,FIRST_IMAGE", False),
+        ("invalid", True),
+    ],
+    ids=["first-eligible", "skip-ineligible"],
+)
+def test_get_ocr_unit_config_uses_first_eligible_document(
+    mocker: MockerFixture,
+    first_image: str,
+    use_second: bool,
+) -> None:
     first, second = DOCUMENT_TYPES[:2]
     individual = mocker.MagicMock(
         spec=Individual,
         flex_fields={
             f"{first}_document_number": "FIRST",
-            f"{first}_image": "data:image/jpeg;base64,FIRST_IMAGE",
+            f"{first}_image": first_image,
             f"{second}_document_number": "SECOND",
             f"{second}_image": "data:image/jpeg;base64,SECOND_IMAGE",
         },
     )
 
-    assert get_ocr_unit_config(individual) == {"document_type": first}
+    assert get_ocr_unit_config(individual) == {"document_type": second if use_second else first}
 
 
 @pytest.mark.parametrize(

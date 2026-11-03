@@ -58,6 +58,19 @@ def test_prepare_ocr_units(
         )
 
 
+def test_prepare_ocr_batch_with_available_units(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    unit = mocker.MagicMock()
+    document = {"individual_id": 1, "content": "IMAGE", "pattern": "ID-1"}
+    mocker.patch.object(workflow, "build_ocr_document_request", return_value=document)
+    fail = mocker.patch.object(workflow, "fail_rdp_operation_units")
+
+    assert workflow._prepare_ocr_batch(running_ocr_operation, [unit]) == [document]
+    fail.assert_not_called()
+
+
 def test_prepare_ocr_batch_marks_unavailable_units_failed(
     running_ocr_operation: RdpOperation,
     mocker: MockerFixture,
@@ -77,6 +90,18 @@ def test_prepare_ocr_batch_marks_unavailable_units_failed(
         unit_ids=[2],
         error={"message": "OCR document is no longer available."},
     )
+
+
+def test_run_ocr_stops_when_units_are_not_prepared(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(workflow, "_prepare_ocr_units", return_value=False)
+    has_units = mocker.patch.object(workflow, "has_rdp_operation_units")
+
+    workflow.run_ocr(running_ocr_operation)
+
+    has_units.assert_not_called()
 
 
 def test_run_ocr_zero_eligible_documents(
@@ -102,10 +127,32 @@ def test_run_ocr_without_pending_units(
     mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
     units = mocker.patch.object(workflow, "pending_rdp_operation_units")
     units.return_value.count.return_value = 0
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=units.return_value)
     finalize = mocker.patch.object(workflow, "finalize_rdp_operation_from_units")
 
     workflow.run_ocr(running_ocr_operation)
 
+    finalize.assert_called_once_with(operation=running_ocr_operation)
+
+
+def test_run_ocr_skips_batch_without_documents(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    unit = mocker.MagicMock()
+    units = mocker.patch.object(workflow, "pending_rdp_operation_units").return_value
+    units.count.return_value = 1
+    units.iterator.return_value = iter([unit])
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=units)
+    mocker.patch.object(workflow, "_prepare_ocr_units", return_value=True)
+    mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
+    mocker.patch.object(workflow, "_prepare_ocr_batch", return_value=[])
+    publish = mocker.patch.object(workflow, "publish")
+    finalize = mocker.patch.object(workflow, "finalize_rdp_operation_from_units")
+
+    workflow.run_ocr(running_ocr_operation)
+
+    publish.assert_not_called()
     finalize.assert_called_once_with(operation=running_ocr_operation)
 
 
@@ -117,7 +164,7 @@ def test_run_ocr_batches_and_publishes(
     queryset = mocker.patch.object(workflow, "pending_rdp_operation_units").return_value
     queryset.count.return_value = len(units)
     queryset.iterator.return_value = iter(units)
-
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=queryset)
     mocker.patch.object(workflow, "_prepare_ocr_units", return_value=True)
     mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
     mocker.patch.object(workflow, "OCR_BATCH_SIZE", 2)
@@ -167,7 +214,7 @@ def test_run_ocr_continues_after_publish_failure(
     queryset = mocker.patch.object(workflow, "pending_rdp_operation_units").return_value
     queryset.count.return_value = 2
     queryset.iterator.return_value = iter(units)
-
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=queryset)
     mocker.patch.object(workflow, "_prepare_ocr_units", return_value=True)
     mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
     mocker.patch.object(workflow, "OCR_BATCH_SIZE", 1)
@@ -198,7 +245,7 @@ def test_run_ocr_stops_when_attempt_is_no_longer_current(
     queryset = mocker.patch.object(workflow, "pending_rdp_operation_units").return_value
     queryset.count.return_value = 1
     queryset.iterator.return_value = iter([unit])
-
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=queryset)
     mocker.patch.object(workflow, "_prepare_ocr_units", return_value=True)
     mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
     mocker.patch.object(
@@ -294,3 +341,18 @@ def test_handle_ocr_result_records_processing_error(
         workflow.handle_ocr_result(payload)
 
     handle_error.assert_called_once_with(operation=running_ocr_operation, exc=error)
+
+
+def test_handle_ocr_result_does_not_record_error_before_operation_is_locked(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    payload = _result_payload(running_ocr_operation)
+    mocker.patch.object(workflow, "validate_ocr_result", return_value=payload)
+    mocker.patch.object(workflow, "lock_ocr_operation_for_update", side_effect=RuntimeError("failed"))
+    handle_error = mocker.patch.object(workflow, "handle_rdp_operation_error")
+
+    with pytest.raises(RuntimeError, match="failed"):
+        workflow.handle_ocr_result(payload)
+
+    handle_error.assert_not_called()

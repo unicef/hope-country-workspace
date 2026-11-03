@@ -30,7 +30,7 @@ def test_threshold_exceeded(
     expected: bool,
 ) -> None:
     assert (
-        thresholds.threshold_exceeded(
+        thresholds._threshold_exceeded(
             findings_count=findings_count,
             total_count=total_count,
             threshold_type=threshold_type,
@@ -56,7 +56,7 @@ def test_threshold_exceeded_rejects_invalid_input(
     threshold_value: Decimal,
 ) -> None:
     with pytest.raises(ValueError, match="Invalid"):
-        thresholds.threshold_exceeded(
+        thresholds._threshold_exceeded(
             findings_count=findings_count,
             total_count=total_count,
             threshold_type=threshold_type,
@@ -64,54 +64,21 @@ def test_threshold_exceeded_rejects_invalid_input(
         )
 
 
-@pytest.mark.parametrize(
-    ("threshold_value", "expected"),
-    [
-        ("1", True),
-        ("2", False),
-    ],
-)
-def test_is_biometric_threshold_exceeded(
-    successful_biometric_operation: RdpOperation,
-    mocker: MockerFixture,
-    threshold_value: str,
-    expected: bool,
-) -> None:
-    successful_biometric_operation.config = {
-        "threshold_type": ThresholdType.COUNT.value,
-        "threshold_value": threshold_value,
-    }
-    successful_biometric_operation.save(update_fields=["config"])
-
-    findings = mocker.patch.object(thresholds, "biometric_findings_count", return_value=2)
-    individuals = mocker.patch.object(thresholds, "qs_individuals_for_rdp")
-    individuals.return_value.count.return_value = 10
-
-    assert thresholds.is_biometric_threshold_exceeded(rdp=successful_biometric_operation.rdp) is expected
-
-    findings.assert_called_once_with(operation=successful_biometric_operation)
-    individuals.assert_called_once_with(rdp=successful_biometric_operation.rdp)
-
-
-def test_biometric_threshold_requires_individuals(
+def test_evaluate_review_thresholds_requires_biometric_individuals(
     successful_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
     individuals = mocker.patch.object(thresholds, "qs_individuals_for_rdp")
     individuals.return_value.count.return_value = 0
-    findings = mocker.patch.object(thresholds, "biometric_findings_count")
 
     with pytest.raises(RdpWorkflowError, match="no individuals"):
-        thresholds.is_biometric_threshold_exceeded(rdp=successful_biometric_operation.rdp)
-
-    findings.assert_not_called()
+        thresholds.evaluate_review_thresholds(rdp=successful_biometric_operation.rdp)
 
 
 def test_ocr_threshold_uses_operation_units(
     successful_ocr_operation: RdpOperation,
-    mocker: MockerFixture,
 ) -> None:
-    from testutils.factories import OcrRdpOperationUnitFactory
+    from testutils.factories import OcrRdpOperationFindingFactory, OcrRdpOperationUnitFactory
 
     successful_ocr_operation.config = {
         "threshold_type": ThresholdType.RATE.value,
@@ -119,7 +86,7 @@ def test_ocr_threshold_uses_operation_units(
     }
     successful_ocr_operation.save(update_fields=["config"])
     OcrRdpOperationUnitFactory.create_batch(4, operation=successful_ocr_operation)
-    findings = mocker.patch.object(thresholds, "ocr_findings_count", return_value=2)
+    OcrRdpOperationFindingFactory.create_batch(2, operation=successful_ocr_operation)
 
     result, review_required = thresholds.evaluate_review_thresholds(rdp=successful_ocr_operation.rdp)
 
@@ -132,19 +99,16 @@ def test_ocr_threshold_uses_operation_units(
         "threshold_exceeded": True,
     }
     assert review_required is True
-    findings.assert_called_once_with(operation=successful_ocr_operation)
 
 
 def test_ocr_threshold_with_no_units(
     successful_ocr_operation: RdpOperation,
-    mocker: MockerFixture,
 ) -> None:
     successful_ocr_operation.config = {
         "threshold_type": ThresholdType.RATE.value,
         "threshold_value": "0",
     }
     successful_ocr_operation.save(update_fields=["config"])
-    mocker.patch.object(thresholds, "ocr_findings_count", return_value=0)
 
     result, review_required = thresholds.evaluate_review_thresholds(rdp=successful_ocr_operation.rdp)
 
@@ -169,7 +133,11 @@ def test_evaluate_review_thresholds_combines_operations(
     successful_ocr_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    from testutils.factories import OcrRdpOperationUnitFactory
+    from testutils.factories import (
+        BiometricRdpOperationFindingFactory,
+        OcrRdpOperationFindingFactory,
+        OcrRdpOperationUnitFactory,
+    )
 
     successful_biometric_operation.config = {
         "threshold_type": ThresholdType.COUNT.value,
@@ -181,12 +149,13 @@ def test_evaluate_review_thresholds_combines_operations(
         "threshold_value": "1",
     }
     successful_ocr_operation.save(update_fields=["config"])
+
+    BiometricRdpOperationFindingFactory(operation=successful_biometric_operation)
+    OcrRdpOperationFindingFactory.create_batch(2, operation=successful_ocr_operation)
     OcrRdpOperationUnitFactory.create_batch(2, operation=successful_ocr_operation)
 
     individuals = mocker.patch.object(thresholds, "qs_individuals_for_rdp")
     individuals.return_value.count.return_value = 10
-    mocker.patch.object(thresholds, "biometric_findings_count", return_value=1)
-    mocker.patch.object(thresholds, "ocr_findings_count", return_value=2)
 
     result, review_required = thresholds.evaluate_review_thresholds(rdp=rdp)
 

@@ -27,7 +27,7 @@ from country_workspace.rdp.repository import (
     rdp_selection,
     set_rdp_beneficiaries_removed,
 )
-from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome, ThresholdType
+from country_workspace.rdp.types import OperationLogResult, RdpWorkflowOutcome
 from country_workspace.utils.flex_files import prefetch_flex_files
 
 from .constants import PUSH_READY_CALLBACK_SALT
