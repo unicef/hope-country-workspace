@@ -12,7 +12,7 @@ from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q, QuerySet
+from django.db.models import F, Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -154,6 +154,38 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             ),
         ] + super().get_urls()
 
+    @staticmethod
+    def _add_finding_urls(
+        finding: dict[str, Any],
+        *,
+        can_view_households: bool,
+        query: dict[str, str],
+    ) -> None:
+        """Add workspace URLs to a finding row."""
+        finding["individual_url"] = reverse(
+            "workspace:workspaces_countryindividual_change", args=[finding["individual_id"]], query=query
+        )
+
+        if related_id := finding["related_individual_id"]:
+            finding["related_individual_url"] = reverse(
+                "workspace:workspaces_countryindividual_change", args=[related_id], query=query
+            )
+
+        if not can_view_households:
+            return
+
+        if household_id := finding["individual__household_id"]:
+            finding["household_url"] = reverse(
+                "workspace:workspaces_countryhousehold_change", args=[household_id], query=query
+            )
+
+        if (related_household_id := finding["related_individual__household_id"]) and related_household_id != finding[
+            "individual__household_id"
+        ]:
+            finding["related_household_url"] = reverse(
+                "workspace:workspaces_countryhousehold_change", args=[related_household_id], query=query
+            )
+
     def findings_view(self, request: HttpRequest, rdp_id: int, operation_id: UUID) -> HttpResponse:
         """Display saved findings for an operation in the selected workspace context."""
         rdp = get_object_or_404(self.get_queryset(request), pk=rdp_id, country_office=state.tenant)
@@ -186,6 +218,13 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         else:
             findings = findings.none()
 
+        photo_fields = {}
+        if operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+            photo_fields = {
+                "individual_photo": F("individual__flex_fields__photo"),
+                "related_individual_photo": F("related_individual__flex_fields__photo"),
+            }
+
         rows = findings.values(
             "individual_id",
             "individual__name",
@@ -196,23 +235,14 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             "related_individual__name",
             "related_individual__household_id",
             "details",
+            **photo_fields,
         )
         page = self.get_paginator(request, rows, self.list_per_page).get_page(request.GET.get("page"))
         query = {"_changelist_filters": urlencode({"rdp_id": rdp.pk})}
 
         for finding in page:
             finding["label"] = labels.get(finding["finding_type"], finding["finding_type"])
-            finding["individual_url"] = reverse(
-                "workspace:workspaces_countryindividual_change", args=[finding["individual_id"]], query=query
-            )
-            if related_id := finding["related_individual_id"]:
-                finding["related_individual_url"] = reverse(
-                    "workspace:workspaces_countryindividual_change", args=[related_id], query=query
-                )
-            if can_view_households and (household_id := finding["individual__household_id"]):
-                finding["household_url"] = reverse(
-                    "workspace:workspaces_countryhousehold_change", args=[household_id], query=query
-                )
+            self._add_finding_urls(finding, can_view_households=can_view_households, query=query)
 
         context = self.get_common_context(
             request,
@@ -222,7 +252,6 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             page=page,
             filter_form=filter_form,
             results_complete=operation.status == RdpOperation.Status.SUCCESS,
-            show_households=can_view_households,
         )
         context["original"] = rdp
         return TemplateResponse(request, "workspace/rdp/findings.html", context)

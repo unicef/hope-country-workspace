@@ -24,7 +24,7 @@
                         {{ form.clean_operations }}
                         {% if form.clean_operations.help_text %}
                             <p class="help mt-3">
-                                {{ form.clean_operations.help_text }}
+                                {{ form.clean_operations.help_text|linebreaksbr }}
                             </p>
                         {% endif %}
                     </div>

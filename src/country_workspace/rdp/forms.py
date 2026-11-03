@@ -85,8 +85,10 @@ class CleanRdpForm(forms.Form):
         required=True,
         widget=forms.CheckboxSelectMultiple,
         help_text=_(
-            "Checked operations will exclude beneficiaries affected by their findings. "
-            "Unchecked operations approve their remaining findings. "
+            "Checked operations exclude beneficiaries affected by their findings.\n"
+            "Unchecked operations keep their beneficiaries and approve only findings that still apply "
+            "after the selected cleanups.\n\n"
+            "Findings for beneficiaries excluded by another checked operation no longer count. "
             "At least one operation must be checked."
         ),
     )
