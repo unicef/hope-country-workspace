@@ -13,7 +13,7 @@ from django.utils.translation import gettext_lazy as _
 from country_workspace.admin.filters import IsValidFilter
 from country_workspace.admin.job import FailedFilter
 from country_workspace.models import Batch, Household, Rdp
-from country_workspace.rdp import biometric_operation_for_rdp
+from country_workspace.rdp import biographic_operation_for_rdp, biometric_operation_for_rdp
 from country_workspace.state import state
 
 if TYPE_CHECKING:
@@ -256,6 +256,42 @@ class ImageIssueMembersFilter(WorkspaceSimpleComboFilter):
         return queryset
 
 
+class BiographicDuplicateFilter(WorkspaceSimpleComboFilter):
+    title = _("Biographic duplicates")
+    parameter_name = "biographic_duplicates"
+
+    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
+        return [
+            ("with", _("With biographic duplicates")),
+            ("without", _("Without biographic duplicates")),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
+        if self.value() == "with":
+            return queryset.filter(_biographic_result_available=True, _is_biographic_duplicate=True)
+        if self.value() == "without":
+            return queryset.filter(_biographic_result_available=True, _is_biographic_duplicate=False)
+        return queryset
+
+
+class BiographicDuplicateMembersFilter(WorkspaceSimpleComboFilter):
+    title = _("Biographic duplicate members")
+    parameter_name = "biographic_duplicate_members"
+
+    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
+        return [
+            ("with", _("With biographic duplicate members")),
+            ("without", _("Without biographic duplicate members")),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
+        if self.value() == "with":
+            return queryset.filter(_biographic_result_available=True, _biographic_duplicate_member_count__gt=0)
+        if self.value() == "without":
+            return queryset.filter(_biographic_result_available=True, _biographic_duplicate_member_count=0)
+        return queryset
+
+
 def show_biometric_columns(request: HttpRequest) -> bool:
     """Show biometric results when biometric deduplication applies."""
     if not state.program:
@@ -263,3 +299,12 @@ def show_biometric_columns(request: HttpRequest) -> bool:
     if rdp := get_rdp_context(request):
         return biometric_operation_for_rdp(rdp=rdp) is not None
     return state.program.biometric_deduplication_enabled
+
+
+def show_biographic_columns(request: HttpRequest) -> bool:
+    """Show biographic results when biographic deduplication applies."""
+    if not state.program:
+        return False
+    if rdp := get_rdp_context(request):
+        return biographic_operation_for_rdp(rdp=rdp) is not None
+    return state.program.biographic_deduplication_enabled

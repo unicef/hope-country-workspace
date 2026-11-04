@@ -105,7 +105,7 @@ def test_operations_display_successful_biometric(
     successful_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    affected = mocker.patch.object(rdp_admin_mod, "qs_biometric_affected_individuals")
+    affected = mocker.patch.object(rdp_admin_mod, "qs_affected_individuals")
     affected.return_value.count.return_value = 2
     render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
@@ -127,7 +127,7 @@ def test_operations_display_failed_biometric(
     failed_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    affected = mocker.patch.object(rdp_admin_mod, "qs_biometric_affected_individuals")
+    affected = mocker.patch.object(rdp_admin_mod, "qs_affected_individuals")
     render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
 
     admin_instance.operations_display(failed_biometric_operation.rdp)
