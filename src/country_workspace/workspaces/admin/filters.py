@@ -5,10 +5,8 @@ from adminfilters.autocomplete import AutoCompleteFilter, LinkedAutoCompleteFilt
 from adminfilters.combo import ChoicesFieldComboFilter
 from adminfilters.json_filter import JsonFieldFilter
 from adminfilters.value import MultiValueTextFieldFilter
-from django.contrib.admin import SimpleListFilter
 from django.http import HttpRequest
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
 
 from country_workspace.admin.filters import IsValidFilter
 from country_workspace.admin.job import FailedFilter
@@ -155,92 +153,3 @@ def get_rdp_context(request: HttpRequest) -> Rdp | None:
     if pk > 2**63 - 1:
         return None
     return Rdp.objects.filter(pk=pk, program=state.program).first()
-
-
-class WorkspaceSimpleComboFilter(SimpleListFilter):
-    """Display a computed filter using the workspace combobox."""
-
-    template = "workspace/adminfilters/combobox.html"
-
-    def get_title(self) -> str:
-        """Return the filter title."""
-        return str(self.title)
-
-
-class DuplicateFilter(WorkspaceSimpleComboFilter):
-    title = _("Duplicates")
-    parameter_name = "duplicates"
-
-    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        return [
-            ("with", _("With duplicates")),
-            ("without", _("Without duplicates")),
-        ]
-
-    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() == "with":
-            return queryset.filter(_result_available=True, _is_duplicate=True)
-        if self.value() == "without":
-            return queryset.filter(_result_available=True, _is_duplicate=False)
-        return queryset
-
-
-class ImageIssueFilter(WorkspaceSimpleComboFilter):
-    title = _("Image issues")
-    parameter_name = "image_issues"
-
-    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        return [
-            ("with", _("With image issues")),
-            ("without", _("Without image issues")),
-        ]
-
-    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() == "with":
-            return queryset.filter(_result_available=True, _has_image_issue=True)
-        if self.value() == "without":
-            return queryset.filter(_result_available=True, _has_image_issue=False)
-        return queryset
-
-
-class DuplicateMembersFilter(WorkspaceSimpleComboFilter):
-    title = _("Duplicate members")
-    parameter_name = "duplicate_members"
-
-    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        return [
-            ("with", _("With duplicate members")),
-            ("without", _("Without duplicate members")),
-        ]
-
-    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() == "with":
-            return queryset.filter(_result_available=True, _duplicate_member_count__gt=0)
-        if self.value() == "without":
-            return queryset.filter(_result_available=True, _duplicate_member_count=0)
-        return queryset
-
-
-class ImageIssueMembersFilter(WorkspaceSimpleComboFilter):
-    title = _("Image issue members")
-    parameter_name = "image_issue_members"
-
-    def lookups(self, request: HttpRequest, model_admin: "ModelAdmin") -> list[tuple[str, str]]:
-        return [
-            ("with", _("With image issue members")),
-            ("without", _("Without image issue members")),
-        ]
-
-    def queryset(self, request: HttpRequest, queryset: "QuerySet[Model]") -> "QuerySet[Model]":
-        if self.value() == "with":
-            return queryset.filter(_result_available=True, _image_issue_member_count__gt=0)
-        if self.value() == "without":
-            return queryset.filter(_result_available=True, _image_issue_member_count=0)
-        return queryset
-
-
-def show_program_biometric_results(request: HttpRequest) -> bool:
-    """Show program-level biometric results outside an RDP context."""
-    return bool(
-        state.program and get_requested_rdp_id(request) is None and state.program.biometric_deduplication_enabled
-    )

@@ -64,6 +64,7 @@ class RdpFindingsFilterForm(forms.Form):
         validators=Household._meta.pk.validators,
         help_text=_("Also matches households of related individuals."),
     )
+    latest_only = forms.BooleanField(required=False, widget=forms.HiddenInput)
 
     def __init__(
         self,

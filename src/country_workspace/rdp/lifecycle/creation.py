@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.rdp.exceptions import RdpWorkflowError
@@ -9,6 +10,11 @@ from country_workspace.rdp.push.workflow import schedule_rdp_push_evaluation
 from country_workspace.rdp.repository import create_rdp
 from country_workspace.rdp.types import CreateRdpConfig
 from country_workspace.rdp.validation import preflight_errors
+
+
+def rdp_name_default() -> str:
+    """Return the default RDP name."""
+    return f"RDP {timezone.now():%Y-%m-%d %H:%M:%S}"
 
 
 def validate_rdp_creation(

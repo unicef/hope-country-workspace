@@ -12,7 +12,7 @@ from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.core.exceptions import PermissionDenied
-from django.db.models import F, Q, QuerySet
+from django.db.models import F, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -40,8 +40,10 @@ from country_workspace.rdp import (
     get_push_policy,
     get_rdp_policy,
     has_retryable_rdp_operations,
+    latest_operation_findings_by_individual,
     ocr_affected_individuals_count,
     qs_biometric_affected_individuals,
+    qs_rdp_operation_findings,
     retry_rdp_operations,
     retry_rdp_push,
 )
@@ -118,13 +120,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         request: HttpRequest,
         obj: CountryRdp | None = None,
     ) -> list[tuple[str | None, dict[str, Any]]]:
-        fieldsets = [
-            (_("RDP details"), {"fields": ("name", "status", "push_date", "hope_rdi_id")}),
-        ]
-
+        fieldsets = [(_("RDP details"), {"fields": ("name", "push_date", "hope_rdi_id")})]
         if obj and obj.operations.exists():
             fieldsets.append((_("Operations"), {"fields": ("operations_display",), "classes": ("content-only",)}))
-
         fieldsets.extend(
             [
                 (_("Processing history"), {"fields": ("processing_history",), "classes": ("content-only",)}),
@@ -153,6 +151,35 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 name="workspaces_countryrdp_findings",
             ),
         ] + super().get_urls()
+
+    @staticmethod
+    def _latest_finding_ids(
+        operation: RdpOperation,
+        *,
+        individual_id: int | None,
+        household_id: int | None,
+    ) -> frozenset[int]:
+        """Return latest finding IDs for the selected beneficiary scope."""
+        individuals = CountryIndividual.objects.filter(
+            batch__program_id=operation.rdp.program_id,
+            removed=False,
+        )
+        if individual_id is not None:
+            individuals = individuals.filter(pk=individual_id)
+        if household_id is not None:
+            individuals = individuals.filter(household_id=household_id)
+
+        summaries = latest_operation_findings_by_individual(
+            program=operation.rdp.program,
+            individual_ids=individuals.values_list("pk", flat=True),
+        )
+        return frozenset(
+            finding_id
+            for rows in summaries.values()
+            for summary in rows
+            if summary.operation.pk == operation.pk
+            for finding_id in summary.finding_ids
+        )
 
     @staticmethod
     def _add_finding_urls(
@@ -205,18 +232,29 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             include_household=can_view_households,
         )
 
-        findings = operation.findings.order_by("pk")
         if filter_form.is_valid():
+            individual_id = filter_form.cleaned_data["individual_id"]
+            household_id = filter_form.cleaned_data.get("household_id")
+            findings = qs_rdp_operation_findings(
+                operation=operation,
+                individual_id=individual_id,
+                household_id=household_id,
+            )
+
+            if filter_form.cleaned_data["latest_only"] and (individual_id is not None or household_id is not None):
+                findings = findings.filter(
+                    pk__in=self._latest_finding_ids(
+                        operation,
+                        individual_id=individual_id,
+                        household_id=household_id,
+                    )
+                )
+
             if finding_type := filter_form.cleaned_data["finding_type"]:
                 findings = findings.filter(finding_type=finding_type)
-            if individual_id := filter_form.cleaned_data["individual_id"]:
-                findings = findings.filter(Q(individual_id=individual_id) | Q(related_individual_id=individual_id))
-            if household_id := filter_form.cleaned_data.get("household_id"):
-                findings = findings.filter(
-                    Q(individual__household_id=household_id) | Q(related_individual__household_id=household_id)
-                )
+            findings = findings.order_by("pk")
         else:
-            findings = findings.none()
+            findings = operation.findings.none()
 
         photo_fields = {}
         if operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
@@ -251,6 +289,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             operation=operation,
             page=page,
             filter_form=filter_form,
+            clear_filters_url=request.path,
             results_complete=operation.status == RdpOperation.Status.SUCCESS,
         )
         context["original"] = rdp

@@ -21,6 +21,7 @@ from country_workspace.rdp.types import CreateRdpOperationConfig, JSONValue
 @dataclass(frozen=True, slots=True)
 class RdpOperationDefinition:
     operation_type: RdpOperation.Type
+    short_label: str
     config_form: type[forms.Form]
     finding_types: type[TextChoices]
     is_enabled: Callable[[Program], bool]
@@ -32,6 +33,7 @@ class RdpOperationDefinition:
 RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
     RdpOperation.Type.BIOMETRIC_DEDUPLICATION: RdpOperationDefinition(
         operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        short_label=_("Biometric"),
         config_form=BiometricDeduplicationConfigForm,
         finding_types=BiometricFindingType,
         is_enabled=lambda program: program.biometric_deduplication_enabled,
@@ -40,6 +42,7 @@ RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
     ),
     RdpOperation.Type.OCR: RdpOperationDefinition(
         operation_type=RdpOperation.Type.OCR,
+        short_label=_("OCR"),
         config_form=OcrConfigForm,
         finding_types=OcrFindingType,
         is_enabled=lambda __: True,

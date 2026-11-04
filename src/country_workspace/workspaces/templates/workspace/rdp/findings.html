@@ -248,11 +248,14 @@
                 {% if filter_form.finding_type.value or filter_form.individual_id.value or filter_form.household_id.value %}
                     <div id="changelist-filter-extra-actions">
                         <h3>
-                            <a href="{{ request.path }}">&#10006; {% translate "Clear all filters" %}</a>
+                            <a href="{{ clear_filters_url }}">&#10006; {% translate "Clear all filters" %}</a>
                         </h3>
                     </div>
                 {% endif %}
                 <form method="get" action="{{ request.path }}">
+                    {% for hidden in filter_form.hidden_fields %}
+                        {{ hidden }}
+                    {% endfor %}
                     <details {% if filter_form.finding_type.value or filter_form.finding_type.errors %}open{% endif %}>
                         <summary>
                             {% blocktranslate with filter_title=filter_form.finding_type.label %}
