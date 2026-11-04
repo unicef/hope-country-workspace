@@ -139,7 +139,6 @@ build.targets.wheel.packages = [
 
 [tool.uv]
 exclude-newer = "7 days"
-sources.hope-flex-fields = { git = "https://github.com/unicef/hope-flex-fields", rev = "a4d50bd94d19f761c9b171461888a8a6c1c4a741" }
 package = true
 
 [tool.django-stubs]
