@@ -1,7 +1,9 @@
 import pytest
+from django.http import QueryDict
 from pytest_mock import MockerFixture
 
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.exceptions import RemoteUnavailableError
+from country_workspace.models import RdpOperation
 from country_workspace.rdp import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.workspaces.admin import rdp as rdp_admin_mod
@@ -30,6 +32,13 @@ def clean_rdp() -> CountryRdp:
     from testutils.factories import CountryRdpFactory
 
     return CountryRdpFactory(status=CountryRdp.PushStatus.CANCELLED)
+
+
+@pytest.fixture
+def exceeded_operation(review_rdp: CountryRdp) -> RdpOperation:
+    from testutils.factories import OcrRdpOperationFactory
+
+    return OcrRdpOperationFactory(rdp=review_rdp, status=RdpOperation.Status.SUCCESS)
 
 
 @pytest.mark.parametrize(
@@ -234,9 +243,17 @@ def test_create_clean_rdp(
     mock_request,
     review_rdp: CountryRdp,
     clean_rdp: CountryRdp,
+    exceeded_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
+    mock_request.method = "POST"
+    mock_request.POST = QueryDict(f"clean_operations={exceeded_operation.pk}")
     mocker.patch.object(admin_instance, "get_object", return_value=review_rdp)
+    mocker.patch.object(
+        rdp_admin_mod,
+        "exceeded_operation_thresholds",
+        return_value=[(exceeded_operation, {"findings_count": 1})],
+    )
     change_url = mocker.patch.object(admin_instance, "_change_url", return_value="/clean")
     create = mocker.patch.object(
         rdp_admin_mod,
@@ -246,14 +263,13 @@ def test_create_clean_rdp(
     success = mocker.patch.object(rdp_admin_mod.messages, "success")
     redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
 
-    def confirm(_admin, request, callback, **_kwargs):
-        return callback(request)
-
-    mocker.patch.object(rdp_admin_mod, "confirm_action", side_effect=confirm)
-
     response = admin_instance.create_clean_rdp.func(admin_instance, mock_request, pk=str(review_rdp.pk))
 
-    create.assert_called_once_with(rdp_id=review_rdp.pk, user_id=mock_request.user.pk)
+    create.assert_called_once_with(
+        rdp_id=review_rdp.pk,
+        user_id=mock_request.user.pk,
+        clean_operation_ids={exceeded_operation.pk},
+    )
     change_url.assert_called_once_with(clean_rdp)
     assert "clean rdp" in success.call_args.args[1].lower()
     redirect.assert_called_once_with("/clean")
@@ -261,37 +277,41 @@ def test_create_clean_rdp(
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "message", "captures"),
     [
-        RemoteError("remote"),
-        RemoteUnavailableError("unavailable"),
-        RdpWorkflowError({"errors": ["invalid selection"]}),
+        (RemoteUnavailableError("unavailable"), "unavailable", True),
+        (RdpWorkflowError({"errors": ["invalid selection"]}), "invalid selection", False),
     ],
-    ids=["remote", "unavailable", "workflow"],
+    ids=["unavailable", "workflow"],
 )
 def test_create_clean_rdp_handles_error(
     admin_instance,
     mock_request,
     review_rdp: CountryRdp,
+    exceeded_operation: RdpOperation,
     mocker: MockerFixture,
     error: Exception,
+    message: str,
+    captures: bool,
 ) -> None:
+    mock_request.method = "POST"
+    mock_request.POST = QueryDict(f"clean_operations={exceeded_operation.pk}")
     mocker.patch.object(admin_instance, "get_object", return_value=review_rdp)
-    mocker.patch.object(admin_instance, "_change_url", return_value="/change")
+    mocker.patch.object(
+        rdp_admin_mod,
+        "exceeded_operation_thresholds",
+        return_value=[(exceeded_operation, {"findings_count": 1})],
+    )
     mocker.patch.object(rdp_admin_mod, "create_clean_rdp_workflow", side_effect=error)
-    message = mocker.patch.object(rdp_admin_mod.messages, "error")
-    redirect = mocker.patch.object(rdp_admin_mod, "redirect", return_value="response")
+    capture = mocker.patch.object(rdp_admin_mod.sentry_sdk, "capture_exception")
+    response = mocker.patch.object(rdp_admin_mod, "TemplateResponse", return_value="response")
 
-    def confirm(_admin, request, callback, **_kwargs):
-        return callback(request)
+    result = admin_instance.create_clean_rdp.func(admin_instance, mock_request, pk=str(review_rdp.pk))
 
-    mocker.patch.object(rdp_admin_mod, "confirm_action", side_effect=confirm)
-
-    response = admin_instance.create_clean_rdp.func(admin_instance, mock_request, pk=str(review_rdp.pk))
-
-    message.assert_called_once()
-    redirect.assert_called_once_with("/change")
-    assert response == "response"
+    form = response.call_args.args[2]["form"]
+    assert message in str(form.non_field_errors())
+    assert capture.called is captures
+    assert result == "response"
 
 
 @pytest.mark.parametrize(

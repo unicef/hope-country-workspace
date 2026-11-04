@@ -1,7 +1,7 @@
 import logging
 
 import sentry_sdk
-from django.db import InterfaceError, OperationalError
+from django.db import InterfaceError, OperationalError, close_old_connections
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from streaming.event import Event
@@ -27,6 +27,8 @@ def handle_event(
     Transient database failures raise CallbackRetry so django-streaming republishes
     the same event for delayed redelivery.
     """
+    close_old_connections()
+
     routing_key = method.routing_key
     message: Event | None = None
 
@@ -51,5 +53,7 @@ def handle_event(
 
         if isinstance(exc, (InterfaceError, OperationalError)):
             raise CallbackRetry(str(exc)) from exc
+    finally:
+        close_old_connections()
 
     return True

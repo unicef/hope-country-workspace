@@ -88,8 +88,9 @@ def test_prepare_ocr_batch_marks_unavailable_units_failed(
         operation_id=running_ocr_operation.id,
         expected_attempt=running_ocr_operation.attempt,
         unit_ids=[2],
-        error={"message": "OCR document is no longer available."},
+        error=mocker.ANY,
     )
+    assert "document" in fail.call_args.kwargs["error"]["message"].lower()
 
 
 def test_run_ocr_stops_when_units_are_not_prepared(

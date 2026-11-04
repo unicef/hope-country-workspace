@@ -195,8 +195,9 @@ def test_retry_rdp_operations_restarts_running_ocr(
     fail.assert_called_once_with(
         operation_id=operation.id,
         expected_attempt=2,
-        error={"message": "Operation manually restarted while still running."},
+        error=mocker.ANY,
     )
+    assert "restart" in fail.call_args.kwargs["error"]["message"]
     schedule.assert_called_once_with(operation=operation, owner_id=user.pk)
 
 

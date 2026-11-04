@@ -147,6 +147,16 @@ class BeneficiaryBaseAdmin(
             return True
         return False
 
+    def _filter_rdp_queryset(
+        self,
+        request: HttpRequest,
+        queryset: "QuerySet[Beneficiary]",
+        rdp: Rdp,
+    ) -> "QuerySet[Beneficiary]":
+        if issubclass(self.model, Individual) and rdp.program.is_master_detail:
+            return queryset.filter(household__rdp=rdp)
+        return queryset.filter(rdp=rdp)
+
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
         if not (program := self.get_selected_program(request)):
@@ -158,9 +168,7 @@ class BeneficiaryBaseAdmin(
         if get_requested_rdp_id(request) is not None and rdp is None:
             return qs.none()
         if rdp:
-            if issubclass(self.model, Individual) and rdp.program.is_master_detail:
-                return qs.filter(household__rdp=rdp)
-            return qs.filter(rdp=rdp)
+            return self._filter_rdp_queryset(request, qs, rdp)
         return qs.filter(removed=False)
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:

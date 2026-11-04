@@ -56,6 +56,7 @@ def test_validate_ocr_result_normalizes_valid_documents() -> None:
     )
 
     assert result["documents"][0]["match"] == ["ID-1", 1.0]
+    assert isinstance(result["documents"][0]["match"][1], float)
     assert result["documents"][1]["found"] is False
     assert result["documents"][2]["status"] == "error"
 

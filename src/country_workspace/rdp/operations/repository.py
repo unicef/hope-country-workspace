@@ -170,23 +170,31 @@ def qs_individuals_with_rdp_findings(*, rdp: Rdp) -> QuerySet[Individual]:
 
 def _latest_relevant_operation_id(*, program: Program, operation_type: RdpOperation.Type) -> Subquery:
     """Return the latest relevant operation of one type for the outer Individual."""
-    relevant = (
-        Q(units__individual_id=OuterRef("pk"))
-        | Q(findings__individual_id=OuterRef("pk"))
-        | Q(findings__related_individual_id=OuterRef("pk"))
+    individual_id = OuterRef(OuterRef("pk"))
+    operations = (
+        _successful_program_operations(program=program)
+        .filter(operation_type=operation_type)
+        .alias(
+            _has_unit=Exists(
+                RdpOperationUnit.objects.filter(
+                    operation_id=OuterRef("pk"),
+                    individual_id=individual_id,
+                )
+            ),
+            _has_finding=Exists(
+                RdpOperationFinding.objects.filter(operation_id=OuterRef("pk")).filter(
+                    Q(individual_id=individual_id) | Q(related_individual_id=individual_id)
+                )
+            ),
+        )
     )
 
+    relevant = Q(_has_unit=True) | Q(_has_finding=True)
     if operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
         membership = "rdp__households__members__pk" if program.is_master_detail else "rdp__individuals__pk"
         relevant |= Q(**{membership: OuterRef("pk")})
 
-    return Subquery(
-        _successful_program_operations(program=program)
-        .filter(operation_type=operation_type)
-        .filter(relevant)
-        .order_by("-rdp__push_date", "-rdp_id")
-        .values("pk")[:1]
-    )
+    return Subquery(operations.filter(relevant).order_by("-rdp__push_date", "-rdp_id").values("pk")[:1])
 
 
 def _latest_finding_operation_id(*, program: Program, operation_type: RdpOperation.Type) -> Subquery:

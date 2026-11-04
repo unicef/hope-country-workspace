@@ -3,6 +3,7 @@ from collections.abc import Iterable, Iterator
 from hope_flex_fields.references import parse_reference
 
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
+from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models import Individual, RdpOperationUnit
 from country_workspace.utils.flex_files import resolve_flex_file
 
@@ -44,8 +45,13 @@ def build_ocr_document_request(unit: RdpOperationUnit) -> OcrDocumentRequest | N
 
     fields = unit.individual.flex_fields
     pattern = fields.get(f"{document_type}_document_number")
-    content = extract_base64_content(resolve_flex_file(unit.individual, f"{document_type}_image"))
 
+    try:
+        image = resolve_flex_file(unit.individual, f"{document_type}_image")
+    except MissingFlexFileError:
+        return None
+
+    content = extract_base64_content(image)
     if not (isinstance(pattern, str) and (pattern := pattern.strip()) and content):
         return None
 

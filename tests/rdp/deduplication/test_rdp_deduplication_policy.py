@@ -2,7 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Program, Rdp
+from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.rdp.deduplication.policy import ProgramDedupSettingsPolicy
 
 
@@ -38,19 +38,20 @@ def test_update_dedup_settings_check_when_cleanup_in_progress(
     remote_check.assert_not_called()
 
 
-@pytest.mark.parametrize("blocked", [True, False])
+@pytest.mark.parametrize(("local_blocked", "remote_blocked"), [(True, False), (False, True), (False, False)])
 def test_update_dedup_settings_check(
-    program,
+    program: Program,
     mocker: MockerFixture,
-    blocked: bool,
+    local_blocked: bool,
+    remote_blocked: bool,
 ) -> None:
     program.biometric_deduplication_enabled = True
     policy = ProgramDedupSettingsPolicy(program)
-    mocker.patch.object(policy, "_has_blocking_rdp", return_value=blocked)
-    remote = mocker.patch.object(policy, "_has_blocking_deduplication_set", return_value=False)
+    mocker.patch.object(policy, "_has_blocking_rdp", return_value=local_blocked)
+    remote = mocker.patch.object(policy, "_has_blocking_deduplication_set", return_value=remote_blocked)
 
-    assert policy.update_dedup_settings_check().allowed is not blocked
-    assert remote.called is not blocked
+    assert policy.update_dedup_settings_check().allowed is not (local_blocked or remote_blocked)
+    assert remote.called is not local_blocked
 
 
 @pytest.mark.parametrize(
@@ -96,6 +97,10 @@ def test_has_blocking_rdp(
         BiometricRdpOperationFactory(rdp=rdp)
 
     assert ProgramDedupSettingsPolicy(program)._has_blocking_rdp() is expected
+
+
+def test_has_blocking_rdp_ignores_ocr_operation(ocr_operation: RdpOperation) -> None:
+    assert not ProgramDedupSettingsPolicy(ocr_operation.rdp.program)._has_blocking_rdp()
 
 
 @pytest.mark.parametrize("can_create", [True, False])

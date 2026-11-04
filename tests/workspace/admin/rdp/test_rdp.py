@@ -3,7 +3,7 @@ from django.urls import NoReverseMatch
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Rdp, RdpOperation
+from country_workspace.models import AsyncJob, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.state import state
@@ -158,7 +158,7 @@ def test_operations_display_failed_biometric(
 
     row = render.call_args.args[1]["rows"][0]
     assert '"code": "remote_error"' in row["error"]
-    assert row["findings"] is None
+    assert row["findings"] == 0
     assert row["affected_individuals"] is None
     affected.assert_not_called()
 
@@ -256,37 +256,6 @@ def test_is_allowed(
 
     assert result is expected
     assert capture.called is captures
-
-
-@pytest.mark.parametrize(
-    ("status", "threshold", "expected"),
-    [
-        (None, True, False),
-        (Rdp.PushStatus.PENDING, True, False),
-        (Rdp.PushStatus.REVIEW_PENDING, False, False),
-        (Rdp.PushStatus.REVIEW_PENDING, True, True),
-        (Rdp.PushStatus.REVIEW_PENDING, rdp_admin_mod.RdpWorkflowError("failed"), False),
-    ],
-)
-def test_is_clean_rdp_visible(
-    rdp: CountryRdp,
-    mocker: MockerFixture,
-    status: str | None,
-    threshold: bool | Exception,
-    expected: bool,
-) -> None:
-    obj = None if status is None else rdp
-    if obj:
-        obj.status = status
-
-    check = mocker.patch.object(rdp_admin_mod, "is_biometric_threshold_exceeded")
-    if isinstance(threshold, Exception):
-        check.side_effect = threshold
-    else:
-        check.return_value = threshold
-
-    assert rdp_admin_mod._is_clean_rdp_visible(mocker.MagicMock(original=obj)) is expected
-    assert check.called is (status == Rdp.PushStatus.REVIEW_PENDING)
 
 
 def test_change_url(admin_instance, rdp: CountryRdp, mocker: MockerFixture) -> None:

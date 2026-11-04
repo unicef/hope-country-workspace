@@ -1,16 +1,50 @@
 from decimal import Decimal
+from functools import partial
 from typing import cast
 
 import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import Rdp, RdpOperation
+from country_workspace.rdp.deduplication.types import BiometricFindingType
 from country_workspace.rdp.exceptions import RdpWorkflowError
+from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.push import thresholds
 from country_workspace.rdp.types import ThresholdType
 
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(params=[True, False], ids=["households", "people"])
+def finding_selection(
+    successful_biometric_operation: RdpOperation,
+    request: pytest.FixtureRequest,
+) -> tuple[bool, list[int]]:
+    from testutils.factories import BiometricRdpOperationFindingFactory, HouseholdFactory, IndividualFactory
+
+    rdp = successful_biometric_operation.rdp
+    master_detail: bool = request.param
+    rdp.program.beneficiary_group.master_detail = master_detail
+    rdp.program.beneficiary_group.save(update_fields=["master_detail"])
+    if master_detail:
+        households = HouseholdFactory.create_batch(2, batch__program=rdp.program, individuals=[])
+        individuals = [IndividualFactory(household=household) for household in reversed(households)]
+        rdp.households.set(households)
+        pks = [individual.household_id for individual in individuals]
+    else:
+        individuals = IndividualFactory.create_batch(2, household=None, batch__program=rdp.program)
+        rdp.individuals.set(individuals)
+        pks = [individual.pk for individual in individuals]
+
+    first, second = individuals
+    external = IndividualFactory(household=None, batch=first.batch)
+    create_finding = partial(BiometricRdpOperationFindingFactory, operation=successful_biometric_operation)
+    create_finding(individual=first)
+    create_finding(individual=second)
+    for related in (second, external):
+        create_finding(individual=first, related_individual=related, finding_type=BiometricFindingType.DUPLICATE)
+    return master_detail, pks
 
 
 @pytest.mark.parametrize(
@@ -85,8 +119,10 @@ def test_ocr_threshold_uses_operation_units(
         "threshold_value": "49",
     }
     successful_ocr_operation.save(update_fields=["config"])
-    OcrRdpOperationUnitFactory.create_batch(4, operation=successful_ocr_operation)
-    OcrRdpOperationFindingFactory.create_batch(2, operation=successful_ocr_operation)
+    units = OcrRdpOperationUnitFactory.create_batch(4, operation=successful_ocr_operation)
+    create_finding = partial(OcrRdpOperationFindingFactory, operation=successful_ocr_operation)
+    create_finding(individual=units[0].individual)
+    create_finding(individual=units[1].individual, finding_type=OcrFindingType.OCR_ERROR)
 
     result, review_required = thresholds.evaluate_review_thresholds(rdp=successful_ocr_operation.rdp)
 
@@ -166,3 +202,23 @@ def test_evaluate_review_thresholds_combines_operations(
     assert result[RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value]["threshold_exceeded"] is False
     assert result[RdpOperation.Type.OCR.value]["threshold_exceeded"] is True
     assert review_required is True
+    assert [operation for operation, _ in thresholds.exceeded_operation_thresholds(rdp=rdp)] == [
+        successful_ocr_operation
+    ]
+
+
+def test_threshold_findings_count_for_selection(
+    successful_biometric_operation: RdpOperation,
+    finding_selection: tuple[bool, list[int]],
+) -> None:
+    master_detail, pks = finding_selection
+    count = partial(
+        thresholds.threshold_findings_count_for_selection,
+        operation=successful_biometric_operation,
+        master_detail=master_detail,
+    )
+
+    assert count(pks=pks) == 4
+    assert count(pks=pks[:1]) == 2
+    assert count(pks=pks[1:]) == 1
+    assert count(pks=[]) == 0

@@ -3,9 +3,12 @@ from typing import TYPE_CHECKING
 from admin_extra_buttons.buttons import LinkButton
 from admin_extra_buttons.decorators import link
 from django.contrib.admin import register
+from django.core.exceptions import ValidationError
+from django.db.models import Exists, Q
 from django.http import HttpRequest
 from django.urls import reverse
 
+from country_workspace.models import Batch, RdpOperationFinding
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold
 from country_workspace.workspaces.sites import workspace
@@ -47,6 +50,38 @@ class CountryHouseholdAdmin(BeneficiaryBaseAdmin):
             .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
+
+    def get_object(
+        self, request: HttpRequest, object_id: str | None, from_field: str | None = None
+    ) -> CountryHousehold | None:
+        if object_id is None:
+            return None
+
+        if obj := super().get_object(request, object_id, from_field):
+            return obj
+
+        if from_field is not None or (rdp := get_rdp_context(request)) is None:
+            return None
+
+        if not self._can_view_operation_findings(request, rdp):
+            return None
+
+        try:
+            pk = self.model._meta.pk.to_python(object_id)
+        except (ValidationError, ValueError):
+            return None
+
+        findings = RdpOperationFinding.objects.filter(
+            Q(individual__household_id=pk) | Q(related_individual__household_id=pk),
+            operation__rdp=rdp,
+        )
+        return CountryHousehold.objects.filter(
+            Exists(findings),
+            pk=pk,
+            batch__country_office=state.tenant,
+            batch__program_id=rdp.program_id,
+            batch__status=Batch.BatchStatus.COMPLETE,
+        ).first()
 
     @link(change_list=False, html_attrs={"title": "Shows related members."})
     def members(self, btn: LinkButton) -> None:

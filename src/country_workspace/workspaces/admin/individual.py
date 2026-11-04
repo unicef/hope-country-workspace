@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from country_workspace.models import Batch, Rdp, RdpOperationFinding
+from country_workspace.rdp import qs_individuals_with_rdp_findings
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 from country_workspace.workspaces.sites import workspace
@@ -55,6 +56,23 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
             .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
             .filter(batch__country_office=state.tenant, batch__program=state.program)
         )
+
+    def _filter_rdp_queryset(
+        self,
+        request: HttpRequest,
+        queryset: QuerySet[CountryIndividual],
+        rdp: Rdp,
+    ) -> QuerySet[CountryIndividual]:
+        if not rdp.program.is_master_detail:
+            return super()._filter_rdp_queryset(request, queryset, rdp)
+
+        if (household := self.get_selected_household(request)) and not rdp.households.filter(pk=household.pk).exists():
+            return queryset.filter(
+                household=household,
+                pk__in=qs_individuals_with_rdp_findings(rdp=rdp),
+            )
+
+        return super()._filter_rdp_queryset(request, queryset, rdp)
 
     def get_object(
         self, request: HttpRequest, object_id: str | None, from_field: str | None = None

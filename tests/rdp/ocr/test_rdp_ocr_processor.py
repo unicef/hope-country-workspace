@@ -9,6 +9,21 @@ from country_workspace.rdp.ocr.processor import (
     get_ocr_unit_config,
     iter_ocr_unit_configs,
 )
+from country_workspace.utils.flex_files import write_flex_file
+
+
+@pytest.fixture(params=["owned", "missing"])
+def referenced_ocr_unit(ocr_unit: RdpOperationUnit, request: pytest.FixtureRequest) -> tuple[RdpOperationUnit, bool]:
+    individual = ocr_unit.individual
+    document_type = ocr_unit.config["document_type"]
+    reference = write_flex_file(individual, f"{document_type}_image", b"document", "image/jpeg")
+    if request.param == "missing":
+        individual.flex_field_files.all().delete()
+    individual.flex_fields = {
+        f"{document_type}_document_number": "  ID-1  ",
+        f"{document_type}_image": reference,
+    }
+    return ocr_unit, request.param == "owned"
 
 
 @pytest.mark.parametrize(
@@ -112,6 +127,15 @@ def test_build_ocr_document_request(mocker: MockerFixture) -> None:
         "content": "IMAGE",
         "pattern": "ID-1",
     }
+
+
+@pytest.mark.django_db
+def test_build_ocr_document_request_from_reference(referenced_ocr_unit: tuple[RdpOperationUnit, bool]) -> None:
+    unit, owned = referenced_ocr_unit
+
+    assert get_ocr_unit_config(unit.individual) == unit.config
+    expected = {"individual_id": unit.individual_id, "content": "ZG9jdW1lbnQ=", "pattern": "ID-1"} if owned else None
+    assert build_ocr_document_request(unit) == expected
 
 
 @pytest.mark.parametrize(

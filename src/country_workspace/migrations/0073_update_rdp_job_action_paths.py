@@ -12,10 +12,6 @@ ACTION_REPLACEMENTS = (
         "country_workspace.rdp.lifecycle.cancel_existing_rdp_core",
         "country_workspace.rdp.lifecycle.cancellation.cancel_existing_rdp_core",
     ),
-    (
-        "country_workspace.rdp.lifecycle.reject_cancelled_rdp_set_core",
-        "country_workspace.rdp.deduplication.workflow.reject_cancelled_rdp_set_core",
-    ),
 )
 
 
