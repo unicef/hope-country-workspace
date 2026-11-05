@@ -186,6 +186,7 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
         "code": (code := "code"),
         "name": (name := "name"),
         "sector": (sector := "sector"),
+        "start_date": (start_date := "2024-05-01"),
         "status": (status := "status"),
     }
 
@@ -195,6 +196,7 @@ def test_prepare_program_defaults_all_found(mocker: MockerFixture) -> None:
         "code": code,
         "country_office": get_office_mock.return_value,
         "name": name,
+        "start_date": start_date,
         "status": status,
         "sector": sector,
     }

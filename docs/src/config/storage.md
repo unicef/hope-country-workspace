@@ -36,13 +36,14 @@ Handle missing blobs with `azure.core.exceptions.ResourceNotFoundError` (and `Fi
     A record's picture can be stored either inline in `flex_fields` as a base64 data-URI (legacy) or offloaded to the `FlexFieldFile` table and referenced from `flex_fields` by a `flexfile:<uuid>` string (see [Flex field files](#flex-field-files) below). `services.hope_blob.sync_record_blobs` resolves either shape transparently before syncing, and the DB only keeps a per-field content hash in `blob_hashes` to avoid re-uploading unchanged content. Blob paths are recomputed on each transfer via `hope_blob_key()` and substituted into outgoing payloads:
 
     ```
-    {office.code}/{program.code}/CW_{entity}_{pk}_{name}.png
+    {program.start_date.year}/{office.slug}/{program.code}/CW_{entity}_{pk}_{name}.png
     ```
 
     - `entity`: `ind` (Individual) or `hh` (Household)
     - `name`: the raw `flex_fields` image field key (e.g. `photo`, `national_id_image`)
+    - `program.start_date` is synced from HOPE; building a key for a program without a start date (or an office without a slug) raises `ImproperlyConfigured`
 
-    Example: `AFG/CP-2024/CW_ind_12345_photo.png`
+    Example: `2024/afghanistan/CP-2024/CW_ind_12345_photo.png`
 
 ## Flex field files
 

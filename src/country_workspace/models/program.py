@@ -65,6 +65,7 @@ class Program(BaseModel):
     country_office = models.ForeignKey(Office, on_delete=models.CASCADE, related_name="programs")
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=255, blank=True, null=True)
+    start_date = models.DateField(null=True, blank=True, editable=False)
     status = models.CharField(max_length=10, choices=STATUS_CHOICE, db_index=True)
     sector = models.CharField(max_length=50, choices=SECTOR_CHOICE, db_index=True)
     # Local Fields

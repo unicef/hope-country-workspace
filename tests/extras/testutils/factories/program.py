@@ -1,3 +1,5 @@
+import datetime
+
 import factory
 
 from country_workspace.models import BeneficiaryGroup, Program
@@ -28,6 +30,7 @@ class ProgramFactory(AutoRegisterModelFactory):
     hope_id = factory.Sequence(lambda n: f"program-{n}")
     name = factory.Sequence(lambda n: f"Program {n}")
     code = factory.Sequence(lambda n: f"{n:04d}")
+    start_date = datetime.date(2024, 1, 1)
     household_checker = factory.SubFactory(DataCheckerFactory)
     individual_checker = factory.SubFactory(DataCheckerFactory)
     beneficiary_group = factory.SubFactory(BeneficiaryGroupFactory)
