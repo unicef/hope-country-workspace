@@ -9,7 +9,7 @@ from country_workspace.utils.http import absolute_reverse, absolute_uri, get_cli
 if TYPE_CHECKING:
     from django.http import HttpRequest
     from django.test.client import RequestFactory
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +25,7 @@ def test_absolute_reverse() -> None:
     assert absolute_reverse("admin:index") == "http://127.0.0.1/admin/"
 
 
-def test_absolute_uri(settings: "SettingsWrapper") -> None:
+def test_absolute_uri(settings: "LazySettings") -> None:
     assert absolute_uri("aa") == "http://127.0.0.1/aa"
     assert absolute_uri("") == "http://127.0.0.1/"
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = True
@@ -40,7 +40,7 @@ def test_get_server_host() -> None:
     assert get_server_host() == "127.0.0.1"
 
 
-def test_get_server_url(settings: "SettingsWrapper") -> None:
+def test_get_server_url(settings: "LazySettings") -> None:
     assert get_server_url() == "http://127.0.0.1"
     with state.configure(request=None):
         assert get_server_url() == ""

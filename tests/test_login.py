@@ -6,7 +6,8 @@ from django.urls import reverse
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
+
     from responses import RequestsMock
 
 pytestmark = [pytest.mark.django_db]
@@ -16,7 +17,7 @@ pytestmark = [pytest.mark.django_db]
 def app(
     django_app_factory: "MixinWithInstanceVariables",
     mocked_responses: "RequestsMock",
-    settings: "SettingsWrapper",
+    settings: "LazySettings",
 ) -> "DjangoTestApp":
     from testutils.factories import UserFactory
 
@@ -26,7 +27,7 @@ def app(
     return django_app_factory(csrf_checks=False)
 
 
-def test_login_enable_superuser(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
+def test_login_enable_superuser(app: "DjangoTestApp", settings: "LazySettings") -> None:
     from country_workspace.models import User
 
     settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
@@ -45,7 +46,7 @@ def test_login_enable_superuser(app: "DjangoTestApp", settings: "SettingsWrapper
     ).exists()
 
 
-def test_login_usse(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
+def test_login_usse(app: "DjangoTestApp", settings: "LazySettings") -> None:
     from country_workspace.models import User
 
     settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
@@ -64,7 +65,7 @@ def test_login_usse(app: "DjangoTestApp", settings: "SettingsWrapper") -> None:
     ).exists()
 
 
-def test_sso_login_uses_post(client, settings: "SettingsWrapper") -> None:
+def test_sso_login_uses_post(client, settings: "LazySettings") -> None:
     """social-auth-app-django >= 6 accepts `social:begin` only as a CSRF-protected POST."""
     settings.DEBUG = True
     begin = reverse("social:begin", kwargs={"backend": "azuread-tenant-oauth2"})

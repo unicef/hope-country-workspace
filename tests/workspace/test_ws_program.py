@@ -2,7 +2,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from django.urls import reverse
-from pytest_django.fixtures import SettingsWrapper
+from django.conf import LazySettings
+
 from testutils.utils import select_office
 
 from country_workspace.state import state
@@ -51,7 +52,7 @@ def household(program):
 def app(
     django_app_factory: "MixinWithInstanceVariables",
     mocked_responses: "RequestsMock",
-    settings: SettingsWrapper,
+    settings: LazySettings,
 ) -> "DjangoTestApp":
     from testutils.factories import SuperUserFactory
 
