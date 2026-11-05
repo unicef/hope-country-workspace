@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 import pytest
 from django.urls import reverse
-from pytest_django.fixtures import SettingsWrapper
+from django.conf import LazySettings
 from testutils.utils import select_office
 from constance.test import override_config
 from responses import RequestsMock, matchers
@@ -50,7 +50,7 @@ def household(program):
 @pytest.fixture
 def app(
     django_app_factory: "MixinWithInstanceVariables",
-    settings: SettingsWrapper,
+    settings: LazySettings,
 ) -> "DjangoTestApp":
     from testutils.factories import SuperUserFactory
 

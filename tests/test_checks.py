@@ -8,7 +8,7 @@ from country_workspace.checks import storages_check
 
 if TYPE_CHECKING:
     from django.core.checks import CheckMessage
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ class _FakeAzureStorage:
 
 
 def test_storages_check_reports_error_when_alias_not_configured(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     del valid_storages["hope"]
     settings.STORAGES = valid_storages
@@ -59,7 +59,7 @@ def test_storages_check_reports_error_when_alias_not_configured(
 
 
 def test_storages_check_reports_error_when_backend_is_invalid(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["BACKEND"] = "country_workspace.does.not.exist.FakeStorage"
     settings.STORAGES = valid_storages
@@ -70,7 +70,7 @@ def test_storages_check_reports_error_when_backend_is_invalid(
 
 
 def test_storages_check_reports_error_when_generic_backend_construction_fails(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["OPTIONS"] = {"not_a_real_option": "x"}
     settings.STORAGES = valid_storages
@@ -81,7 +81,7 @@ def test_storages_check_reports_error_when_generic_backend_construction_fails(
 
 
 def test_storages_check_warns_when_hope_is_not_azure_backed(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     settings.STORAGES = valid_storages
 
@@ -93,7 +93,7 @@ def test_storages_check_warns_when_hope_is_not_azure_backed(
 
 
 def test_storages_check_reports_error_when_azure_options_are_empty(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["BACKEND"] = f"{__name__}._FakeAzureStorage"
     valid_storages["hope"]["OPTIONS"] = {}
@@ -105,7 +105,7 @@ def test_storages_check_reports_error_when_azure_options_are_empty(
 
 
 def test_storages_check_reports_error_when_azure_connection_fails(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["BACKEND"] = f"{__name__}._FakeAzureStorage"
     valid_storages["hope"]["OPTIONS"] = {"overwrite_files": True, "exists_error": RuntimeError("boom")}
@@ -117,7 +117,7 @@ def test_storages_check_reports_error_when_azure_connection_fails(
 
 
 def test_storages_check_reports_error_when_hope_azure_backend_does_not_overwrite_files(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["BACKEND"] = f"{__name__}._FakeAzureStorage"
     valid_storages["hope"]["OPTIONS"] = {"overwrite_files": False}
@@ -129,7 +129,7 @@ def test_storages_check_reports_error_when_hope_azure_backend_does_not_overwrite
 
 
 def test_storages_check_passes_for_valid_azure_backend(
-    settings: "SettingsWrapper", valid_storages: dict[str, dict]
+    settings: "LazySettings", valid_storages: dict[str, dict]
 ) -> None:
     valid_storages["hope"]["BACKEND"] = f"{__name__}._FakeAzureStorage"
     valid_storages["hope"]["OPTIONS"] = {"overwrite_files": True}

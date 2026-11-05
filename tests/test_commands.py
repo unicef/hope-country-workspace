@@ -27,7 +27,7 @@ from country_workspace.utils.gen_rdi import GenerationMode, GeneratorConfig
 
 
 if TYPE_CHECKING:
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
 
     from country_workspace.models import User
 
@@ -71,7 +71,7 @@ def test_upgrade_init(
     static: bool,
     static_root: str,
     tmp_path: Path,
-    settings: "SettingsWrapper",
+    settings: "LazySettings",
 ) -> None:
     if static_root:
         static_root_path = tmp_path / static_root

@@ -10,7 +10,7 @@ from country_workspace.state import state
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
 
     from country_workspace.models import AsyncJob
     from country_workspace.workspaces.models import CountryHousehold
@@ -59,7 +59,7 @@ def app(django_app_factory: "MixinWithInstanceVariables") -> "DjangoTestApp":
 
 
 def test_ws_validate(
-    app: "DjangoTestApp", force_migrated_records, settings: "SettingsWrapper", household: "CountryHousehold"
+    app: "DjangoTestApp", force_migrated_records, settings: "LazySettings", household: "CountryHousehold"
 ) -> None:
     url = reverse("workspace:workspaces_countryhousehold_changelist")
     settings.CELERY_TASK_ALWAYS_EAGER = True

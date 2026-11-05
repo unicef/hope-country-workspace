@@ -1,15 +1,15 @@
 from django.core import mail
 from django.core.mail import send_mail
 import pytest
-from pytest_django.fixtures import SettingsWrapper
+from django.conf import LazySettings
 
 
 @pytest.fixture
-def mail_backend(settings: SettingsWrapper) -> None:
+def mail_backend(settings: LazySettings) -> None:
     settings.EMAIL_BACKEND = "anymail.backends.test.EmailBackend"
 
 
-def test_mail_configuration(mail_backend: None, settings: SettingsWrapper) -> None:
+def test_mail_configuration(mail_backend: None, settings: LazySettings) -> None:
     send_mail(subject := "subject", body := "body", from_ := "to@example.com", to := ["user@example.com"])
 
     assert len(mail.outbox) == 1

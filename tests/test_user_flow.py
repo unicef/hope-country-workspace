@@ -9,7 +9,7 @@ from country_workspace.state import state
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
     from django_webtest.pytest_plugin import MixinWithInstanceVariables
-    from pytest_django.fixtures import SettingsWrapper
+    from django.conf import LazySettings
     from responses import RequestsMock
 
     from country_workspace.models import Household
@@ -63,7 +63,7 @@ def app(django_app_factory: "MixinWithInstanceVariables", mocked_responses: "Req
     return django_app
 
 
-def test_login(app, user, data: "list[Household]", settings: "SettingsWrapper", program):
+def test_login(app, user, data: "list[Household]", settings: "LazySettings", program):
     from testutils.perms import user_grant_permissions
 
     settings.FLAGS = {"LOCAL_LOGIN": [("boolean", True)]}
