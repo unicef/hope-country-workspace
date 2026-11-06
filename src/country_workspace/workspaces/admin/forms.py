@@ -7,7 +7,6 @@ from country_workspace.models import BeneficiaryGroup, Program
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
 from country_workspace.workspaces.validators import ValidatableFileValidator
 
-
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
 

@@ -32,7 +32,7 @@ Typical tasks include:
 - configuring components used by operational workflows;
 - maintaining [system settings](config/constance.md).
 
-Configuration prepared here is then available in the **[Analyst / Collector Workspace](#analyst--collector-workspace)**. Some components can also be configured in either interface, depending on the workflow.
+Configuration prepared here is then available in the **[Analyst / Collector Workspace](#analyst-collector-workspace)**. Some components can also be configured in either interface, depending on the workflow.
 
 ## How the interfaces work together
 
@@ -52,7 +52,7 @@ sequenceDiagram
     Workspace->>Workspace: Import, review, validate, and reprocess beneficiary data
 ```
 
-Most reusable configuration is prepared in **[Staff Administration](#staff-administration)** and then used in the **[Analyst / Collector Workspace](#analyst--collector-workspace)**. Mapping Importers and Transformers can be configured in either interface.
+Most reusable configuration is prepared in **[Staff Administration](#staff-administration)** and then used in the **[Analyst / Collector Workspace](#analyst-collector-workspace)**. Mapping Importers and Transformers can be configured in either interface.
 
 ## Unified Classifiers
 

@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.contrib.dedup_engine import DeduplicationSetState, FindingStatusCode
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Program, Rdp, RdpOperation
+from country_workspace.models import Individual, Program, Rdp, RdpOperation
 from country_workspace.rdp import RdpWorkflowError
 from country_workspace.rdp.deduplication import workflow
 
@@ -33,7 +33,7 @@ def test_get_dedup_callback_base_url_rejects_invalid_url(url: str) -> None:
             workflow.get_dedup_callback_base_url()
 
 
-def test_build_biometric_findings(people_rdp) -> None:
+def test_build_biometric_findings(people_rdp: tuple[Rdp, list[Individual]]) -> None:
     from testutils.factories import BiometricRdpOperationFactory
 
     rdp, individuals = people_rdp
@@ -61,7 +61,7 @@ def test_build_biometric_findings(people_rdp) -> None:
         (FindingStatusCode.BAD_IMAGE_QUALITY.name, individuals[2].pk),
     ]
     assert result[0].related_individual_id == individuals[1].pk
-    assert result[0].details == {"score": 0.9}
+    assert result[0].details == {"related_reference_pk": individuals[1].pk, "score": 0.9}
     assert result[1].related_individual_id is None
 
 
@@ -108,19 +108,25 @@ def test_build_biometric_findings_rejects_individual_outside_rdp(people_rdp) -> 
         )
 
 
-def test_build_biometric_findings_ignores_related_individual_from_other_program(people_rdp) -> None:
+@pytest.mark.parametrize("exists", [True, False], ids=["other-program", "missing"])
+def test_build_biometric_findings_preserves_unlinked_related_reference(
+    people_rdp: tuple[Rdp, list[Individual]], exists: bool
+) -> None:
     from testutils.factories import BiometricRdpOperationFactory, IndividualFactory, ProgramFactory
 
     rdp, individuals = people_rdp
     operation = BiometricRdpOperationFactory(rdp=rdp)
     related = IndividualFactory(household=None, batch__program=ProgramFactory())
+    related_id = related.pk
+    if not exists:
+        related.delete()
 
     result = workflow._build_biometric_findings(
         operation,
         [
             {
                 "first": {"reference_pk": str(individuals[0].pk)},
-                "second": {"reference_pk": str(related.pk)},
+                "second": {"reference_pk": str(related_id)},
                 "status_code": FindingStatusCode.DUPLICATE,
                 "updated_at": "",
             }
@@ -128,6 +134,7 @@ def test_build_biometric_findings_ignores_related_individual_from_other_program(
     )
 
     assert result[0].related_individual_id is None
+    assert result[0].details == {"related_reference_pk": related_id}
 
 
 @pytest.mark.parametrize(
@@ -155,10 +162,21 @@ def test_sync_missing_operation(mocker: MockerFixture) -> None:
     assert workflow.sync_biometric_deduplication_result(operation_id=uuid4()) is False
 
 
-def test_sync_ignores_non_running_operation(
+@pytest.mark.parametrize(
+    ("operation_type", "status"),
+    [
+        (RdpOperation.Type.BIOMETRIC_DEDUPLICATION, RdpOperation.Status.PENDING),
+        (RdpOperation.Type.OCR, RdpOperation.Status.RUNNING),
+    ],
+)
+def test_sync_ignores_ineligible_operation(
     biometric_operation: RdpOperation,
     mocker: MockerFixture,
+    operation_type: RdpOperation.Type,
+    status: RdpOperation.Status,
 ) -> None:
+    biometric_operation.operation_type = operation_type
+    biometric_operation.status = status
     mocker.patch.object(workflow, "get_rdp_operation", return_value=biometric_operation)
     make_client = mocker.patch.object(workflow, "make_dedup_client")
 

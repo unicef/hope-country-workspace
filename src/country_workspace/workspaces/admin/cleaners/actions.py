@@ -12,10 +12,10 @@ from country_workspace.rdp import (
     create_rdp_core,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
+    rdp_name_default,
 )
 from country_workspace.models import AsyncJob
 from country_workspace.state import state
-from country_workspace.utils.fields import rdi_name_default
 from .bulk_update import export_bulk_update_template
 from .calculate_checksum import calculate_checksum_impl
 from .concatenate import ConcatenateFieldForm, concatenate_field_impl
@@ -285,7 +285,7 @@ def create_rdp(
             config: CreateRdpConfig = {
                 "pks": list(selected_pks),
                 "master_detail": master_detail,
-                "batch_name": form.cleaned_data["batch_name"] or rdi_name_default(),
+                "batch_name": form.cleaned_data["batch_name"] or rdp_name_default(),
                 "country_office_id": program.country_office.id,
                 "program_id": program.id,
                 "pushed_by_id": request.user.id,

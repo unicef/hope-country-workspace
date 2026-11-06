@@ -4,9 +4,10 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from hope_flex_fields.references import DEFAULT_MIMETYPE, flex_file_src
+from pytest_django import DjangoAssertNumQueries
 
 from country_workspace.exceptions import MissingFlexFileError
-from country_workspace.models import Individual
+from country_workspace.models import Individual, RdpOperationUnit
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.utils.flex_files import (
     FlexFileContent,
@@ -15,11 +16,18 @@ from country_workspace.utils.flex_files import (
     materialize_pending_files,
     pending_marker,
     prefetch_flex_files,
+    resolve_flex_file,
     resolve_flex_files,
     write_flex_file,
 )
+from testutils.factories import OcrRdpOperationUnitFactory
 
 LEGACY_DATA_URI = "data:image/png;base64,bGVnYWN5"
+
+
+@pytest.fixture
+def ocr_unit_with_photo(record_with_photo: Individual) -> RdpOperationUnit:
+    return OcrRdpOperationUnitFactory(individual=record_with_photo, operation__rdp__program=record_with_photo.program)
 
 
 @pytest.mark.django_db
@@ -46,18 +54,26 @@ def test_write_flex_file_reuses_the_row_of_identical_content(
     assert same_again == first
     assert replacement != first
     assert record.flex_field_files.filter(field_name="photo").count() == 2
+    resolved = resolve_flex_files(record, {"photo": first})
+    assert resolved["photo"] == "data:image/png;base64,%s" % b64encode(photo_content.content).decode()
 
 
 @pytest.mark.django_db
-def test_attach_flex_files_references_the_file_in_both_payloads(
-    record: Individual, photo_content: FlexFileContent
+@pytest.mark.parametrize(("update_raw_data", "save"), [(True, True), (False, True), (True, False)])
+def test_attach_flex_files_updates_the_requested_payloads(
+    record: Individual, photo_content: FlexFileContent, update_raw_data: bool, save: bool
 ) -> None:
-    references = attach_flex_files(record, {"photo": photo_content})
+    flex_fields = dict(record.flex_fields)
+    raw_data = dict(record.raw_data)
 
+    references = attach_flex_files(record, {"photo": photo_content}, update_raw_data=update_raw_data, save=save)
+
+    assert references == {"photo": record.flex_field_files.get().reference}
+    assert record.flex_fields == {**flex_fields, **references}
+    assert record.raw_data == ({**raw_data, **references} if update_raw_data else raw_data)
     record.refresh_from_db()
-    assert FlexFieldFile.is_reference(references["photo"])
-    assert record.flex_fields["photo"] == references["photo"]
-    assert record.raw_data["photo"] == references["photo"]
+    assert record.flex_fields == ({**flex_fields, **references} if save else flex_fields)
+    assert record.raw_data == ({**raw_data, **references} if save and update_raw_data else raw_data)
 
 
 @pytest.mark.django_db
@@ -73,16 +89,21 @@ def test_attach_flex_files_with_no_files_changes_nothing(record: Individual) -> 
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("save", [True, False])
 def test_materialize_pending_files_replaces_every_marker_of_one_file(
-    record_with_pending_photo: Individual, photo_content: FlexFileContent
+    record_with_pending_photo: Individual, photo_content: FlexFileContent, save: bool
 ) -> None:
-    materialize_pending_files(record_with_pending_photo, {"img-1": photo_content})
+    references = materialize_pending_files(record_with_pending_photo, {"img-1": photo_content}, save=save)
 
-    record_with_pending_photo.refresh_from_db()
     reference = record_with_pending_photo.flex_fields["photo"]
+    assert references == {"photo": reference}
     assert FlexFieldFile.is_reference(reference)
     assert record_with_pending_photo.raw_data["beneficiary_photo"] == reference
     assert record_with_pending_photo.flex_field_files.count() == 1
+    record_with_pending_photo.refresh_from_db()
+    expected = reference if save else pending_marker("img-1")
+    assert record_with_pending_photo.flex_fields["photo"] == expected
+    assert record_with_pending_photo.raw_data["beneficiary_photo"] == expected
 
 
 @pytest.mark.django_db
@@ -168,32 +189,51 @@ def test_materialize_pending_files_keeps_nested_values_without_markers(
 def test_resolve_flex_files_expands_references_and_keeps_other_values(
     record_with_photo: Individual, photo_content: FlexFileContent
 ) -> None:
-    resolved = resolve_flex_files(
-        record_with_photo,
-        {**record_with_photo.flex_fields, "consent_sign": LEGACY_DATA_URI},
-    )
+    reference = record_with_photo.flex_fields["photo"]
+    payload = {**record_with_photo.flex_fields, "consent_sign": LEGACY_DATA_URI}
+    resolved = resolve_flex_files(record_with_photo, payload)
 
     assert resolved["photo"] == "data:image/png;base64,%s" % b64encode(photo_content.content).decode()
     assert resolved["consent_sign"] == LEGACY_DATA_URI
     assert resolved["individual_id"] == "I-1"
+    assert payload["photo"] == record_with_photo.flex_fields["photo"] == reference
+    assert resolve_flex_file(record_with_photo, "photo") == resolved["photo"]
+    assert resolve_flex_file(record_with_photo, "missing") is None
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("prefetched", [False, True])
 def test_resolve_flex_files_raises_on_a_reference_the_record_does_not_own(
-    record: Individual, foreign_photo_reference: str
+    record: Individual, foreign_photo_reference: str, prefetched: bool
 ) -> None:
+    if prefetched:
+        record = prefetch_flex_files(Individual.objects.filter(pk=record.pk)).get()
+
     with pytest.raises(MissingFlexFileError):
         resolve_flex_files(record, {"photo": foreign_photo_reference})
 
 
 @pytest.mark.django_db
 def test_prefetch_flex_files_resolves_without_further_queries(
-    record_with_photo: Individual, django_assert_num_queries
+    record_with_photo: Individual, django_assert_num_queries: DjangoAssertNumQueries
 ) -> None:
     prefetched = prefetch_flex_files(Individual.objects.filter(pk=record_with_photo.pk)).get()
 
     with django_assert_num_queries(0):
         resolved = resolve_flex_files(prefetched)
+
+    assert resolved["photo"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.django_db
+def test_prefetch_flex_files_with_prefix_resolves_without_further_queries(
+    ocr_unit_with_photo: RdpOperationUnit, django_assert_num_queries: DjangoAssertNumQueries
+) -> None:
+    queryset = RdpOperationUnit.objects.filter(pk=ocr_unit_with_photo.pk).select_related("individual")
+    prefetched = prefetch_flex_files(queryset, prefix="individual").get()
+
+    with django_assert_num_queries(0):
+        resolved = resolve_flex_files(prefetched.individual)
 
     assert resolved["photo"].startswith("data:image/png;base64,")
 
