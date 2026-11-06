@@ -19,6 +19,7 @@ from hope_flex_fields.references import flex_file_src
 
 from country_workspace.cache.manager import cache_manager
 from country_workspace.models import Batch, Individual, Rdp
+from country_workspace.rdp import beneficiary_data_change_check, lock_program_for_update
 from country_workspace.state import state
 from country_workspace.utils.flex_fields import get_checker_fields
 from country_workspace.utils.flex_files import FlexFileContent, attach_flex_files
@@ -106,15 +107,28 @@ class BeneficiaryBaseAdmin(
         program = state.program
         return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
 
+    def deny_beneficiary_data_change(
+        self,
+        request: HttpRequest,
+        program: "CountryProgram | None" = None,
+    ) -> bool:
+        """Report whether beneficiary data changes are currently blocked."""
+        program = program or self.get_selected_program(request)
+        if program is None or (check := beneficiary_data_change_check(program)).allowed:
+            return False
+        self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+        return True
+
     def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
-        _actions = super().get_actions(request)
+        actions = super().get_actions(request)
+        program = self.get_selected_program(request)
         if (
-            not (program := self.get_selected_program(request))
+            not program
             or not program.beneficiary_group
             or self.model != (CountryHousehold if program.beneficiary_group.master_detail else CountryIndividual)
         ):
-            _actions.pop("create_rdp", None)
-        return _actions
+            actions.pop("create_rdp", None)
+        return actions
 
     def has_validate_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("country_workspace.validate_beneficiary")
@@ -197,24 +211,34 @@ class BeneficiaryBaseAdmin(
 
     @button(
         label=_("Validate"),
-        enabled=lambda btn: btn.context["original"].checker,
+        enabled=lambda btn: bool(
+            (obj := btn.context["original"]) and obj.checker and beneficiary_data_change_check(obj.program).allowed
+        ),
         html_attrs={"title": "Validate single Entity and related Children"},
     )
     def validate_single(self, request: HttpRequest, pk: str) -> "HttpResponse":
         obj: "Beneficiary" = self.get_object(request, pk)
-        try:
-            validate_alien_fields(obj)
-        except ValueError as exc:
-            self.message_user(request, str(exc), messages.ERROR)
-            return
 
-        if obj.validate_with_checker():
-            self.message_user(request, _("Validation successful!"), messages.SUCCESS)
-        else:
-            self.message_user(request, _("Validation failed!"), messages.ERROR)
+        with transaction.atomic():
+            program = lock_program_for_update(pk=obj.program.pk)
+            if not (check := beneficiary_data_change_check(program)).allowed:
+                self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+                return
+
+            try:
+                validate_alien_fields(obj)
+            except ValueError as exc:
+                self.message_user(request, str(exc), messages.ERROR)
+                return
+
+            if obj.validate_with_checker():
+                self.message_user(request, _("Validation successful!"), messages.SUCCESS)
+            else:
+                self.message_user(request, _("Validation failed!"), messages.ERROR)
 
     @button(
         label=_("Validate Programme"),
+        enabled=lambda __: bool(state.program and beneficiary_data_change_check(state.program).allowed),
         html_attrs={
             "title": _("Validate Entire Programme - all beneficiaries"),
             "onclick": "return !document.querySelector('input[name=_selected_action]:checked');",
@@ -222,6 +246,9 @@ class BeneficiaryBaseAdmin(
     )
     def validate_program(self, request: HttpRequest) -> "HttpResponse":
         program = state.program
+        if self.deny_beneficiary_data_change(request, program):
+            return
+
         queryset = (
             program.households.filter(removed=False).prefetch_related("members")
             if program.beneficiary_group.master_detail
@@ -245,12 +272,7 @@ class BeneficiaryBaseAdmin(
         html_attrs={"title": _("Import Data using XLS/RDI, Kobo or Aurora.")},
     )
     def import_data(self, request: HttpRequest) -> "HttpResponse":
-        """Render the same Import Data page as the Programme admin.
-
-        The view runs inside *this* model admin so the sidebar/breadcrumbs
-        stay anchored to the page the user came from (Households,
-        Individuals or People).
-        """
+        """Render the same Import Data page as the Programme admin."""
         return self._render_import_data(request, program=state.program)
 
     def _get_import_success_url(self, request: HttpRequest, program: "CountryProgram") -> str:
@@ -312,6 +334,9 @@ class BeneficiaryBaseAdmin(
 
     def has_change_permission(self, request: HttpRequest, obj: Model | None = None) -> bool:
         if (obj is not None and obj.removed) or self._is_historical_rdp(request):
+            return False
+        program = obj.program if obj is not None else self.get_selected_program(request)
+        if program is not None and not beneficiary_data_change_check(program).allowed:
             return False
         return super().has_change_permission(request, obj)
 
@@ -378,9 +403,15 @@ class BeneficiaryBaseAdmin(
             return False
 
         with transaction.atomic():
+            program = lock_program_for_update(pk=obj.program.pk)
+            if not (check := beneficiary_data_change_check(program)).allowed:
+                form.add_error(None, check.reason or _("Action is not allowed."))
+                return False
+
             obj.flex_fields = form.cleaned_data
             attach_flex_files(obj, self._get_uploaded_files(form), update_raw_data=False, save=False)
             self.save_model(request, obj, form, True)
+
         if form_valid:
             self.message_user(request, _("Record saved!"), messages.SUCCESS)
         else:

@@ -7,7 +7,7 @@ from country_workspace.models import AsyncJob, Program, Rdp
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.workflow import schedule_rdp_operations
 from country_workspace.rdp.push.workflow import schedule_rdp_push_evaluation
-from country_workspace.rdp.repository import create_rdp
+from country_workspace.rdp.repository import create_rdp, lock_program_for_update
 from country_workspace.rdp.types import CreateRdpConfig
 from country_workspace.rdp.validation import preflight_errors
 
@@ -55,13 +55,14 @@ def schedule_rdp_processing(*, rdp: Rdp) -> None:
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Create an RDP and schedule its processing."""
     config: CreateRdpConfig = job.config
-    validate_rdp_creation(program=job.program, config=config)
 
     try:
         with transaction.atomic():
-            program = Program.objects.select_for_update().get(pk=config["program_id"])
+            program = lock_program_for_update(pk=config["program_id"])
             if program.cleanup_in_progress:
                 raise RdpWorkflowError({"errors": ["Program cleanup is in progress."]})
+
+            validate_rdp_creation(program=program, config=config)
 
             rdp = create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)

@@ -2,7 +2,8 @@ from dataclasses import dataclass
 
 from django.db.models import Q
 
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Program, Rdp, RdpOperation
+from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
 
 from .exceptions import RdpWorkflowError
 
@@ -15,6 +16,16 @@ class ActionCheck:
     def require(self) -> None:
         if not self.allowed:
             raise RdpWorkflowError({"errors": [self.reason or "Action is not allowed."]})
+
+
+def beneficiary_data_change_check(program: Program) -> ActionCheck:
+    """Check whether beneficiary data can be changed for the Program."""
+    if Rdp.objects.filter(program_id=program.pk, status__in=NON_TERMINAL_RDP_STATUSES).exists():
+        return ActionCheck(
+            False,
+            "Beneficiary data cannot be changed while the Program has an unfinished RDP. Cancel the RDP first.",
+        )
+    return ActionCheck(True)
 
 
 class RdpActionPolicy:
@@ -41,6 +52,8 @@ class RdpActionPolicy:
             return ActionCheck(False, "Program cleanup is in progress.")
         if self.rdp.status != Rdp.PushStatus.SUCCESS:
             return ActionCheck(False, f"RDP: can not reset in status={self.rdp.status}")
+        if not (check := beneficiary_data_change_check(self.rdp.program)).allowed:
+            return check
         if Rdp.objects.filter(
             Q(push_date__gt=self.rdp.push_date) | Q(push_date=self.rdp.push_date, pk__gt=self.rdp.pk),
             program_id=self.rdp.program_id,

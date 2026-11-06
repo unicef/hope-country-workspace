@@ -22,11 +22,12 @@ from .operations.repository import (
     qs_rdp_operation_findings,
 )
 from .operations.workflow import has_retryable_rdp_operations, retry_rdp_operations
-from .policy import RdpActionPolicy, get_rdp_policy
+from .policy import RdpActionPolicy, beneficiary_data_change_check, get_rdp_policy
 from .push.constants import PUSH_READY_CALLBACK_MAX_AGE, PUSH_READY_CALLBACK_SALT
 from .push.policy import get_push_policy
 from .push.thresholds import exceeded_operation_thresholds
 from .push.workflow import claim_review_rdp_push, fail_stuck_rdp_push, handle_push_ready_callback, retry_rdp_push
+from .repository import lock_program_for_update
 from .types import CreateRdpConfig
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "RdpActionPolicy",
     "RdpFindingsFilterForm",
     "RdpWorkflowError",
+    "beneficiary_data_change_check",
     "cancel_rdp",
     "claim_review_rdp_push",
     "create_clean_rdp",
@@ -55,6 +57,7 @@ __all__ = [
     "handle_push_ready_callback",
     "has_retryable_rdp_operations",
     "latest_operation_findings_by_individual",
+    "lock_program_for_update",
     "ocr_affected_individuals_count",
     "qs_biometric_affected_individuals",
     "qs_individuals_with_latest_operation_findings",

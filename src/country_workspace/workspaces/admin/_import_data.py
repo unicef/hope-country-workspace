@@ -29,6 +29,7 @@ from country_workspace.datasources.rdi import (
     import_from_rdi,
 )
 from country_workspace.models import AsyncJob
+from country_workspace.rdp import beneficiary_data_change_check
 from country_workspace.utils.fields import batch_name_default
 from .forms import ImportFileForm
 
@@ -116,6 +117,13 @@ class ImportDataMixin:
 
         return render(request, self.import_data_template, context)
 
+    def _can_schedule_import(self, request: HttpRequest, program: "CountryProgram") -> bool:
+        """Check whether an import can be scheduled."""
+        if (check := beneficiary_data_change_check(program)).allowed:
+            return True
+        self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+        return False
+
     def import_rdi(self, request: HttpRequest, program: "CountryProgram") -> "ImportFileForm | None":
         form = ImportFileForm(
             request.POST,
@@ -124,7 +132,7 @@ class ImportDataMixin:
             beneficiary_group=program.beneficiary_group,
             program=program,
         )
-        if form.is_valid():
+        if form.is_valid() and self._can_schedule_import(request, program):
             master_detail = program.beneficiary_group.master_detail if program.beneficiary_group else False
             config: RDIConfig = {
                 "master_detail": master_detail,
@@ -175,7 +183,7 @@ class ImportDataMixin:
 
     def import_aurora(self, request: HttpRequest, program: "CountryProgram") -> "ImportAuroraForm | None":
         form = ImportAuroraForm(request.POST, prefix="aurora", program=program)
-        if form.is_valid():
+        if form.is_valid() and self._can_schedule_import(request, program):
             config: AuroraConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": form.cleaned_data.get("validate_after_import"),
@@ -219,7 +227,7 @@ class ImportDataMixin:
             kobo_country_code=program.country_office.kobo_country_code,
             program=program,
         )
-        if form.is_valid():
+        if form.is_valid() and self._can_schedule_import(request, program):
             config: KoboConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),
@@ -265,7 +273,7 @@ class ImportDataMixin:
 
     def import_ona(self, request: HttpRequest, program: "CountryProgram") -> "ImportOnaForm | None":
         form = ImportOnaForm(request.POST, prefix="ona", program=program)
-        if form.is_valid():
+        if form.is_valid() and self._can_schedule_import(request, program):
             config: OnaConfig = {
                 "batch_name": form.cleaned_data["batch_name"] or batch_name_default(),
                 "validate_after_import": bool(form.cleaned_data.get("validate_after_import")),

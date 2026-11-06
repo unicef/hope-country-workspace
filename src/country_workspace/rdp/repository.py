@@ -6,11 +6,16 @@ from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
-from country_workspace.models import Rdp
+from country_workspace.models import Program, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .types import CreateRdpConfig, OperationLogEntry, OperationLogResult
+
+
+def lock_program_for_update(*, pk: int) -> Program:
+    """Return Program locked for update."""
+    return Program.objects.select_for_update().get(pk=pk)
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:

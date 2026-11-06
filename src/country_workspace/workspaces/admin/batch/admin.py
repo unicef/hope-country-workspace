@@ -18,6 +18,7 @@ from django.utils.translation import gettext as _
 from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, MappingImporter, Program, Transformer
+from country_workspace.rdp import beneficiary_data_change_check
 from ....state import state
 from ...models import CountryBatch
 from ...options import WorkspaceModelAdmin
@@ -321,6 +322,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         messages.ERROR,
                     )
                     response = HttpResponseRedirect(request.path)
+                elif not (check := beneficiary_data_change_check(obj.program)).allowed:
+                    self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+                    response = redirect_to_change()
                 else:
                     job = AsyncJob.objects.create(
                         description=f"Import pictures: {obj.name}",
@@ -338,6 +342,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         messages.SUCCESS,
                     )
                     response = redirect_to_change()
+
         elif request.method == "GET" and request.GET.get("step") == "2":
             payload = self._get_picture_import_payload(request, obj)
             if not payload:
@@ -409,12 +414,14 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         if not obj:
             return HttpResponse("Batch not found", status=404)
 
-        # Handle form submission
         if request.method == "POST" and "apply" in request.POST:
             form = BatchReprocessForm(request.POST, program=obj.program)
             if form.is_valid():
-                config = {"batch_id": obj.pk}
+                if not (check := beneficiary_data_change_check(obj.program)).allowed:
+                    self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+                    return HttpResponseRedirect(obj.get_change_url(namespace=self.admin_site.name))
 
+                config = {"batch_id": obj.pk}
                 if form.cleaned_data.get("household_transformer"):
                     config["household_transformer_id"] = form.cleaned_data["household_transformer"].pk
                 if form.cleaned_data.get("household_mapping"):
@@ -439,11 +446,9 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
                 self.message_user(request, "Batch reprocessing has been scheduled.", messages.SUCCESS)
 
-                # Redirect to changelist
                 namespace = self.admin_site.name
                 opts = self.model._meta
-                url_name = f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"
-                return HttpResponseRedirect(reverse(url_name))
+                return HttpResponseRedirect(reverse(f"{namespace}:{opts.app_label}_{opts.model_name}_changelist"))
 
             self.message_user(request, "Please correct the errors below.", messages.ERROR)
         else:
@@ -456,5 +461,4 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
             form=form,
             batch=obj,
         )
-
         return render(request, "workspace/admin_extra_buttons/reprocess_batch_form.html", context)

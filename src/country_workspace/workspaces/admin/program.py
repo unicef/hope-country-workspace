@@ -16,7 +16,7 @@ from django.utils.text import slugify
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import make_dedup_client
-from country_workspace.rdp import get_program_dedup_settings_policy
+from country_workspace.rdp import beneficiary_data_change_check, get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
@@ -532,27 +532,31 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     def import_file_updates(self, request: HttpRequest, pk: str) -> "HttpResponse":
         context = self.get_common_context(request, pk, title="Bulk update records via .xlsx import")
         program: "CountryProgram" = context["original"]
-        context["selected_program"] = context["original"]
+        context["selected_program"] = program
         function_map = {"hh": fqn(import_household_updates), "ind": fqn(import_individual_updates)}
+
         if request.method == "POST":
             form = BulkUpdateImportForm(request.POST, request.FILES, beneficiary_group=program.beneficiary_group)
             if form.is_valid():
-                job = AsyncJob.objects.create(
-                    description=form.cleaned_data["description"] or context["title"],
-                    program=program,
-                    owner=request.user,
-                    type=AsyncJob.JobType.TASK,
-                    action=function_map[form.cleaned_data["target"]],
-                    batch=None,
-                    file=request.FILES["file"],
-                    config={},
-                )
-                job.queue()
-                self.message_user(request, _("Import scheduled"), messages.SUCCESS)
-                return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
-
+                if not (check := beneficiary_data_change_check(program)).allowed:
+                    self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
+                else:
+                    job = AsyncJob.objects.create(
+                        description=form.cleaned_data["description"] or context["title"],
+                        program=program,
+                        owner=request.user,
+                        type=AsyncJob.JobType.TASK,
+                        action=function_map[form.cleaned_data["target"]],
+                        batch=None,
+                        file=request.FILES["file"],
+                        config={},
+                    )
+                    job.queue()
+                    self.message_user(request, _("Import scheduled"), messages.SUCCESS)
+                    return HttpResponseRedirect(reverse("workspace:workspaces_countryasyncjob_changelist"))
         else:
             form = BulkUpdateImportForm(beneficiary_group=program.beneficiary_group)
+
         context["form"] = form
         return render(request, "workspace/actions/bulk_update_import.html", context)
 

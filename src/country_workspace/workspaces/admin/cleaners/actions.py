@@ -36,8 +36,9 @@ def validate_records(
     request: HttpRequest,
     queryset: "QuerySet[Beneficiary]",
 ) -> None:
-    if model_admin._check_empty_queryset(request, queryset):
+    if model_admin._check_empty_queryset(request, queryset) or model_admin.deny_beneficiary_data_change(request):
         return
+
     create_validation_jobs(
         description=validate_records.short_description,
         owner=request.user,
@@ -46,7 +47,6 @@ def validate_records(
         validation_scope="program",
     )
     model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
-    return
 
 
 @admin.action(description="Mass update record fields", permissions=["mass_update"])
@@ -57,12 +57,14 @@ def mass_update(
 ) -> "HttpResponse":
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
+
     ctx = model_admin.get_common_context(request, title=_(mass_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
     form = MassUpdateForm(request.POST, checker=checker)
     ctx["form"] = form
-    if "_apply" in request.POST and form.is_valid():
+
+    if "_apply" in request.POST and form.is_valid() and not model_admin.deny_beneficiary_data_change(request):
         opts = queryset.model._meta
         job = AsyncJob.objects.create(
             description=mass_update.short_description,
@@ -81,6 +83,7 @@ def mass_update(
         )
         job.queue()
         model_admin.message_user(request, "Task scheduled", messages.SUCCESS)
+
     return render(request, "workspace/actions/mass_update.html", ctx)
 
 
@@ -98,9 +101,10 @@ def name_parser_action(
     context["queryset"] = queryset
     context["opts"] = model_admin.model._meta
     context["preserved_filters"] = model_admin.get_preserved_filters(request)
+
     if "_apply" in request.POST:
         form = NameParserForm(request.POST, checker=checker, tenant=state.tenant)
-        if form.is_valid():
+        if form.is_valid() and not model_admin.deny_beneficiary_data_change(request):
             opts = queryset.model._meta
             job = AsyncJob.objects.create(
                 description=name_parser_action.short_description,
@@ -139,19 +143,20 @@ def regex_update(
 ) -> HttpResponse:
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
+
     ctx = model_admin.get_common_context(request, title=_(regex_update.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["queryset"] = queryset
     ctx["opts"] = model_admin.model._meta
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
+
     if "_preview" in request.POST:
         form = RegexUpdateForm(request.POST, checker=checker)
         if form.is_valid():
-            changes = regex_update_impl(queryset.all()[:10], form.cleaned_data, save=False)
-            ctx["changes"] = changes
+            ctx["changes"] = regex_update_impl(queryset.all()[:10], form.cleaned_data, save=False)
     elif "_apply" in request.POST:
         form = RegexUpdateForm(request.POST, checker=checker)
-        if form.is_valid():
+        if form.is_valid() and not model_admin.deny_beneficiary_data_change(request):
             opts = queryset.model._meta
             job = AsyncJob.objects.create(
                 description=regex_update.short_description,
@@ -316,19 +321,20 @@ def concatenate_field(
 ) -> HttpResponse:
     if model_admin._check_empty_queryset(request, queryset):
         return redirect(".")
+
     ctx = model_admin.get_common_context(request, title=_(concatenate_field.short_description))
     ctx["checker"] = checker = model_admin.get_checker(request)
     ctx["queryset"] = queryset
     ctx["opts"] = model_admin.model._meta
     ctx["preserved_filters"] = model_admin.get_preserved_filters(request)
+
     if "_preview" in request.POST:
         form = ConcatenateFieldForm(request.POST, checker=checker)
         if form.is_valid():
-            changes = concatenate_field_impl(queryset.all()[:10], form.cleaned_data, save=False)
-            ctx["changes"] = changes
+            ctx["changes"] = concatenate_field_impl(queryset.all()[:10], form.cleaned_data, save=False)
     elif "_apply" in request.POST:
         form = ConcatenateFieldForm(request.POST, checker=checker)
-        if form.is_valid():
+        if form.is_valid() and not model_admin.deny_beneficiary_data_change(request):
             opts = queryset.model._meta
             job = AsyncJob.objects.create(
                 description=concatenate_field.short_description,

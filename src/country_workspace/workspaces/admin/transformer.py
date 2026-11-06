@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy as _
 from strategy_field.utils import fqn
 
 from country_workspace.models import AsyncJob, Batch
+from country_workspace.rdp import beneficiary_data_change_check
 from country_workspace.state import state
 from country_workspace.workspaces.models import CountryTransformer
 from country_workspace.workspaces.options import WorkspaceModelAdmin
@@ -163,6 +164,10 @@ class CountryTransformerAdmin(WorkspaceModelAdmin):
 
                 if batch.program.cleanup_in_progress:
                     self.message_user(request, _("Program cleanup is in progress."), messages.ERROR)
+                    return HttpResponseRedirect(self.get_change_url(request, obj))
+
+                if not (check := beneficiary_data_change_check(batch.program)).allowed:
+                    self.message_user(request, check.reason or _("Action is not allowed."), messages.ERROR)
                     return HttpResponseRedirect(self.get_change_url(request, obj))
 
                 config: dict[str, int] = {"batch_id": batch.pk}
