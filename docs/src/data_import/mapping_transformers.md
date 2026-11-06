@@ -11,7 +11,7 @@ They perform different tasks:
 
 Both components are optional. Use them when the source data does not already match the Program's **[DataCheckers](../data_validation/datachecker_configuration.md#datachecker)**.
 
-Mapping Importers and Transformers can be configured in either the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)**. The available actions depend on the user's permissions.
+Mapping Importers and Transformers can be configured in either the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)**. The available actions depend on the user's permissions.
 
 ## When to use each component
 
@@ -32,7 +32,7 @@ It changes field names only. It does not convert their values.
 
 ### Create a Mapping Importer
 
-Open **Mapping Importers** in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)** and create a new entry.
+Open **Mapping Importers** in the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)** and create a new entry.
 
 Configure:
 
@@ -142,7 +142,7 @@ A Transformer belongs to one Office but is not tied to a specific DataChecker. E
 
 ### Create a Transformer
 
-Open **Transformers** in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)** and create a new entry.
+Open **Transformers** in the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)** or **[Staff Administration](../interfaces.md#staff-administration)** and create a new entry.
 
 Configure:
 
@@ -249,7 +249,7 @@ Validation is scheduled after reprocessing.
 
 A Transformer can be applied without rebuilding the records from their source data.
 
-Open the Transformer in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)** and select **Run Formula on Existing Records**.
+Open the Transformer in the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)** and select **Run Formula on Existing Records**.
 
 Then:
 
