@@ -1,3 +1,6 @@
+@import "tailwindcss/base";
+
+@import "./_typography.scss";
 @import "./_common.scss";
 @import "./_changelist.scss";
 @import "./_forms.scss";
@@ -7,6 +10,5 @@
 @import "./_sidebar.scss";
 @import "./_history.scss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";

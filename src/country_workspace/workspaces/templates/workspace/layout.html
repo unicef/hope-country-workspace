@@ -71,7 +71,7 @@
             </script>
         {% endblock extrahead %}
     </head>
-    <body class="web bg-gray-100 text-gray-800 antialiased">
+    <body class="web bg-page antialiased">
         {% if messages %}
             <div class="messages">
                 <div class="flex-grow">
@@ -110,7 +110,7 @@
                 {% endblock logo %}
                 {% block content-header %}
                     <div class="flex flex-1 flex-col">
-                        <div id="header-bar" class="flex h-16 bg-unicef-gray text-white items-center px-2 gap-3">
+                        <div id="header-bar" class="flex h-16 bg-secondary text-white items-center px-2 gap-3">
                             {% block areas %}
                                 <div class="text-white cursor-pointer w-12 flex items-center justify-center">
                                     <div id="open-sidebar" class="hidden p-2 hover:bg-white/10 rounded">
@@ -143,7 +143,7 @@
                         {% endblock %}
                     </aside>
                 {% endblock sidebar %}
-                <div class="overflow-y-auto p-4 bg-gray-100 w-full flex flex-1 flex-col">
+                <div class="overflow-y-auto p-4 bg-page w-full flex flex-1 flex-col">
                     {% block breadcrumbs %}
                     {% endblock %}
                     {% block page-top %}

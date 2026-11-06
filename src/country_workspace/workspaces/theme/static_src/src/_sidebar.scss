@@ -17,21 +17,21 @@ aside#sidebar,
           color 150ms ease;
 
         &:hover {
-          @apply bg-gray-100 text-unicef-dark;
+          @apply bg-gray-100 text-primary;
           .icon {
-            @apply text-unicef-blue;
+            @apply text-primary;
           }
         }
       }
 
       &.selected {
-        background-color: rgba(0, 173, 239, 0.08);
+        background-color: theme('colors.primary.DEFAULT / 8%');
 
         > a,
         > form > button {
-          @apply text-unicef-dark font-semibold;
+          @apply text-primary font-semibold;
           .icon {
-            @apply text-unicef-blue;
+            @apply text-primary;
           }
         }
 
@@ -42,7 +42,7 @@ aside#sidebar,
           top: 0;
           bottom: 0;
           width: 3px;
-          background-color: #00ADEF;
+          background-color: theme('colors.primary.DEFAULT');
         }
       }
     }
@@ -51,6 +51,6 @@ aside#sidebar,
 
 ul.menu {
   li.selected {
-    background-color: rgba(0, 173, 239, 0.08);
+    background-color: theme('colors.primary.DEFAULT / 8%');
   }
 }

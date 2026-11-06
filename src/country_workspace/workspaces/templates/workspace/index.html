@@ -14,8 +14,8 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-6xl mx-auto pt-4">
             <div class="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-start gap-4">
-                    <div class="hidden sm:flex w-12 h-12 rounded-full bg-unicef-blue/10 items-center justify-center flex-shrink-0">
-                        <span class="icon icon-home text-2xl text-unicef-blue"></span>
+                    <div class="hidden sm:flex w-12 h-12 rounded-full bg-primary/10 items-center justify-center flex-shrink-0">
+                        <span class="icon icon-home text-2xl text-primary"></span>
                     </div>
                     <div class="flex-1">
                         <h3 class="text-xl font-medium text-gray-800">
@@ -77,8 +77,8 @@
                         {% if not item.is_form and not item.selected %}
                             <a href="{{ item.url }}"
                                {% if item.target %}target="{{ item.target }}"{% endif %}
-                               class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center gap-3 hover:shadow-md hover:border-unicef-blue/40 transition">
-                                <span class="icon {{ item.icon }} text-2xl text-unicef-blue"></span>
+                               class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center gap-3 hover:shadow-md hover:border-primary/40 transition">
+                                <span class="icon {{ item.icon }} text-2xl text-primary"></span>
                                 <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
                             </a>
                         {% endif %}

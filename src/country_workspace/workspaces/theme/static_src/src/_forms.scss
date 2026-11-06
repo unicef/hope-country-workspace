@@ -13,8 +13,8 @@ form {
       box-shadow 200ms ease;
 
     &:focus {
-      @apply outline-none border-unicef-blue;
-      box-shadow: 0 0 0 3px rgba(0, 173, 239, 0.15);
+      @apply outline-none border-primary;
+      box-shadow: 0 0 0 3px theme('colors.primary.DEFAULT / 15%');
     }
 
     &:disabled {
@@ -59,17 +59,17 @@ a.deletelink {
     background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1),
     color 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  background-color: rgb(0, 60, 143);
+  background-color: theme('colors.primary.DEFAULT');
 
   &:hover {
-    background-color: rgb(0, 50, 120);
+    background-color: theme('colors.primary.dark');
     box-shadow:
       0 2px 4px -1px rgba(0, 0, 0, 0.3),
       0 5px 8px 0 rgba(0, 0, 0, 0.2);
   }
 
   &.default {
-    background-color: rgb(0, 60, 143);
+    background-color: theme('colors.primary.DEFAULT');
   }
 
   &.closelink {
@@ -106,7 +106,7 @@ fieldset.module {
   padding: 0;
 
   >h2 {
-    @apply font-semibold;
+    @apply type-section-title;
   }
 
   .readonly {
@@ -147,11 +147,7 @@ fieldset.module {
       min-width: 160px;
       width: 160px;
       word-wrap: break-word;
-      color: var(--body-quiet-color);
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      font-weight: 500;
+      @apply type-label;
     }
   }
 

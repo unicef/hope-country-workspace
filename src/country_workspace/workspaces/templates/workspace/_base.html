@@ -4,7 +4,7 @@
     {{ program_form.media.css }}
     <div class="flex-grow flex items-center gap-3">
         <div class="flex items-center gap-2">
-            <label for="id_tenant" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+            <label for="id_tenant" class="type-label text-white/70 hidden lg:flex">
                 {% trans "Office" %}
             </label>
             <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="flex items-center">
@@ -17,7 +17,7 @@
         </div>
         {% if active_tenant %}
             <div class="flex items-center gap-2">
-                <label for="id_program" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+                <label for="id_program" class="type-label text-white/70 hidden lg:flex">
                     {% trans "Programme" %}
                 </label>
                 <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="flex items-center">
@@ -36,7 +36,7 @@
                    title="{% trans "View background jobs" %}">
                     <span class="icon icon-globe text-sm"></span>
                     {% if pending_jobs_count %}
-                        <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-unicef-gray text-[0.7rem] font-bold">
+                        <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-secondary text-[0.7rem] font-bold">
                             {{ pending_jobs_count }}
                         </span>
                         <span class="hidden lg:inline">

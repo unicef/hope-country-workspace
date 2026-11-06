@@ -28,7 +28,7 @@
         @apply ml-5;
       }
       .question a, .clear a{
-        @apply text-unicef-dark
+        @apply text-primary
       }
     }
     }
@@ -230,7 +230,7 @@
 
     &.active {
       summary {
-        @apply font-bold text-unicef-blue;
+        @apply font-bold text-primary;
       }
     }
   }
@@ -264,7 +264,7 @@
       }
 
       &.selected {
-        @apply font-bold text-unicef-blue;
+        @apply font-bold text-primary;
       }
     }
   }
