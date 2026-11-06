@@ -2,18 +2,18 @@
 
 A **Registration Data Push (RDP)** groups beneficiary records that are processed and pushed from Country Workspace to HOPE Core.
 
-RDPs are managed within the selected **[Program](../program.md)** in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)**.
+RDPs are managed within the selected **[Program](../program.md)** in the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)**.
 
 ## RDP workflow
 
 ```mermaid
 flowchart LR
-    A[Create RDP] --> B[Run configured operations]
-    B --> C{Manual review required?}
+    A[Create RDP] --> B[Run RDP operations]
+    B --> C{Review required?}
     C -->|No| D[Push to HOPE Core]
     C -->|Yes| E[REVIEW_PENDING]
     E -->|Push all| D
-    E -->|Create clean RDP| F[Create replacement RDP]
+    E -->|Create clean RDP| F[Replacement RDP]
     F --> B
     E -->|Cancel| G[CANCELLED]
     D -->|Success| H[SUCCESS]
@@ -21,40 +21,46 @@ flowchart LR
     I -->|Retry push| D
 ```
 
-Creating an RDP starts its processing automatically.
+Creating an RDP starts its processing automatically. Country Workspace runs the configured **[RDP operations](operations/index.md)** and continues only after they complete successfully.
 
-Depending on the Program configuration, Country Workspace may run one or more **[RDP operations](operations/index.md)** before the RDP can be pushed to HOPE Core.
+If an operation threshold is exceeded, the RDP moves to `REVIEW_PENDING`. The user can then push all beneficiaries, create a clean replacement RDP, or cancel the RDP. See **[Review and Clean RDP](review.md)**.
 
-If manual review is required, the RDP moves to `REVIEW_PENDING`. The user can then push all beneficiaries, create a clean RDP, or cancel the RDP.
+If review is not required, the RDP continues automatically to the **[HOPE Core push](push.md)**.
 
-A failed push can be retried.
-
-See **[Lifecycle and statuses](lifecycle.md)** for the complete RDP state flow.
+See **[Lifecycle and statuses](lifecycle.md)** for the complete state flow.
 
 ## Create an RDP
 
 Select the beneficiary records that should be processed together and use **Create RDP**.
 
-Country Workspace validates the selection, creates the RDP, and starts its configured processing.
+Country Workspace validates the selection, creates the RDP, stores its operation configuration, and starts processing.
 
 See **[Create an RDP](create.md)** for details.
 
 ## RDP operations
 
-RDP operations are processing steps that run before the RDP can be pushed to HOPE Core.
+Country Workspace currently supports **[OCR](operations/ocr.md)** and **[biometric deduplication](operations/deduplication.md)**.
 
-The operations enabled for an RDP depend on the Program configuration.
+OCR is enabled for every Program. Biometric deduplication runs when enabled in the Program configuration. Each operation has its own processing state, findings, recovery, and review threshold.
 
-Currently, **[biometric deduplication](operations/deduplication.md)** is supported.
+See **[RDP operations](operations/index.md)** for the common operation lifecycle.
 
-See **[RDP operations](operations/index.md)** for the common operation flow.
+## Review
+
+After all configured operations complete successfully, Country Workspace evaluates their review thresholds independently.
+
+Any exceeded threshold moves the RDP to `REVIEW_PENDING`; otherwise processing continues automatically.
+
+See **[Review and Clean RDP](review.md)** for the available review decisions.
 
 ## Push to HOPE Core
 
-After processing is complete and the RDP is ready to continue, Country Workspace pushes its beneficiary records to HOPE Core.
+When processing and any required review are complete, Country Workspace pushes the RDP beneficiary records to HOPE Core.
 
-See **[Push to HOPE Core](push.md)** for the push workflow and retries.
+A failed push attempt changes the RDP to `FAILURE` and can be retried.
+
+See **[Push to HOPE Core](push.md)** for the push workflow and recovery.
 
 ## Troubleshooting
 
-See **[Troubleshooting](troubleshooting.md)** if RDP creation, processing, review, or push does not complete as expected.
+See **[Troubleshooting](troubleshooting.md)** if RDP creation, operation processing, review, or push does not complete as expected.

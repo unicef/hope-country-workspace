@@ -9,7 +9,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0071_add_export_import_template_permission"),
+        ("country_workspace", "0072_program_start_date"),
     ]
 
     operations = [

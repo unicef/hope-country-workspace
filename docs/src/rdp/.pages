@@ -2,6 +2,7 @@ nav:
   - Overview: index.md
   - Create an RDP: create.md
   - RDP operations: operations
+  - Review and Clean RDP: review.md
   - Lifecycle and statuses: lifecycle.md
   - Push to HOPE Core: push.md
   - Processing flow: processing.md

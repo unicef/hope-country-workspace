@@ -1,6 +1,6 @@
 # RDP processing flow
 
-This page shows the end-to-end **[RDP](index.md)** flow from creation and configured **[RDP operations](operations/index.md)** to review and the **[HOPE Core push](push.md)**.
+This page shows how an **[RDP](index.md)** moves from creation through its configured **[RDP operations](operations/index.md)**, review, and the **[HOPE Core push](push.md)**.
 
 For RDP status transitions, see **[Lifecycle and statuses](lifecycle.md)**.
 
@@ -10,100 +10,71 @@ For RDP status transitions, see **[Lifecycle and statuses](lifecycle.md)**.
 sequenceDiagram
     participant User as Analyst / Collector
     participant CW as Country Workspace
-    participant OP as RDP operations
+    participant HD as Hope Documents
     participant DE as DedupEngine
     participant HOPE as HOPE Core
 
-    User->>CW: Select beneficiaries and Create RDP
-    CW->>CW: Determine operations enabled for Program
-    CW-->>User: Show operation configuration
-    User->>CW: Confirm RDP and operation settings
-
-    CW->>CW: Run RDP preflight
+    User->>CW: Create RDP
+    CW->>CW: Run preflight checks
     CW->>CW: Create RDP as PENDING
-    CW->>OP: Create configured operations as PENDING
 
-    loop For each configured operation
-        OP->>OP: Start operation
-        OP->>OP: PENDING → RUNNING
-
-        opt Biometric deduplication
-            OP->>DE: Create/resume Deduplication Set
-            OP->>DE: Upload photos and start processing
-            DE-->>OP: Processing result
-            OP->>OP: Store biometric findings
-        end
-
-        alt Operation succeeds
-            OP->>OP: Set SUCCESS
-        else Technical failure
-            OP->>OP: Set FAILURE
-        end
+    par OCR
+        CW->>HD: Publish OCR requests via RabbitMQ
+        HD-->>CW: Return OCR results via RabbitMQ
+        CW->>CW: Store OCR findings
+    and Biometric deduplication, when enabled
+        CW->>DE: Create/resume set and upload photos
+        DE-->>CW: Notify state change
+        CW->>DE: Retrieve result and findings
+        CW->>CW: Store biometric findings
     end
 
-    alt Any operation failed
-        CW-->>User: Failed operation available for retry
-        User->>CW: Retry failed operations
-        CW->>OP: Schedule failed operations again
-    end
-
-    CW->>CW: Evaluate RDP after operations complete
+    CW->>CW: Wait for all operations to reach SUCCESS
+    CW->>CW: Evaluate review thresholds
 
     alt Manual review required
         CW-->>User: REVIEW_PENDING
 
         alt Push all to HOPE
-            User->>CW: Continue with all beneficiaries
+            User->>CW: Approve all findings
+            CW->>CW: Set PUSH_PENDING
+            CW->>HOPE: Prepare and push RDI
         else Create clean RDP
-            User->>CW: Create replacement RDP
-            CW->>DE: Reject previous Deduplication Set
-            CW->>CW: Start replacement RDP processing
+            User->>CW: Create clean replacement
+            CW->>CW: Cancel source and create replacement as PENDING
+            opt Biometric operation
+                CW->>DE: Reject source Deduplication Set
+            end
+            CW->>CW: Start replacement operations after required rejection
         else Cancel RDP
-            User->>CW: Cancel
+            User->>CW: Cancel RDP
         end
-    end
-
-    opt Current RDP continues to push
+    else No review required
         CW->>CW: Set PUSH_PENDING
-
-        opt Previous HOPE RDI exists
-            CW->>HOPE: Request RDI reset
-            HOPE-->>CW: Reset result or readiness callback
-        end
-
-        CW->>CW: Run push preflight
-        CW->>HOPE: Create RDI and send beneficiary data
-        CW->>HOPE: Complete RDI
-        CW->>CW: Set SUCCESS
-
-        opt Biometric deduplication
-            CW->>DE: Approve Deduplication Set
-        end
+        CW->>HOPE: Prepare and push RDI
     end
 ```
 
-Operation configuration is part of **[RDP creation](create.md#configure-rdp-processing)**. Country Workspace stores the configuration for each enabled operation and creates those operations together with the RDP.
+## Operation processing
 
-After creation, operations run independently while the RDP remains `PENDING`. Failed operations can be retried, and the RDP continues only after all configured operations complete successfully.
+The configured operations are created with the RDP and run independently. **[OCR](operations/ocr.md)** sends identity documents to Hope Documents through RabbitMQ, while **[biometric deduplication](operations/deduplication.md)** uses DedupEngine when enabled for the Program.
 
-See **[RDP operations](operations/index.md)** for configuration, statuses, retries, and common operation behavior.
+A technical operation failure leaves the RDP in `PENDING` and prevents it from continuing. Use **Retry operations** for failed or otherwise recoverable operations; the RDP is evaluated for the next step only after all configured operations reach `SUCCESS`.
 
-## Operation results and review
+See **[RDP operations](operations/index.md)** for the common operation lifecycle and recovery behavior.
 
-An operation can complete successfully while still producing findings that affect the next RDP step.
+## Findings and review
 
-For **[biometric deduplication](operations/deduplication.md)**, Country Workspace evaluates the stored findings against the configured threshold after all operations have completed successfully.
+An operation can complete successfully while still producing findings.
 
-If manual review is not required, processing continues automatically to the **[HOPE Core push](push.md)**. Otherwise, the RDP moves to `REVIEW_PENDING`.
+After all operations succeed, Country Workspace evaluates each operation's review threshold independently. If any threshold is exceeded, the RDP moves to `REVIEW_PENDING`; otherwise the push starts automatically.
 
-See **[Manual review](operations/deduplication.md#manual-review)** for the available review decisions.
+From review, the user can push all beneficiaries, create a clean replacement RDP using selected operation findings, or cancel the RDP. See **[Review and Clean RDP](review.md)** for the complete decision flow.
 
 ## Push to HOPE Core
 
-Once the RDP is ready to continue, its status changes to `PUSH_PENDING`.
+When the current RDP is approved to continue, it changes to `PUSH_PENDING`.
 
-Country Workspace prepares HOPE Core, resets a previous RDI when required, repeats the push preflight checks, creates a new RDI when needed, sends the beneficiary data, and completes the RDI.
+Country Workspace prepares HOPE Core, including any required previous-RDI reset, runs push preflight validation, creates a new RDI, sends the beneficiary data, and completes the RDI. A successful push changes the RDP to `SUCCESS`; a failed push attempt changes it to `FAILURE` and can be retried.
 
-A successful push changes the RDP to `SUCCESS`; a push failure changes it to `FAILURE` and can be retried.
-
-See **[Push to HOPE Core](push.md)** for the detailed push flow and **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** for an interrupted `PUSH_PENDING` attempt.
+See **[Push to HOPE Core](push.md)** for the detailed push flow and **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** for recovery from an interrupted push.

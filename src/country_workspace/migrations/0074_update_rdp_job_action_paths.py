@@ -41,7 +41,7 @@ def backward(apps: StateApps, schema_editor: BaseDatabaseSchemaEditor) -> None:
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("country_workspace", "0072_alter_rdpoperation_id_and_more"),
+        ("country_workspace", "0073_alter_rdpoperation_id_and_more"),
     ]
 
     operations = [
