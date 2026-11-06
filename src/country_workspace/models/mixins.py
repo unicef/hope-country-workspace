@@ -2,6 +2,8 @@ import re
 from collections import defaultdict
 from typing import Any, TypedDict, cast
 
+from django.core.exceptions import ImproperlyConfigured
+
 
 class GroupedItem(TypedDict):
     """Item produced by FlexFieldGroupingMixin.apply_grouping().
@@ -21,9 +23,14 @@ class HopeBlobMixin:
         return re.sub(r"[^A-Za-z0-9._-]", "_", (value or "").strip())
 
     def hope_blob_key(self, name: str) -> str:
-        office = self._sanitize(self.country_office.code)
-        program = self._sanitize(self.program.code)
-        return f"{office}/{program}/CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
+        program = self.program
+        office_slug = self.country_office.slug
+        if not program.start_date or not office_slug:
+            raise ImproperlyConfigured("HOPE blob key requires Program.start_date and country_office.slug")
+        office = self._sanitize(office_slug)
+        code = self._sanitize(program.code)
+        filename = f"CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
+        return f"{program.start_date.year}/{office}/{code}/{filename}"
 
 
 class FlexFieldGroupingMixin:

@@ -2,6 +2,7 @@ import base64
 from uuid import uuid4
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.functional import empty
 from hope_flex_fields.registry import field_registry
 from pytest_mock import MockerFixture
@@ -97,6 +98,22 @@ def test_image_field_names_filters_by_type_and_applies_prefix(checker_with_image
 @pytest.fixture
 def individual():
     return CountryIndividualFactory(household=None, flex_fields={"photo": DATA_URI})
+
+
+def test_hope_blob_key_layout(individual) -> None:
+    slug = individual.country_office.slug
+    code = individual.program.code
+
+    assert individual.hope_blob_key("photo") == f"2024/{slug}/{code}/CW_ind_{individual.pk}_photo.png"
+
+
+@pytest.mark.parametrize("missing", ["start_date", "slug"])
+def test_hope_blob_key_requires_start_date_and_slug(individual, missing: str) -> None:
+    target = individual.program if missing == "start_date" else individual.country_office
+    setattr(target, missing, None)
+
+    with pytest.raises(ImproperlyConfigured):
+        individual.hope_blob_key("photo")
 
 
 def test_sync_record_blobs_uploads_new_image(individual) -> None:
