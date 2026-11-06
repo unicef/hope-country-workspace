@@ -1,7 +1,10 @@
+from collections.abc import Iterable
+
 from django.db.models import BooleanField, Count, Exists, F, IntegerField, OuterRef, Q, QuerySet, Value
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
 from country_workspace.models import Household, Individual, Program, Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.rdp.biographic.repository import qs_biographic_affected_individuals
 from country_workspace.rdp.repository import qs_individuals_for_rdp, rdp_selection
 
 from .constants import BIOMETRIC_AFFECTING_FINDING_TYPES, BIOMETRIC_IMAGE_ISSUE_FINDING_TYPES
@@ -69,12 +72,26 @@ def biometric_findings_count(*, operation: RdpOperation) -> int:
     ).count()
 
 
+def qs_affected_individuals(*, operation: RdpOperation) -> QuerySet[Individual]:
+    """Return RDP individuals affected by the findings of a deduplication operation."""
+    if operation.operation_type == RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
+        return qs_biographic_affected_individuals(operation=operation)
+    return qs_biometric_affected_individuals(operation=operation)
+
+
+def clean_rdp_selection(*, rdp: Rdp, operations: Iterable[RdpOperation]) -> tuple[bool, list[int]]:
+    """Return the RDP selection excluding beneficiaries affected by findings of the given operations."""
+    master_detail, pks = rdp_selection(rdp=rdp)
+    excluded: set[int] = set()
+    for operation in operations:
+        affected = qs_affected_individuals(operation=operation)
+        excluded.update(affected.values_list("household_id" if master_detail else "pk", flat=True))
+    return master_detail, [pk for pk in pks if pk not in excluded]
+
+
 def biometric_clean_rdp_selection(*, operation: RdpOperation) -> tuple[bool, list[int]]:
     """Return the RDP selection excluding beneficiaries affected by biometric findings."""
-    master_detail, pks = rdp_selection(rdp=operation.rdp)
-    affected = qs_biometric_affected_individuals(operation=operation)
-    excluded = set(affected.values_list("household_id" if master_detail else "pk", flat=True))
-    return master_detail, [pk for pk in pks if pk not in excluded]
+    return clean_rdp_selection(rdp=operation.rdp, operations=[operation])
 
 
 def _qs_biometric_image_issue_individuals(*, operation: RdpOperation) -> QuerySet[Individual]:

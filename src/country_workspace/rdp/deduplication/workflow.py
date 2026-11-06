@@ -9,6 +9,11 @@ from django.core import signing
 from django.db import transaction
 from django.urls import reverse
 
+from country_workspace.contrib.biographic_dedup import (
+    NON_BLOCKING_BIOGRAPHIC_SET_STATES,
+    REJECTABLE_BIOGRAPHIC_SET_STATES,
+    retrieve_biographic_set_state,
+)
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
     REJECTABLE_DEDUPLICATION_SET_STATES,
@@ -28,6 +33,9 @@ from country_workspace.rdp.operations.repository import fail_rdp_operation, get_
 from country_workspace.rdp.operations.workflow import schedule_rdp_operations
 from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
+
+from country_workspace.rdp.biographic.actions import reject_biographic_set
+from country_workspace.rdp.biographic.repository import biographic_operation_for_rdp
 
 from .constants import DEDUP_CALLBACK_SALT
 from .actions import reject_deduplication_set
@@ -282,27 +290,54 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
         client.process()
 
 
-def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject a cancelled RDP set and continue its clean replacement when configured."""
-    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    deduplication_set_id = job.config["deduplication_set_id"]
-    operation = biometric_operation_for_rdp(rdp=rdp)
+def _is_current_operation(operation: RdpOperation | None, operation_id: str | None) -> bool:
+    """Return whether a cancellation job still refers to the RDP operation it was scheduled for."""
+    return operation_id is None or (operation is not None and str(operation.id) == operation_id)
 
-    if rdp.status != Rdp.PushStatus.CANCELLED or operation is None or str(operation.id) != deduplication_set_id:
+
+def _reject_cancelled_biographic_set(operation: RdpOperation) -> None:
+    """Reject the biographic set of a cancelled RDP unless it no longer holds the program's slot."""
+    state = (
+        retrieve_biographic_set_state(operation.rdp.program, operation.external_id) if operation.external_id else None
+    )
+    if state in REJECTABLE_BIOGRAPHIC_SET_STATES:
+        reject_biographic_set(operation_id=operation.id)
+    elif state is not None and state not in NON_BLOCKING_BIOGRAPHIC_SET_STATES:
+        raise RdpWorkflowError({"errors": [f"Biographic DedupEngine: can not reject set in state={state!r}."]})
+
+
+def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
+    """Reject a cancelled RDP's sets and continue its clean replacement when configured."""
+    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
+    deduplication_set_id = job.config.get("deduplication_set_id")
+    biographic_operation_id = job.config.get("biographic_operation_id")
+    operation = biometric_operation_for_rdp(rdp=rdp)
+    biographic_operation = biographic_operation_for_rdp(rdp=rdp)
+
+    if (
+        rdp.status != Rdp.PushStatus.CANCELLED
+        or not _is_current_operation(operation, deduplication_set_id)
+        or not _is_current_operation(biographic_operation, biographic_operation_id)
+    ):
         raise RdpWorkflowError({"errors": ["RDP: this cancellation job is no longer current."]})
 
     try:
-        state = retrieve_deduplication_set_state(
-            group_reference_id=rdp.program.unicef_id,
-            deduplication_set_id=deduplication_set_id,
-        )
-        if state in REJECTABLE_DEDUPLICATION_SET_STATES:
-            reject_deduplication_set(
-                operation_id=operation.id,
+        if deduplication_set_id is not None:
+            state = retrieve_deduplication_set_state(
                 group_reference_id=rdp.program.unicef_id,
+                deduplication_set_id=deduplication_set_id,
             )
-        elif state not in {None, DeduplicationSetState.REJECTED}:
-            raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
+            if state in REJECTABLE_DEDUPLICATION_SET_STATES:
+                reject_deduplication_set(
+                    operation_id=operation.id,
+                    group_reference_id=rdp.program.unicef_id,
+                )
+            elif state not in {None, DeduplicationSetState.REJECTED}:
+                raise RdpWorkflowError(
+                    {"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]}
+                )
+        if biographic_operation_id is not None:
+            _reject_cancelled_biographic_set(biographic_operation)
     except (RemoteError, RemoteUnavailableError) as exc:
         raise RdpWorkflowError({"errors": [str(exc)]}) from exc
 
@@ -323,14 +358,16 @@ def schedule_cancelled_rdp_set_rejection(
     *,
     rdp: Rdp,
     user_id: int,
-    deduplication_set_id: str,
+    deduplication_set_id: str | None = None,
+    biographic_operation_id: str | None = None,
     clean_rdp_id: int | None = None,
 ) -> AsyncJob:
     """Schedule DedupEngine cleanup for a cancelled RDP."""
-    config = {
-        "rdp_id": rdp.pk,
-        "deduplication_set_id": deduplication_set_id,
-    }
+    config: dict[str, Any] = {"rdp_id": rdp.pk}
+    if deduplication_set_id is not None:
+        config["deduplication_set_id"] = deduplication_set_id
+    if biographic_operation_id is not None:
+        config["biographic_operation_id"] = biographic_operation_id
     if clean_rdp_id is not None:
         config["clean_rdp_id"] = clean_rdp_id
 

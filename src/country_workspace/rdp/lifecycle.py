@@ -2,6 +2,12 @@ from typing import Any
 
 from django.db import IntegrityError, transaction
 
+from country_workspace.contrib.biographic_dedup import (
+    NON_BLOCKING_BIOGRAPHIC_SET_STATES,
+    REJECTABLE_BIOGRAPHIC_SET_STATES,
+    BiographicSetState,
+    retrieve_biographic_set_state,
+)
 from country_workspace.contrib.dedup_engine import (
     NON_BLOCKING_DEDUPLICATION_SET_STATES,
     REJECTABLE_DEDUPLICATION_SET_STATES,
@@ -10,9 +16,10 @@ from country_workspace.contrib.dedup_engine import (
 )
 from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
+from .biographic.repository import biographic_operation_for_rdp
 from .deduplication.repository import (
-    biometric_clean_rdp_selection,
     biometric_operation_for_rdp,
+    clean_rdp_selection,
 )
 from .deduplication.workflow import schedule_cancelled_rdp_set_rejection
 from .deduplication.types import ThresholdType
@@ -114,6 +121,25 @@ def _biometric_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
     )
 
 
+def _biographic_rejection_check(rdp: Rdp) -> tuple[ActionCheck, str | None]:
+    """Check whether the biographic DedupEngine set must be rejected on cancellation."""
+    operation = biographic_operation_for_rdp(rdp=rdp)
+    if operation is None or not operation.external_id:
+        return ActionCheck(True), None
+
+    state = retrieve_biographic_set_state(rdp.program, operation.external_id)
+
+    if state in REJECTABLE_BIOGRAPHIC_SET_STATES:
+        return ActionCheck(True), str(operation.id)
+    if state is None or state in NON_BLOCKING_BIOGRAPHIC_SET_STATES:
+        return ActionCheck(True), None
+
+    return (
+        ActionCheck(False, f"Biographic DedupEngine: can not cancel with set in state={state!r}."),
+        None,
+    )
+
+
 def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
     """Cancel an RDP and schedule DedupEngine cleanup when required."""
     rdp = Rdp.objects.select_related("program").get(pk=rdp_id)
@@ -122,10 +148,14 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
         return check, False
 
     rejection_set_id = None
+    biographic_operation_id = None
     if not rdp.program.cleanup_in_progress:
         rejection_check, rejection_set_id = _biometric_rejection_check(rdp)
         if not rejection_check.allowed:
             return rejection_check, False
+        biographic_check, biographic_operation_id = _biographic_rejection_check(rdp)
+        if not biographic_check.allowed:
+            return biographic_check, False
 
     with transaction.atomic():
         rdp = lock_rdp_for_update(pk=rdp_id)
@@ -135,7 +165,9 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
 
         if rdp.program.cleanup_in_progress:
             rejection_set_id = None
+            biographic_operation_id = None
 
+        rejection_scheduled = rejection_set_id is not None or biographic_operation_id is not None
         was_review_pending = rdp.status == Rdp.PushStatus.REVIEW_PENDING
         rdp.mark_cancelled()
 
@@ -147,41 +179,63 @@ def cancel_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, bool]:
                     "decision": "CANCEL",
                     "user_id": str(user_id),
                     "outcome": Rdp.PushStatus.CANCELLED,
-                    "deduplication_set_rejection": "scheduled" if rejection_set_id else "not_required",
+                    "deduplication_set_rejection": "scheduled" if rejection_scheduled else "not_required",
                 },
             )
 
-        if rejection_set_id:
+        if rejection_scheduled:
             schedule_cancelled_rdp_set_rejection(
                 rdp=rdp,
                 user_id=user_id,
                 deduplication_set_id=rejection_set_id,
+                biographic_operation_id=biographic_operation_id,
             )
 
-    return ActionCheck(True), rejection_set_id is not None
+    return ActionCheck(True), rejection_scheduled
 
 
-def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
-    """Check Clean RDP prerequisites and return its biometric operation."""
-    if rdp.program.cleanup_in_progress:
-        return ActionCheck(False, "Program cleanup is in progress."), None
-    if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
-        return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
-
-    operation = biometric_operation_for_rdp(rdp=rdp)
-    if operation is None or operation.status != RdpOperation.Status.SUCCESS:
-        return ActionCheck(False, "RDP: successful biometric deduplication is required."), None
+def _deduplicated_set_error(operation: RdpOperation) -> str | None:
+    """Return why the DedupEngine set of an operation can not back a clean RDP, if it can not."""
+    program = operation.rdp.program
+    if operation.operation_type == RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
+        biographic_state = (
+            retrieve_biographic_set_state(program, operation.external_id) if operation.external_id else None
+        )
+        if biographic_state != BiographicSetState.DEDUPLICATED:
+            return f"Biographic DedupEngine: can not create clean RDP with set in state={biographic_state!r}."
+        return None
 
     state = retrieve_deduplication_set_state(
-        group_reference_id=rdp.program.unicef_id,
+        group_reference_id=program.unicef_id,
         deduplication_set_id=str(operation.id),
     )
     if state != DeduplicationSetState.DEDUPLICATED:
-        return ActionCheck(
-            False, f"DedupEngine: can not create clean RDP with deduplication set in state={state!r}."
-        ), None
+        return f"DedupEngine: can not create clean RDP with deduplication set in state={state!r}."
+    return None
 
-    return ActionCheck(True), operation
+
+def _deduplication_operations(rdp: Rdp) -> list[RdpOperation]:
+    """Return the deduplication operations of an RDP."""
+    operations = (biometric_operation_for_rdp(rdp=rdp), biographic_operation_for_rdp(rdp=rdp))
+    return [operation for operation in operations if operation is not None]
+
+
+def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, list[RdpOperation]]:
+    """Check Clean RDP prerequisites and return its deduplication operations."""
+    if rdp.program.cleanup_in_progress:
+        return ActionCheck(False, "Program cleanup is in progress."), []
+    if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
+        return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), []
+
+    operations = _deduplication_operations(rdp)
+    if not operations or any(operation.status != RdpOperation.Status.SUCCESS for operation in operations):
+        return ActionCheck(False, "RDP: successful deduplication is required."), []
+
+    for operation in operations:
+        if error := _deduplicated_set_error(operation):
+            return ActionCheck(False, error), []
+
+    return ActionCheck(True), operations
 
 
 def _clean_rdp_operation_configs(rdp: Rdp) -> list[CreateRdpOperationConfig]:
@@ -189,7 +243,10 @@ def _clean_rdp_operation_configs(rdp: Rdp) -> list[CreateRdpOperationConfig]:
     configs: list[CreateRdpOperationConfig] = []
     for operation in rdp.operations.order_by("operation_type"):
         config: dict[str, JSONValue] = dict(operation.config)
-        if operation.operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+        if operation.operation_type in {
+            RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+            RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+        }:
             config.update(threshold_type=ThresholdType.COUNT.value, threshold_value="0")
         configs.append(
             {
@@ -204,13 +261,13 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
     """Replace a reviewed RDP with a clean pending RDP and schedule old-set rejection."""
     rdp = Rdp.objects.select_related("program__beneficiary_group", "program__country_office").get(pk=rdp_id)
 
-    check, operation = _clean_rdp_check(rdp)
-    if not check.allowed or operation is None:
+    check, operations = _clean_rdp_check(rdp)
+    if not check.allowed or not operations:
         return check, None
 
-    master_detail, pks = biometric_clean_rdp_selection(operation=operation)
+    master_detail, pks = clean_rdp_selection(rdp=rdp, operations=operations)
     if not pks:
-        return ActionCheck(False, "RDP: no beneficiaries remain after removing biometric findings."), None
+        return ActionCheck(False, "RDP: no beneficiaries remain after removing deduplication findings."), None
 
     try:
         with transaction.atomic():
@@ -221,13 +278,13 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
             if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
                 return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
 
-            operation = biometric_operation_for_rdp(rdp=rdp)
+            operations = _deduplication_operations(rdp)
             if (
-                operation is None
-                or operation.status != RdpOperation.Status.SUCCESS
-                or biometric_clean_rdp_selection(operation=operation) != (master_detail, pks)
+                not operations
+                or any(operation.status != RdpOperation.Status.SUCCESS for operation in operations)
+                or clean_rdp_selection(rdp=rdp, operations=operations) != (master_detail, pks)
             ):
-                return ActionCheck(False, "RDP: biometric result or selection has changed. Please retry."), None
+                return ActionCheck(False, "RDP: deduplication result or selection has changed. Please retry."), None
 
             config: CreateRdpConfig = {
                 "batch_name": f"{(rdp.name or str(rdp))[:249]} clean",
@@ -243,10 +300,12 @@ def create_clean_rdp(rdp_id: int, *, user_id: int) -> tuple[ActionCheck, Rdp | N
             rdp.mark_cancelled()
             clean_rdp = create_rdp(config=config)
 
+            operation_ids = {operation.operation_type: str(operation.id) for operation in operations}
             job = schedule_cancelled_rdp_set_rejection(
                 rdp=rdp,
                 user_id=user_id,
-                deduplication_set_id=str(operation.id),
+                deduplication_set_id=operation_ids.get(RdpOperation.Type.BIOMETRIC_DEDUPLICATION),
+                biographic_operation_id=operation_ids.get(RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION),
                 clean_rdp_id=clean_rdp.pk,
             )
             append_rdp_log(

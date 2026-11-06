@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator
 from decimal import Decimal
 from functools import partial
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from constance import config
@@ -11,9 +11,11 @@ from django.urls import reverse
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedError, RdiResetResult
-from country_workspace.models import AsyncJob, Rdp
+from country_workspace.models import AsyncJob, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
+from country_workspace.rdp.biographic.actions import approve_biographic_set_after_successful_push
+from country_workspace.rdp.biographic.repository import biographic_findings_count, biographic_operation_for_rdp
 from country_workspace.rdp.deduplication.actions import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.deduplication.repository import (
     biometric_findings_count,
@@ -45,6 +47,8 @@ from .repository import (
     lock_rdp_push_attempt,
 )
 from .types import PushAttemptJobConfig, PushPreparationJobConfig, PushWorkflowConfig
+
+BIOGRAPHIC_RESULT_PREFIX: Final[str] = "biographic_"
 
 
 def _build_push_ready_callback_url() -> str:
@@ -153,6 +157,34 @@ def _schedule_push_preparation(*, rdp: Rdp, user_id: int) -> None:
     transaction.on_commit(job.queue, robust=True)
 
 
+def _evaluate_threshold(
+    *,
+    operation: RdpOperation,
+    findings_count: int,
+    individuals_count: int,
+    prefix: str = "",
+) -> tuple[bool, OperationLogResult]:
+    """Compare the findings of a deduplication operation with its threshold.
+
+    The log keys of the biometric operation are unprefixed; the other operations prefix theirs.
+    """
+    threshold_type = ThresholdType(operation.config["threshold_type"])
+    threshold_value = Decimal(str(operation.config["threshold_value"]))
+    exceeded = threshold_exceeded(
+        findings_count=findings_count,
+        total_count=individuals_count,
+        threshold_type=threshold_type,
+        threshold_value=threshold_value,
+    )
+    return exceeded, {
+        f"{prefix}threshold_type": threshold_type.value,
+        f"{prefix}threshold_value": str(threshold_value),
+        f"{prefix}findings_count": findings_count,
+        f"{prefix}findings_rate": f"{Decimal(findings_count) * 100 / individuals_count:.2f}",
+        f"{prefix}threshold_exceeded": exceeded,
+    }
+
+
 def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
     """Evaluate a pending RDP for review or push."""
     with transaction.atomic():
@@ -182,29 +214,33 @@ def evaluate_rdp_for_push(*, rdp_id: int) -> OperationLogResult:
         result: OperationLogResult = {}
         threshold_is_exceeded = False
 
-        if operation := biometric_operation_for_rdp(rdp=rdp):
-            threshold_type = ThresholdType(operation.config["threshold_type"])
-            threshold_value = Decimal(str(operation.config["threshold_value"]))
-            findings_count = biometric_findings_count(operation=operation)
-            individuals_count = qs_individuals_for_rdp(rdp=rdp).count()
+        biometric_operation = biometric_operation_for_rdp(rdp=rdp)
+        biographic_operation = biographic_operation_for_rdp(rdp=rdp)
 
+        if biometric_operation or biographic_operation:
+            individuals_count = qs_individuals_for_rdp(rdp=rdp).count()
             if individuals_count == 0:
                 raise RdpWorkflowError({"errors": ["RDP: no individuals available for push."]})
+            result["individuals_count"] = individuals_count
 
-            threshold_is_exceeded = threshold_exceeded(
-                findings_count=findings_count,
-                total_count=individuals_count,
-                threshold_type=threshold_type,
-                threshold_value=threshold_value,
-            )
-            result.update(
-                threshold_type=threshold_type.value,
-                threshold_value=str(threshold_value),
-                findings_count=findings_count,
+        if biometric_operation:
+            biometric_exceeded, biometric_result = _evaluate_threshold(
+                operation=biometric_operation,
+                findings_count=biometric_findings_count(operation=biometric_operation),
                 individuals_count=individuals_count,
-                findings_rate=f"{Decimal(findings_count) * 100 / individuals_count:.2f}",
-                threshold_exceeded=threshold_is_exceeded,
             )
+            result.update(biometric_result)
+            threshold_is_exceeded |= biometric_exceeded
+
+        if biographic_operation:
+            biographic_exceeded, biographic_result = _evaluate_threshold(
+                operation=biographic_operation,
+                findings_count=biographic_findings_count(operation=biographic_operation),
+                individuals_count=individuals_count,
+                prefix=BIOGRAPHIC_RESULT_PREFIX,
+            )
+            result.update(biographic_result)
+            threshold_is_exceeded |= biographic_exceeded
 
         if threshold_is_exceeded:
             rdp.status = Rdp.PushStatus.REVIEW_PENDING
@@ -412,6 +448,7 @@ def _raise_push_errors(processor: PushProcessor) -> None:
 def _finish_successful_push(*, rdp: Rdp, hope_rdi_id: str) -> None:
     """Finish a successful push for a locked RDP."""
     operation = biometric_operation_for_rdp(rdp=rdp)
+    biographic_operation = biographic_operation_for_rdp(rdp=rdp)
 
     set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
     rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
@@ -425,6 +462,11 @@ def _finish_successful_push(*, rdp: Rdp, hope_rdi_id: str) -> None:
         ),
         robust=True,
     )
+    if biographic_operation:
+        transaction.on_commit(
+            partial(approve_biographic_set_after_successful_push, operation_id=biographic_operation.id),
+            robust=True,
+        )
 
 
 def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str) -> None:

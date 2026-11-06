@@ -75,6 +75,49 @@
                                         </tr>
                                     </tbody>
                                 {% endif %}
+                                {% if dedup_biographic_member_count is not None %}
+                                    <tbody>
+                                        <tr>
+                                            <th {% if dedup_biographic_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {% translate "Biographic duplicate members" %}
+                                            </th>
+                                            <td {% if dedup_biographic_duplicate_member_count %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {{ dedup_biographic_duplicate_member_count }}/{{ dedup_biographic_member_count }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                {% endif %}
+                                {% if dedup_biographic_duplicates is not None %}
+                                    <tbody>
+                                        <tr>
+                                            <th {% if dedup_biographic_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {% translate "Biographic duplicates" %}
+                                            </th>
+                                            <td {% if dedup_biographic_duplicates %}class="bg-red-50 text-red-800"{% endif %}>
+                                                {% if dedup_biographic_duplicates %}
+                                                    {% for duplicate in dedup_biographic_duplicates %}
+                                                        <div>
+                                                            <a href="{{ duplicate.url }}" class="hover:underline">
+                                                                {{ duplicate.pk }}
+                                                            </a>
+                                                            {% if duplicate.full_name %}
+                                                                &ndash; {{ duplicate.full_name }}
+                                                            {% endif %}
+                                                            {% if duplicate.score is not None %}
+                                                                <small>{% translate "score" %} {{ duplicate.score|floatformat:2 }}</small>
+                                                            {% endif %}
+                                                            {% if duplicate.scope %}
+                                                                <small class="text-muted">{{ duplicate.scope }}</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                {% endif %}
                                 {% if dedup_duplicates is not None or dedup_image_issues is not None %}
                                     <tbody>
                                         {% if dedup_duplicates is not None %}
