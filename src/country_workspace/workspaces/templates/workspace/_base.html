@@ -2,7 +2,7 @@
 {% load feature_flags i18n workspace_urls %}
 {% block header %}
     {{ program_form.media.css }}
-    <div class="flex items-center gap-6 ml-2">
+    <div class="flex items-center gap-6 ml-7">
         <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="app-bar-select">
             {% csrf_token %}
             <label for="id_tenant" class="sr-only">{% trans "Office" %}</label>

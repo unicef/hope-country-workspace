@@ -44,3 +44,9 @@ aside#sidebar,
     }
   }
 }
+
+/* HOPE's drawer `Version`: under the menu, only when the drawer is open. */
+.sidebar-version {
+  @apply p-1 pb-4 text-center text-sm;
+  color: #aaa;
+}
