@@ -5,14 +5,10 @@
   justify-content: space-between;
 
   .changelist-form-container {
-    @apply w-1/2;
+    @apply w-1/2 min-w-0;
     #changelist-form {
       .results {
-        width: 300px;
-        overflow: scroll;
-
-        table {
-        }
+        @apply overflow-x-auto;
       }
     .actions {
       @apply mb-2;
@@ -40,31 +36,21 @@
     clear: both;
   }
 
+  /* HOPE's TableComponent: 70px rows, 14px text, no wrapping, sideways scroll in `.results`. */
   table {
-    border-right: none;
     border-collapse: collapse;
-    border-color: var(--border-color);
 
     thead {
-      display: table-header-group;
-      vertical-align: middle;
-      unicode-bidi: isolate;
-
       th {
-        //background: var(--selected-bg);
-        font-size: 0.6875rem;
-        border: none;
-        border-bottom: 1px solid var(--hairline-color);
-        border-top: 1px solid var(--hairline-color);
-        color: var(--body-quiet-color);
-        display: table-cell;
+        @apply text-ink;
+        font-size: 12px;
         font-weight: 500;
-        line-height: normal;
+        line-height: 24px;
         padding: 0;
         text-align: left;
-        text-transform: uppercase;
         vertical-align: middle;
         white-space: nowrap;
+        border-bottom: 1px solid rgba(224, 224, 224, 1);
 
         &.sorted {
           .text {
@@ -73,22 +59,26 @@
         }
 
         .text {
-          span {
-            padding: 8px 10px;
+          span,
+          a {
+            display: block;
+            padding: 16px;
           }
 
           a {
-            display: block;
+            @apply text-ink;
             cursor: pointer;
-            padding: 8px 10px;
-            color: var(--body-quiet-color);
             text-decoration: none;
-            transition: color 0.15s, background 0.15s;
+            transition: color 150ms ease;
+
+            &:hover {
+              @apply text-primary;
+            }
           }
         }
 
         .sortoptions {
-          padding: 9px 5px 0 5px;
+          padding: 21px 5px 0 5px;
           @apply block float-right text-right;
 
           a {
@@ -109,16 +99,8 @@
             background-position: 0 -56px;
           }
 
-          a:link {
-            transition: color 0.15s, background 0.15s;
-          }
-
           a.sortremove {
             background-position: 0 0;
-          }
-
-          span.sortpriority {
-
           }
         }
 
@@ -131,24 +113,33 @@
 
     tbody {
       tr {
-        @apply hover:bg-gray-100;
-        @apply border-b-gray-100 border;
+        @apply bg-white;
+        height: 70px;
+        border-bottom: 1px solid rgba(224, 224, 224, 1);
+        transition: background-color 150ms ease;
 
+        &:hover {
+          background-color: rgba(0, 0, 0, 0.04);
+        }
+
+        &.selected {
+          background-color: theme('colors.primary.DEFAULT / 8%');
+        }
       }
 
       td, th {
-        padding: 20px;
-
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: break-word;
-        vertical-align: top;
-        font-size: 0.8125rem;
-        overflow: auto;
+        @apply text-ink;
+        padding: 16px;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 20px;
+        white-space: nowrap;
+        vertical-align: middle;
+        text-align: left;
         cursor: pointer;
 
-        &.nowrap {
-          white-space: nowrap;
+        a {
+          @apply text-primary;
         }
 
         &.field-info {
@@ -160,18 +151,20 @@
           text-align: center;
         }
       }
+    }
+  }
 
-      tr:nth-child(odd) {
-        @apply hover:bg-gray-100 bg-white py-12 border-b-gray-600;
-      }
+  /* HOPE's TableComponent empty message. */
+  .results-empty {
+    @apply flex flex-col items-center justify-center text-center;
+    padding: 70px 24px;
+    color: #a9a9a9;
+    font-size: 24px;
+    line-height: 28px;
 
-      tr:nth-child(even) {
-        @apply hover:bg-gray-100 bg-white py-12 border-b-gray-600;
-      }
-
-      tr.selected:nth-child(odd), tr.selected:nth-child(even) {
-        @apply bg-blue-100
-      }
+    .results-empty-hint {
+      margin-top: 8px;
+      font-size: 16px;
     }
   }
 }
@@ -280,13 +273,48 @@ table thead th.action-checkbox-column {
   text-align: center;
 }
 
+/* HOPE's TablePagination: right-aligned 14px row under the table. */
 .paginator {
-  @apply flex bg-gray-100 border p-2;
-  a, span {
-    @apply px-2 mx-1 border border-gray-600;
+  @apply flex flex-wrap items-center justify-end gap-1 text-ink;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 20px;
+
+  .paginator-count {
+    @apply mr-4;
   }
 
-  span {
-    @apply bg-gray-400 text-white;
+  .paginator-pages {
+    @apply flex items-center gap-1;
+  }
+
+  a,
+  .this-page {
+    @apply inline-flex items-center justify-center rounded;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+  }
+
+  a {
+    @apply text-ink;
+    text-decoration: none;
+
+    &:hover {
+      background-color: rgba(0, 0, 0, 0.04);
+    }
+  }
+
+  .this-page {
+    @apply text-primary font-medium;
+    background-color: theme('colors.primary.DEFAULT / 8%');
+  }
+
+  a.showall {
+    @apply text-primary font-medium uppercase ml-4;
+  }
+
+  input[type="submit"] {
+    @apply ml-4;
   }
 }
