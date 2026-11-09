@@ -3,13 +3,17 @@
         <nav class="page-breadcrumbs" aria-label="Breadcrumb">
             <ol>
                 {% for crumb in crumbs %}
-                    <li>{{ crumb }}</li>
+                    <li>
+                        {{ crumb }}
+                    </li>
                 {% endfor %}
             </ol>
         </nav>
     {% endif %}
     <div class="page-title-row">
-        <h2>{{ title }}</h2>
+        <h2>
+            {{ title }}
+        </h2>
         {% if flags %}
             <span class="page-flags">{{ flags }}</span>
         {% endif %}

@@ -9,7 +9,6 @@
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         {% endblock meta %}
         <link rel="icon" href="{% static "favicon.ico" %}" />
-
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
@@ -120,9 +119,7 @@
                     <div class="flex flex-1 flex-col">
                         <div class="flex h-16 bg-secondary text-white items-center pl-3 pr-2 gap-3">
                             {% block areas %}
-                                <div id="open-sidebar"
-                                     class="hidden text-white cursor-pointer p-2 mr-6 hover:bg-white/10 rounded"
-                                     title="Open menu">
+                                <div id="open-sidebar" class="hidden text-white cursor-pointer p-2 mr-6 hover:bg-white/10 rounded" title="Open menu">
                                     <svg class="sidebar-button text-white" focusable="false" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z">
                                         </path>
@@ -151,7 +148,9 @@
                     <aside id="sidebar" class="w-sidebar flex-none bg-white open-show overflow-y-auto overflow-x-hidden">
                         {% block menu %}
                         {% endblock %}
-                        <div class="sidebar-version display-open">Version: {% app_version %}</div>
+                        <div class="sidebar-version display-open">
+                            Version: {% app_version %}
+                        </div>
                     </aside>
                 {% endblock sidebar %}
                 <div class="overflow-y-auto bg-page w-full flex flex-1 flex-col">

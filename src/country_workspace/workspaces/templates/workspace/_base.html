@@ -5,13 +5,17 @@
     <div class="flex items-center gap-6 ml-7">
         <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="app-bar-select">
             {% csrf_token %}
-            <label for="id_tenant" class="sr-only">{% trans "Office" %}</label>
+            <label for="id_tenant" class="sr-only">
+                {% trans "Office" %}
+            </label>
             {{ tenant_form.tenant }}
         </form>
         {% if active_tenant %}
             <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="app-bar-select">
                 {% csrf_token %}
-                <label for="id_program" class="sr-only">{% trans "Programme" %}</label>
+                <label for="id_program" class="sr-only">
+                    {% trans "Programme" %}
+                </label>
                 {{ program_form.program }}
             </form>
             {{ program_form.media.js }}
@@ -45,7 +49,9 @@
         {% for item in menu_items %}
             {% ifchanged item.section %}
                 {% if item.section %}
-                    <li class="menu-section display-open" role="presentation">{{ item.section }}</li>
+                    <li class="menu-section display-open" role="presentation">
+                        {{ item.section }}
+                    </li>
                 {% endif %}
             {% endifchanged %}
             <li class="menu-item flex {% if item.selected %}selected{% endif %}{% if item.indent %} pl-3{% endif %}">
@@ -76,13 +82,13 @@
 {% block page-top %}
     <div class="title-top">
         {% page_heading %}
-            {% block page-title %}
-                {{ title|default_if_none:"" }}
-            {% endblock %}
-        {% endpage_heading %}
-        <div class="title-actions">
-            {% block object-tools %}
-            {% endblock object-tools %}
-        </div>
+        {% block page-title %}
+            {{ title|default_if_none:"" }}
+        {% endblock %}
+    {% endpage_heading %}
+    <div class="title-actions">
+        {% block object-tools %}
+        {% endblock object-tools %}
     </div>
+</div>
 {% endblock page-top %}

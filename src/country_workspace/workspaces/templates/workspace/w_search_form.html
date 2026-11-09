@@ -1,7 +1,9 @@
 {% load i18n static %}
 {% if cl.search_fields %}
     <div class="filter-field filter-search">
-        <label for="searchbar" class="filter-label">{% translate "Search" %}</label>
+        <label for="searchbar" class="filter-label">
+            {% translate "Search" %}
+        </label>
         <form id="changelist-search" method="get" role="search">
             <div class="search-input">
                 <img src="{% static "admin/img/search.svg" %}" alt="" aria-hidden="true" />
