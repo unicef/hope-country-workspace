@@ -81,7 +81,15 @@ ul.object-tools {
 
   .icon {
     @apply align-middle text-primary;
+    font-size: 20px;
   }
+}
+
+/* Inline Material icons from `{% icon %}`: 1em square, coloured by the text. */
+svg.icon {
+  @apply inline-block flex-none;
+  width: 1em;
+  height: 1em;
 }
 
 .messages {

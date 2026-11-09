@@ -1,5 +1,5 @@
 {% extends "workspace/_base.html" %}
-{% load i18n %}
+{% load i18n workspace_app %}
 {% block page-top %}
     <div class="title-top">
         <h2>
@@ -15,7 +15,7 @@
             <div class="lg:col-span-2 section-box">
                 <div class="flex items-start gap-4">
                     <div class="hidden sm:flex w-12 h-12 rounded-full bg-primary/10 items-center justify-center flex-shrink-0">
-                        <span class="icon icon-home text-2xl text-primary"></span>
+                        {% icon "home" "text-2xl text-primary" %}
                     </div>
                     <div class="flex-1">
                         <h3 class="type-section-title">
@@ -57,7 +57,7 @@
                             <a href="{{ item.url }}"
                                {% if item.target %}target="{{ item.target }}"{% endif %}
                                class="section-tile">
-                                <span class="icon {{ item.icon }} text-2xl text-primary"></span>
+                                {% icon item.icon "text-2xl text-primary" %}
                                 <span class="text-sm font-medium text-secondary truncate">{{ item.name }}</span>
                             </a>
                         {% endif %}

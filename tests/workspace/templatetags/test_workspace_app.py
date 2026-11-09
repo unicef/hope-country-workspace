@@ -40,3 +40,9 @@ def test_page_heading_plain_title() -> None:
 def test_page_heading_escapes_context() -> None:
     html = render("{% page_heading %}&rsaquo; {{ name }}{% endpage_heading %}", name="<b>x</b>")
     assert "<b>" not in html
+
+
+def test_icon_renders_inline_svg() -> None:
+    html = render('{% icon "home" "text-primary" %}')
+    assert html.startswith('<svg class="icon text-primary" viewBox="0 0 24 24" fill="currentColor"')
+    assert "<path d=" in html

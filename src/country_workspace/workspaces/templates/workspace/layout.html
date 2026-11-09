@@ -14,7 +14,6 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
         {% block stylesheet %}
-            <link rel="stylesheet" href="{% static "icons.css" %}" type="text/css" />
         {% endblock stylesheet %}
         {% block scripts %}
             <script src="{% static "admin/js/vendor/jquery/jquery.js" %}"></script>
@@ -89,8 +88,7 @@
                                 {{ message }}
                             </div>
                             <a href="#" class="close pt-1 pl-5">
-                                <div class="icon icon-close1">
-                                </div>
+                                {% icon "close" %}
                             </a>
                         </li>
                     {% endfor %}

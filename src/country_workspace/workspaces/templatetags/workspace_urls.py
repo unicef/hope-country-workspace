@@ -19,6 +19,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
 
 from country_workspace.state import state
+from country_workspace.workspaces.icons import ICONS
 
 logger = logging.getLogger(__name__)
 register = template.Library()
@@ -26,11 +27,16 @@ register = template.Library()
 
 ADMIN_CHANGE_VIEW = "admin:{app}_{model}_change"
 ADMIN_CHANGELIST_VIEW = "admin:{app}_{model}_changelist"
-ADMIN_URL = """
-<a class="admin-change-link" target="_admin" href="{url}?{query}">
-    <span class="icon icon-star1" style="font-size: 15px;"></span>
+# HOPE's AdminButton: an ArrowCircleRight icon. The path data has no braces, so it is safe inside the format string.
+ADMIN_URL = (
+    """
+<a class="admin-change-link" target="_admin" href="{url}?{query}" title="Admin">
+    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">"""
+    + ICONS["admin-link"]
+    + """</svg>
 </a>
 """
+)
 
 
 @register.simple_tag()

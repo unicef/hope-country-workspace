@@ -24,7 +24,7 @@
            id="pending-jobs-badge"
            class="app-bar-icon-button"
            title="{% trans "View background jobs" %}">
-            <span class="icon icon-globe" aria-hidden="true"></span>
+            {% icon "jobs" %}
             {% if pending_jobs_count %}
                 <span class="app-bar-badge">{{ pending_jobs_count }}</span>
                 <span class="sr-only">
@@ -53,7 +53,7 @@
                     <form method="post" action="{{ item.url }}" class="w-full">
                         {% csrf_token %}
                         <button type="submit" class="flex w-full items-center px-4 py-2 text-left">
-                            <span class="w-10 flex-none text-xl leading-none icon {{ item.icon }}"></span>
+                            <span class="menu-icon">{% icon item.icon %}</span>
                             <div class="display-open flex-grow text-sm font-medium leading-4">
                                 {{ item.name }}
                             </div>
@@ -63,7 +63,7 @@
                     <a class="flex w-full items-center px-4 py-2"
                        href="{{ item.url }}"
                        {% if item.target %}target="{{ item.target }}"{% endif %}>
-                        <span class="w-10 flex-none text-xl leading-none icon {{ item.icon }}"></span>
+                        <span class="menu-icon">{% icon item.icon %}</span>
                         <div class="display-open flex-grow text-sm font-medium leading-4">
                             {{ item.name }}
                         </div>

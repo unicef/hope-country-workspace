@@ -22,7 +22,10 @@ aside#sidebar,
         cursor: pointer;
         transition: background-color 150ms ease;
 
-        .icon {
+        /* MUI ListItemIcon: 40px column, 24px icon. */
+        .menu-icon {
+          @apply flex w-10 flex-none items-center;
+          font-size: 24px;
           color: rgba(0, 0, 0, 0.54);
         }
 
