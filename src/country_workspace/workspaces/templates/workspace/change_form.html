@@ -4,10 +4,6 @@
     {{ block.super }}
     <script src="{% url 'workspace:jsi18n' %}"></script>
 {% endblock extrahead %}
-{% block extrastyle %}
-    {{ block.super }}
-    <link rel="stylesheet" href="{% static "workspace/css/forms.css" %}" />
-{% endblock extrastyle %}
 {% block coltype %}
     colM
 {% endblock %}

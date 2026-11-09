@@ -44,35 +44,7 @@ ul.object-tools {
     @apply text-sm font-normal mx-1;
 
     a {
-      @apply text-white px-4 py-2 my-1;
-      text-decoration: none;
-      color: white;
-      cursor: pointer;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      vertical-align: middle;
-      justify-content: center;
-      min-width: 64px;
-      box-shadow:
-        0 2px 4px -1px rgba(0, 0, 0, 0.2),
-        0 4px 5px 0 rgba(0, 0, 0, 0.14);
-      outline: 0;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 4px;
-      transition:
-        background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-        box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
-      background-color: theme('colors.primary.DEFAULT');
-
-      &:hover {
-        background-color: theme('colors.primary.dark');
-        box-shadow:
-          0 2px 4px -1px rgba(0, 0, 0, 0.3),
-          0 5px 8px 0 rgba(0, 0, 0, 0.2);
-      }
+      @apply btn-contained my-1;
 
       &.disabled {
         @apply border border-primary opacity-50 pointer-events-none;
@@ -161,8 +133,36 @@ table {
   }
 }
 
+/* HOPE's LoginPage: a light blue box with the logo, a white subtitle and a tall primary button. */
+.login-box {
+  @apply bg-hct-lightBlue text-center rounded box-border p-6;
+  width: calc(100% - 32px);
+  box-shadow:
+    0 0 2px 0 rgba(0, 0, 0, 0.12),
+    0 2px 2px 0 rgba(0, 0, 0, 0.24);
+
+  @media (min-width: theme('screens.sm')) {
+    @apply box-content;
+    width: 533px;
+    padding: 50px;
+  }
+
+  .login-subtitle {
+    @apply text-white mt-6 sm:mt-[52px];
+    font-size: 24px;
+    font-weight: 300;
+    line-height: 32px;
+  }
+
+  .login-button {
+    @apply w-full mt-6;
+    height: 64px;
+    font-size: 15px;
+  }
+}
+
 #login-form {
-  @apply bg-transparent content-center p-0 rounded;
+  @apply bg-transparent p-0;
 
   table {
     @apply min-w-full;
@@ -176,19 +176,13 @@ table {
 
         input,
         select {
-          @apply min-w-full text-sm py-2 px-3 border border-gray-300 rounded;
-          background-color: white;
-
-          &:focus {
-            @apply outline-none border-primary;
-            box-shadow: 0 0 0 3px theme('colors.primary.DEFAULT / 15%');
-          }
+          @apply field-input min-w-full;
         }
       }
 
       th,
       td.label {
-        @apply type-label pt-2;
+        @apply type-label pt-2 text-white;
       }
     }
   }
@@ -196,12 +190,7 @@ table {
 
 .tenant-select-wrap {
   select {
-    @apply min-w-full text-sm py-2 px-3 border border-gray-300 rounded bg-white;
-
-    &:focus {
-      @apply outline-none border-primary;
-      box-shadow: 0 0 0 3px theme('colors.primary.DEFAULT / 15%');
-    }
+    @apply field-input min-w-full;
   }
 
   .select2-container {
@@ -211,34 +200,16 @@ table {
 
 body.web {
   .button {
-    @apply text-white font-medium tracking-wide uppercase py-2 px-4 rounded focus:outline-none cursor-pointer;
-    font-size: 0.8125rem;
-    letter-spacing: 0.03em;
-    border: none;
-    box-shadow:
-      0 2px 4px -1px rgba(0, 0, 0, 0.2),
-      0 4px 5px 0 rgba(0, 0, 0, 0.14);
-    transition:
-      background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-      box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
-
-    &:hover {
-      box-shadow:
-        0 2px 4px -1px rgba(0, 0, 0, 0.3),
-        0 5px 8px 0 rgba(0, 0, 0, 0.2);
-    }
+    @apply btn-contained;
 
     &.small {
-      @apply py-1 px-2 text-xs;
-    }
-
-    &.primary {
-      @apply bg-primary hover:bg-primary/90;
+      padding: 4px 10px;
+      font-size: 13px;
+      line-height: 22px;
     }
 
     &.secondary {
-      @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
-      box-shadow: none;
+      @apply btn-outlined;
     }
   }
 }
