@@ -1,6 +1,3 @@
-$height: 36px;
-$height2: 32px;
-
 body.web {
   li.select2-results__option.select2-results__option--highlighted {
     @apply bg-primary;
@@ -15,51 +12,167 @@ body.web {
     color: white;
     z-index: 20;
 
-    .select2 {
-      background-color: white;
+    /* HOPE's BusinessAreaSelect and GlobalProgramSelect: 232x40 translucent boxes, no labels. */
+    .app-bar-select {
+      @apply flex items-center;
+
+      > select,
+      .select2-container.select2-container--default {
+        /* 232px like HOPE, narrower on tablets so the user menu stays on screen. */
+        width: clamp(140px, 18vw, 232px) !important;
+        height: 40px;
+        border: 0;
+        border-radius: 4px;
+        background-color: rgba(104, 119, 127, 0.5);
+        color: #e3e6e7;
+        font-size: 16px;
+        transition: background-color 150ms ease;
+
+        &:hover {
+          background-color: rgba(104, 119, 127, 0.7);
+        }
+      }
+
+      > select {
+        @apply cursor-pointer;
+        min-width: 0;
+        padding: 0 36px 0 10px;
+        border: 0;
+        appearance: none;
+        /* MUI's ArrowDropDown in #e3e6e7. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23e3e6e7' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 7px center;
+        background-size: 24px;
+
+        &:focus {
+          outline: 2px solid #e3e6e7;
+          outline-offset: 1px;
+        }
+
+        option {
+          @apply text-ink bg-white;
+        }
+      }
+
+      .select2-selection.select2-selection--single {
+        height: 40px;
+        border: 0;
+        background: transparent;
+
+        .select2-selection__rendered {
+          /* adminfilters.css paints this span with --body-bg. */
+          background: transparent;
+          color: #e3e6e7;
+          line-height: 40px;
+          padding: 0 36px 0 10px;
+        }
+
+        .select2-selection__placeholder {
+          color: #e3e6e7;
+        }
+
+        .select2-selection__arrow {
+          height: 40px;
+          width: 36px;
+          right: 0;
+
+          b {
+            border-color: #e3e6e7 transparent transparent transparent;
+            border-width: 5px 5px 0 5px;
+            margin-left: -8px;
+            margin-top: -2px;
+          }
+        }
+      }
+
+      .select2-container--focus,
+      .select2-container--open {
+        outline: 2px solid #e3e6e7;
+        outline-offset: 1px;
+      }
+
+      .select2-container--open .select2-selection__arrow b {
+        border-color: transparent transparent #e3e6e7 transparent;
+        border-width: 0 5px 5px 5px;
+      }
     }
 
-    .select2-container.select2-container--default {
-      @apply text-sm;
-      min-width: 240px;
-      max-width: 320px;
-      height: $height;
-      border-radius: 4px;
-      border-width: 0;
+    .app-bar-icon-button {
+      @apply relative flex items-center justify-center rounded-full;
+      width: 40px;
+      height: 40px;
+      color: #e3e6e7;
+      font-size: 20px;
+      transition: background-color 150ms ease;
 
-      @screen lg {
-        min-width: 280px;
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.08);
       }
 
-      .select2-results__option--highlighted[aria-selected] {
-        @apply bg-primary;
-        color: white;
+      .app-bar-badge {
+        @apply absolute flex items-center justify-center rounded-full bg-hct-orange text-white font-medium;
+        top: 2px;
+        right: 2px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        font-size: 11px;
+      }
+    }
+
+    /* HOPE's UserProfileMenu: grey avatar initial and the email, uppercase like an MUI text button. */
+    .user-menu {
+      @apply relative;
+
+      .user-menu-button {
+        @apply flex items-center cursor-pointer rounded font-medium uppercase list-none;
+        padding: 6px 8px;
+        color: #e3e6e7;
+        font-size: 14px;
+        letter-spacing: 0.02857em;
+        transition: background-color 150ms ease;
+
+        &::-webkit-details-marker {
+          display: none;
+        }
+
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.08);
+        }
       }
 
-      .selection {
-        @apply text-sm;
-        height: $height2;
-        border-radius: 4px;
-        line-height: $height2;
-        border-width: 0;
+      .user-menu-avatar {
+        @apply flex items-center justify-center rounded-full text-white font-normal;
+        width: 40px;
+        height: 40px;
+        background-color: #bdbdbd;
+        font-size: 20px;
+      }
 
-        .select2-selection.select2-selection--single {
-          height: $height2;
-          border-radius: 4px;
-          border-width: 0;
-          background: rgba(255, 255, 255, 0.95);
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      .user-menu-name {
+        @apply hidden md:inline;
+        margin-left: 8px;
+      }
 
-          .select2-selection__rendered {
-            line-height: $height2;
-            color: theme('colors.secondary');
-            border-width: 0;
-            border-radius: 4px;
-          }
+      .user-menu-list {
+        @apply absolute right-0 bg-white rounded py-2;
+        top: calc(100% + 4px);
+        min-width: 180px;
+        box-shadow:
+          0 5px 5px -3px rgba(0, 0, 0, 0.2),
+          0 8px 10px 1px rgba(0, 0, 0, 0.14),
+          0 3px 14px 2px rgba(0, 0, 0, 0.12);
 
-          .select2-selection__arrow {
-            height: $height2;
-            line-height: $height2;
+        a,
+        button {
+          @apply block w-full text-left text-ink;
+          padding: 6px 16px;
+          font-size: 16px;
+          line-height: 1.5;
+
+          &:hover {
+            background-color: rgba(0, 0, 0, 0.04);
           }
         }
       }

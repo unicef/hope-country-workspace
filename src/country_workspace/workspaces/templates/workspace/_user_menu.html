@@ -1,0 +1,22 @@
+{% load i18n %}
+{% with label=request.user.email|default:request.user.username %}
+    <details id="user-menu" class="user-menu">
+        <summary class="user-menu-button" title="{{ label }}">
+            <span class="user-menu-avatar" aria-hidden="true">{{ label|first|upper }}</span>
+            <span class="user-menu-name">{{ label }}</span>
+        </summary>
+        <ul class="user-menu-list">
+            {% if request.user.is_staff %}
+                <li>
+                    <a href="{% url "admin:index" %}" target="_admin">{% trans "Admin" %}</a>
+                </li>
+            {% endif %}
+            <li>
+                <form method="post" action="{% url "admin:logout" %}">
+                    {% csrf_token %}
+                    <button type="submit">{% trans "Logout" %}</button>
+                </form>
+            </li>
+        </ul>
+    </details>
+{% endwith %}

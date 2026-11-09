@@ -25,25 +25,18 @@
         document.addEventListener("DOMContentLoaded", function (event) {
             const hostname = window.location.hostname;
             let color = '';
-            let envLabel = '';
             if (hostname === 'localhost') {
                 color = '#A1E4B6';
-                envLabel = 'LOCAL';
             } else if (hostname.includes('trn')) {
                 color = '#BF360C';
-                envLabel = 'TRAINING';
             } else if (hostname.includes('stg')) {
                 color = '#673AB7';
-                envLabel = 'STAGING';
             } else if (hostname.includes('dev')) {
                 color = '#00796B';
-                envLabel = 'DEV';
             } else if (hostname.includes('eph')) {
                 color = '#CC00EF';
-                envLabel = 'EPH';
             } else if (hostname.includes('tst')) {
                 color = '#EF00A7';
-                envLabel = 'TEST';
             }
             const logoBlock = document.getElementById("logo-block");
             if (logoBlock && color) {
@@ -51,10 +44,15 @@
                 const logoImage = document.getElementById("logo-image");
                 logoImage.src = logoImage.dataset.transparentSrc;
             }
-            const envBadge = document.getElementById("env-badge");
-            if (envBadge && envLabel) {
-                envBadge.textContent = envLabel;
-                envBadge.classList.remove('hidden');
+
+            const userMenu = document.getElementById("user-menu");
+            if (userMenu) {
+                document.addEventListener("click", function (e) {
+                    if (!userMenu.contains(e.target)) userMenu.open = false;
+                });
+                document.addEventListener("keydown", function (e) {
+                    if (e.key === "Escape") userMenu.open = false;
+                });
             }
 
             document.querySelectorAll('li a.aeb-disable-on-click').forEach(function (link) {
@@ -137,10 +135,12 @@
                             {% endblock header %}
                             <div class="flex-1">
                             </div>
-                            <span id="env-badge"
-                                  class="hidden uppercase text-[0.65rem] font-bold tracking-wider bg-white/20 border border-white/30 rounded px-2 py-0.5 mr-2"></span>
-                            <div class="text-sm font-medium tracking-wide hidden md:flex items-center pr-4 opacity-90">
-                                HOPE Workspace
+                            <div class="flex items-center gap-2 pr-4">
+                                {% block app-bar-actions %}
+                                {% endblock app-bar-actions %}
+                                {% if request.user.is_authenticated %}
+                                    {% include "workspace/_user_menu.html" %}
+                                {% endif %}
                             </div>
                         </div>
                     </div>

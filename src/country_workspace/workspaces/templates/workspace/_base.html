@@ -2,58 +2,44 @@
 {% load feature_flags i18n workspace_urls %}
 {% block header %}
     {{ program_form.media.css }}
-    <div class="flex-grow flex items-center gap-3">
-        <div class="flex items-center gap-2">
-            <label for="id_tenant" class="type-label text-white/70 hidden lg:flex">
-                {% trans "Office" %}
-            </label>
-            <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="flex items-center">
-                {% csrf_token %}
-                <span class="flex items-center">
-                    {{ tenant_form.tenant }}
-                    {% admin_url active_tenant %}
-                </span>
-            </form>
-        </div>
+    <div class="flex items-center gap-6 ml-2">
+        <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="app-bar-select">
+            {% csrf_token %}
+            <label for="id_tenant" class="sr-only">{% trans "Office" %}</label>
+            {{ tenant_form.tenant }}
+        </form>
         {% if active_tenant %}
-            <div class="flex items-center gap-2">
-                <label for="id_program" class="type-label text-white/70 hidden lg:flex">
-                    {% trans "Programme" %}
-                </label>
-                <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="flex items-center">
-                    {% csrf_token %}
-                    <span class="flex items-center">
-                        {{ program_form.program }}
-                        {% admin_url active_program %}
-                    </span>
-                </form>
-                {{ program_form.media.js }}
-            </div>
-            {% if active_program %}
-                <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
-                   id="pending-jobs-badge"
-                   class="flex items-center gap-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/20 rounded px-2.5 py-1 transition-colors{% if not pending_jobs_count %} opacity-60{% endif %}"
-                   title="{% trans "View background jobs" %}">
-                    <span class="icon icon-globe text-sm"></span>
-                    {% if pending_jobs_count %}
-                        <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-secondary text-[0.7rem] font-bold">
-                            {{ pending_jobs_count }}
-                        </span>
-                        <span class="hidden lg:inline">
-                            {% if pending_jobs_count == 1 %}
-                                {% trans "job running" %}
-                            {% else %}
-                                {% trans "jobs running" %}
-                            {% endif %}
-                        </span>
-                    {% else %}
-                        <span class="hidden lg:inline">{% trans "No pending jobs" %}</span>
-                    {% endif %}
-                </a>
-            {% endif %}
+            <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="app-bar-select">
+                {% csrf_token %}
+                <label for="id_program" class="sr-only">{% trans "Programme" %}</label>
+                {{ program_form.program }}
+            </form>
+            {{ program_form.media.js }}
         {% endif %}
     </div>
 {% endblock header %}
+{% block app-bar-actions %}
+    {% if active_program %}
+        <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
+           id="pending-jobs-badge"
+           class="app-bar-icon-button"
+           title="{% trans "View background jobs" %}">
+            <span class="icon icon-globe" aria-hidden="true"></span>
+            {% if pending_jobs_count %}
+                <span class="app-bar-badge">{{ pending_jobs_count }}</span>
+                <span class="sr-only">
+                    {% if pending_jobs_count == 1 %}
+                        {% trans "job running" %}
+                    {% else %}
+                        {% trans "jobs running" %}
+                    {% endif %}
+                </span>
+            {% else %}
+                <span class="sr-only">{% trans "No pending jobs" %}</span>
+            {% endif %}
+        </a>
+    {% endif %}
+{% endblock app-bar-actions %}
 {% block menu %}
     <ul class="menu p-0 w-full pt-4 pb-8">
         {% for item in menu_items %}
