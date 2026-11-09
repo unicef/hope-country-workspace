@@ -59,15 +59,38 @@ a.closelink {
   margin: 0;
 }
 
+/*
+ * HOPE's form actions, bottom right: Close (text), the other saves (outlined), then the main action (contained).
+ * Delete sits on the far left. Only the visual order changes: Save stays first in the DOM so Enter still submits it.
+ */
 .submit-row {
-  @apply mt-5 flex flex-wrap items-center gap-2;
+  @apply mt-5 flex flex-wrap items-center justify-end gap-2;
+
+  > * {
+    order: 2;
+  }
+
+  input[type="submit"]:not(.default) {
+    @apply btn-outlined;
+  }
+
+  input.default {
+    order: 3;
+  }
+
+  a.closelink {
+    @apply btn-text;
+    order: 1;
+  }
 
   a.deletelink {
-    @apply bg-hct-red;
-    margin-left: auto;
+    @apply btn-text text-hct-red;
+    order: 0;
+    margin-right: auto;
 
     &:hover {
-      background-color: #d32f2f;
+      @apply text-hct-red;
+      background-color: theme('colors.hct.red / 4%');
     }
   }
 }
