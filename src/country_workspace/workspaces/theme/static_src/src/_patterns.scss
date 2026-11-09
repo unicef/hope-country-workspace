@@ -81,6 +81,24 @@
     }
   }
 
+  /* MUI's text button. */
+  .btn-text {
+    @apply inline-flex items-center justify-center bg-transparent text-primary font-medium uppercase cursor-pointer;
+    min-width: 64px;
+    padding: 6px 8px;
+    font-size: 14px;
+    line-height: 24px;
+    letter-spacing: 0.02857em;
+    border: 0;
+    border-radius: 4px;
+    text-decoration: none;
+
+    &:hover {
+      @apply text-primary;
+      background-color: theme('colors.primary.DEFAULT / 4%');
+    }
+  }
+
   .btn-outlined {
     @apply inline-flex items-center justify-center bg-transparent text-primary font-medium uppercase cursor-pointer;
     min-width: 64px;

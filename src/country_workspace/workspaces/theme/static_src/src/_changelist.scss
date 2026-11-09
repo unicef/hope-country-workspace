@@ -5,7 +5,7 @@
   justify-content: space-between;
 
   .changelist-form-container {
-    @apply w-1/2 min-w-0;
+    @apply w-full min-w-0;
     #changelist-form {
       .results {
         @apply overflow-x-auto;
@@ -170,103 +170,248 @@
 }
 
 
-#changelist-filter {
-  @apply border border-gray-500 ml-2 rounded;
-  h2 {
-    font-size: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 5px 15px;
-    margin-bottom: 12px;
-    border-bottom: none;
-  }
+/* Changelists: the filter panel and the table are separate cards, like HOPE's Paper sections. */
+#content #content-main.changelist-main {
+  @apply flex-col gap-4 bg-transparent;
+  padding: 0;
+  border: 0;
 
-  #changelist-filter-extra-actions {
-    a {
-      @apply text-sm font-sans italic;
-    }
-  }
-
-  h3 {
-    font-weight: 400;
-    padding: 0 15px;
-    margin-bottom: 10px;
-  }
-
-  details {
-    @apply mt-1;
-    > * {
-      display: inline;
-    }
-
-    summary {
-      font-weight: 400;
-      padding: 0 15px;
-      margin-bottom: 10px;
-      list-style-type: none;
-      cursor: pointer;
-
-      &::before {
-        //content: '→';
-        content: '►';
-        //content: '▷';
-        font-weight: bolder;
-        font-size: 18px;
-        font-family: "Courier New", Courier, monospace;
-        color: var(--link-hover-color);
-      }
-    }
-
-    &:last-child {
-      @apply mb-4;
-    }
-
-    &.active {
-      summary {
-        @apply font-bold text-primary;
-      }
-    }
-  }
-
-  details[open] > summary::before {
-    //content: '↓';
-    content: '▼';
-  }
-
-  ul {
-    margin: 0 0;
-    @apply px-2;
-    select {
-      @apply min-w-full p-1 text-sm;
-      border-radius: 4px;
-      min-height: 30px;
-      height: 28px;
-      border-color: rgb(204, 204, 204);
-
-      &:active {
-        border-color: rgb(204, 204, 204)
-
-      }
-    }
-
-    li {
-      @apply min-w-full;
-      .select2-container {
-        border-radius: 4px;
-        @apply min-w-full;
-      }
-
-      &.selected {
-        @apply font-bold text-primary;
-      }
-    }
-  }
-
-  ul:last-child {
-    border-bottom: none;
+  > #changelist {
+    @apply section-box;
   }
 }
 
+/* HOPE's FiltersSection: a white panel of labelled fields above the table, actions bottom right. */
+#changelist-filter.filters-section {
+  @apply section-box;
+  padding: 16px 28px 8px;
+
+  .filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: 16px 24px;
+  }
+
+  .filter-field {
+    @apply flex flex-col min-w-0;
+
+    /* The JSON filter needs room for key, value and type side by side. */
+    &:has(.wjsonfieldfilter) {
+      grid-column: span 2;
+    }
+
+    > .adminfilters {
+      @apply flex flex-col;
+    }
+  }
+
+  /* Labels: the wrapper's .filter-label and the plain <h3> of Django's own filter templates. */
+  .filter-label,
+  .filter-field > h3 {
+    @apply type-label block;
+    margin: 0 0 4px;
+    padding: 0;
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    margin: 0;
+  }
+
+  /* Django's link-list filters become a row of chips. */
+  .filter-field > ul:not(.adminfilter) {
+    @apply flex flex-wrap gap-1;
+
+    a {
+      @apply inline-block rounded-full text-ink;
+      padding: 2px 10px;
+      font-size: 13px;
+      border: 1px solid rgba(0, 0, 0, 0.23);
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+      }
+    }
+
+    li.selected a {
+      @apply bg-primary border-primary text-white;
+    }
+  }
+
+  input[type="text"],
+  textarea,
+  select {
+    @apply field-input min-w-0;
+    /* Beats the inline `width: 90%` in the adminfilters templates. */
+    width: 100% !important;
+    margin: 0;
+  }
+
+  select {
+    padding-right: 32px;
+  }
+
+  textarea {
+    @apply block;
+    height: 40px;
+    min-height: 40px;
+    resize: vertical;
+  }
+
+  input[type="checkbox"] {
+    @apply accent-primary;
+    width: 16px;
+    height: 16px;
+  }
+
+  label:has(input[type="checkbox"]),
+  li:has(> input[type="checkbox"]) {
+    @apply inline-flex items-center gap-2 text-ink;
+    font-size: 14px;
+
+    small {
+      font-size: 14px;
+    }
+  }
+
+  /* Per-filter "activate"/"clear" buttons: small outlined. :is() outranks adminfilters.css's
+     `#changelist-filter li a.adminfilters.button.filter`. */
+  li a.adminfilters.button:is(.filter, .clear, .delete, .button) {
+    @apply btn-outlined;
+    padding: 3px 9px;
+    font-size: 13px;
+    line-height: 22px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* Text filters: the field on top, then exclude and the button on one row. */
+  ul.adminfilter {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+
+    > li:has(textarea),
+    > li:has(input[type="text"]) {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+
+    > li:has(a.button) {
+      grid-column: 2;
+      justify-self: end;
+    }
+  }
+
+  /* JSON filter: key | value + type, then exclude + missing | button. */
+  .wjsonfieldfilter ul.adminfilter {
+    grid-template-columns: 1fr 1fr;
+
+    > li:has(input[name="key"]) {
+      grid-column: 1;
+      order: -2;
+    }
+
+    > li:has(.json-value-row) {
+      grid-column: 2;
+      order: -1;
+    }
+
+    > li.filter-options-row {
+      @apply flex items-center gap-4;
+      grid-column: 1;
+
+      label {
+        @apply inline-flex items-center gap-2;
+      }
+
+      select {
+        width: auto !important;
+      }
+    }
+
+    .json-value-row {
+      @apply flex gap-2;
+
+      select {
+        width: 90px !important;
+        flex: none;
+      }
+    }
+  }
+
+  /* Autocomplete filters (select2 "filter-autocomplete" theme) match .field-input. */
+  .select2-container--filter-autocomplete.select2-container {
+    width: 100% !important;
+    border: 0;
+
+    .select2-selection--single {
+      height: 40px;
+      border: 1px solid rgba(0, 0, 0, 0.23);
+      border-radius: 4px;
+      background: white;
+
+      &:hover {
+        border-color: rgba(0, 0, 0, 0.87);
+      }
+
+      .select2-selection__rendered {
+        @apply text-ink;
+        background: transparent;
+        font-size: 14px;
+        line-height: 38px;
+        padding-left: 14px;
+      }
+
+      .select2-selection__arrow {
+        height: 38px;
+        right: 6px;
+      }
+    }
+
+    &.select2-container--focus .select2-selection--single,
+    &.select2-container--open .select2-selection--single {
+      @apply border-primary;
+      box-shadow: inset 0 0 0 1px theme('colors.primary.DEFAULT');
+    }
+  }
+
+  .filter-search {
+    .search-input {
+      @apply relative;
+
+      img {
+        @apply absolute pointer-events-none;
+        left: 12px;
+        top: 50%;
+        width: 16px;
+        transform: translateY(-50%);
+        opacity: 0.54;
+      }
+
+      input {
+        padding-left: 36px;
+      }
+    }
+  }
+
+  .filters-actions {
+    @apply flex flex-wrap items-center justify-end gap-2;
+    margin-top: 16px;
+    padding: 8px 0;
+
+    .filters-count {
+      @apply mr-auto text-label;
+      font-size: 14px;
+    }
+  }
+}
 
 table thead th.action-checkbox-column {
   width: 1.5em;
