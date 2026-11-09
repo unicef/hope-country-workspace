@@ -7,6 +7,7 @@ from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
 from country_workspace.models import RdpOperation
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.ocr import workflow
+from country_workspace.stream import PublishOutcome
 
 
 pytestmark = pytest.mark.django_db
@@ -181,7 +182,7 @@ def test_run_ocr_batches_and_publishes(
         ],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
-    publish = mocker.patch.object(workflow, "publish", return_value=True)
+    publish = mocker.patch.object(workflow, "publish", return_value=PublishOutcome.SUCCESS)
     finalize = mocker.patch.object(workflow, "finalize_rdp_operation_from_units")
 
     workflow.run_ocr(running_ocr_operation)
@@ -207,7 +208,7 @@ def test_run_ocr_batches_and_publishes(
     finalize.assert_called_once_with(operation=running_ocr_operation)
 
 
-def test_run_ocr_continues_after_publish_failure(
+def test_run_ocr_continues_after_unknown_publish_outcome(
     running_ocr_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
@@ -228,14 +229,51 @@ def test_run_ocr_continues_after_publish_failure(
         ],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
-    publish = mocker.patch.object(workflow, "publish", side_effect=[False, True])
+    publish = mocker.patch.object(
+        workflow,
+        "publish",
+        side_effect=[PublishOutcome.UNKNOWN, PublishOutcome.SUCCESS],
+    )
+    fail = mocker.patch.object(workflow, "fail_rdp_operation_units")
     finalize = mocker.patch.object(workflow, "finalize_rdp_operation_from_units")
 
     with pytest.raises(RdpWorkflowError, match="publish"):
         workflow.run_ocr(running_ocr_operation)
 
     assert publish.call_count == 2
+    fail.assert_not_called()
     finalize.assert_not_called()
+
+
+def test_run_ocr_marks_not_sent_batch_failed(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    unit = mocker.MagicMock(pk=1)
+    queryset = mocker.patch.object(workflow, "pending_rdp_operation_units").return_value
+    queryset.count.return_value = 1
+    queryset.iterator.return_value = iter([unit])
+    mocker.patch.object(workflow, "prefetch_flex_files", return_value=queryset)
+    mocker.patch.object(workflow, "_prepare_ocr_units", return_value=True)
+    mocker.patch.object(workflow, "has_rdp_operation_units", return_value=True)
+    mocker.patch.object(
+        workflow,
+        "_prepare_ocr_batch",
+        return_value=[{"individual_id": 1, "content": "A", "pattern": "P1"}],
+    )
+    mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
+    mocker.patch.object(workflow, "publish", return_value=PublishOutcome.NOT_SENT)
+    fail = mocker.patch.object(workflow, "fail_rdp_operation_units")
+
+    with pytest.raises(RdpWorkflowError, match="publish"):
+        workflow.run_ocr(running_ocr_operation)
+
+    fail.assert_called_once_with(
+        operation_id=running_ocr_operation.id,
+        expected_attempt=running_ocr_operation.attempt,
+        unit_ids=[1],
+        error=mocker.ANY,
+    )
 
 
 def test_run_ocr_stops_when_attempt_is_no_longer_current(

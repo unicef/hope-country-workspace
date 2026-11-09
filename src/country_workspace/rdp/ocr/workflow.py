@@ -18,7 +18,7 @@ from country_workspace.rdp.operations.repository import (
     prepare_rdp_operation_units_for_retry,
 )
 from country_workspace.rdp.repository import qs_individuals_for_rdp
-from country_workspace.stream.publish import OCR_REQUEST_ROUTING_KEY, publish
+from country_workspace.stream import OCR_REQUEST_ROUTING_KEY, PublishOutcome, publish
 from country_workspace.utils.flex_files import prefetch_flex_files
 
 from .constants import OCR_BATCH_SIZE, OCR_UNIT_BULK_CREATE_BATCH_SIZE
@@ -117,17 +117,27 @@ def run_ocr(operation: RdpOperation) -> None:
             if lock_current_rdp_operation(operation_id=operation.id, expected_attempt=operation.attempt) is None:
                 return
 
-        if publish(OCR_REQUEST_ROUTING_KEY, payload):
+        outcome = publish(OCR_REQUEST_ROUTING_KEY, payload)
+        if outcome is PublishOutcome.SUCCESS:
             continue
 
         publish_failed = True
+        if outcome is PublishOutcome.NOT_SENT:
+            fail_rdp_operation_units(
+                operation_id=operation.id,
+                expected_attempt=operation.attempt,
+                unit_ids=[unit.pk for unit in batch],
+                error={"message": "OCR request was not sent."},
+            )
+
         logger.error(
-            "%s: publish failed operation=%s attempt=%s batch=%s/%s",
+            "%s: publish failed operation=%s attempt=%s batch=%s/%s outcome=%s",
             OCR_REQUEST_ROUTING_KEY,
             operation.id,
             operation.attempt,
             batch_index,
             batch_total,
+            outcome,
         )
 
     if publish_failed:

@@ -6,8 +6,8 @@ from pytest_mock import MockerFixture
 from streaming.manager import ChangeManager, initialize_engine
 from streaming.utils import check_callback
 
+from country_workspace.stream import PublishOutcome, publish
 from country_workspace.stream.callbacks import OCR_RESULT_ROUTING_KEY, handle_event
-from country_workspace.stream.publish import publish
 
 
 def test_handle_event_is_a_valid_callback() -> None:
@@ -15,7 +15,7 @@ def test_handle_event_is_a_valid_callback() -> None:
 
 
 def test_publish_succeeds_on_console_backend() -> None:
-    assert publish("cw.test", {"hello": "cw"}) is True
+    assert publish("cw.test", {"hello": "cw"}) is PublishOutcome.SUCCESS
 
 
 def test_engine_uses_configured_manager_class() -> None:
