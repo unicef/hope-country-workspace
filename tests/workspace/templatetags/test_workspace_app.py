@@ -1,3 +1,5 @@
+import re
+
 from django.template import Context, Template
 
 from country_workspace import VERSION
@@ -10,7 +12,8 @@ def render(source: str, **context: str) -> str:
 
 
 def heading(title: str) -> str:
-    return render("{% page_heading %}" + title + "{% endpage_heading %}")
+    html = render("{% page_heading %}" + title + "{% endpage_heading %}")
+    return re.sub(r">\s+|\s+<", lambda m: m.group().strip(), html)
 
 
 def test_app_version() -> None:
