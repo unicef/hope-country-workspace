@@ -1,9 +1,12 @@
+from datetime import timedelta
+
 import pytest
 from django.urls import NoReverseMatch
+from django.utils import timezone
 from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, RdpOperation
+from country_workspace.models import AsyncJob, RdpOperation, RdpOperationUnit
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.state import state
@@ -143,7 +146,83 @@ def test_operations_display_successful_ocr(
     assert row["operation_id"] == str(successful_ocr_operation.id)
     assert row["findings"] == 0
     assert row["affected_individuals"] == 2
+    assert row["processed"] == ""
+    assert row["last_result"] is None
+    assert row["show_last_result"] is False
     affected.assert_called_once_with(operation=successful_ocr_operation)
+
+
+def test_operations_display_running_ocr_progress(
+    admin_instance,
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationFactory, OcrRdpOperationUnitFactory
+
+    started_at = timezone.now() - timedelta(minutes=10)
+    old_result_at = started_at - timedelta(minutes=1)
+    last_result_at = started_at + timedelta(minutes=1)
+    operation = OcrRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, started_at=started_at)
+    old_success = OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.SUCCESS)
+    last_success = OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.SUCCESS)
+    OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.PENDING)
+    OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.FAILURE)
+    RdpOperationUnit.objects.filter(pk=old_success.pk).update(last_modified=old_result_at)
+    RdpOperationUnit.objects.filter(pk=last_success.pk).update(last_modified=last_result_at)
+    render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
+
+    assert admin_instance.operations_display(rdp) == "rendered"
+
+    row = render.call_args.args[1]["rows"][0]
+    assert row["processed"] == "2 / 4"
+    assert row["last_result"] == last_result_at
+    assert row["show_last_result"] is True
+
+
+def test_operations_display_running_ocr_without_result_in_current_attempt(
+    admin_instance,
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationFactory, OcrRdpOperationUnitFactory
+
+    started_at = timezone.now()
+    operation = OcrRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, started_at=started_at)
+    success = OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.SUCCESS)
+    OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.PENDING)
+    RdpOperationUnit.objects.filter(pk=success.pk).update(last_modified=started_at - timedelta(minutes=1))
+    render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
+
+    admin_instance.operations_display(rdp)
+
+    row = render.call_args.args[1]["rows"][0]
+    assert row["processed"] == "1 / 2"
+    assert row["last_result"] is None
+    assert row["show_last_result"] is True
+
+
+def test_operations_display_failed_ocr_progress(
+    admin_instance,
+    rdp: CountryRdp,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationFactory, OcrRdpOperationUnitFactory
+
+    operation = OcrRdpOperationFactory(
+        rdp=rdp,
+        status=RdpOperation.Status.FAILURE,
+        started_at=timezone.now() - timedelta(minutes=10),
+    )
+    OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.SUCCESS)
+    OcrRdpOperationUnitFactory(operation=operation, status=RdpOperationUnit.Status.FAILURE)
+    render = mocker.patch.object(rdp_admin_mod, "render_to_string", return_value="rendered")
+
+    admin_instance.operations_display(rdp)
+
+    row = render.call_args.args[1]["rows"][0]
+    assert row["processed"] == "1 / 2"
+    assert row["last_result"] is None
+    assert row["show_last_result"] is False
 
 
 def test_operations_display_failed_biometric(

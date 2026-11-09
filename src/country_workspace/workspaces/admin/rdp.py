@@ -12,7 +12,7 @@ from admin_extra_buttons.buttons import LinkButton, StandardButton
 from django.contrib import messages
 from django.contrib.admin import display, register
 from django.core.exceptions import PermissionDenied
-from django.db.models import F, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -25,7 +25,7 @@ from django.utils.translation import gettext_lazy as _
 
 from country_workspace.compat.admin_extra_buttons import confirm_action
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import Rdp, RdpOperation
+from country_workspace.models import Rdp, RdpOperation, RdpOperationUnit
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp import (
     RDP_OPERATION_DEFINITIONS,
@@ -301,10 +301,19 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
         can_view_findings = bool(
             state.request and self.admin_site.get_model_admin(CountryIndividual).has_view_permission(state.request)
         )
+
         rows = []
         for operation in obj.operations.order_by("operation_type"):
             successful = operation.status == RdpOperation.Status.SUCCESS
             definition = RDP_OPERATION_DEFINITIONS.get(operation.operation_type)
+            running_ocr = (
+                operation.status == RdpOperation.Status.RUNNING and operation.operation_type == RdpOperation.Type.OCR
+            )
+            show_ocr_progress = (
+                operation.operation_type == RdpOperation.Type.OCR
+                and operation.status in {RdpOperation.Status.RUNNING, RdpOperation.Status.FAILURE}
+                and operation.started_at is not None
+            )
 
             affected_individuals = None
             if successful:
@@ -313,6 +322,22 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                         affected_individuals = qs_biometric_affected_individuals(operation=operation).count()
                     case RdpOperation.Type.OCR:
                         affected_individuals = ocr_affected_individuals_count(operation=operation)
+
+            processed = ""
+            last_result = None
+            if show_ocr_progress:
+                successful_units = Q(status=RdpOperationUnit.Status.SUCCESS)
+                stats = operation.units.aggregate(
+                    total=Count("pk"),
+                    processed=Count("pk", filter=successful_units),
+                    last_result=Max(
+                        "last_modified",
+                        filter=successful_units & Q(last_modified__gte=operation.started_at),
+                    ),
+                )
+                if stats["total"]:
+                    processed = f"{stats['processed']} / {stats['total']}"
+                    last_result = stats["last_result"] if running_ocr else None
 
             rows.append(
                 {
@@ -332,6 +357,9 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     else "",
                     "results_complete": successful,
                     "affected_individuals": affected_individuals,
+                    "processed": processed,
+                    "last_result": last_result,
+                    "show_last_result": running_ocr,
                 }
             )
 

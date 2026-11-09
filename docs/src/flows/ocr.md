@@ -85,6 +85,8 @@ flowchart TB
     G{"Prepared batch empty?"}
     H["Skip batch"]
     I["Publish hd.ocr.request"]
+    P{"Definitely not sent?"}
+    Q["Unit -> FAILURE"]
     J["Wait for hcw.ocr.result"]
     K["Apply result by individual_id"]
     L{"Any PENDING?"}
@@ -96,7 +98,9 @@ flowchart TB
     D -->|No| E --> G
     D -->|Yes| F --> G
     G -->|Yes| H
-    G -->|No| I --> J --> K --> L
+    G -->|No| I --> P
+    P -->|Yes| Q --> L
+    P -->|No / unknown| J --> K --> L
     L -->|Yes| J
     L -->|No| M
     M -->|Yes| N
@@ -133,14 +137,15 @@ On retry, `SUCCESS` units are preserved and unresolved units are reset to `PENDI
 
 CW publishes through `django-streaming`. The helper retries the same event once after resetting the streaming engine.
 
-A final `publish() == False` does **not** prove that RabbitMQ rejected the message: Pika `basic_publish()` is used without publisher confirms, so delivery may be unknown.
+The publish outcome distinguishes:
 
-Therefore failed-publish units remain `PENDING`:
+- `SUCCESS` - publishing completed without an observed failure. This is not publisher-confirmed delivery.
+- `NOT_SENT` - both attempts failed before RabbitMQ publishing started. The affected pending units are marked `FAILURE`.
+- `UNKNOWN` - at least one attempt may already have reached RabbitMQ. The affected units remain `PENDING` so a valid late result can still be applied.
 
-```text
-message reached RabbitMQ -> a late valid result may still arrive
-message was lost         -> operation may remain RUNNING until manual retry
-```
+Because publisher confirms are not used, an `UNKNOWN` outcome cannot determine whether the message was delivered or lost.
+
+If a publish failure leaves `PENDING` units, the operation remains `RUNNING` and may still receive results. If no `PENDING` units remain, the operation fails.
 
 Retrying the same event can also produce duplicate delivery; duplicate results are safe because already-`SUCCESS` units are ignored.
 

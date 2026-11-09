@@ -60,6 +60,8 @@ OCR findings are available through the shared **[RDP Findings UI](index.md#findi
 
 Completed OCR work is preserved across retries. Recovery processes only work that still needs to be completed.
 
+While OCR is `RUNNING`, the **Operations** section shows **Processed** and **Last result**. **Processed** includes completed work preserved from earlier attempts, while **Last result** reflects only the current attempt. For a failed OCR operation, **Processed** remains available.
+
 Use **Retry operations** when the OCR operation fails or when a running OCR attempt is no longer expected to complete normally. Results belonging to an earlier attempt are ignored safely.
 
 If a document selected for OCR is no longer available when it needs to be processed again, the affected work fails instead of silently selecting a different document.

@@ -22,7 +22,7 @@ A technical operation failure leaves the RDP in `PENDING`; it does not change th
 
 Check the operation status, error, and execution log in **Operations**. Use **Retry operations** for failed operations or for another operation state that explicitly supports manual recovery.
 
-For OCR, a `RUNNING` attempt can also be restarted when its current result is no longer expected. Completed OCR work is preserved and stale results from the previous attempt are ignored. A `RUNNING` biometric operation should not be restarted because DedupEngine may still be processing it.
+For OCR, use **Processed** and **Last result** to see whether a `RUNNING` attempt is still receiving results. Restart a `RUNNING` attempt only when further results are no longer expected. Completed OCR work is preserved and stale results from the previous attempt are ignored. A `RUNNING` biometric operation should not be restarted because DedupEngine may still be processing it.
 
 See **[RDP operations](operations/index.md#operation-statuses)**, **[OCR recovery](operations/ocr.md#recovery)**, and **[Failed biometric operation](operations/deduplication.md#failed-biometric-operation)**.
 

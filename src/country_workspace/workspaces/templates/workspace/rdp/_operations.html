@@ -55,6 +55,30 @@
                                 {{ row.attempts }}
                             </td>
                         </tr>
+                        {% if row.processed %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                    {% translate "Processed" %}
+                                </th>
+                                <td class="py-2 font-semibold">
+                                    {{ row.processed }}
+                                </td>
+                            </tr>
+                            {% if row.show_last_result %}
+                                <tr>
+                                    <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
+                                        {% translate "Last result" %}
+                                    </th>
+                                    <td class="py-2">
+                                        {% if row.last_result %}
+                                            {% blocktranslate with elapsed=row.last_result|timesince %}{{ elapsed }} ago{% endblocktranslate %}
+                                        {% else %}
+                                            {% translate "No results in this attempt yet" %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endif %}
                         <tr>
                             <th class="py-2 pr-8 whitespace-nowrap font-medium text-gray-600">
                                 {% translate "Started" %}

@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 from pytest_mock import MockerFixture
 
 from country_workspace.models import RdpOperation, RdpOperationUnit
@@ -140,13 +143,21 @@ def test_apply_ocr_document_results_is_idempotent_for_successful_unit(
         "match": None,
         "error": None,
     }
+    old_modified = timezone.now() - timedelta(days=1)
+    RdpOperationUnit.objects.filter(pk=ocr_unit.pk).update(last_modified=old_modified)
 
     repository.apply_ocr_document_results(operation=ocr_unit.operation, documents=[document])
+
+    ocr_unit.refresh_from_db()
+    first_result_at = ocr_unit.last_modified
+    assert first_result_at > old_modified
+
     repository.apply_ocr_document_results(operation=ocr_unit.operation, documents=[document])
 
     assert ocr_unit.operation.findings.count() == 1
     ocr_unit.refresh_from_db()
     assert ocr_unit.status == RdpOperationUnit.Status.SUCCESS
+    assert ocr_unit.last_modified == first_result_at
 
 
 def test_apply_ocr_document_results_rejects_unknown_individual(

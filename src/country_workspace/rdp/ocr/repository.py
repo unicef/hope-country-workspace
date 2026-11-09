@@ -2,6 +2,7 @@ from itertools import batched
 from uuid import UUID
 
 from django.db import transaction
+from django.utils import timezone
 
 from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding, RdpOperationUnit
 from country_workspace.rdp.operations.repository import lock_current_rdp_operation
@@ -128,4 +129,5 @@ def apply_ocr_document_results(
             RdpOperationUnit.objects.filter(pk__in=processed_unit_ids).update(
                 status=RdpOperationUnit.Status.SUCCESS,
                 error={},
+                last_modified=timezone.now(),
             )
