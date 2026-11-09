@@ -1,7 +1,7 @@
 @layer components {
+  /* MUI Paper, as HOPE's containers render: white, 4px radius, elevation 1. */
   .section-box {
-    @apply bg-white;
-    border-bottom: 1px solid rgba(224, 224, 224, 1);
+    @apply bg-white rounded shadow-elevation-1;
     padding: 24px 28px;
   }
 

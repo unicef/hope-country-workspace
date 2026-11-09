@@ -209,10 +209,18 @@ body.web {
     0 4px 5px 0 rgba(0, 0, 0, 0.14),
     0 1px 10px 0 rgba(0, 0, 0, 0.12);
 
+  @apply flex flex-wrap items-center gap-x-6 gap-y-4;
+  padding: 28px 44px 28px 64px;
+
   h2 {
     @apply type-page-title;
+    flex: 1 0 auto;
     line-height: 1.334;
-    padding: 28px 44px 28px 64px;
     margin: 0;
+  }
+
+  /* Next to the title when they fit, otherwise on their own line, right-aligned. */
+  .title-actions {
+    @apply ml-auto max-w-full;
   }
 }

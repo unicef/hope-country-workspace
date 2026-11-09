@@ -6,16 +6,16 @@
         <script src="{% url "workspace:jsi18n" %}"></script>
     {% endif %}
 {% endblock extrahead %}
+{% block object-tools %}
+    <ul class="object-tools">
+        {% block object-tools-items %}
+            {% change_list_object_tools %}
+            {% include "workspace/admin_extra_buttons/includes/change_list_buttons.html" %}
+        {% endblock object-tools-items %}
+    </ul>
+{% endblock object-tools %}
 {% block content %}
     <div id="content">
-        {% block object-tools %}
-            <ul class="object-tools">
-                {% block object-tools-items %}
-                    {% change_list_object_tools %}
-                    {% include "workspace/admin_extra_buttons/includes/change_list_buttons.html" %}
-                {% endblock object-tools-items %}
-            </ul>
-        {% endblock object-tools %}
         <div id="content-main" class="changelist-main">
             {% block filters %}
                 {% if cl.has_filters or cl.search_fields %}

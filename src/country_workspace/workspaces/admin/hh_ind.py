@@ -219,7 +219,7 @@ class BeneficiaryBaseAdmin(
         change_form=False,
         permission=can_import_program_data,
         visible=lambda btn: state.program is not None,
-        html_attrs={"title": _("Import Data using XLS/RDI, Kobo or Aurora.")},
+        html_attrs={"title": _("Import Data using XLS/RDI, Kobo or Aurora."), "class": "primary"},
     )
     def import_data(self, request: HttpRequest) -> "HttpResponse":
         """Render the same Import Data page as the Programme admin.

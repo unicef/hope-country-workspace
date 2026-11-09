@@ -13,16 +13,16 @@
 {# {{ original|truncatewords:"18" }}{% endif %} #}
 {# </div> #}
 {# {% endblock %} #}
+{% block object-tools %}
+    {% if change and not is_popup %}
+        <ul class="object-tools">
+            {% block object-tools-items %}
+                {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+            {% endblock object-tools-items %}
+        </ul>
+    {% endif %}
+{% endblock object-tools %}
 {% block content %}
-    {% block object-tools %}
-        {% if change and not is_popup %}
-            <ul class="object-tools">
-                {% block object-tools-items %}
-                    {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
-                {% endblock object-tools-items %}
-            </ul>
-        {% endif %}
-    {% endblock object-tools %}
     <div id="content">
         <div id="content-main">
             <form method="post" id="import-file" enctype="multipart/form-data">

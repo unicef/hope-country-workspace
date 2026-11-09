@@ -75,5 +75,9 @@
                 {{ title|default_if_none:"" }}
             {% endblock %}
         </h2>
+        <div class="title-actions">
+            {% block object-tools %}
+            {% endblock object-tools %}
+        </div>
     </div>
 {% endblock page-top %}
