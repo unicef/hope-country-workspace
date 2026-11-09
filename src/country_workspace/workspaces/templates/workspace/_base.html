@@ -61,19 +61,19 @@
                 {% if item.is_form %}
                     <form method="post" action="{{ item.url }}" class="w-full">
                         {% csrf_token %}
-                        <button type="submit" class="flex w-full items-center px-4 py-2.5 text-left">
-                            <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                            <div class="display-open flex-grow text-sm font-medium">
+                        <button type="submit" class="flex w-full items-center px-4 py-2 text-left">
+                            <span class="w-10 flex-none text-xl leading-none icon {{ item.icon }}"></span>
+                            <div class="display-open flex-grow text-sm font-medium leading-4">
                                 {{ item.name }}
                             </div>
                         </button>
                     </form>
                 {% else %}
-                    <a class="flex w-full items-center px-4 py-2.5"
+                    <a class="flex w-full items-center px-4 py-2"
                        href="{{ item.url }}"
                        {% if item.target %}target="{{ item.target }}"{% endif %}>
-                        <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                        <div class="display-open flex-grow text-sm font-medium">
+                        <span class="w-10 flex-none text-xl leading-none icon {{ item.icon }}"></span>
+                        <div class="display-open flex-grow text-sm font-medium leading-4">
                             {{ item.name }}
                         </div>
                     </a>

@@ -23,27 +23,33 @@
         {% block extrahead %}
             <script>
         document.addEventListener("DOMContentLoaded", function (event) {
-            const url = window.location.href;
+            const hostname = window.location.hostname;
             let color = '';
             let envLabel = '';
-            if (window.location.hostname === 'localhost') {
-                color = '#FF6600';
+            if (hostname === 'localhost') {
+                color = '#A1E4B6';
                 envLabel = 'LOCAL';
-            } else if (url.includes('-trn')) {
+            } else if (hostname.includes('trn')) {
                 color = '#BF360C';
                 envLabel = 'TRAINING';
-            } else if (url.includes('-stg')) {
+            } else if (hostname.includes('stg')) {
                 color = '#673AB7';
                 envLabel = 'STAGING';
-            } else if (url.includes('-dev')) {
+            } else if (hostname.includes('dev')) {
                 color = '#00796B';
                 envLabel = 'DEV';
-            } else {
-                color = '#00ADEF';
+            } else if (hostname.includes('eph')) {
+                color = '#CC00EF';
+                envLabel = 'EPH';
+            } else if (hostname.includes('tst')) {
+                color = '#EF00A7';
+                envLabel = 'TEST';
             }
-            const headerBar = document.getElementById("header-bar");
-            if (headerBar) {
-                headerBar.style.backgroundColor = color;
+            const logoBlock = document.getElementById("logo-block");
+            if (logoBlock && color) {
+                logoBlock.style.backgroundColor = color;
+                const logoImage = document.getElementById("logo-image");
+                logoImage.src = logoImage.dataset.transparentSrc;
             }
             const envBadge = document.getElementById("env-badge");
             if (envBadge && envLabel) {
@@ -94,13 +100,17 @@
         <main class="flex flex-col h-screen">
             <header class="flex shadow-md z-20">
                 {% block logo %}
-                    <div class="w-52 bg-unicef-blue p-0 flex-none h-16 items-center display-open">
+                    <div id="logo-block" class="w-sidebar bg-unicef-blue p-0 flex-none h-16 items-center display-open">
                         <div class="inline-flex items-center w-full h-full">
-                            <a href="/" class="flex items-center pl-6">
-                                <img src="{% static "hope_logo.png" %}" class="h-10" alt="HOPE" />
+                            <a href="/" class="flex items-center pl-[51px]">
+                                <img id="logo-image"
+                                     src="{% static "hope_logo.jpg" %}"
+                                     data-transparent-src="{% static "hope_logo_transparent.png" %}"
+                                     class="h-16"
+                                     alt="HOPE" />
                             </a>
                             <div class="cursor-pointer ml-auto pr-3" id="close-sidebar" title="Collapse menu">
-                                <svg focusable="false" class="sidebar-button text-white align-middle" viewBox="0 0 24 24" aria-hidden="true">
+                                <svg focusable="false" class="sidebar-button text-white align-middle opacity-[.54]" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z">
                                     </path>
                                 </svg>
@@ -110,7 +120,7 @@
                 {% endblock logo %}
                 {% block content-header %}
                     <div class="flex flex-1 flex-col">
-                        <div id="header-bar" class="flex h-16 bg-secondary text-white items-center px-2 gap-3">
+                        <div class="flex h-16 bg-secondary text-white items-center px-2 gap-3">
                             {% block areas %}
                                 <div class="text-white cursor-pointer w-12 flex items-center justify-center">
                                     <div id="open-sidebar" class="hidden p-2 hover:bg-white/10 rounded">
@@ -138,7 +148,7 @@
             </header>
             <div class="flex flex-1 min-h-0">
                 {% block sidebar %}
-                    <aside id="sidebar" class="w-52 bg-white border-r border-gray-200 open-show overflow-y-auto">
+                    <aside id="sidebar" class="w-sidebar flex-none bg-white open-show overflow-y-auto overflow-x-hidden">
                         {% block menu %}
                         {% endblock %}
                     </aside>

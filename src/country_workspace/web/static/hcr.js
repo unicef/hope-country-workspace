@@ -24,12 +24,12 @@
         }
 
         $("#close-sidebar").on("click", function () {
-            $("#sidebar").addClass("w-16").removeClass("w-52");
+            $("#sidebar").addClass("sidebar-collapsed");
             $("#open-sidebar").removeClass("hidden");
             $(".display-open").hide()
         })
         $("#open-sidebar").on("click", function () {
-            $("#sidebar").addClass("w-52").removeClass("w-16");
+            $("#sidebar").removeClass("sidebar-collapsed");
             $("#logo").addClass("hidden");
             $("#open-sidebar").addClass("hidden");
             $(".display-open").show()

@@ -48,6 +48,10 @@ module.exports = {
     ],
     theme: {
         extend: {
+            width: {
+                sidebar: '270px',
+                'sidebar-collapsed': '55px',
+            },
             colors: {
                 // Logo blocks only. Use `primary` for accents.
                 unicef: {

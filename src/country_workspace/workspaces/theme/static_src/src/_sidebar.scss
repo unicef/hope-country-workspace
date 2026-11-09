@@ -1,56 +1,46 @@
 aside#sidebar,
 #sidebar {
+  &.sidebar-collapsed {
+    width: theme('width.sidebar-collapsed');
+
+    li.menu-item {
+      padding-left: 0;
+    }
+  }
+
   ul.menu {
     li.menu-item {
       @apply relative;
-      transition: background-color 150ms ease;
 
       a,
       button {
-        @apply text-gray-700;
+        @apply text-secondary;
+        min-height: 40px;
         text-decoration: none;
         background: transparent;
         border: none;
         cursor: pointer;
-        transition:
-          background-color 150ms ease,
-          color 150ms ease;
+        transition: background-color 150ms ease;
+
+        .icon {
+          color: rgba(0, 0, 0, 0.54);
+        }
 
         &:hover {
-          @apply bg-gray-100 text-primary;
-          .icon {
-            @apply text-primary;
-          }
+          background-color: rgba(0, 0, 0, 0.04);
         }
       }
 
       &.selected {
-        background-color: theme('colors.primary.DEFAULT / 8%');
-
         > a,
         > form > button {
-          @apply text-primary font-semibold;
-          .icon {
-            @apply text-primary;
-          }
-        }
+          background-color: theme('colors.primary.DEFAULT / 8%');
 
-        &::before {
-          content: "";
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 3px;
-          background-color: theme('colors.primary.DEFAULT');
+          &:hover {
+            background-color: theme('colors.primary.DEFAULT / 12%');
+          }
         }
       }
     }
-  }
-}
-
-ul.menu {
-  li.selected {
-    background-color: theme('colors.primary.DEFAULT / 8%');
   }
 }
