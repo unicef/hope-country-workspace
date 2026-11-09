@@ -153,13 +153,15 @@
                         {% endblock %}
                     </aside>
                 {% endblock sidebar %}
-                <div class="overflow-y-auto p-4 bg-page w-full flex flex-1 flex-col">
+                <div class="overflow-y-auto bg-page w-full flex flex-1 flex-col">
                     {% block breadcrumbs %}
                     {% endblock %}
                     {% block page-top %}
                     {% endblock %}
-                    {% block content %}
-                    {% endblock %}
+                    <div class="p-4 flex flex-1 flex-col">
+                        {% block content %}
+                        {% endblock %}
+                    </div>
                 </div>
             </div>
             <div class="footer-signature border-t border-gray-200 bg-white">

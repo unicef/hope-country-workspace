@@ -33,7 +33,7 @@ body.web {
 }
 
 .breadcrumbs {
-  @apply py-2 text-primary text-sm;
+  @apply py-2 px-4 text-primary text-sm;
 }
 
 ul.object-tools {
@@ -134,12 +134,12 @@ ul.object-tools {
 
 #content {
   #content-main {
-    @apply p-4 bg-white rounded shadow-sm border border-gray-200 flex;
+    @apply section-box flex;
     margin-bottom: 0.75rem;
   }
 
   #content-related {
-    @apply mx-1 p-4 flex bg-white rounded shadow-sm border border-gray-200;
+    @apply section-box flex;
   }
 }
 

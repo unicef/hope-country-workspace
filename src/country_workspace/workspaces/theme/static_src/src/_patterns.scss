@@ -1,0 +1,59 @@
+@layer components {
+  .section-box {
+    @apply bg-white;
+    border-bottom: 1px solid rgba(224, 224, 224, 1);
+    padding: 24px 28px;
+  }
+
+  .section-tile {
+    @apply bg-white flex items-center gap-3 p-4;
+    border-bottom: 1px solid rgba(224, 224, 224, 1);
+    transition: background-color 150ms ease;
+  }
+
+  a.section-tile:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .labelized-table {
+    th {
+      @apply type-label;
+    }
+
+    td {
+      @apply type-value;
+    }
+  }
+}
+
+.status-box {
+  @apply inline-block font-medium uppercase text-center;
+  min-width: 120px;
+  max-width: 300px;
+  padding: 4px;
+  border-radius: 16px;
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 1.2px;
+}
+
+/* Outside @layer: the tone comes from Python, and Tailwind doesn't scan it, so layered rules would be purged. */
+.status-box--success {
+  color: theme('colors.hct.green');
+  background-color: theme('colors.hct.green / 15%');
+}
+
+.status-box--pending {
+  color: theme('colors.hct.orange');
+  background-color: theme('colors.hct.orange / 15%');
+}
+
+.status-box--error {
+  color: theme('colors.hct.red');
+  background-color: theme('colors.hct.red / 15%');
+}
+
+.status-box--neutral {
+  color: theme('colors.hct.gray');
+  background-color: theme('colors.hct.gray / 15%');
+}

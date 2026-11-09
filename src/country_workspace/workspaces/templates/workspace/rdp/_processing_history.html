@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n workspace_status %}
 <div class="overflow-x-auto">
     <table class="text-left">
         <thead>
@@ -26,7 +26,7 @@
                         {{ row.scheduled_at }}
                     </td>
                     <td class="py-2 whitespace-nowrap">
-                        {{ row.status }}
+                        {% status_box row.status %}
                     </td>
                 </tr>
             {% endfor %}

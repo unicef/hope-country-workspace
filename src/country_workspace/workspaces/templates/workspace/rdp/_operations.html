@@ -1,18 +1,18 @@
-{% load i18n %}
+{% load i18n workspace_status %}
 <div class="space-y-6">
     {% for row in rows %}
         <div>
             <h3 class="text-lg font-medium mb-3">
                 {{ row.type }}
             </h3>
-            <table class="text-left">
+            <table class="labelized-table text-left">
                 <tbody>
                     <tr>
                         <th class="py-2 pr-8 whitespace-nowrap">
                             {% translate "Status" %}
                         </th>
                         <td class="py-2">
-                            <strong>{{ row.status }}</strong>
+                            {% status_box row.status_code row.status %}
                         </td>
                     </tr>
                     <tr>
