@@ -209,12 +209,13 @@ body.web {
     0 4px 5px 0 rgba(0, 0, 0, 0.14),
     0 1px 10px 0 rgba(0, 0, 0, 0.12);
 
-  @apply flex flex-wrap items-center gap-x-6 gap-y-4;
+  @apply flex items-center gap-x-6;
   padding: 28px 44px 28px 64px;
 
   > h2,
   .page-heading {
-    flex: 1 0 auto;
+    flex: 0 1 auto;
+    min-width: 12rem;
   }
 
   h2 {
@@ -256,8 +257,9 @@ body.web {
     @apply flex ml-2;
   }
 
-  /* Next to the title when they fit, otherwise on their own line, right-aligned. */
+  /* Beside the title, right-aligned; many actions wrap into more rows instead of pushing the title away. */
   .title-actions {
-    @apply ml-auto max-w-full;
+    flex: 1 1 0;
+    min-width: 0;
   }
 }

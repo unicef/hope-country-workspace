@@ -54,6 +54,24 @@ ul.object-tools {
         @apply border border-primary opacity-50 pointer-events-none;
       }
     }
+
+    /* admin_extra_buttons choice buttons: an outlined button with MUI's ArrowDropDown, sized to its label. */
+    select.aeb-button {
+      @apply btn-outlined appearance-none;
+      field-sizing: content;
+      max-width: 16rem;
+      padding-right: 36px;
+      background: no-repeat right 8px center / 24px
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 10 5 5 5-5z'/%3E%3C/svg%3E");
+
+      &:hover {
+        background-color: theme('colors.primary.DEFAULT / 4%');
+      }
+
+      option {
+        @apply text-ink bg-white normal-case;
+      }
+    }
   }
 }
 
