@@ -212,11 +212,48 @@ body.web {
   @apply flex flex-wrap items-center gap-x-6 gap-y-4;
   padding: 28px 44px 28px 64px;
 
+  > h2,
+  .page-heading {
+    flex: 1 0 auto;
+  }
+
   h2 {
     @apply type-page-title;
-    flex: 1 0 auto;
     line-height: 1.334;
     margin: 0;
+  }
+
+  /* HOPE's BreadCrumbs: the path to this page, without the page itself, above the title. */
+  .page-breadcrumbs ol {
+    @apply flex flex-wrap items-center m-0 p-0 list-none;
+
+    li {
+      @apply flex items-center text-ink;
+      font-size: 16px;
+      line-height: 32px;
+
+      a {
+        @apply text-ink no-underline hover:underline;
+      }
+
+      &:not(:last-child)::after {
+        content: "";
+        width: 24px;
+        height: 24px;
+        background-color: currentColor;
+        /* MUI ChevronRightRounded */
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01'/%3E%3C/svg%3E") center / contain no-repeat;
+      }
+    }
+  }
+
+  .page-title-row {
+    @apply flex items-center;
+  }
+
+  /* HOPE's PageHeader `flags`: the admin link for this page, right of the title. */
+  .page-flags {
+    @apply flex ml-2;
   }
 
   /* Next to the title when they fit, otherwise on their own line, right-aligned. */

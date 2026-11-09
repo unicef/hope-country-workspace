@@ -50,3 +50,10 @@ aside#sidebar,
   @apply p-1 pb-4 text-center text-sm;
   color: #aaa;
 }
+
+/* HOPE's drawer "Resources": a divider, then a grey heading above the secondary links. */
+#sidebar ul.menu li.menu-section {
+  @apply mt-2 mb-2 border-t border-gray-200 pt-4 text-sm;
+  padding-left: 16px;
+  color: #aaa;
+}

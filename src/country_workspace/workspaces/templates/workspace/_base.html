@@ -1,5 +1,5 @@
 {% extends "workspace/layout.html" %}
-{% load feature_flags i18n workspace_urls %}
+{% load feature_flags i18n workspace_app workspace_urls %}
 {% block header %}
     {{ program_form.media.css }}
     <div class="flex items-center gap-6 ml-7">
@@ -43,6 +43,11 @@
 {% block menu %}
     <ul class="menu p-0 w-full pt-4 pb-8">
         {% for item in menu_items %}
+            {% ifchanged item.section %}
+                {% if item.section %}
+                    <li class="menu-section display-open" role="presentation">{{ item.section }}</li>
+                {% endif %}
+            {% endifchanged %}
             <li class="menu-item flex {% if item.selected %}selected{% endif %}{% if item.indent %} pl-3{% endif %}">
                 {% if item.is_form %}
                     <form method="post" action="{{ item.url }}" class="w-full">
@@ -70,11 +75,11 @@
 {% endblock menu %}
 {% block page-top %}
     <div class="title-top">
-        <h2>
+        {% page_heading %}
             {% block page-title %}
                 {{ title|default_if_none:"" }}
             {% endblock %}
-        </h2>
+        {% endpage_heading %}
         <div class="title-actions">
             {% block object-tools %}
             {% endblock object-tools %}

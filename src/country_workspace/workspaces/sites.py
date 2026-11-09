@@ -325,16 +325,7 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                 )
             )
 
-        items.append(
-            {
-                "name": _("Logout"),
-                "url": reverse("admin:logout"),
-                "icon": "icon-logout",
-                "selected": False,
-                "is_form": True,
-            }
-        )
-
+        # Logout is in the user menu, like HOPE. Links that open elsewhere go under "Resources", like HOPE's drawer.
         if request.user.is_staff:
             items.append(
                 {
@@ -343,6 +334,7 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                     "icon": "icon-star",
                     "selected": False,
                     "target": "_admin",
+                    "section": _("Resources"),
                 }
             )
 

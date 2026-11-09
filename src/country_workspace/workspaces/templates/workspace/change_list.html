@@ -45,12 +45,11 @@
                                     <a href="{{ cl.add_facet_link }}" class="btn-text viewlink">{% translate "Show counts" %}</a>
                                 {% endif %}
                             {% endif %}
-                            {% if cl.has_active_filters %}
-                                <a href="{{ cl.clear_all_filters_qs }}" id="clear-all-filters" class="btn-text">{% translate "Clear filters" %}</a>
-                            {% endif %}
+                            {# HOPE's ClearApplyButtons: Clear as text, Apply outlined. #}
+                            <a href="{{ cl.clear_all_filters_qs }}" id="clear-all-filters" class="btn-text">{% translate "Clear" %}</a>
                             {% if cl.search_fields %}
-                                <button type="submit" form="changelist-search" class="button">
-                                    {% translate "Search" %}
+                                <button type="submit" form="changelist-search" class="button secondary">
+                                    {% translate "Apply" %}
                                 </button>
                             {% endif %}
                         </div>
