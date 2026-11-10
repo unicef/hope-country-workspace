@@ -9,9 +9,9 @@ from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import Program, RdpOperation
-from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
-from country_workspace.rdp.deduplication.types import BiometricFindingType
-from country_workspace.rdp.deduplication.workflow import run_biometric_deduplication
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.types import BiometricFindingType
+from country_workspace.rdp.deduplication.biometric.workflow import run_biometric_deduplication
 from country_workspace.rdp.ocr.forms import OcrConfigForm
 from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.ocr.workflow import run_ocr

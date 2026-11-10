@@ -1,7 +1,7 @@
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
-from .deduplication.policy import get_program_dedup_settings_policy
-from .deduplication.repository import qs_biometric_affected_individuals
-from .deduplication.workflow import sync_biometric_deduplication_result
+from .deduplication.biometric.policy import get_program_dedup_settings_policy
+from .deduplication.biometric.repository import qs_biometric_affected_individuals
+from .deduplication.biometric.workflow import sync_biometric_deduplication_result
 from .exceptions import RdpWorkflowError
 from .forms import CleanRdpForm, RdpFindingsFilterForm
 from .lifecycle.cancellation import cancel_rdp

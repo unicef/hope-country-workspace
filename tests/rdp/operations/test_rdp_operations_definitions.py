@@ -4,7 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import RdpOperation
-from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometricbiometric.forms import BiometricDeduplicationConfigForm
 from country_workspace.rdp.ocr.forms import OcrConfigForm
 from country_workspace.rdp.operations.definitions import (
     RDP_OPERATION_DEFINITIONS,
