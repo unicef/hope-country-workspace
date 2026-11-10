@@ -134,3 +134,37 @@ def test_removed_cash_account_type_raises() -> None:
     row = {"account__cash__number": "0777777777"}
     with pytest.raises(AccountColumnError, match="Unknown account type 'cash'"):
         expand_account_columns(row)
+
+
+def test_attachments_are_grouped_per_account_in_numeric_order() -> None:
+    row = {
+        "account__bank__number": "EXAMPLE_ACCOUNT",
+        "account__bank__attachment_10": "flexfile:10",
+        "account__bank__attachment_2": "flexfile:2",
+        "account__bank__attachment_1": "flexfile:1",
+        "account__mobile__attachment_1": "flexfile:m1",
+    }
+    result = expand_account_columns(row)
+    assert result == {
+        "bank_number": "EXAMPLE_ACCOUNT",
+        "bank_attachments": [{"file": "flexfile:1"}, {"file": "flexfile:2"}, {"file": "flexfile:10"}],
+        "mobile_attachments": [{"file": "flexfile:m1"}],
+    }
+
+
+def test_attachments_are_kept_out_of_data() -> None:
+    row = {
+        "account__bank__attachment_1": "flexfile:1",
+        "account__bank__branch": "Main",
+        "account__bank__attachment": "x",
+    }
+    result = expand_account_columns(row)
+    assert result == {
+        "bank_attachments": [{"file": "flexfile:1"}],
+        "bank_data": {"branch": "Main", "attachment": "x"},
+    }
+
+
+def test_unanswered_attachment_questions_are_skipped() -> None:
+    row = {"account__bank__attachment_1": "", "account__bank__attachment_2": None, "account__bank__number": "1"}
+    assert expand_account_columns(row) == {"bank_number": "1"}

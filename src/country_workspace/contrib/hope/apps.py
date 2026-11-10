@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 
+from .account_attachments import AccountAttachmentsField
 from .geo import Admin1Choice, Admin2Choice, Admin3Choice, Admin4Choice, CountryChoice
 from .latin_names import LatinNameField
 from .lookups import FinancialInstitutionChoice
@@ -40,6 +41,7 @@ class Config(AppConfig):
         field_registry.register(ObservedDisabilityChoice)
         field_registry.register(CustomMultipleChoiceField)
         field_registry.register(LatinNameField)
+        field_registry.register(AccountAttachmentsField)
 
         from country_workspace.contrib.hope.validators import FullHouseholdValidator
         from country_workspace.validators.registry import beneficiary_validator_registry

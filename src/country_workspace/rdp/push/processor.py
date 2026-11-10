@@ -8,10 +8,15 @@ from django.db.models import QuerySet
 
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.contrib.hope.rdi import HopeApi, load_mapping_from_api, map_members, map_role_value
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.exceptions import InvalidAccountAttachmentError, RemoteError, RemoteUnavailableError
 from country_workspace.rdp.constants import PUSH_BATCH_SIZE
 from country_workspace.rdp.validation import preflight_errors
-from country_workspace.services.hope_blob import RECORD_SELECT_RELATED, image_field_names, sync_record_blobs
+from country_workspace.services.hope_blob import (
+    RECORD_SELECT_RELATED,
+    image_field_names,
+    sync_account_attachments,
+    sync_record_blobs,
+)
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
 from .repository import serializer_for_program
@@ -214,24 +219,25 @@ class PushProcessor:
             rows.append({k: v for k, v in flex_fields.items() if v is not None})
         return ids, self.serializer(rows)
 
+    def _individual_row(self, ind: CountryIndividual) -> dict[str, Any]:
+        """Group the flex fields of `ind` with its files replaced by their HOPE storage names."""
+        flex_fields = {
+            **ind.flex_fields,
+            **sync_record_blobs(ind, self._image_fields(ind)),
+            **sync_account_attachments(ind),
+        }
+        return ind.apply_grouping(flex_fields) | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
+
     def _prepare_individuals_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for an individuals batch; inject 'country_workspace_id' per row."""
-        rows = [
-            ind.apply_grouping({**ind.flex_fields, **sync_record_blobs(ind, self._image_fields(ind))})
-            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
-            for ind in batch
-        ]
+        rows = [self._individual_row(ind) for ind in batch]
         ids = [row["country_workspace_id"] for row in rows]
         return ids, self.serializer(rows)
 
     def _prepare_people_batch(self, batch: Iterable[CountryIndividual]) -> tuple[list[int], list[dict]]:
         """Return (ids, payload) for a people batch; inject 'country_workspace_id' per row."""
         ids = [ind.id for ind in batch]
-        rows = [
-            ind.apply_grouping({**ind.flex_fields, **sync_record_blobs(ind, self._image_fields(ind))})
-            | {"country_workspace_id": ind.id, "originating_id": ind.originating_id}
-            for ind in batch
-        ]
+        rows = [self._individual_row(ind) for ind in batch]
         return ids, self.serializer(rows)
 
     def _process_households_response(self, response: dict, batch_ids: list[int]) -> None:
@@ -317,7 +323,7 @@ class PushProcessor:
         for batch in batched(self.queryset.iterator(chunk_size=PUSH_BATCH_SIZE), PUSH_BATCH_SIZE):
             try:
                 ids, payload = prepare(batch)
-            except (RemoteError, RemoteUnavailableError) as e:
+            except (RemoteError, RemoteUnavailableError, InvalidAccountAttachmentError) as e:
                 self.fail(name, f"prepare failed. {e}")
                 return
             if self.has_errors:

@@ -6,6 +6,7 @@ from requests import Response
 from country_workspace.contrib.kobo.api.data.submission import Submission
 from hope_flex_fields.references import DEFAULT_MIMETYPE
 
+from country_workspace.utils.account_attachments import attachment_title
 from country_workspace.utils.flex_files import FlexFileContent, pending_marker
 
 
@@ -23,18 +24,19 @@ def download_attachments(data_getter: Callable[[str], Response], submission: Sub
         xpath = attachment.get("question_xpath", "")
         if not xpath:
             continue
-        response = data_getter(attachment["download_url"])
-        submission.files[xpath] = FlexFileContent(
-            content=response.content,
-            mimetype=attachment.get("mimetype") or DEFAULT_MIMETYPE,
-        )
-        marker = pending_marker(xpath)
         if xpath in submission:
-            submission[xpath] = marker
+            answers, key = submission, xpath
         else:
             parent, key = xpath.split("/", maxsplit=1)
             parent, index = parent.split("[")
-            offset = int(index.rstrip("]")) - 1
-            submission[parent][offset][f"{parent}/{key}"] = marker
+            answers, key = submission[parent][int(index.rstrip("]")) - 1], f"{parent}/{key}"
+        response = data_getter(attachment["download_url"])
+        answer = answers.get(key)
+        submission.files[xpath] = FlexFileContent(
+            content=response.content,
+            mimetype=attachment.get("mimetype") or DEFAULT_MIMETYPE,
+            filename=attachment_title(attachment.get("filename") or (answer if isinstance(answer, str) else "")),
+        )
+        answers[key] = pending_marker(xpath)
 
     return submission

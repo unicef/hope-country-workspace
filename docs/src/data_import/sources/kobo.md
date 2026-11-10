@@ -141,6 +141,76 @@ Country Workspace automatically converts these `account__{type}__{field}` questi
 
 This conversion happens automatically for every import source (Kobo, xlsx/RDI, and Aurora) and does not require a Mapping Importer or Program default field, as long as the question name already matches the `account__{type}__{field}` convention above. Use a **[Mapping Importer](../mapping_transformers.md#mapping-importers)** to rename a differently named question (for example `financial_institution_pk`) to the expected field name first.
 
+### Account attachments
+
+Supporting files for an account (for example a bank statement or a photo of a mobile money card) are collected with Kobo file or image questions named `account__{type}__attachment_{N}`, where `{N}` is a positive number:
+
+```text
+account__bank__attachment_1
+account__bank__attachment_2
+account__mobile__attachment_1
+```
+
+The questions can be placed inside groups, such as the Individual repeat group. A submission then contains the file name in the answer and the downloadable file in `_attachments`:
+
+```json
+{
+  "individual_questions": [
+    {
+      "individual_questions/individual_details/account__bank__attachment_1": "1770915139616.jpg"
+    }
+  ],
+  "_attachments": [
+    {
+      "question_xpath": "individual_questions[1]/individual_details/account__bank__attachment_1",
+      "filename": "attachments/1770915139616.jpg",
+      "mimetype": "image/jpeg",
+      "download_url": "https://kf.kobotoolbox.org/api/v2/assets/.../attachments/.../"
+    }
+  ]
+}
+```
+
+During import Country Workspace:
+
+* downloads every attachment through the regular [attachment download](#attachments) and stores the original bytes, media type and file name as a file owned by the Individual. The file is kept out of `flex_fields`, which only holds a `flexfile:<uuid>` reference to it;
+* groups the attachments of each account type into the `{type}_attachments` list of the **HOPE Account** Fieldset, ordered by the numeric suffix (`attachment_2` comes before `attachment_10`), and never adds them to `{type}_data`. Unanswered questions are skipped;
+* keeps the original file name, without any directory, on the stored file. It becomes the attachment title in HOPE Core, so no separate title question is needed in the Kobo form.
+
+The submission above becomes:
+
+```json
+{
+  "bank_attachments": [
+    {"file": "flexfile:5b0c3c1e-..."}
+  ]
+}
+```
+
+An item can also carry its own `"title"`, which is then sent to HOPE Core instead of the file name.
+
+The same `account__{type}__attachment_{N}` questions work for Individuals in household-based Programs and for People in people-only Programs. File references are kept when the Batch is [reprocessed](#reprocess-the-batch).
+
+HOPE Core accepts at most **10 attachments per account**, each up to **10 MB**, of type **pdf, xlsx, jpg, jpeg or png**. Records with more attachments fail validation in Country Workspace. Files that are too large or of another type stop the push and are reported on the job.
+
+When the record is pushed to HOPE Core, each file is uploaded with its original bytes to the shared HOPE storage, and the account payload references it by storage key:
+
+```json
+{
+  "accounts": [
+    {
+      "type": "bank",
+      "number": "123456",
+      "attachments": [
+        {"file": "2024/afghanistan/CP-2024/CW_ind_12345_attachment_5b0c3c1e....jpg", "title": "1770915139616.jpg"}
+      ]
+    }
+  ]
+}
+```
+
+Account attachments need Country Workspace's versioning upgrade and a HOPE Core release that accepts stored account attachments. See **[Account attachments](../../config/storage.md#account-attachments)** for the upgrade and deployment order.
+
 ## Start a Kobo import
 
 1. Select the required **Office** and **[Program](../../program.md)**.

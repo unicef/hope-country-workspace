@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from country_workspace.contrib.hope.constants import ACCOUNT_TYPES
+from country_workspace.utils.account_attachments import attachment_question_index, attachments_field_name
 
 _ACCOUNT_COLUMN_RE = re.compile(r"^account__(.+?)__(.+)$")
 
@@ -26,7 +28,9 @@ def expand_account_columns(row: dict[str, Any]) -> dict[str, Any]:
     Recognizes columns such as ``account__mobile__number`` or
     ``account__mobile__financial_institution`` and expands them into the
     prefixed flex fields expected by the **HOPE Account** Fieldset, e.g.
-    ``mobile_number`` and ``mobile_financial_institution``. Any other
+    ``mobile_number`` and ``mobile_financial_institution``. Numbered
+    ``account__{type}__attachment_N`` columns become the ``{type}_attachments``
+    list, ordered by N, each file as ``{"file": value}``. Any other
     ``account__{type}__*`` column is collected into the ``{type}_data`` flex
     field.
 
@@ -35,8 +39,7 @@ def expand_account_columns(row: dict[str, Any]) -> dict[str, Any]:
     Raises ``AccountColumnError`` if ``{type}`` is not one of ``ACCOUNT_TYPES``.
     """
     account_keys: set[str] = set()
-    direct: dict[str, Any] = {}
-    extra_data: dict[str, dict[str, Any]] = {}
+    accounts = _AccountFields()
 
     for key, value in row.items():
         if not isinstance(key, str):
@@ -51,22 +54,39 @@ def expand_account_columns(row: dict[str, Any]) -> dict[str, Any]:
             raise AccountColumnError(
                 f"Unknown account type {account_type!r} in column {key!r}. Valid types: {', '.join(ACCOUNT_TYPES)}"
             )
-        if not _present(value):
-            continue
-
-        if field_name in _DIRECT_FIELDS:
-            direct[f"{account_type}_{field_name}"] = value
-        elif field_name == "data" and isinstance(value, dict):
-            extra_data.setdefault(account_type, {}).update(value)
-        else:
-            extra_data.setdefault(account_type, {})[field_name] = value
+        if _present(value):
+            accounts.add(account_type, field_name, value)
 
     if not account_keys:
         return row
 
     result = {k: v for k, v in row.items() if k not in account_keys}
-    result.update(direct)
-    for account_type, data in extra_data.items():
-        result[f"{account_type}_data"] = data
-
+    result.update(accounts.as_flex_fields())
     return result
+
+
+@dataclass
+class _AccountFields:
+    direct: dict[str, Any] = field(default_factory=dict)
+    extra_data: dict[str, dict[str, Any]] = field(default_factory=dict)
+    attachments: dict[str, list[tuple[int, Any]]] = field(default_factory=dict)
+
+    def add(self, account_type: str, field_name: str, value: Any) -> None:
+        if field_name in _DIRECT_FIELDS:
+            self.direct[f"{account_type}_{field_name}"] = value
+        elif (index := attachment_question_index(field_name)) is not None:
+            self.attachments.setdefault(account_type, []).append((index, value))
+        elif field_name == "data" and isinstance(value, dict):
+            self.extra_data.setdefault(account_type, {}).update(value)
+        else:
+            self.extra_data.setdefault(account_type, {})[field_name] = value
+
+    def as_flex_fields(self) -> dict[str, Any]:
+        result = dict(self.direct)
+        for account_type, data in self.extra_data.items():
+            result[f"{account_type}_data"] = data
+        for account_type, files in self.attachments.items():
+            result[attachments_field_name(account_type)] = [
+                {"file": value} for _index, value in sorted(files, key=lambda item: item[0])
+            ]
+        return result
