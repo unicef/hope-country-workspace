@@ -53,6 +53,76 @@
     }
   }
 
+  /* MUI's Checkbox: 18px box, navy fill with a white tick when checked, a round halo on hover and focus. */
+  .field-checkbox {
+    @apply bg-white cursor-pointer;
+    appearance: none;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    vertical-align: middle;
+    border: 2px solid rgba(0, 0, 0, 0.6);
+    border-radius: 2px;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+
+    &:hover {
+      box-shadow: 0 0 0 12px rgba(0, 0, 0, 0.04);
+    }
+
+    &:focus {
+      @apply outline-none;
+    }
+
+    &:focus-visible {
+      box-shadow: 0 0 0 12px theme('colors.primary.DEFAULT / 12%');
+    }
+
+    &:checked,
+    &:indeterminate {
+      @apply bg-primary border-primary;
+    }
+
+    &:checked {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
+    }
+
+    &:indeterminate {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M5 11h14v2H5z'/%3E%3C/svg%3E");
+    }
+
+    &:checked:hover,
+    &:indeterminate:hover {
+      box-shadow: 0 0 0 12px theme('colors.primary.DEFAULT / 4%');
+    }
+
+    &:disabled {
+      @apply cursor-not-allowed;
+      border-color: rgba(0, 0, 0, 0.26);
+      box-shadow: none;
+    }
+
+    &:disabled:checked,
+    &:disabled:indeterminate {
+      background-color: rgba(0, 0, 0, 0.26);
+    }
+  }
+
+  /* MUI's FormControlLabel: control on the left, body text on the right, centred. */
+  .checkbox-label {
+    @apply inline-flex items-center text-ink font-normal normal-case cursor-pointer;
+    gap: 9px;
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: normal;
+  }
+
   /* MUI's contained and outlined buttons. */
   .btn-contained {
     @apply inline-flex items-center justify-center bg-primary text-white font-medium uppercase cursor-pointer;

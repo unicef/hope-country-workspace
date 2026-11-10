@@ -45,6 +45,16 @@ form {
   }
 }
 
+/* Every workspace checkbox is MUI's, as in HOPE. */
+input[type="checkbox"] {
+  @apply field-checkbox;
+}
+
+/* CheckboxSelectMultiple and the image widget's clear box: <label><input> text</label>. */
+form label:has(> input[type="checkbox"]) {
+  @apply checkbox-label;
+}
+
 a.button,
 input[type="submit"],
 input[type="button"],
@@ -140,6 +150,24 @@ fieldset.module {
       width: 160px;
       word-wrap: break-word;
       @apply type-label;
+    }
+
+    /* BooleanFields: the box, then its label as body text, both centred (MUI FormControlLabel). */
+    .checkbox-row {
+      @apply items-center;
+      gap: 9px;
+      min-height: 40px;
+
+      label {
+        @apply checkbox-label;
+        width: auto;
+        min-width: 0;
+        padding: 0;
+      }
+
+      + .helptext {
+        padding-left: 27px;
+      }
     }
   }
 

@@ -263,16 +263,9 @@
     resize: vertical;
   }
 
-  input[type="checkbox"] {
-    @apply accent-primary;
-    width: 16px;
-    height: 16px;
-  }
-
   label:has(input[type="checkbox"]),
   li:has(> input[type="checkbox"]) {
-    @apply inline-flex items-center gap-2 text-ink;
-    font-size: 14px;
+    @apply checkbox-label;
 
     small {
       font-size: 14px;
