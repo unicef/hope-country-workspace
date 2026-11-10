@@ -11,7 +11,8 @@ from country_workspace.workspaces.icons import ICONS
 
 register = Library()
 
-SEPARATOR = re.compile("&rsaquo;|\u203a")
+# Only the entity, never the character: autoescaped data can't contain it, because its "&" becomes "&amp;".
+SEPARATOR = re.compile("&rsaquo;")
 ADMIN_LINK = re.compile(r'<a class="admin-change-link".*?</a>', re.DOTALL)
 
 
@@ -35,7 +36,7 @@ class PageHeadingNode(Node):
 
     def render(self, context: Context) -> str:
         segments = [s.strip() for s in SEPARATOR.split(self.nodelist.render(context))]
-        segments = [s for s in segments if s]
+        segments = [s for s in segments if ADMIN_LINK.sub("", s).strip()]
         if not segments:
             return render_to_string("workspace/includes/page_heading.html", {"title": ""})
         *crumbs, title = segments

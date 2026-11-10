@@ -45,6 +45,27 @@ def test_page_heading_escapes_context() -> None:
     assert "<b>" not in html
 
 
+def test_page_heading_keeps_separators_in_data_whole() -> None:
+    source = '{% page_heading %}&rsaquo; <a href="/hh/">{{ hh }}</a> &rsaquo; {{ name }}{% endpage_heading %}'
+    html = re.sub(r">\s+|\s+<", lambda m: m.group().strip(), render(source, hh="Smith › Jones", name="A &rsaquo; B"))
+    assert '<li><a href="/hh/">Smith › Jones</a></li>' in html
+    assert "<h2>A &amp;rsaquo; B</h2>" in html
+
+
+def test_page_heading_strips_the_real_admin_link() -> None:
+    from country_workspace.workspaces.templatetags.workspace_urls import ADMIN_URL
+
+    link = ADMIN_URL.format(url="/admin/x/", query="")
+    html = heading(f'&rsaquo; <a href="/hh/">Households</a>{link} &rsaquo; Dixon #0')
+    assert "admin-change-link" not in html
+
+
+def test_page_heading_drops_crumbs_holding_only_an_admin_link() -> None:
+    html = heading(f"&rsaquo; {STAR} &rsaquo; Batches")
+    assert "page-breadcrumbs" not in html
+    assert "<h2>Batches</h2>" in html
+
+
 def test_icon_renders_inline_svg() -> None:
     html = render('{% icon "home" "text-primary" %}')
     assert html.startswith('<svg class="icon text-primary" viewBox="0 0 24 24" fill="currentColor"')
