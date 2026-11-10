@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.contrib.dedup_engine import make_biometric_client
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.operations.repository import append_rdp_operation_log
 
@@ -23,7 +23,7 @@ def approve_deduplication_set_after_successful_push(
     deduplication_set_id = str(operation_id)
     result: OperationLogResult
     try:
-        with make_dedup_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
+        with make_biometric_client(group_reference_id, deduplication_set_id=deduplication_set_id) as client:
             client.approve()
     except (RemoteError, RemoteUnavailableError) as exc:
         result = {"success": False, "error": str(exc)}
@@ -44,7 +44,7 @@ def reject_deduplication_set(
 ) -> None:
     """Reject and record a DedupEngine deduplication set."""
     try:
-        with make_dedup_client(group_reference_id, deduplication_set_id=str(operation_id)) as client:
+        with make_biometric_client(group_reference_id, deduplication_set_id=str(operation_id)) as client:
             client.reject()
     except (RemoteError, RemoteUnavailableError) as exc:
         append_rdp_operation_log(

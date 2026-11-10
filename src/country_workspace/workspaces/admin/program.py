@@ -15,7 +15,7 @@ from django.utils.html import format_html_join
 from django.utils.text import slugify
 from strategy_field.utils import fqn
 
-from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.contrib.dedup_engine import make_biometric_client
 from country_workspace.rdp import get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
@@ -205,7 +205,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         return fieldsets
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
-        with make_dedup_client(group_reference_id=program.unicef_id, max_retries=0) as client:
+        with make_biometric_client(group_reference_id=program.unicef_id, max_retries=0) as client:
             return client.get_deduplication_set_group_config(timeout=DEDUP_SETTINGS_FETCH_TIMEOUT)
 
     @display(description=_("Settings"))
@@ -600,7 +600,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
                 return response
 
             try:
-                with make_dedup_client(group_reference_id=program.unicef_id) as client:
+                with make_biometric_client(group_reference_id=program.unicef_id) as client:
                     client.post_deduplication_set_group_config(payload=form.get_payload())
             except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(

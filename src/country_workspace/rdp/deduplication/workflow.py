@@ -13,13 +13,13 @@ from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
     REJECTABLE_DEDUPLICATION_SET_STATES,
     SYSTEM_ERROR_STATUS_CODES,
+    BiometricClient,
+    BiometricFinding,
     DeduplicationSetState,
     FindingStatusCode,
-    make_dedup_client,
+    make_biometric_client,
     retrieve_deduplication_set_state,
 )
-from country_workspace.contrib.dedup_engine.client import Client
-from country_workspace.contrib.dedup_engine.response import Finding
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
@@ -48,7 +48,7 @@ def get_dedup_callback_base_url() -> str:
     raise ValueError("APP_BASE_URL must be a valid absolute HTTP(S) URL.")
 
 
-def _finding_status(finding: Finding) -> FindingStatusCode:
+def _finding_status(finding: BiometricFinding) -> FindingStatusCode:
     """Return a validated DedupEngine finding status."""
     try:
         return FindingStatusCode(finding["status_code"])
@@ -56,7 +56,7 @@ def _finding_status(finding: Finding) -> FindingStatusCode:
         raise RemoteError(f"DedupEngine: invalid finding status: {finding!r}") from exc
 
 
-def _finding_reference_pk(finding: Finding, entry: Literal["first", "second"]) -> str:
+def _finding_reference_pk(finding: BiometricFinding, entry: Literal["first", "second"]) -> str:
     """Return a validated Individual reference from a DedupEngine finding."""
     try:
         reference_pk = finding[entry]["reference_pk"]
@@ -68,7 +68,7 @@ def _finding_reference_pk(finding: Finding, entry: Literal["first", "second"]) -
     return reference_pk
 
 
-def _finding_individual_id(finding: Finding, entry: Literal["first", "second"]) -> int:
+def _finding_individual_id(finding: BiometricFinding, entry: Literal["first", "second"]) -> int:
     """Return an Individual ID from a DedupEngine finding."""
     reference_pk = _finding_reference_pk(finding, entry)
     try:
@@ -79,11 +79,11 @@ def _finding_individual_id(finding: Finding, entry: Literal["first", "second"]) 
 
 def _build_biometric_findings(
     operation: RdpOperation,
-    findings: list[Finding],
+    findings: list[BiometricFinding],
 ) -> list[RdpOperationFinding]:
     """Build local biometric findings from a successful DedupEngine result."""
     current_pks = set(qs_individuals_for_rdp(rdp=operation.rdp).values_list("pk", flat=True))
-    parsed: list[tuple[Finding, FindingStatusCode, int, int | None]] = []
+    parsed: list[tuple[BiometricFinding, FindingStatusCode, int, int | None]] = []
 
     for finding in findings:
         status = _finding_status(finding)
@@ -122,7 +122,7 @@ def _build_biometric_findings(
     return result
 
 
-def _system_error_findings(findings: list[Finding]) -> list[dict[str, JSONValue]]:
+def _system_error_findings(findings: list[BiometricFinding]) -> list[dict[str, JSONValue]]:
     """Return DedupEngine system errors from findings."""
     return [
         {
@@ -142,7 +142,7 @@ def _deduplication_set_state(payload: dict[str, Any]) -> DeduplicationSetState:
         raise RemoteError(f"DedupEngine: malformed deduplication set response: {payload}") from exc
 
 
-def _validate_findings_count(*, expected: object, findings: list[Finding]) -> None:
+def _validate_findings_count(*, expected: object, findings: list[BiometricFinding]) -> None:
     """Validate the DedupEngine findings count."""
     received = len(findings)
     if type(expected) is not int or expected < 0 or expected != received:
@@ -163,7 +163,7 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
         return False
 
     try:
-        with make_dedup_client(
+        with make_biometric_client(
             operation.rdp.program.unicef_id,
             deduplication_set_id=str(operation.id),
         ) as client:
@@ -222,7 +222,7 @@ def _build_dedup_operation_callback_url(*, operation_id: UUID) -> str:
 
 def _get_or_create_biometric_set_state(
     *,
-    client: Client,
+    client: BiometricClient,
     operation: RdpOperation,
 ) -> DeduplicationSetState:
     """Return the existing DedupEngine set state or create the operation set."""
@@ -248,7 +248,7 @@ def _get_or_create_biometric_set_state(
 
 def _prepare_biometric_set(
     *,
-    client: Client,
+    client: BiometricClient,
     operation: RdpOperation,
 ) -> DeduplicationSetState:
     """Create or resume a DedupEngine set up to a processable state."""
@@ -269,7 +269,7 @@ def _prepare_biometric_set(
 
 def run_biometric_deduplication(operation: RdpOperation) -> None:
     """Start or resume biometric deduplication for an RDP operation."""
-    with make_dedup_client(
+    with make_biometric_client(
         operation.rdp.program.unicef_id,
         deduplication_set_id=str(operation.id),
     ) as client:
