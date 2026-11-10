@@ -52,10 +52,13 @@ module.exports = {
                 sidebar: '270px',
                 'sidebar-collapsed': '55px',
             },
-            // MUI elevations used by HOPE: 1 for Paper, 4 for the app bar and drawer header.
+            // MUI elevations used by HOPE: 1 for Paper, 2 for contained buttons, 4 for the app bar, drawer header and
+            // hovered buttons, 8 for menus.
             boxShadow: {
                 'elevation-1': '0px 2px 1px -1px rgba(0, 0, 0, 0.2), 0px 1px 1px 0px rgba(0, 0, 0, 0.14), 0px 1px 3px 0px rgba(0, 0, 0, 0.12)',
+                'elevation-2': '0px 3px 1px -2px rgba(0, 0, 0, 0.2), 0px 2px 2px 0px rgba(0, 0, 0, 0.14), 0px 1px 5px 0px rgba(0, 0, 0, 0.12)',
                 'elevation-4': '0px 2px 4px -1px rgba(0, 0, 0, 0.2), 0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12)',
+                'elevation-8': '0px 5px 5px -3px rgba(0, 0, 0, 0.2), 0px 8px 10px 1px rgba(0, 0, 0, 0.14), 0px 3px 14px 2px rgba(0, 0, 0, 0.12)',
             },
             colors: {
                 // Logo blocks only. Use `primary` for accents.
@@ -71,6 +74,15 @@ module.exports = {
                 label: 'rgba(37, 59, 70, 0.6)',
                 value: '#253B46',
                 ink: 'rgba(0, 0, 0, 0.87)',
+                // MUI's light palette as HOPE renders it.
+                action: {
+                    hover: 'rgba(0, 0, 0, 0.04)',
+                },
+                divider: 'rgba(224, 224, 224, 1)',
+                'input-border': 'rgba(0, 0, 0, 0.23)',
+                'icon-muted': 'rgba(0, 0, 0, 0.54)',
+                // HOPE's app bar text and icons.
+                'app-bar-text': '#e3e6e7',
                 // HOPE's theme.ts hctPalette
                 hct: {
                     orange: '#FC942A',

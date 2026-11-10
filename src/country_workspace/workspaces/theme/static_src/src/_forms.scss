@@ -22,11 +22,11 @@ form {
   /* Autocomplete widgets match .field-input. */
   .select2-container--default .select2-selection--single {
     height: 40px;
-    border: 1px solid rgba(0, 0, 0, 0.23);
+    border: 1px solid theme('colors.input-border');
     border-radius: 4px;
 
     &:hover {
-      border-color: rgba(0, 0, 0, 0.87);
+      border-color: theme('colors.ink');
     }
 
     .select2-selection__rendered {

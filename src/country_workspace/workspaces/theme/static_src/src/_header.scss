@@ -24,7 +24,7 @@ body.web {
         border: 0;
         border-radius: 4px;
         background-color: rgba(104, 119, 127, 0.5);
-        color: #e3e6e7;
+        color: theme('colors.app-bar-text');
         font-size: 16px;
         transition: background-color 150ms ease;
 
@@ -39,14 +39,14 @@ body.web {
         padding: 0 36px 0 10px;
         border: 0;
         appearance: none;
-        /* MUI's ArrowDropDown in #e3e6e7. */
+        /* MUI's ArrowDropDown in the app-bar text colour. */
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23e3e6e7' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 7px center;
         background-size: 24px;
 
         &:focus {
-          outline: 2px solid #e3e6e7;
+          outline: 2px solid theme('colors.app-bar-text');
           outline-offset: 1px;
         }
 
@@ -63,13 +63,13 @@ body.web {
         .select2-selection__rendered {
           /* adminfilters.css paints this span with --body-bg. */
           background: transparent;
-          color: #e3e6e7;
+          color: theme('colors.app-bar-text');
           line-height: 40px;
           padding: 0 36px 0 10px;
         }
 
         .select2-selection__placeholder {
-          color: #e3e6e7;
+          color: theme('colors.app-bar-text');
         }
 
         .select2-selection__arrow {
@@ -81,7 +81,7 @@ body.web {
 
           b {
             display: block;
-            border-color: #e3e6e7 transparent transparent transparent;
+            border-color: theme('colors.app-bar-text') transparent transparent transparent;
             border-width: 5px 5px 0 5px;
             margin-left: -8px;
             margin-top: -2px;
@@ -91,12 +91,12 @@ body.web {
 
       .select2-container--focus,
       .select2-container--open {
-        outline: 2px solid #e3e6e7;
+        outline: 2px solid theme('colors.app-bar-text');
         outline-offset: 1px;
       }
 
       .select2-container--open .select2-selection__arrow b {
-        border-color: transparent transparent #e3e6e7 transparent;
+        border-color: transparent transparent theme('colors.app-bar-text') transparent;
         border-width: 0 5px 5px 5px;
       }
     }
@@ -105,7 +105,7 @@ body.web {
       @apply relative flex items-center justify-center rounded-full;
       width: 40px;
       height: 40px;
-      color: #e3e6e7;
+      color: theme('colors.app-bar-text');
       font-size: 20px;
       transition: background-color 150ms ease;
 
@@ -131,7 +131,7 @@ body.web {
       .user-menu-button {
         @apply flex items-center cursor-pointer rounded font-medium uppercase list-none;
         padding: 6px 8px;
-        color: #e3e6e7;
+        color: theme('colors.app-bar-text');
         font-size: 14px;
         letter-spacing: 0.02857em;
         transition: background-color 150ms ease;
@@ -163,10 +163,7 @@ body.web {
         top: calc(100% + 4px);
         min-width: 180px;
         white-space: nowrap;
-        box-shadow:
-          0 5px 5px -3px rgba(0, 0, 0, 0.2),
-          0 8px 10px 1px rgba(0, 0, 0, 0.14),
-          0 3px 14px 2px rgba(0, 0, 0, 0.12);
+        box-shadow: theme('boxShadow.elevation-8');
 
         a,
         button {
@@ -176,7 +173,7 @@ body.web {
           line-height: 1.5;
 
           &:hover {
-            background-color: rgba(0, 0, 0, 0.04);
+            background-color: theme('colors.action.hover');
           }
         }
       }
@@ -200,10 +197,7 @@ body.web {
   position: relative;
   width: 100%;
   background-color: #ffffff;
-  box-shadow:
-    0 2px 4px -1px rgba(0, 0, 0, 0.2),
-    0 4px 5px 0 rgba(0, 0, 0, 0.14),
-    0 1px 10px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: theme('boxShadow.elevation-4');
 
   @apply flex items-center gap-x-6;
   padding: 28px 44px 28px 64px;
