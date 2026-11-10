@@ -13,8 +13,8 @@ from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedE
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
-from country_workspace.rdp.deduplication.actions import approve_deduplication_set_after_successful_push
-from country_workspace.rdp.deduplication.repository import biometric_operation_for_rdp
+from country_workspace.rdp.deduplication.biometric.actions import approve_deduplication_set_after_successful_push
+from country_workspace.rdp.deduplication.biometric.repository import biometric_operation_for_rdp
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
 from country_workspace.rdp.policy import ActionCheck

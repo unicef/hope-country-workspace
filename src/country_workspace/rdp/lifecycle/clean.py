@@ -7,8 +7,8 @@ from country_workspace.contrib.dedup_engine import DeduplicationSetState, retrie
 from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
 
-from country_workspace.rdp.deduplication.repository import biometric_operation_for_rdp
-from country_workspace.rdp.deduplication.workflow import schedule_cancelled_rdp_set_rejection
+from country_workspace.rdp.deduplication.biometric.repository import biometric_operation_for_rdp
+from country_workspace.rdp.deduplication.biometric.workflow import schedule_cancelled_rdp_set_rejection
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.push.thresholds import exceeded_operation_thresholds, threshold_findings_count_for_selection
 from country_workspace.rdp.repository import append_rdp_log, clean_rdp_selection, create_rdp, lock_rdp_for_update

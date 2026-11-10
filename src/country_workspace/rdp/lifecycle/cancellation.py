@@ -10,8 +10,8 @@ from country_workspace.contrib.dedup_engine import (
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 
-from country_workspace.rdp.deduplication.repository import biometric_operation_for_rdp
-from country_workspace.rdp.deduplication.workflow import schedule_cancelled_rdp_set_rejection
+from country_workspace.rdp.deduplication.biometric.repository import biometric_operation_for_rdp
+from country_workspace.rdp.deduplication.biometric.workflow import schedule_cancelled_rdp_set_rejection
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck, get_rdp_policy
 from country_workspace.rdp.repository import append_rdp_log, lock_rdp_for_update

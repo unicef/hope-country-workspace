@@ -29,7 +29,7 @@ from country_workspace.rdp.operations.workflow import schedule_rdp_operations
 from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
-from .constants import DEDUP_CALLBACK_SALT
+from ..constants import DEDUP_CALLBACK_SALT
 from .actions import reject_deduplication_set
 from .processor import BiometricDedupProcessor
 from .repository import biometric_operation_for_rdp, rdp_for_dedup
