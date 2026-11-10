@@ -1,4 +1,3 @@
-from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -6,9 +5,8 @@ from constance.test import override_config
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.rdi import HopeRdiResetUnconfirmedError, RdiResetResult
-from country_workspace.models import Program, Rdp
+from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
-from country_workspace.rdp.deduplication.types import ThresholdType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.push import workflow
@@ -286,20 +284,20 @@ def test_evaluate_rdp_for_push_without_biometric_operation(
     schedule.assert_called_once()
 
 
-def test_evaluate_rdp_for_push_requires_individuals(
+def test_evaluate_rdp_for_push_propagates_threshold_error(
     rdp: Rdp,
-    successful_biometric_operation,
     mocker: MockerFixture,
 ) -> None:
     mocker.patch.object(workflow, "lock_rdp_for_update", return_value=rdp)
     mocker.patch.object(workflow, "has_incomplete_rdp_operations", return_value=False)
-    mocker.patch.object(workflow, "biometric_operation_for_rdp", return_value=successful_biometric_operation)
-    mocker.patch.object(workflow, "biometric_findings_count", return_value=1)
-    individuals = mocker.patch.object(workflow, "qs_individuals_for_rdp")
-    individuals.return_value.count.return_value = 0
+    error = RdpWorkflowError({"errors": ["threshold error"]})
+    evaluate = mocker.patch.object(workflow, "evaluate_review_thresholds", side_effect=error)
 
-    with pytest.raises(RdpWorkflowError):
+    with pytest.raises(RdpWorkflowError) as exc:
         workflow.evaluate_rdp_for_push(rdp_id=rdp.pk)
+
+    assert exc.value is error
+    evaluate.assert_called_once_with(rdp=rdp)
 
 
 @pytest.mark.parametrize(
@@ -311,24 +309,20 @@ def test_evaluate_rdp_for_push_requires_individuals(
 )
 def test_evaluate_rdp_for_push_with_biometric_threshold(
     rdp: Rdp,
-    successful_biometric_operation,
     mocker: MockerFixture,
     exceeded: bool,
     status: Rdp.PushStatus,
     entry_type: RdpLogEntryType,
     scheduled: bool,
 ) -> None:
-    successful_biometric_operation.config = {
-        "threshold_type": "count",
-        "threshold_value": "1",
+    thresholds = {
+        RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value: {
+            "threshold_exceeded": exceeded,
+        }
     }
     mocker.patch.object(workflow, "lock_rdp_for_update", return_value=rdp)
     mocker.patch.object(workflow, "has_incomplete_rdp_operations", return_value=False)
-    mocker.patch.object(workflow, "biometric_operation_for_rdp", return_value=successful_biometric_operation)
-    mocker.patch.object(workflow, "biometric_findings_count", return_value=2)
-    individuals = mocker.patch.object(workflow, "qs_individuals_for_rdp")
-    individuals.return_value.count.return_value = 10
-    threshold = mocker.patch.object(workflow, "threshold_exceeded", return_value=exceeded)
+    evaluate = mocker.patch.object(workflow, "evaluate_review_thresholds", return_value=(thresholds, exceeded))
     append_log = mocker.patch.object(workflow, "append_rdp_log")
     schedule = mocker.patch.object(workflow, "_schedule_push_preparation")
 
@@ -336,17 +330,8 @@ def test_evaluate_rdp_for_push_with_biometric_threshold(
 
     assert result["evaluated"] is True
     assert result["outcome"] == status
-    assert result["findings_count"] == 2
-    assert result["individuals_count"] == 10
-    assert result["findings_rate"] == "20.00"
-    assert result["threshold_exceeded"] is exceeded
-
-    threshold.assert_called_once_with(
-        findings_count=2,
-        total_count=10,
-        threshold_type=ThresholdType.COUNT,
-        threshold_value=Decimal(1),
-    )
+    assert result["thresholds"] == thresholds
+    evaluate.assert_called_once_with(rdp=rdp)
     assert append_log.call_args.kwargs["entry_type"] == entry_type
     assert schedule.called is scheduled
 

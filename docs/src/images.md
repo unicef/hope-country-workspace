@@ -50,4 +50,4 @@ If an image field shows no picture, check the following in order:
 * the Batch was reprocessed after pictures were added through **Import pictures**, in which case the pictures must be imported again;
 * the picture was cleared on the change form, which **History** confirms.
 
-A record whose picture cannot be resolved at all stops the job that needs it, such as a **[push to HOPE](rdp/push.md)** or a **[deduplication](rdp/deduplication.md)** run, instead of sending an incomplete record. Review the related background job for the affected record.
+A record whose picture cannot be resolved at all stops the job that needs it, such as a **[push to HOPE](rdp/push.md)** or a **[deduplication](rdp/operations/deduplication.md)** run, instead of sending an incomplete record. Review the related background job for the affected record.

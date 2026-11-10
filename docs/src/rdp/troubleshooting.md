@@ -8,27 +8,31 @@ For the normal workflow, see **[RDP processing flow](processing.md)** and **[Lif
 
 | Problem | What to check |
 | --- | --- |
-| RDP creation failed | Open the failed **Create RDP** job in **Processing history** and check the preflight error. See **[Create an RDP](create.md)**. |
-| RDP remains `PENDING` | Check **Operations** first. If an operation failed, use **Retry failed operations**. If all operations are `SUCCESS`, check **Processing history** for the push evaluation. |
-| RDP is `REVIEW_PENDING` | This is not a processing failure. Review is required before continuing. See **[Manual review](operations/deduplication.md#manual-review)**. |
-| RDP is `FAILURE` | The HOPE push failed. Check **Processing history**, then use **Retry push to HOPE** when the cause is resolved. |
-| **Cancel RDP** is unavailable | **Cancel RDP** is available only for `PENDING`, `REVIEW_PENDING`, or `FAILURE`, and is blocked while an operation is `RUNNING`. See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**. |
+| RDP creation failed | Open the failed **Create RDP** job in **Processing history** and check the error. See **[Create an RDP](create.md)**. |
+| RDP remains `PENDING` | Check **Operations** first. Recover an available operation with **Retry operations**; if all operations are `SUCCESS`, check the push-evaluation job in **Processing history**. |
+| Clean replacement RDP remains `PENDING` | With biometric deduplication, replacement operations start only after the source Deduplication Set is rejected. Check the source RDP's **Processing history**. See **[Replacement RDP](review.md#replacement-rdp)**. |
+| RDP is `REVIEW_PENDING` | This is not a processing failure. See **[Review and Clean RDP](review.md)**. |
+| RDP is `FAILURE` | The push attempt failed. Check **Processing history**, resolve the cause, then use **Retry push to HOPE**. |
+| RDP remains `PUSH_PENDING` | Check whether Country Workspace is still waiting for HOPE or transferring data before treating the push as stuck. |
+| **Cancel RDP** is unavailable or fails | It is available only for `PENDING`, `REVIEW_PENDING`, or `FAILURE` RDPs and is blocked while an operation is `RUNNING`. For biometric RDPs, cancellation also requires a Deduplication Set state that can be safely verified and handled. See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)**. |
 
-## Operation failed
+## Operation requires recovery
 
-An operation failure does not change the RDP to `FAILURE`; the RDP remains `PENDING`.
+A technical operation failure leaves the RDP in `PENDING`; it does not change the RDP itself to `FAILURE`.
 
-Check the operation error and log in the **Operations** section, then use **Retry failed operations**. The same operation is retried with its existing configuration.
+Check the operation status, error, and execution log in **Operations**. Use **Retry operations** for failed operations or for another operation state that explicitly supports manual recovery.
 
-See **[RDP operations](operations/index.md#operation-statuses)** for the common operation lifecycle and **[Biometric deduplication](operations/deduplication.md#failed-biometric-operation)** for biometric failures.
+For OCR, use **Processed** and **Last result** to see whether a `RUNNING` attempt is still receiving results. Restart a `RUNNING` attempt only when further results are no longer expected. Completed OCR work is preserved and stale results from the previous attempt are ignored. A `RUNNING` biometric operation should not be restarted because DedupEngine may still be processing it.
+
+See **[RDP operations](operations/index.md#operation-statuses)**, **[OCR recovery](operations/ocr.md#recovery)**, and **[Failed biometric operation](operations/deduplication.md#failed-biometric-operation)**.
 
 ## Push evaluation failed
 
-If all configured operations are `SUCCESS` but the RDP remains `PENDING`, check **Processing history** for a failed **Evaluate RDP for push** job.
+After all configured operations reach `SUCCESS`, Country Workspace runs **Evaluate RDP for push** to determine whether review is required or the push can start.
 
-Authorized users can open the failed job and use **Queue** to run the push evaluation again.
+If that job fails, the RDP remains `PENDING`. Open the failed job in **Processing history** and use **Queue** to run the repeatable evaluation again after the cause has been resolved.
 
-See **[Operation results and review](processing.md#operation-results-and-review)** for where push evaluation fits into the normal flow.
+See **[Findings and review](processing.md#findings-and-review)** for where evaluation fits into the normal flow.
 
 ## RDP remains in `PUSH_PENDING`
 
@@ -36,17 +40,17 @@ See **[Operation results and review](processing.md#operation-results-and-review)
 
 Check **Processing history** before treating the push as stuck.
 
-If the push can no longer continue, authorized staff can use **Fail stuck push** after confirming that the push preparation job is no longer running and that no HOPE callback is still expected.
+If the push can no longer continue, authorized staff can use **Fail stuck push** after confirming that the push preparation job is no longer running and that no HOPE callback is still expected. Successful recovery changes the RDP to `FAILURE`.
 
-See **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** for the recovery conditions and next steps.
+See **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** for the recovery conditions and **[Retry a failed push](push.md#retry-a-failed-push)** for the next step.
 
 ## Push failed
 
-A failed push changes the RDP to `FAILURE`.
+A failed push attempt changes the RDP to `FAILURE`.
 
-Check **Processing history** for the failed preparation or data-push job. If HOPE reports that a previous RDI merge is still in progress, retry after that merge completes.
+Check **Processing history** for the push preparation and data-push steps. Failures can occur during HOPE preparation, callback handoff, preflight validation, or data transfer. If HOPE reports that a previous RDI merge is still in progress, retry only after that merge completes.
 
-Use **Retry push to HOPE** to start a new push attempt. See **[Retry a failed push](push.md#retry-a-failed-push)**.
+Use **Retry push to HOPE** to start a new push attempt. See **[Push to HOPE Core](push.md)** for the complete push workflow.
 
 ## DedupEngine approval failed after a successful push
 
@@ -54,4 +58,4 @@ For biometric RDPs, Country Workspace attempts to approve the Deduplication Set 
 
 An approval failure does not change the RDP from `SUCCESS`; the beneficiary data has already been pushed successfully. Do not retry the HOPE push for this reason alone.
 
-See **[After a successful push](push.md#after-a-successful-push)**.
+See **[Deduplication Set lifecycle](operations/deduplication.md#deduplication-set-lifecycle)**.

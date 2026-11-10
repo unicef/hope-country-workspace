@@ -6,7 +6,7 @@ Batches are created automatically during imports from **[RDI](sources/xlsx.md)**
 
 ## Open and review a Batch
 
-Open **Batches** in the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)** after selecting the required Office and Program.
+Open **Batches** in the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)** after selecting the required Office and Program.
 
 Only Batches belonging to the selected Office and Program are available.
 
@@ -92,7 +92,7 @@ See **[Import pictures](picture_import.md)** for matching rules, archive prepara
 
 ## Remove a Batch
 
-A Batch cannot be deleted from the **[Analyst / Collector Workspace](../interfaces.md#analyst--collector-workspace)**.
+A Batch cannot be deleted from the **[Analyst / Collector Workspace](../interfaces.md#analyst-collector-workspace)**.
 
 Staff users can permanently remove a Batch from **[Staff Administration](../interfaces.md#staff-administration)** by opening the Batch and using the **Batch cleanup** action.
 

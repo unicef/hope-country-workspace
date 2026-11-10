@@ -17,27 +17,30 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from hope_flex_fields.references import flex_file_src
 
-from ...cache.manager import cache_manager
-from ...state import state
+from country_workspace.cache.manager import cache_manager
+from country_workspace.models import Batch, Individual, Rdp
+from country_workspace.state import state
+from country_workspace.utils.flex_fields import get_checker_fields
+from country_workspace.utils.flex_files import FlexFileContent, attach_flex_files
+from country_workspace.utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
+from country_workspace.utils.imports import validate_alien_fields
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryRdp
+from country_workspace.workspaces.options import WorkspaceModelAdmin
+from country_workspace.workspaces.permissions import can_import_program_data
+
 from ._import_data import ImportDataMixin
-from ..options import WorkspaceModelAdmin
-from ..models import CountryHousehold, CountryIndividual
-from ..permissions import can_import_program_data
-from ...models import Batch, Individual, Rdp
-from .filters import get_rdp_context
-from ...utils.imports import validate_alien_fields
-from ...utils.import_flow.structural_fields import STRUCTURAL_FIELD_LOCK_ERROR, find_locked_field_changes
+from ._operation_findings import OperationFindingsAdminMixin, OperationFindingsFilter
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from ...utils.flex_fields import get_checker_fields
-from ...utils.flex_files import FlexFileContent, attach_flex_files
+from .filters import get_rdp_context, get_requested_rdp_id
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
     from hope_flex_fields.models import DataChecker
 
-    from ...models.base import Validable
-    from ...types import Beneficiary
+    from country_workspace.models.base import Validable
+    from country_workspace.types import Beneficiary
+
     from .program import CountryProgram
 
 
@@ -66,6 +69,7 @@ class SelectedProgramMixin(WorkspaceModelAdmin):
 class BeneficiaryBaseAdmin(
     AdminAutoCompleteSearchMixin,
     ImportDataMixin,
+    OperationFindingsAdminMixin,
     SelectedProgramMixin,
     WorkspaceModelAdmin,
 ):
@@ -97,6 +101,10 @@ class BeneficiaryBaseAdmin(
     @property
     def title_member_plural(self) -> str | None:
         return self._get_title_label("member_label_plural")
+
+    def _get_title_label(self, attr: str) -> str | None:
+        program = state.program
+        return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
 
     def get_actions(self, request: HttpRequest) -> dict[str, tuple[str, str, str]]:
         _actions = super().get_actions(request)
@@ -139,24 +147,35 @@ class BeneficiaryBaseAdmin(
             return True
         return False
 
+    def _filter_rdp_queryset(
+        self,
+        request: HttpRequest,
+        queryset: "QuerySet[Beneficiary]",
+        rdp: Rdp,
+    ) -> "QuerySet[Beneficiary]":
+        if issubclass(self.model, Individual) and rdp.program.is_master_detail:
+            return queryset.filter(household__rdp=rdp)
+        return queryset.filter(rdp=rdp)
+
     def get_queryset(self, request: HttpRequest) -> "QuerySet[Beneficiary]":
         qs = super().get_queryset(request)
-        if prg := self.get_selected_program(request):
-            rdp = get_rdp_context(request)
-            qs = qs.filter(batch__program=prg, batch__status=Batch.BatchStatus.COMPLETE)
-            if ("rdp_id" in request.GET or "rdp__exact" in request.GET) and rdp is None:
-                return qs.none()
-            if rdp:
-                if issubclass(self.model, Individual) and rdp.program.is_master_detail:
-                    return qs.filter(household__rdp=rdp)
-                return qs.filter(rdp=rdp)
-            return qs.filter(removed=False)
-        return qs.none()
+        if not (program := self.get_selected_program(request)):
+            return qs.none()
+
+        rdp = get_rdp_context(request)
+        qs = qs.filter(batch__program=program, batch__status=Batch.BatchStatus.COMPLETE)
+
+        if get_requested_rdp_id(request) is not None and rdp is None:
+            return qs.none()
+        if rdp:
+            return self._filter_rdp_queryset(request, qs, rdp)
+        return qs.filter(removed=False)
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
         context = super().get_common_context(request, pk, **kwargs)
         program = self.get_selected_program(request)
-        return {
+        rdp = get_rdp_context(request)
+        context = {
             **context,
             "modeladmin": self,
             "datachecker": self.get_checker(request, context.get("original")),
@@ -166,11 +185,15 @@ class BeneficiaryBaseAdmin(
             "title_member_plural": self.title_member_plural,
             "master_detail": program.beneficiary_group.master_detail if program and program.beneficiary_group else None,
             **kwargs,
+            "selected_rdp": rdp,
+            "selected_rdp_url": (
+                reverse("workspace:workspaces_countryrdp_change", args=[rdp.pk])
+                if rdp and self.admin_site.get_model_admin(CountryRdp).has_view_permission(request, rdp)
+                else None
+            ),
         }
-
-    def _get_title_label(self, attr: str) -> str | None:
-        program = state.program
-        return getattr(program.beneficiary_group, attr) if program and program.beneficiary_group else None
+        context.update(self._get_operation_findings_context(request, context["original"], rdp))
+        return context
 
     @button(
         label=_("Validate"),
@@ -244,12 +267,24 @@ class BeneficiaryBaseAdmin(
 
     is_valid.boolean = True
 
+    def get_list_filter(self, request: HttpRequest) -> list[Any]:
+        filters = list(super().get_list_filter(request))
+        if self._can_show_operation_findings(request, get_rdp_context(request)):
+            filters.append(OperationFindingsFilter)
+        return filters
+
     def get_list_display(self, request: HttpRequest) -> list[str]:
         if program := self.get_selected_program(request):
-            cols = program.get_columns_for(self.model)
+            columns = program.get_columns_for(self.model)
         else:
-            cols = list(self.list_display)
-        return cols + ["is_valid"]
+            columns = list(self.list_display)
+
+        columns = [column for column in columns if column != "operation_findings"] + ["is_valid"]
+
+        if self._can_show_operation_findings(request, get_rdp_context(request)):
+            columns.append("operation_findings")
+
+        return columns
 
     def get_changelist(self, request: HttpRequest, **kwargs: Any) -> type:
         from ..changelist import FlexFieldsChangeList

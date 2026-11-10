@@ -92,14 +92,21 @@ def flex_field_display(value: Any) -> Any:
     return value
 
 
+@register.filter(name="flex_field_image")
+def flex_field_image(value: Any) -> Any:
+    """Render a file value as a thumbnail linking to the full image."""
+    if not (src := flex_file_src(value)):
+        return ""
+    return format_html(
+        '<a href="{}" target="_blank"><img src="{}" style="max-height: 120px; width: auto" /></a>', src, src
+    )
+
+
 @register.filter(name="flex_field_value")
 def flex_field_value(value: Any) -> Any:
     """Render file values as a thumbnail linking to the full image, with its id."""
-    if not (src := flex_file_src(value)):
+    if not (image := flex_field_image(value)):
         return value
-    image = format_html(
-        '<a href="{}" target="_blank"><img src="{}" style="max-height: 120px; width: auto" /></a>', src, src
-    )
     # legacy inline images have no row to identify, and their value is the whole payload
     if (file_id := FlexFieldFile.parse_reference(value)) is None:
         return image

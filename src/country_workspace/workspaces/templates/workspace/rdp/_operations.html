@@ -17,12 +17,65 @@
                     </tr>
                     <tr>
                         <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Correlation ID" %}
+                            {% translate "Findings" %}
                         </th>
                         <td class="py-2">
-                            {{ row.id }}
+                            {% if row.findings_url %}
+                                <a href="{{ row.findings_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
+                                    {% translate "View findings" %} ({{ row.findings }})
+                                </a>
+                            {% else %}
+                                {{ row.findings }}
+                            {% endif %}
+                            {% if not row.results_complete %}
+                                <span class="ml-1 text-sm text-gray-500">
+                                    ({% translate "saved so far" %})
+                                </span>
+                            {% endif %}
                         </td>
                     </tr>
+                    {% if row.affected_individuals is not None %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Affected individuals" %}
+                            </th>
+                            <td class="py-2">
+                                {{ row.affected_individuals }}
+                            </td>
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <th class="py-2 pr-8 whitespace-nowrap">
+                            {% translate "Attempts" %}
+                        </th>
+                        <td class="py-2">
+                            {{ row.attempts }}
+                        </td>
+                    </tr>
+                    {% if row.processed %}
+                        <tr>
+                            <th class="py-2 pr-8 whitespace-nowrap">
+                                {% translate "Processed" %}
+                            </th>
+                            <td class="py-2">
+                                {{ row.processed }}
+                            </td>
+                        </tr>
+                        {% if row.show_last_result %}
+                            <tr>
+                                <th class="py-2 pr-8 whitespace-nowrap">
+                                    {% translate "Last result" %}
+                                </th>
+                                <td class="py-2">
+                                    {% if row.last_result %}
+                                        {% blocktranslate with elapsed=row.last_result|timesince %}{{ elapsed }} ago{% endblocktranslate %}
+                                    {% else %}
+                                        {% translate "No results in this attempt yet" %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endif %}
                     <tr>
                         <th class="py-2 pr-8 whitespace-nowrap">
                             {% translate "Started" %}
@@ -41,33 +94,15 @@
                     </tr>
                     <tr>
                         <th class="py-2 pr-8 whitespace-nowrap">
-                            {% translate "Attempts" %}
+                            {{ row.operation_id_label }}
                         </th>
-                        <td class="py-2">
-                            {{ row.attempts }}
+                        <td class="py-2 break-all">
+                            {{ row.operation_id }}
                         </td>
                     </tr>
-                    {% if row.findings is not None %}
-                        <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Findings" %}
-                            </th>
-                            <td class="py-2">
-                                {{ row.findings }}
-                            </td>
-                        </tr>
-                        <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
-                                {% translate "Affected individuals" %}
-                            </th>
-                            <td class="py-2">
-                                {{ row.affected_individuals }}
-                            </td>
-                        </tr>
-                    {% endif %}
                     {% if row.config %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
+                            <th class="py-2 pr-8 whitespace-nowrap align-top">
                                 {% translate "Config" %}
                             </th>
                             <td class="py-2">
@@ -82,7 +117,7 @@
                     {% endif %}
                     {% if row.error %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
+                            <th class="py-2 pr-8 whitespace-nowrap align-top">
                                 {% translate "Last error" %}
                             </th>
                             <td class="py-2">
@@ -97,7 +132,7 @@
                     {% endif %}
                     {% if row.log %}
                         <tr>
-                            <th class="py-2 pr-8 whitespace-nowrap">
+                            <th class="py-2 pr-8 whitespace-nowrap align-top">
                                 {% translate "Log" %}
                             </th>
                             <td class="py-2">
