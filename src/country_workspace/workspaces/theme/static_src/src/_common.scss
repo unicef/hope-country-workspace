@@ -68,10 +68,6 @@ ul.object-tools {
         &::-webkit-details-marker {
           display: none;
         }
-
-        &:hover {
-          background-color: theme('colors.primary.DEFAULT / 4%');
-        }
       }
 
       &[open] > summary {
@@ -80,25 +76,12 @@ ul.object-tools {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 14 5-5 5 5z'/%3E%3C/svg%3E");
       }
 
-      /* MUI Menu: white Paper at elevation 8, 16px items with a light hover. */
       .choice-menu-list {
-        @apply absolute left-0 z-30 bg-white rounded py-2 m-0 list-none;
-        top: calc(100% + 4px);
+        @apply menu-paper left-0 z-30 m-0 list-none;
         min-width: 100%;
-        white-space: nowrap;
-        box-shadow: theme('boxShadow.elevation-8');
 
         a {
-          @apply block text-ink no-underline;
-          padding: 6px 16px;
-          font-size: 16px;
-          line-height: 1.5;
-
-          &:hover,
-          &:focus-visible {
-            @apply outline-none;
-            background-color: theme('colors.action.hover');
-          }
+          @apply menu-list-item;
 
           &.selected {
             background-color: theme('colors.primary.DEFAULT / 8%');
@@ -240,11 +223,7 @@ table {
 
         input,
         select {
-          @apply field-input min-w-full;
-        }
-
-        select {
-          @apply field-select;
+          @apply min-w-full;
         }
       }
 
@@ -258,7 +237,7 @@ table {
 
 .tenant-select-wrap {
   select {
-    @apply field-input field-select min-w-full;
+    @apply min-w-full;
   }
 
   .select2-container {
@@ -271,9 +250,7 @@ body.web {
     @apply btn-contained;
 
     &.small {
-      padding: 4px 10px;
-      font-size: 13px;
-      line-height: 22px;
+      @apply btn-small;
     }
 
     &.secondary {

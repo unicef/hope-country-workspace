@@ -3,10 +3,6 @@ body.web {
     @apply bg-primary;
   }
 
-  #select2-id_program-results > li.select2-results__option.select2-results__option--highlighted {
-    @apply bg-primary;
-  }
-
   header {
     @apply bg-secondary;
     color: white;
@@ -159,22 +155,12 @@ body.web {
       }
 
       .user-menu-list {
-        @apply absolute right-0 bg-white rounded py-2;
-        top: calc(100% + 4px);
+        @apply menu-paper right-0;
         min-width: 180px;
-        white-space: nowrap;
-        box-shadow: theme('boxShadow.elevation-8');
 
         a,
         button {
-          @apply block w-full text-left text-ink;
-          padding: 6px 16px;
-          font-size: 16px;
-          line-height: 1.5;
-
-          &:hover {
-            background-color: theme('colors.action.hover');
-          }
+          @apply menu-list-item w-full text-left;
         }
       }
     }

@@ -21,31 +21,12 @@ form {
 
   /* Autocomplete widgets match .field-input. */
   .select2-container--default .select2-selection--single {
-    height: 40px;
-    border: 1px solid theme('colors.input-border');
-    border-radius: 4px;
-
-    &:hover {
-      border-color: theme('colors.ink');
-    }
-
-    .select2-selection__rendered {
-      @apply text-ink;
-      font-size: 14px;
-      line-height: 38px;
-      padding-left: 14px;
-    }
-
-    .select2-selection__arrow {
-      @apply field-select-arrow;
-      height: 38px;
-    }
+    @apply field-select2;
   }
 
   .select2-container--default.select2-container--focus .select2-selection--single,
   .select2-container--default.select2-container--open .select2-selection--single {
-    @apply border-primary;
-    box-shadow: inset 0 0 0 1px theme('colors.primary.DEFAULT');
+    @apply field-focus;
   }
 }
 
