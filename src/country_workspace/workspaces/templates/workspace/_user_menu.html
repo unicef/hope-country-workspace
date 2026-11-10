@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n workspace_urls %}
 {% with label=request.user.email|default:request.user.username %}
     <details id="user-menu" class="user-menu">
         <summary class="user-menu-button" title="{{ label }}">
@@ -10,6 +10,18 @@
                 <li>
                     <a href="{% url "admin:index" %}" target="_admin">{% trans "Admin" %}</a>
                 </li>
+                {% admin_href active_tenant as office_admin %}
+                {% if office_admin %}
+                    <li>
+                        <a href="{{ office_admin }}" target="_admin">{% trans "Office in Admin" %}</a>
+                    </li>
+                {% endif %}
+                {% admin_href active_program as program_admin %}
+                {% if program_admin %}
+                    <li>
+                        <a href="{{ program_admin }}" target="_admin">{% trans "Programme in Admin" %}</a>
+                    </li>
+                {% endif %}
             {% endif %}
             <li>
                 <form method="post" action="{% url "admin:logout" %}">

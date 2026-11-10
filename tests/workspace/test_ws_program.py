@@ -382,3 +382,16 @@ def test_household_alien_fields_not_visible_when_master_detail_false(app, househ
 
         menu_el = doc("details[name='household_group']")
         assert not menu_el
+
+
+def test_user_menu_links_office_and_programme_admin(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+
+    links = {a.text.strip(): a.attrib["href"] for a in res.pyquery("#user-menu .user-menu-list a")}
+    assert links["Office in Admin"] == reverse(
+        "admin:country_workspace_office_change", args=[program.country_office.pk]
+    )
+    assert links["Programme in Admin"] == reverse("admin:country_workspace_program_change", args=[program.pk])

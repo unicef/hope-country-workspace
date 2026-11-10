@@ -162,6 +162,7 @@ body.web {
         @apply absolute right-0 bg-white rounded py-2;
         top: calc(100% + 4px);
         min-width: 180px;
+        white-space: nowrap;
         box-shadow:
           0 5px 5px -3px rgba(0, 0, 0, 0.2),
           0 8px 10px 1px rgba(0, 0, 0, 0.14),

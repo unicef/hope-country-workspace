@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.state import State
 from country_workspace.workspaces.templatetags.workspace_urls import ADMIN_CHANGE_VIEW, ADMIN_URL
-from src.country_workspace.workspaces.templatetags.workspace_urls import admin_url
+from src.country_workspace.workspaces.templatetags.workspace_urls import admin_href, admin_url
 
 TEST_URL = "test_url"
 
@@ -78,3 +78,14 @@ def test_admin_url_user_is_staff_model_passed(
     reverse_mock.assert_called_once_with(
         ADMIN_CHANGE_VIEW.format(app=options.app_label, model=options.model_name), args=(model.pk,)
     )
+
+
+def test_admin_href_is_the_bare_url(user: User, model: Model, reverse_mock: Mock) -> None:
+    user.is_staff = True
+    assert admin_href(model) == TEST_URL
+    assert admin_href(model, household__exact=1) == f"{TEST_URL}?household__exact=1"
+
+
+def test_admin_href_user_is_not_staff(user: User, model: Model) -> None:
+    user.is_staff = False
+    assert admin_href(model) == ""
