@@ -2,7 +2,7 @@ import pytest
 from constance.test import override_config
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.dedup_engine.factory import make_client
+from country_workspace.contrib.dedup_engine.biometric.factory import make_client
 
 
 @pytest.mark.parametrize(
@@ -16,9 +16,9 @@ from country_workspace.contrib.dedup_engine.factory import make_client
 def test_make_client(mocker: MockerFixture, kwargs: dict[str, int], max_retries: int) -> None:
     session_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Session")
     auth_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Auth")
-    client_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Client")
+    client_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.factory.Client")
     adapter_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.HTTPAdapter")
-    api_root_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.APIRoot")
+    api_root_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.factory.APIRoot")
 
     https_adapter = mocker.MagicMock()
     http_adapter = mocker.MagicMock()

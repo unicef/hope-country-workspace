@@ -1,22 +1,30 @@
 from dataclasses import dataclass
 from functools import partial
-from uuid import UUID
 
 from requests import Session
 
 from country_workspace.exceptions import RemoteError
 
 from ..client import BaseClient
+from ..resource import UPLOAD_TIMEOUT
 from . import endpoint, request, resource, response
+
+
+FINDINGS_PAGE_SIZE = 10_000
 
 
 @dataclass(slots=True)
 class Client(BaseClient):
+    """Client of the DedupEngine biographic API for one program.
+
+    DedupEngine assigns the dataset id, so a client starts unbound and binds to the dataset on `create_dataset`.
+    """
+
     business_area_slug: str
     program_code: str
-    dataset_id: UUID
     session: Session
     api_root: endpoint.APIRoot
+    dataset_id: int | None = None
 
     @property
     def datasets_endpoint(self) -> endpoint.Datasets:
@@ -24,23 +32,20 @@ class Client(BaseClient):
 
     @property
     def dataset_endpoint(self) -> endpoint.Dataset:
+        if self.dataset_id is None:
+            raise RemoteError("DedupEngine: dataset_id is not set")
         return self.datasets_endpoint.dataset(self.dataset_id)
 
     def create_dataset(self, notification_url: str | None = None) -> response.Dataset:
-        dataset_id = str(self.dataset_id)
         collection = resource.DatasetCollection(self.session, self.datasets_endpoint)
-        payload: request.CreateDataset = {"dataset_id": dataset_id}
+        payload: request.CreateDataset = {}
         if notification_url:
             payload["notification_url"] = notification_url
             payload["notify"] = True
 
-        def create() -> response.Dataset:
-            dataset = collection.create(payload)
-            if (created_id := dataset.get("dataset_id")) != dataset_id:
-                raise RemoteError(f"DedupEngine: dataset id mismatch: expected={dataset_id}, got={created_id!r}")
-            return dataset
-
-        return self._request("create_dataset", create)
+        created = self._request("create_dataset", lambda: collection.create(payload))
+        self.dataset_id = created["dataset_id"]
+        return created
 
     def retrieve_dataset(self) -> response.Dataset:
         item = resource.DatasetItem(self.session, self.dataset_endpoint)
@@ -51,27 +56,39 @@ class Client(BaseClient):
         return self._request("retrieve_dataset", item.retrieve_or_none)
 
     def create_records(self, records: list[request.Record]) -> response.RecordsBatchResult:
+        """Add a batch of people to a pending dataset. Sending a `reference_pk` again replaces its record."""
         collection = resource.RecordsCollection(self.session, self.dataset_endpoint.records)
-        return self._request("create_records", lambda: collection.create({"records": records}))
+        return self._request(
+            "create_records",
+            partial(collection.create, {"records": records}, timeout=UPLOAD_TIMEOUT),
+        )
 
     def process(self, overrides: request.ProcessOverrides | None = None) -> response.Dataset:
+        """Start (or retry) indexing and scoring; `overrides` apply to this run only."""
         action = resource.DatasetAction(self.session, self.dataset_endpoint.process)
-        return self._request("process", partial(action.call, overrides))
+        return self._request("process", partial(action.call, overrides or {}))
 
     def retrieve_findings(self) -> list[response.Finding]:
+        """Retrieve every finding of the dataset and check that none is missing."""
         collection = resource.FindingsCollection(self.session, self.dataset_endpoint.findings)
         findings: list[response.Finding] = []
+        expected: int | None = None
         page = 1
 
         while True:
             result = self._request(
                 "retrieve_findings",
-                partial(collection.list, params={"page": str(page)}),
+                partial(collection.list, params={"page": str(page), "page_size": str(FINDINGS_PAGE_SIZE)}),
             )
+            expected = result["count"] if expected is None else expected
             findings.extend(result["results"])
             if result.get("next") is None:
-                return findings
+                break
             page += 1
+
+        if len(findings) != expected:
+            raise RemoteError(f"DedupEngine: findings count={expected!r}, received={len(findings)}")
+        return findings
 
     def approve(self) -> response.Dataset:
         action = resource.DatasetAction(self.session, self.dataset_endpoint.approve)

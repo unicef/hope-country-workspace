@@ -2,16 +2,16 @@ from typing import Literal, NotRequired, TypedDict
 
 
 class Dataset(TypedDict):
-    dataset_id: str
+    dataset_id: int
     status: str
     error: str | None
     records_count: int
     batch_duplicates: int
     population_duplicates: int
-    notification_url: str | None
-    notify: bool
-    created_at: str
-    updated_at: str
+    notification_url: NotRequired[str | None]
+    notify: NotRequired[bool]
+    created_at: NotRequired[str]
+    updated_at: NotRequired[str]
 
 
 class Finding(TypedDict):
@@ -20,7 +20,7 @@ class Finding(TypedDict):
     scope: Literal["batch", "population"]
     score: float
     proximity_to_score: float
-    matched_full_name: str
+    matched_full_name: str | None
     matched_birth_date: str | None
 
 
