@@ -5,7 +5,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.deduplication import actions
-from country_workspace.rdp.deduplication.types import DeduplicationLogAction
+from country_workspace.rdp.deduplication.biometrictypes import DeduplicationLogAction
 
 
 def test_approve_without_operation_is_noop(mocker: MockerFixture) -> None:

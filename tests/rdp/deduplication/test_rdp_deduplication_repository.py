@@ -4,7 +4,7 @@ import pytest
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
 from country_workspace.models import Individual, Rdp, RdpOperation
-from country_workspace.rdp.deduplication.repository import (
+from country_workspace.rdp.deduplication.biometricrepository import (
     biometric_operation_for_rdp,
     qs_biometric_affected_individuals,
     rdp_for_dedup,

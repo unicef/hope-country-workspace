@@ -6,7 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import Rdp, RdpOperation
-from country_workspace.rdp.deduplication.types import BiometricFindingType
+from country_workspace.rdp.deduplication.biometrictypes import BiometricFindingType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.push import thresholds

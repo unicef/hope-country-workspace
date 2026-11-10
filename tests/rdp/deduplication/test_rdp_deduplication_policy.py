@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Program, Rdp, RdpOperation
-from country_workspace.rdp.deduplication.policy import ProgramDedupSettingsPolicy
+from country_workspace.rdp.deduplication.biometricpolicy import ProgramDedupSettingsPolicy
 
 
 pytestmark = pytest.mark.django_db
