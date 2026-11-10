@@ -41,6 +41,7 @@ class ProgramAdmin(SyncAdminMixin, BaseModelAdmin):
         "enabled",
         "beneficiary_group",
         "biometric_deduplication_enabled",
+        "biographic_deduplication_enabled",
         "beneficiary_validator",
         "household_checker",
         "individual_checker",
