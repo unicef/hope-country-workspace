@@ -47,11 +47,9 @@
                             {% endif %}
                             {# HOPE's ClearApplyButtons: Clear as text, Apply outlined. #}
                             <a href="{{ cl.clear_all_filters_qs }}" id="clear-all-filters" class="btn-text">{% translate "Clear" %}</a>
-                            {% if cl.search_fields %}
-                                <button type="submit" form="changelist-search" class="button secondary">
-                                    {% translate "Apply" %}
-                                </button>
-                            {% endif %}
+                            <button type="button" id="apply-filters" class="button secondary">
+                                {% translate "Apply" %}
+                            </button>
                         </div>
                     </nav>
                 {% endif %}
