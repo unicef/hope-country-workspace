@@ -131,8 +131,18 @@ fieldset.module {
     border-bottom: 1px solid var(--hairline-color);
     margin-bottom: 0;
 
+    /* Labels sit centred on their single-line input; tall fields keep the label at the top. */
     .flex-container {
       display: flex;
+      align-items: center;
+
+      &:has(textarea, select[multiple], ul, .readonly) {
+        align-items: flex-start;
+
+        > label {
+          padding-top: 4px;
+        }
+      }
 
       .related-widget-wrapper {
         display: flex;
@@ -145,7 +155,7 @@ fieldset.module {
 
     label {
       display: block;
-      padding: 4px 10px 0 0;
+      padding: 0 10px 0 0;
       min-width: 160px;
       width: 160px;
       word-wrap: break-word;
