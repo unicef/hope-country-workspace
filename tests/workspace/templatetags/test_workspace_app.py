@@ -1,3 +1,4 @@
+import logging
 import re
 
 from django.template import Context, Template
@@ -47,8 +48,10 @@ def test_page_heading_escapes_context() -> None:
 
 def test_page_heading_keeps_separators_in_data_whole() -> None:
     source = '{% page_heading %}&rsaquo; <a href="/hh/">{{ hh }}</a> &rsaquo; {{ name }}{% endpage_heading %}'
-    html = re.sub(r">\s+|\s+<", lambda m: m.group().strip(), render(source, hh="Smith › Jones", name="A &rsaquo; B"))
-    assert '<li><a href="/hh/">Smith › Jones</a></li>' in html
+    html = re.sub(
+        r">\s+|\s+<", lambda m: m.group().strip(), render(source, hh="Smith \u203a Jones", name="A &rsaquo; B")
+    )
+    assert '<li><a href="/hh/">Smith \u203a Jones</a></li>' in html
     assert "<h2>A &amp;rsaquo; B</h2>" in html
 
 
@@ -70,3 +73,9 @@ def test_icon_renders_inline_svg() -> None:
     html = render('{% icon "home" "text-primary" %}')
     assert html.startswith('<svg class="icon text-primary" viewBox="0 0 24 24" fill="currentColor"')
     assert "<path d=" in html
+
+
+def test_icon_unknown_name_renders_nothing(caplog) -> None:
+    with caplog.at_level(logging.WARNING):
+        assert render('{% icon "no-such-icon" %}') == ""
+    assert "no-such-icon" in caplog.text

@@ -1,3 +1,4 @@
+import logging
 import re
 
 from django.template import Library, Node, NodeList
@@ -9,6 +10,7 @@ from django.utils.safestring import mark_safe
 from country_workspace import VERSION
 from country_workspace.workspaces.icons import ICONS
 
+logger = logging.getLogger(__name__)
 register = Library()
 
 # Only the entity, never the character: autoescaped data can't contain it, because its "&" becomes "&amp;".
@@ -23,7 +25,13 @@ def app_version() -> str:
 
 @register.simple_tag
 def icon(name: str, css_class: str = "") -> str:
-    """Render a Material icon from ICONS as inline SVG, sized 1em and coloured by `currentColor`."""
+    """Render a Material icon from ICONS as inline SVG, sized 1em and coloured by `currentColor`.
+
+    An unknown name renders nothing, so a missing icon can't break the page.
+    """
+    if name not in ICONS:
+        logger.warning("Unknown icon %r", name)
+        return ""
     return mark_safe(  # noqa: S308
         f'<svg class="icon {css_class}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">'
         f"{ICONS[name]}</svg>"
