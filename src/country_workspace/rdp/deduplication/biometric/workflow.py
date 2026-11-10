@@ -1,13 +1,8 @@
-from contextlib import suppress
 from typing import Any, Literal
-from urllib.parse import urlsplit
 from uuid import UUID
-from strategy_field.utils import fqn
 
-from constance import config
-from django.core import signing
 from django.db import transaction
-from django.urls import reverse
+from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
@@ -29,23 +24,10 @@ from country_workspace.rdp.operations.workflow import schedule_rdp_operations
 from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
-from ..constants import DEDUP_CALLBACK_SALT
+from ..callbacks import build_dedup_operation_callback_url
 from .actions import reject_deduplication_set
 from .processor import BiometricDedupProcessor
 from .repository import biometric_operation_for_rdp, rdp_for_dedup
-
-
-def get_dedup_callback_base_url() -> str:
-    """Return a validated base URL for DedupEngine callbacks."""
-    base_url = config.APP_BASE_URL.strip().rstrip("/")
-
-    with suppress(ValueError):
-        url = urlsplit(base_url)
-        if url.scheme in {"http", "https"} and url.hostname and not (url.query or url.fragment):
-            _ = url.port
-            return base_url
-
-    raise ValueError("APP_BASE_URL must be a valid absolute HTTP(S) URL.")
 
 
 def _finding_status(finding: BiometricFinding) -> FindingStatusCode:
@@ -149,13 +131,8 @@ def _validate_findings_count(*, expected: object, findings: list[BiometricFindin
         raise RemoteError(f"DedupEngine: findings_count={expected!r}, received={received}")
 
 
-def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
+def sync_biometric_result(operation: RdpOperation) -> bool:
     """Synchronize a biometric deduplication operation with DedupEngine."""
-    try:
-        operation = get_rdp_operation(pk=operation_id)
-    except RdpOperation.DoesNotExist:
-        return False
-
     if (
         operation.operation_type != RdpOperation.Type.BIOMETRIC_DEDUPLICATION
         or operation.status != RdpOperation.Status.RUNNING
@@ -213,11 +190,13 @@ def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
         return result
 
 
-def _build_dedup_operation_callback_url(*, operation_id: UUID) -> str:
-    """Build a signed DedupEngine callback URL for an RDP operation."""
-    token = signing.dumps({"operation_id": str(operation_id)}, salt=DEDUP_CALLBACK_SALT)
-    path = reverse("api:callbacks:dedup-engine-rdp-state-changed", kwargs={"signed_token": token})
-    return f"{get_dedup_callback_base_url()}{path}"
+def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
+    """Synchronize a biometric deduplication operation with DedupEngine."""
+    try:
+        operation = get_rdp_operation(pk=operation_id)
+    except RdpOperation.DoesNotExist:
+        return False
+    return sync_biometric_result(operation)
 
 
 def _get_or_create_biometric_set_state(
@@ -236,7 +215,7 @@ def _get_or_create_biometric_set_state(
         raise RemoteError("DedupEngine: another deduplication set is active for this program.")
 
     payload = client.create_deduplication_set(
-        notification_url=_build_dedup_operation_callback_url(operation_id=operation.id),
+        notification_url=build_dedup_operation_callback_url(operation_id=operation.id),
     )
     if payload.get("id") != str(operation.id):
         raise RemoteError(
