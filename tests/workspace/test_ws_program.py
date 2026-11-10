@@ -395,3 +395,14 @@ def test_user_menu_links_office_and_programme_admin(app, household: "CountryHous
         "admin:country_workspace_office_change", args=[program.country_office.pk]
     )
     assert links["Programme in Admin"] == reverse("admin:country_workspace_program_change", args=[program.pk])
+
+
+@pytest.mark.parametrize("view", ["household_columns", "household_alien_fields_to_ignore", "household_defaults"])
+def test_program_action_pages_have_no_header_actions(app, household: "CountryHousehold", view: str):
+    program: "CountryProgram" = household.program
+
+    with select_office(app, program.country_office, program):
+        res = app.get(reverse(f"workspace:workspaces_countryprogram_{view}", args=[program.pk]))
+
+    assert res.status_code == 200
+    assert not res.pyquery(".title-actions .object-tools")
