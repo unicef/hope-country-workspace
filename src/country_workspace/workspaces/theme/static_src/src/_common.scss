@@ -40,10 +40,10 @@ body.web {
 ul.object-tools {
   @apply flex flex-wrap items-center justify-end gap-2 m-0 p-0;
 
-  li {
+  > li {
     @apply text-sm font-normal;
 
-    a {
+    > a {
       @apply btn-outlined;
 
       &.primary {
@@ -55,21 +55,58 @@ ul.object-tools {
       }
     }
 
-    /* admin_extra_buttons choice buttons: an outlined button with MUI's ArrowDropDown, sized to its label. */
-    select.aeb-button {
-      @apply btn-outlined appearance-none;
-      field-sizing: content;
-      max-width: 16rem;
-      padding-right: 36px;
-      background: no-repeat right 8px center / 24px
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 10 5 5 5-5z'/%3E%3C/svg%3E");
+    /* admin_extra_buttons choice buttons: an outlined button with MUI's ArrowDropDown opening an MUI Menu. */
+    details.aeb-button {
+      @apply relative;
 
-      &:hover {
-        background-color: theme('colors.primary.DEFAULT / 4%');
+      > summary {
+        @apply btn-outlined list-none cursor-pointer select-none;
+        padding-right: 36px;
+        background: no-repeat right 8px center / 24px
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 10 5 5 5-5z'/%3E%3C/svg%3E");
+
+        &::-webkit-details-marker {
+          display: none;
+        }
+
+        &:hover {
+          background-color: theme('colors.primary.DEFAULT / 4%');
+        }
       }
 
-      option {
-        @apply text-ink bg-white normal-case;
+      &[open] > summary {
+        background-color: theme('colors.primary.DEFAULT / 4%');
+        /* ArrowDropUp while open, like MUI. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 14 5-5 5 5z'/%3E%3C/svg%3E");
+      }
+
+      /* MUI Menu: white Paper at elevation 8, 16px items with a light hover. */
+      .choice-menu-list {
+        @apply absolute left-0 z-30 bg-white rounded py-2 m-0 list-none;
+        top: calc(100% + 4px);
+        min-width: 100%;
+        white-space: nowrap;
+        box-shadow:
+          0 5px 5px -3px rgba(0, 0, 0, 0.2),
+          0 8px 10px 1px rgba(0, 0, 0, 0.14),
+          0 3px 14px 2px rgba(0, 0, 0, 0.12);
+
+        a {
+          @apply block text-ink no-underline;
+          padding: 6px 16px;
+          font-size: 16px;
+          line-height: 1.5;
+
+          &:hover,
+          &:focus-visible {
+            @apply outline-none;
+            background-color: rgba(0, 0, 0, 0.04);
+          }
+
+          &.selected {
+            background-color: theme('colors.primary.DEFAULT / 8%');
+          }
+        }
       }
     }
   }
