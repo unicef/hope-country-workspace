@@ -6,11 +6,6 @@ from country_workspace.rdp.repository import qs_individuals_for_rdp
 from .constants import BIOMETRIC_AFFECTING_FINDING_TYPES
 
 
-def rdp_for_dedup(*, pk: int) -> Rdp:
-    """Return RDP with related Program loaded for dedup workflow."""
-    return Rdp.objects.select_related("program").get(pk=pk)
-
-
 def biometric_operation_for_rdp(*, rdp: Rdp) -> RdpOperation | None:
     """Return the biometric deduplication operation for an RDP."""
     return rdp.operations.filter(operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION).first()

@@ -85,5 +85,5 @@ def mock_dedup_client(mocker: MockerFixture) -> tuple[MagicMock, MagicMock]:
     context_manager = mocker.MagicMock()
     context_manager.__enter__.return_value = client
     context_manager.__exit__.return_value = False
-    make_client = mocker.patch.object(program_admin_mod, "make_dedup_client", return_value=context_manager)
+    make_client = mocker.patch.object(program_admin_mod, "make_biometric_client", return_value=context_manager)
     return make_client, client

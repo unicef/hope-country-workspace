@@ -662,26 +662,16 @@ def test_raise_push_errors(
         workflow._raise_push_errors(processor)
 
 
-@pytest.mark.parametrize("with_operation", [True, False])
-def test_finish_successful_push(
-    push_pending_rdp: Rdp,
-    biometric_operation,
-    mocker: MockerFixture,
-    with_operation: bool,
-) -> None:
-    operation = biometric_operation if with_operation else None
-    mocker.patch.object(workflow, "biometric_operation_for_rdp", return_value=operation)
+def test_finish_successful_push(push_pending_rdp: Rdp, mocker: MockerFixture) -> None:
     removed = mocker.patch.object(workflow, "set_rdp_beneficiaries_removed")
     finish = mocker.patch.object(push_pending_rdp, "finish_push_attempt")
-    on_commit = mocker.patch.object(workflow.transaction, "on_commit")
+    approve = mocker.patch.object(workflow, "schedule_deduplication_approval")
 
     workflow._finish_successful_push(rdp=push_pending_rdp, hope_rdi_id="RID")
 
     removed.assert_called_once_with(rdp=push_pending_rdp, removed=True)
     finish.assert_called_once_with(status=Rdp.PushStatus.SUCCESS, hope_rdi_id="RID")
-
-    callback = on_commit.call_args.args[0]
-    assert callback.keywords["operation_id"] == (operation.id if operation else None)
+    approve.assert_called_once_with(push_pending_rdp)
 
 
 @pytest.mark.parametrize("active", [True, False])

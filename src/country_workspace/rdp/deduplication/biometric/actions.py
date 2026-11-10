@@ -5,7 +5,7 @@ from country_workspace.contrib.dedup_engine import make_biometric_client
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.rdp.operations.repository import append_rdp_operation_log
 
-from .types import DeduplicationLogAction
+from ..types import DeduplicationLogAction
 
 if TYPE_CHECKING:
     from country_workspace.rdp.types import OperationLogResult

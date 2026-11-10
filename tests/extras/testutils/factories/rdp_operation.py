@@ -3,6 +3,7 @@ import factory
 from country_workspace.contrib.dedup_engine import FindingStatusCode
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
 from country_workspace.models import RdpOperation, RdpOperationFinding, RdpOperationUnit
+from country_workspace.rdp.deduplication.biographic.types import BiographicFindingType
 from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.types import ThresholdType
 
@@ -21,6 +22,16 @@ class RdpOperationFactory(AutoRegisterModelFactory):
 
 class BiometricRdpOperationFactory(RdpOperationFactory):
     operation_type = RdpOperation.Type.BIOMETRIC_DEDUPLICATION
+    config = factory.LazyFunction(
+        lambda: {
+            "threshold_type": ThresholdType.COUNT.value,
+            "threshold_value": "0",
+        }
+    )
+
+
+class BiographicRdpOperationFactory(RdpOperationFactory):
+    operation_type = RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION
     config = factory.LazyFunction(
         lambda: {
             "threshold_type": ThresholdType.COUNT.value,
@@ -56,6 +67,12 @@ class BiometricRdpOperationFindingFactory(RdpOperationFindingFactory):
     operation = factory.SubFactory(BiometricRdpOperationFactory)
     finding_type = FindingStatusCode.BAD_IMAGE_QUALITY.name
     field_name = "photo"
+
+
+class BiographicRdpOperationFindingFactory(RdpOperationFindingFactory):
+    operation = factory.SubFactory(BiographicRdpOperationFactory)
+    finding_type = BiographicFindingType.DUPLICATE.value
+    details = factory.LazyFunction(lambda: {"scope": "batch", "score": 0.9})
 
 
 class OcrRdpOperationFindingFactory(RdpOperationFindingFactory):

@@ -4,7 +4,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import RdpOperation
-from country_workspace.rdp.deduplication.biometricbiometric.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biographic.forms import BiographicDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
 from country_workspace.rdp.ocr.forms import OcrConfigForm
 from country_workspace.rdp.operations.definitions import (
     RDP_OPERATION_DEFINITIONS,
@@ -31,6 +32,44 @@ def test_get_enabled_rdp_operation_definitions(
     definitions = get_enabled_rdp_operation_definitions(program)
 
     assert tuple(definition.operation_type for definition in definitions) == expected
+
+
+@pytest.mark.parametrize(
+    ("biometric", "biographic", "expected"),
+    [
+        (False, True, (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR)),
+        (
+            True,
+            True,
+            (
+                RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+                RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+                RdpOperation.Type.OCR,
+            ),
+        ),
+    ],
+)
+def test_get_enabled_rdp_operation_definitions_with_biographic(
+    program,
+    biometric: bool,
+    biographic: bool,
+    expected: tuple[RdpOperation.Type, ...],
+) -> None:
+    program.biometric_deduplication_enabled = biometric
+    program.biographic_deduplication_enabled = biographic
+
+    definitions = get_enabled_rdp_operation_definitions(program)
+
+    assert tuple(definition.operation_type for definition in definitions) == expected
+
+
+def test_biographic_operation_definition() -> None:
+    definition = RDP_OPERATION_DEFINITIONS[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION]
+
+    assert definition.config_form is BiographicDeduplicationConfigForm
+    assert definition.short_label == "Biographic"
+    assert definition.operation_id_label == "Dataset ID"
+    assert definition.can_retry_while_running is False
 
 
 def test_get_rdp_operation_forms(program) -> None:

@@ -13,8 +13,8 @@ from country_workspace.contrib.hope.rdi import HopeApi, HopeRdiResetUnconfirmedE
 from country_workspace.models import AsyncJob, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.notifications.signals import rdi_push_completed_signal, rdp_push_status_changed_signal
-from country_workspace.rdp.deduplication.biometric.actions import approve_deduplication_set_after_successful_push
 from country_workspace.rdp.deduplication.biometric.repository import biometric_operation_for_rdp
+from country_workspace.rdp.deduplication.workflow import schedule_deduplication_approval
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.repository import has_incomplete_rdp_operations
 from country_workspace.rdp.policy import ActionCheck
@@ -382,20 +382,10 @@ def _raise_push_errors(processor: PushProcessor) -> None:
 
 def _finish_successful_push(*, rdp: Rdp, hope_rdi_id: str) -> None:
     """Finish a successful push for a locked RDP."""
-    operation = biometric_operation_for_rdp(rdp=rdp)
-
     set_rdp_beneficiaries_removed(rdp=rdp, removed=True)
     rdp.finish_push_attempt(status=Rdp.PushStatus.SUCCESS, hope_rdi_id=hope_rdi_id)
 
-    # TODO(Vitali): Use Bitcaster to retry DedupEngine approval after a successful HOPE push.
-    transaction.on_commit(
-        partial(
-            approve_deduplication_set_after_successful_push,
-            operation_id=operation.id if operation else None,
-            group_reference_id=rdp.program.unicef_id,
-        ),
-        robust=True,
-    )
+    schedule_deduplication_approval(rdp)
 
 
 def _finish_already_merged_push(*, rdp_id: int, push_attempt_id: UUID, hope_rdi_id: str) -> None:

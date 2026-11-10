@@ -4,10 +4,9 @@ import pytest
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
 from country_workspace.models import Individual, Rdp, RdpOperation
-from country_workspace.rdp.deduplication.biometricrepository import (
+from country_workspace.rdp.deduplication.biometric.repository import (
     biometric_operation_for_rdp,
     qs_biometric_affected_individuals,
-    rdp_for_dedup,
 )
 
 pytestmark = pytest.mark.django_db
@@ -47,10 +46,6 @@ def affected_individuals(
     )
     OcrRdpOperationFindingFactory(individual=unaffected, operation__rdp=rdp)
     return individuals
-
-
-def test_rdp_for_dedup(rdp: Rdp) -> None:
-    assert rdp_for_dedup(pk=rdp.pk) == rdp
 
 
 def test_biometric_operation_for_rdp(biometric_operation: RdpOperation) -> None:

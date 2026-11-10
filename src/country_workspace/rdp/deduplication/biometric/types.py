@@ -1,14 +1,7 @@
-from enum import StrEnum
-
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
-
-
-class DeduplicationLogAction(StrEnum):
-    APPROVE_SET = "APPROVE_DEDUPLICATION_SET"
-    REJECT_SET = "REJECT_DEDUPLICATION_SET"
 
 
 class BiometricFindingType(TextChoices):

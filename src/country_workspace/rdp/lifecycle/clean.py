@@ -3,12 +3,13 @@ from uuid import UUID
 
 from django.db import IntegrityError, transaction
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState, retrieve_deduplication_set_state
 from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import RdpLogEntryType
-
-from country_workspace.rdp.deduplication.biometric.repository import biometric_operation_for_rdp
-from country_workspace.rdp.deduplication.biometric.workflow import schedule_cancelled_rdp_set_rejection
+from country_workspace.rdp.deduplication.workflow import (
+    check_clean_rdp_deduplication,
+    deduplication_operations_for_rdp,
+    schedule_cancelled_rdp_set_rejection,
+)
 from country_workspace.rdp.policy import ActionCheck
 from country_workspace.rdp.push.thresholds import exceeded_operation_thresholds, threshold_findings_count_for_selection
 from country_workspace.rdp.repository import append_rdp_log, clean_rdp_selection, create_rdp, lock_rdp_for_update
@@ -19,40 +20,25 @@ from country_workspace.rdp.types import (
     OperationLogResult,
     ThresholdType,
 )
+
 from .creation import rdp_creation_error, schedule_rdp_processing, validate_rdp_creation
 
 
 class _CleanRdpPlan(NamedTuple):
-    biometric_operation_id: UUID | None
+    deduplication_operation_ids: frozenset[UUID]
     exceeded_thresholds: dict[UUID, OperationLogResult]
     master_detail: bool
     pks: list[int]
 
 
-def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, RdpOperation | None]:
-    """Check Clean RDP prerequisites and return its biometric operation when configured."""
+def _clean_rdp_check(rdp: Rdp) -> tuple[ActionCheck, tuple[RdpOperation, ...]]:
+    """Check Clean RDP prerequisites and return its DedupEngine-backed operations."""
     if rdp.program.cleanup_in_progress:
-        return ActionCheck(False, "Program cleanup is in progress."), None
+        return ActionCheck(False, "Program cleanup is in progress."), ()
     if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
-        return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
+        return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), ()
 
-    operation = biometric_operation_for_rdp(rdp=rdp)
-    if operation is None:
-        return ActionCheck(True), None
-    if operation.status != RdpOperation.Status.SUCCESS:
-        return ActionCheck(False, "RDP: successful biometric deduplication is required."), None
-
-    state = retrieve_deduplication_set_state(
-        group_reference_id=rdp.program.unicef_id,
-        deduplication_set_id=str(operation.id),
-    )
-    if state != DeduplicationSetState.DEDUPLICATED:
-        return ActionCheck(
-            False,
-            f"DedupEngine: can not create clean RDP with deduplication set in state={state!r}.",
-        ), None
-
-    return ActionCheck(True), operation
+    return check_clean_rdp_deduplication(rdp)
 
 
 def _prepare_clean_rdp_plan(
@@ -61,7 +47,7 @@ def _prepare_clean_rdp_plan(
     clean_operation_ids: set[UUID],
 ) -> tuple[ActionCheck, _CleanRdpPlan | None]:
     """Validate clean decisions and build the replacement plan."""
-    check, biometric_operation = _clean_rdp_check(rdp)
+    check, deduplication_operations = _clean_rdp_check(rdp)
     if not check.allowed:
         return check, None
 
@@ -76,7 +62,7 @@ def _prepare_clean_rdp_plan(
         return ActionCheck(False, "RDP: no beneficiaries remain after removing selected findings."), None
 
     return ActionCheck(True), _CleanRdpPlan(
-        biometric_operation.id if biometric_operation else None,
+        frozenset(operation.id for operation in deduplication_operations),
         exceeded_thresholds,
         master_detail,
         pks,
@@ -88,11 +74,11 @@ def _clean_rdp_plan_is_current(
     rdp: Rdp,
     clean_operation_ids: set[UUID],
     plan: _CleanRdpPlan,
-    biometric_operation: RdpOperation | None,
+    deduplication_operations: list[RdpOperation],
 ) -> bool:
     """Return whether the reviewed results still match the clean plan."""
-    if (biometric_operation.id if biometric_operation else None) != plan.biometric_operation_id or (
-        biometric_operation is not None and biometric_operation.status != RdpOperation.Status.SUCCESS
+    if frozenset(operation.id for operation in deduplication_operations) != plan.deduplication_operation_ids or any(
+        operation.status != RdpOperation.Status.SUCCESS for operation in deduplication_operations
     ):
         return False
 
@@ -140,17 +126,17 @@ def _schedule_clean_rdp_processing(
     rdp: Rdp,
     clean_rdp: Rdp,
     user_id: int,
-    biometric_operation: RdpOperation | None,
+    deduplication_operation_ids: frozenset[UUID],
 ) -> dict[str, JSONValue]:
     """Schedule processing for a clean replacement RDP."""
-    if biometric_operation is None:
+    if not deduplication_operation_ids:
         schedule_rdp_processing(rdp=clean_rdp)
         return {"deduplication_set_rejection": "not_required"}
 
     job = schedule_cancelled_rdp_set_rejection(
         rdp=rdp,
         user_id=user_id,
-        deduplication_set_id=str(biometric_operation.id),
+        operation_ids=deduplication_operation_ids,
         clean_rdp_id=clean_rdp.pk,
     )
     return {
@@ -175,12 +161,12 @@ def _create_clean_rdp_locked(
     if rdp.status != Rdp.PushStatus.REVIEW_PENDING:
         return ActionCheck(False, f"RDP: can not create clean RDP in status={rdp.status}"), None
 
-    biometric_operation = biometric_operation_for_rdp(rdp=rdp)
+    deduplication_operations = deduplication_operations_for_rdp(rdp)
     if not _clean_rdp_plan_is_current(
         rdp=rdp,
         clean_operation_ids=clean_operation_ids,
         plan=plan,
-        biometric_operation=biometric_operation,
+        deduplication_operations=deduplication_operations,
     ):
         return ActionCheck(False, "RDP: operation results or selection have changed. Please retry."), None
 
@@ -206,7 +192,7 @@ def _create_clean_rdp_locked(
         rdp=rdp,
         clean_rdp=clean_rdp,
         user_id=user_id,
-        biometric_operation=biometric_operation,
+        deduplication_operation_ids=plan.deduplication_operation_ids,
     )
     exceeded_operation_ids = set(plan.exceeded_thresholds)
     append_rdp_log(
