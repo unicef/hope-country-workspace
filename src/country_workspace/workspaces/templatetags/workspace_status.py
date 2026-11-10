@@ -22,6 +22,12 @@ STATUS_TONES = {
 
 
 @register.inclusion_tag("workspace/includes/status_box.html")
-def status_box(status: Any, label: Any = None) -> dict[str, Any]:
-    """Render a status pill, with the tone taken from the raw status so translated labels don't affect it."""
-    return {"tone": STATUS_TONES.get(str(status).upper(), "neutral"), "label": label or status}
+def status_box(status: Any, label: Any = None, detail: Any = None) -> dict[str, Any]:
+    """Render a status pill, with the tone taken from the raw status so translated labels don't affect it.
+
+    `detail` is appended in brackets, so a status that is costly to read only has to be read once.
+    """
+    label = label or status
+    if detail:
+        label = f"{label} ({detail})"
+    return {"tone": STATUS_TONES.get(str(status).upper(), "neutral"), "label": label}

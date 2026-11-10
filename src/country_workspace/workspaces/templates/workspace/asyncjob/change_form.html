@@ -8,7 +8,8 @@
 {% block object-tools %}
     <div class="flex items-center">
         <div class="flex-none px-10">
-            {% status_box original.task_status original.verbose_status %}
+            {# task_status queries Celery: read it once, and add local_status as verbose_status would. #}
+            {% status_box original.task_status detail=original.local_status %}
         </div>
         <div class="grow">
             {{ block.super }}
