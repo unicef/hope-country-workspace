@@ -182,14 +182,6 @@ body.web {
     }
   }
 
-  select {
-    @apply min-w-48 py-2 text-sm;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: rgb(107 114 128 / var(--tw-border-opacity, 1));
-    padding-right: 2.5rem;
-  }
-
   svg.sidebar-button {
     fill: white;
     width: 1.25em;

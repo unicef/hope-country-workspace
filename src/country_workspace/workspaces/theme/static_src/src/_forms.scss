@@ -12,7 +12,7 @@ form {
   }
 
   select {
-    @apply field-select;
+    @apply field-select min-w-48;
   }
 
   .helptext {
