@@ -179,7 +179,7 @@
 
 /* Changelists: the filter panel and the table are separate cards, like HOPE's Paper sections. */
 #content #content-main.changelist-main {
-  @apply flex-col gap-4 bg-transparent;
+  @apply flex-col gap-4 bg-transparent shadow-none;
   padding: 0;
   border: 0;
 
