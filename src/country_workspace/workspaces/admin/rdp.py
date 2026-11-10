@@ -42,6 +42,7 @@ from country_workspace.rdp import (
     has_retryable_rdp_operations,
     latest_operation_findings_by_individual,
     ocr_affected_individuals_count,
+    qs_biographic_affected_individuals,
     qs_biometric_affected_individuals,
     qs_rdp_operation_findings,
     retry_rdp_operations,
@@ -320,6 +321,8 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 match operation.operation_type:
                     case RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
                         affected_individuals = qs_biometric_affected_individuals(operation=operation).count()
+                    case RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
+                        affected_individuals = qs_biographic_affected_individuals(operation=operation).count()
                     case RdpOperation.Type.OCR:
                         affected_individuals = ocr_affected_individuals_count(operation=operation)
 

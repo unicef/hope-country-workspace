@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Program, Rdp, RdpOperation
-from country_workspace.rdp.deduplication.biometricpolicy import ProgramDedupSettingsPolicy
+from country_workspace.rdp.deduplication.biometric.policy import ProgramDedupSettingsPolicy
 
 
 pytestmark = pytest.mark.django_db
@@ -109,9 +109,9 @@ def test_has_blocking_deduplication_set(
     mocker: MockerFixture,
     can_create: bool,
 ) -> None:
-    from country_workspace.rdp.deduplication import policy as policy_mod
+    from country_workspace.rdp.deduplication.biometric import policy as policy_mod
 
-    make_client = mocker.patch.object(policy_mod, "make_dedup_client")
+    make_client = mocker.patch.object(policy_mod, "make_biometric_client")
     client = make_client.return_value.__enter__.return_value
     client.can_create_deduplication_set.return_value = can_create
 

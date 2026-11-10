@@ -1,33 +1,24 @@
 from typing import Any, Literal
-from uuid import UUID
-
-from django.db import transaction
-from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import (
     PROCESSABLE_DEDUPLICATION_SET_STATES,
-    REJECTABLE_DEDUPLICATION_SET_STATES,
     SYSTEM_ERROR_STATUS_CODES,
     BiometricClient,
     BiometricFinding,
     DeduplicationSetState,
     FindingStatusCode,
     make_biometric_client,
-    retrieve_deduplication_set_state,
 )
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
-from country_workspace.models import AsyncJob, Program, Rdp, RdpOperation, RdpOperationFinding
+from country_workspace.models import RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.operations.completion import complete_rdp_operation
-from country_workspace.rdp.operations.repository import fail_rdp_operation, get_rdp_operation
-from country_workspace.rdp.operations.workflow import schedule_rdp_operations
+from country_workspace.rdp.operations.repository import fail_rdp_operation
 from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
 from ..callbacks import build_dedup_operation_callback_url
-from .actions import reject_deduplication_set
 from .processor import BiometricDedupProcessor
-from .repository import biometric_operation_for_rdp, rdp_for_dedup
 
 
 def _finding_status(finding: BiometricFinding) -> FindingStatusCode:
@@ -190,15 +181,6 @@ def sync_biometric_result(operation: RdpOperation) -> bool:
         return result
 
 
-def sync_biometric_deduplication_result(*, operation_id: UUID) -> bool:
-    """Synchronize a biometric deduplication operation with DedupEngine."""
-    try:
-        operation = get_rdp_operation(pk=operation_id)
-    except RdpOperation.DoesNotExist:
-        return False
-    return sync_biometric_result(operation)
-
-
 def _get_or_create_biometric_set_state(
     *,
     client: BiometricClient,
@@ -255,7 +237,7 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
         state = _prepare_biometric_set(client=client, operation=operation)
 
         if state == DeduplicationSetState.DEDUPLICATED:
-            sync_biometric_deduplication_result(operation_id=operation.id)
+            sync_biometric_result(operation)
             return
 
         if state in {
@@ -271,69 +253,3 @@ def run_biometric_deduplication(operation: RdpOperation) -> None:
 
         # TODO(Vitali): Use Bitcaster to recover RUNNING operations when DedupEngine callback delivery fails.
         client.process()
-
-
-def reject_cancelled_rdp_set_core(job: AsyncJob) -> dict[str, Any]:
-    """Reject a cancelled RDP set and continue its clean replacement when configured."""
-    rdp = rdp_for_dedup(pk=job.config["rdp_id"])
-    deduplication_set_id = job.config["deduplication_set_id"]
-    operation = biometric_operation_for_rdp(rdp=rdp)
-
-    if rdp.status != Rdp.PushStatus.CANCELLED or operation is None or str(operation.id) != deduplication_set_id:
-        raise RdpWorkflowError({"errors": ["RDP: this cancellation job is no longer current."]})
-
-    try:
-        state = retrieve_deduplication_set_state(
-            group_reference_id=rdp.program.unicef_id,
-            deduplication_set_id=deduplication_set_id,
-        )
-        if state in REJECTABLE_DEDUPLICATION_SET_STATES:
-            reject_deduplication_set(
-                operation_id=operation.id,
-                group_reference_id=rdp.program.unicef_id,
-            )
-        elif state not in {None, DeduplicationSetState.REJECTED}:
-            raise RdpWorkflowError({"errors": [f"DedupEngine: can not reject deduplication set in state={state!r}."]})
-    except (RemoteError, RemoteUnavailableError) as exc:
-        raise RdpWorkflowError({"errors": [str(exc)]}) from exc
-
-    if clean_rdp_id := job.config.get("clean_rdp_id"):
-        with transaction.atomic():
-            program = Program.objects.select_for_update().only("cleanup_in_progress").get(pk=rdp.program_id)
-            if program.cleanup_in_progress:
-                return {"rdp_id": rdp.pk}
-            clean_rdp = Rdp.objects.get(pk=clean_rdp_id, program_id=rdp.program_id)
-            if clean_rdp.status != Rdp.PushStatus.PENDING:
-                raise RdpWorkflowError({"errors": ["RDP: clean replacement is no longer pending."]})
-            schedule_rdp_operations(rdp=clean_rdp)
-
-    return {"rdp_id": rdp.pk}
-
-
-def schedule_cancelled_rdp_set_rejection(
-    *,
-    rdp: Rdp,
-    user_id: int,
-    deduplication_set_id: str,
-    clean_rdp_id: int | None = None,
-) -> AsyncJob:
-    """Schedule DedupEngine cleanup for a cancelled RDP."""
-    config = {
-        "rdp_id": rdp.pk,
-        "deduplication_set_id": deduplication_set_id,
-    }
-    if clean_rdp_id is not None:
-        config["clean_rdp_id"] = clean_rdp_id
-
-    job = AsyncJob.objects.create(
-        description="Reject cancelled RDP deduplication set",
-        type=AsyncJob.JobType.TASK,
-        owner_id=user_id,
-        action=fqn(reject_cancelled_rdp_set_core),
-        program_id=rdp.program_id,
-        rdp=rdp,
-        config=config,
-    )
-    transaction.on_commit(job.queue, robust=True)
-
-    return job

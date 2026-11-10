@@ -20,6 +20,8 @@ from .office import OfficeFactory  # noqa
 from .program import CountryProgramFactory, ProgramFactory  # noqa
 from .rdp import CountryRdpFactory, RdpFactory  # noqa
 from .rdp_operation import (  # noqa
+    BiographicRdpOperationFactory,
+    BiographicRdpOperationFindingFactory,
     BiometricRdpOperationFactory,
     BiometricRdpOperationFindingFactory,
     OcrRdpOperationFactory,
