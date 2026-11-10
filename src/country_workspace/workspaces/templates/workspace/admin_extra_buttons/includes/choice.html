@@ -15,9 +15,7 @@
             <ul class="choice-menu-list" role="menu">
                 {% for choice in button.get_choices %}
                     <li>
-                        <a href="{{ choice.url }}"
-                           role="menuitem"
-                           {% if choice.selected %}class="selected"{% endif %}>{{ choice.label }}</a>
+                        <a href="{{ choice.url }}" role="menuitem" {% if choice.selected %}class="selected"{% endif %}>{{ choice.label }}</a>
                     </li>
                 {% endfor %}
             </ul>
