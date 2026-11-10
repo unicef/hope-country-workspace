@@ -56,9 +56,9 @@ def test_page_heading_keeps_separators_in_data_whole() -> None:
 
 
 def test_page_heading_strips_the_real_admin_link() -> None:
-    from country_workspace.workspaces.templatetags.workspace_urls import ADMIN_URL
+    from country_workspace.workspaces.templatetags.workspace_urls import admin_link_html
 
-    link = ADMIN_URL.format(url="/admin/x/", query="")
+    link = admin_link_html("/admin/x/", "")
     html = heading(f'&rsaquo; <a href="/hh/">Households</a>{link} &rsaquo; Dixon #0')
     assert "admin-change-link" not in html
 

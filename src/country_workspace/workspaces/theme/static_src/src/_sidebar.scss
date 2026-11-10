@@ -12,14 +12,10 @@ aside#sidebar,
     li.menu-item {
       @apply relative;
 
-      a,
-      button {
+      a {
         @apply text-secondary;
         min-height: 40px;
         text-decoration: none;
-        background: transparent;
-        border: none;
-        cursor: pointer;
         transition: background-color 150ms ease;
 
         /* MUI ListItemIcon: 40px column, 24px icon. */
@@ -35,8 +31,7 @@ aside#sidebar,
       }
 
       &.selected {
-        > a,
-        > form > button {
+        > a {
           background-color: theme('colors.primary.DEFAULT / 8%');
 
           &:hover {

@@ -8,7 +8,7 @@ from django.urls import NoReverseMatch
 from pytest_mock import MockerFixture
 
 from country_workspace.state import State
-from country_workspace.workspaces.templatetags.workspace_urls import ADMIN_CHANGE_VIEW, ADMIN_URL
+from country_workspace.workspaces.templatetags.workspace_urls import ADMIN_CHANGE_VIEW, admin_link_html
 from src.country_workspace.workspaces.templatetags.workspace_urls import admin_href, admin_url
 
 TEST_URL = "test_url"
@@ -74,7 +74,7 @@ def test_admin_url_user_is_staff_model_passed(
     user.is_staff = True
     model._meta = options
     options.proxy_for_model = model if has_proxy else None
-    assert admin_url(model) == ADMIN_URL.format(url=TEST_URL, query="")
+    assert admin_url(model) == admin_link_html(TEST_URL, "")
     reverse_mock.assert_called_once_with(
         ADMIN_CHANGE_VIEW.format(app=options.app_label, model=options.model_name), args=(model.pk,)
     )

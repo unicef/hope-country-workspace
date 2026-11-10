@@ -16,10 +16,11 @@ from django.contrib.admin.templatetags.admin_urls import (
 from django.db.models import Model
 from django.db.models.options import Options
 from django.urls import NoReverseMatch, reverse
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
+from django.utils.safestring import SafeString
 
 from country_workspace.state import state
-from country_workspace.workspaces.icons import ICONS
+from country_workspace.workspaces.templatetags.workspace_app import icon
 
 logger = logging.getLogger(__name__)
 register = template.Library()
@@ -27,16 +28,13 @@ register = template.Library()
 
 ADMIN_CHANGE_VIEW = "admin:{app}_{model}_change"
 ADMIN_CHANGELIST_VIEW = "admin:{app}_{model}_changelist"
-# HOPE's AdminButton: an ArrowCircleRight icon. The path data has no braces, so it is safe inside the format string.
-ADMIN_URL = (
-    """
-<a class="admin-change-link" target="_admin" href="{url}?{query}" title="Admin">
-    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">"""
-    + ICONS["admin-link"]
-    + """</svg>
-</a>
-"""
-)
+
+
+def admin_link_html(url: str, query: str) -> SafeString:
+    """HOPE's AdminButton: an ArrowCircleRight icon linking to the admin page."""
+    return format_html(
+        '<a class="admin-change-link" target="_admin" href="{}?{}" title="Admin">{}</a>', url, query, icon("admin-link")
+    )
 
 
 def _admin_link(obj: Model | ModelAdmin | str | None, extra: dict[str, Any]) -> tuple[str, str] | None:
@@ -70,7 +68,7 @@ def admin_url(obj: Model | ModelAdmin | str | None, **extra: dict[str, Any]) -> 
     link = _admin_link(obj, extra)
     if link is None:
         return ""
-    return mark_safe(ADMIN_URL.format(url=link[0], query=link[1]))  # noqa: S308
+    return admin_link_html(*link)
 
 
 @register.simple_tag()
