@@ -2,7 +2,7 @@
 
 A **Program** represents a campaign or intervention targeting a specific group of beneficiaries for a specific operational need, such as *Cash for Nutrition* or *Emergency Food Assistance*.
 
-Within the [Analyst / Collector Workspace](interfaces.md#analyst--collector-workspace), the selected Program becomes the working context for beneficiary management. Imports, beneficiary records, Batches, validation, and related workflows all operate within the currently selected Program.
+Within the [Analyst / Collector Workspace](interfaces.md#analyst-collector-workspace), the selected Program becomes the working context for beneficiary management. Imports, beneficiary records, Batches, validation, and related workflows all operate within the currently selected Program.
 
 ## What a Program defines
 
@@ -40,7 +40,7 @@ These values are applied during **[Data Import](data_import/index.md)** when the
 
 ### Display configuration
 
-A Program defines which beneficiary fields are displayed in the [Analyst / Collector Workspace](interfaces.md#analyst--collector-workspace).
+A Program defines which beneficiary fields are displayed in the [Analyst / Collector Workspace](interfaces.md#analyst-collector-workspace).
 
 Display settings affect only the user interface and do not influence imported or stored data.
 

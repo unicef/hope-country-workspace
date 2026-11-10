@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from uuid import UUID
 
 from django.db.models import Prefetch, Q, QuerySet
 from django.db.models.fields.json import KeyTextTransform
@@ -10,10 +10,7 @@ from country_workspace.models import Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
 
-from .types import CreateRdpConfig, OperationLogResult
-
-if TYPE_CHECKING:
-    from .types import OperationLogEntry
+from .types import CreateRdpConfig, OperationLogEntry, OperationLogResult
 
 
 def lock_rdp_for_update(*, pk: int) -> Rdp:
@@ -78,6 +75,18 @@ def qs_individuals_for_rdp(*, rdp: Rdp) -> QuerySet[CountryIndividual]:
     """Return Individuals selected by the RDP household/individual links."""
     master_detail, pks = rdp_selection(rdp=rdp)
     return qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
+
+
+def clean_rdp_selection(*, rdp: Rdp, operation_ids: set[UUID]) -> tuple[bool, list[int]]:
+    """Return the RDP selection excluding beneficiaries affected by selected operations."""
+    master_detail, pks = rdp_selection(rdp=rdp)
+    individuals = qs_individuals_by_household_pks(pks) if master_detail else qs_individuals_by_pks(pks)
+    affected = individuals.filter(
+        Q(rdp_operation_findings__operation_id__in=operation_ids)
+        | Q(related_rdp_operation_findings__operation_id__in=operation_ids)
+    )
+    excluded = set(affected.values_list("household_id" if master_detail else "pk", flat=True).distinct())
+    return master_detail, [pk for pk in pks if pk not in excluded]
 
 
 def collector_pks_by_household_pks(hh_pks: Iterable[int]) -> set[int]:

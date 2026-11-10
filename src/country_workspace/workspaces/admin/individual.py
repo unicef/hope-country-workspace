@@ -1,36 +1,26 @@
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
-from django.contrib.admin import AdminSite, display, register
+from django.contrib.admin import display, register
 from django.core.exceptions import ValidationError
-from django.db.models import Model, QuerySet
+from django.db.models import Exists, Q, QuerySet
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 
-from country_workspace.models import Batch
-from country_workspace.rdp import (
-    annotate_biometric_individuals,
-    biometric_findings_for_individual,
-    biometric_operation_for_rdp,
-    qs_biometric_duplicate_individuals,
-)
+from country_workspace.models import Batch, Rdp, RdpOperationFinding
+from country_workspace.rdp import qs_individuals_with_rdp_findings
+from country_workspace.state import state
+from country_workspace.workspaces.models import CountryHousehold, CountryIndividual
+from country_workspace.workspaces.sites import workspace
 
-
-from ...state import state
-from ..models import CountryHousehold, CountryIndividual
-from ..sites import workspace
 from .filters import (
     CWLinkedAutoCompleteFilter,
-    DuplicateFilter,
     HouseholdFilter,
-    ImageIssueFilter,
     MultiValueFilter,
-    RdpContextFilter,
     WIsValidFilter,
     WJsonFieldFilter,
     get_rdp_context,
-    show_biometric_columns,
 )
 from .hh_ind import BeneficiaryBaseAdmin
 
@@ -43,7 +33,6 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     list_filter = (
         ("batch", CWLinkedAutoCompleteFilter.factory(parent=None)),
         ("household", HouseholdFilter),
-        RdpContextFilter,
         WIsValidFilter,
         ("id", MultiValueFilter),
         ("flex_fields", WJsonFieldFilter),
@@ -60,15 +49,33 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
     def title_plural(self) -> str:
         return super().title_member_plural or ""
 
-    def __init__(self, model: Model, admin_site: "AdminSite") -> None:
-        self._selected_household = None
-        super().__init__(model, admin_site)
+    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryIndividual]:
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
+            .filter(batch__country_office=state.tenant, batch__program=state.program)
+        )
 
-    def get_object(
+    def _filter_rdp_queryset(
         self,
         request: HttpRequest,
-        object_id: str | None,
-        from_field: str | None = None,
+        queryset: QuerySet[CountryIndividual],
+        rdp: Rdp,
+    ) -> QuerySet[CountryIndividual]:
+        if not rdp.program.is_master_detail:
+            return super()._filter_rdp_queryset(request, queryset, rdp)
+
+        if (household := self.get_selected_household(request)) and not rdp.households.filter(pk=household.pk).exists():
+            return queryset.filter(
+                household=household,
+                pk__in=qs_individuals_with_rdp_findings(rdp=rdp),
+            )
+
+        return super()._filter_rdp_queryset(request, queryset, rdp)
+
+    def get_object(
+        self, request: HttpRequest, object_id: str | None, from_field: str | None = None
     ) -> CountryIndividual | None:
         if object_id is None:
             return None
@@ -79,7 +86,7 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         if from_field is not None or (rdp := get_rdp_context(request)) is None:
             return None
 
-        if (operation := biometric_operation_for_rdp(rdp=rdp)) is None or operation.status != operation.Status.SUCCESS:
+        if not self._can_view_operation_findings(request, rdp):
             return None
 
         try:
@@ -87,31 +94,75 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         except (ValidationError, ValueError):
             return None
 
-        duplicate_pks = qs_biometric_duplicate_individuals(operation=operation).values_list("pk", flat=True)
-        qs = CountryIndividual.objects.filter(
+        findings = RdpOperationFinding.objects.filter(
+            Q(individual_id=pk) | Q(related_individual_id=pk),
+            operation__rdp=rdp,
+        )
+        return CountryIndividual.objects.filter(
+            Exists(findings),
             pk=pk,
-            pk__in=duplicate_pks,
-            removed=True,
             batch__country_office=state.tenant,
             batch__program_id=rdp.program_id,
             batch__status=Batch.BatchStatus.COMPLETE,
-        )
-        return annotate_biometric_individuals(qs, program=rdp.program, rdp=rdp).first()
+        ).first()
 
-    def get_list_filter(self, request: HttpRequest) -> list[Any]:
-        filters = list(super().get_list_filter(request))
-        if show_biometric_columns(request):
-            filters.extend((DuplicateFilter, ImageIssueFilter))
-        return filters
+    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_common_context(request, pk, **kwargs)
+        context.update(
+            self._get_navigation_context(
+                request,
+                context["original"],
+                context["selected_rdp"],
+                master_detail=context["master_detail"],
+            )
+        )
+        return context
+
+    def _get_navigation_context(
+        self, request: HttpRequest, obj: CountryIndividual | None, rdp: Rdp | None, *, master_detail: bool | None
+    ) -> dict[str, Any]:
+        household = self.get_selected_household(request, obj) if master_detail else None
+        params = {"rdp_id": rdp.pk} if rdp else {}
+        context = {
+            "selected_household": household,
+            "households_url": (
+                reverse("workspace:workspaces_countryhousehold_changelist", query=params)
+                if master_detail and self.admin_site.get_model_admin(CountryHousehold).has_view_permission(request)
+                else None
+            ),
+        }
+        if household:
+            context["household_url"] = reverse(
+                "workspace:workspaces_countryhousehold_change",
+                args=[household.pk],
+                query={"_changelist_filters": urlencode(params)} if params else None,
+            )
+            params["household__exact"] = household.pk
+        context["individuals_url"] = reverse("workspace:workspaces_countryindividual_changelist", query=params)
+        return context
+
+    def get_selected_household(
+        self, request: HttpRequest, obj: CountryIndividual | None = None
+    ) -> CountryHousehold | None:
+        household_id: int | str | None
+        if obj is not None:
+            household_id = obj.household_id
+        else:
+            household_id = request.GET.get("household__exact")
+            if household_id is None:
+                preserved = parse_qs(request.GET.get("_changelist_filters", ""), keep_blank_values=True)
+                household_id = preserved.get("household__exact", [None])[-1]
+
+        if household_id is None:
+            return None
+
+        household_admin = self.admin_site.get_model_admin(CountryHousehold)
+        if (household := household_admin.get_object(request, str(household_id))) is None:
+            return None
+        return household if household_admin.has_view_permission(request, household) else None
 
     def get_list_display(self, request: HttpRequest) -> list[str]:
-        columns = ["name_with_latin" if col == "name" else col for col in super().get_list_display(request)]
-        if show_biometric_columns(request):
-            if "is_duplicate" not in columns:
-                columns.append("is_duplicate")
-            if "has_image_issue" not in columns:
-                columns.append("has_image_issue")
-        return columns
+        return ["name_with_latin" if column == "name" else column for column in super().get_list_display(request)]
 
     @display(description="Name", ordering="name")
     def name_with_latin(self, obj: CountryIndividual) -> str:
@@ -119,74 +170,3 @@ class CountryIndividualAdmin(BeneficiaryBaseAdmin):
         if latin:
             return format_html('{}<br><small class="text-muted">{}</small>', obj.name, latin)
         return obj.name
-
-    def get_queryset(self, request: HttpRequest) -> QuerySet[CountryIndividual]:
-        qs = (
-            super()
-            .get_queryset(request)
-            .select_related("batch__program", "batch__program__household_checker", "batch__country_office")
-            .filter(batch__country_office=state.tenant, batch__program=state.program)
-        )
-        return (
-            annotate_biometric_individuals(qs, program=state.program, rdp=get_rdp_context(request))
-            if show_biometric_columns(request)
-            else qs
-        )
-
-    @display(description="Duplicate", boolean=True)
-    def is_duplicate(self, obj: CountryIndividual) -> bool | None:
-        """Display whether the individual has a duplicate finding."""
-        return obj._is_duplicate if getattr(obj, "_result_available", False) else None
-
-    @display(description="Image issue", boolean=True)
-    def has_image_issue(self, obj: CountryIndividual) -> bool | None:
-        """Display whether the individual has an image issue."""
-        return obj._has_image_issue if getattr(obj, "_result_available", False) else None
-
-    def get_selected_household(
-        self,
-        request: HttpRequest,
-        obj: "CountryIndividual | None" = None,
-    ) -> CountryHousehold | None:
-        from country_workspace.workspaces.models import CountryHousehold
-
-        self._selected_household = None
-        if "household__exact" in request.GET:
-            self._selected_household = CountryHousehold.objects.get(pk=request.GET["household__exact"])
-        elif cl_flt := request.GET.get("_changelist_filters", ""):
-            if prg := parse_qs(cl_flt).get("household__exact"):
-                self._selected_household = CountryHousehold.objects.get(pk=prg[0])
-        elif obj:
-            self._selected_household = obj.household
-        return self._selected_household
-
-    def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
-        kwargs["selected_household"] = self.get_selected_household(request)
-        context = super().get_common_context(request, pk, **kwargs)
-        original = context["original"]
-        context["dedup_duplicates"] = None
-        context["dedup_image_issues"] = None
-
-        if original is None or not getattr(original, "_result_available", False):
-            return context
-
-        duplicate_rdp_ids, image_issues = biometric_findings_for_individual(
-            individual=original,
-            rdp=get_rdp_context(request),
-        )
-
-        removed_duplicate_pks = set(
-            CountryIndividual.objects.filter(pk__in=duplicate_rdp_ids, removed=True).values_list("pk", flat=True)
-        )
-
-        duplicates = []
-        for duplicate_pk, rdp_id in duplicate_rdp_ids.items():
-            url = reverse("workspace:workspaces_countryindividual_change", args=[duplicate_pk])
-            if duplicate_pk in removed_duplicate_pks:
-                preserved = urlencode({"rdp_id": rdp_id})
-                url = f"{url}?{urlencode({'_changelist_filters': preserved})}"
-            duplicates.append({"pk": duplicate_pk, "url": url})
-
-        context["dedup_duplicates"] = duplicates
-        context["dedup_image_issues"] = image_issues
-        return context

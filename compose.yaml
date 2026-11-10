@@ -17,6 +17,7 @@ x-env: &env
     - STATIC_ROOT=/var/country_workspace/static
     - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
     - INIT_HOPE_STORAGE=1
+    - STREAMING_BROKER_URL=rabbit://guest:guest@rabbitmq:5672/?vhost=/&exchange=django-streaming-broadcast
 
 x-common: &common
   build:
@@ -68,6 +69,15 @@ services:
       - DEBUG=true
       - DATABASE_URL="sqlite://:memory:"
 
+  stream_listener:
+    <<:  [*common, *env]
+    command: stream-listener
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   db:
     image: postgres:14
     environment:
@@ -115,6 +125,19 @@ services:
       interval: 5s
       timeout: 4s
       retries: 5
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    #    ports:
+    #      - 5672:5672
+    #      - 15672:15672
+    restart: always
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      start_period: 10s
+      start_interval: 1s
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 
 volumes:

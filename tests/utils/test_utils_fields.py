@@ -1,19 +1,17 @@
 from base64 import b64decode
 from io import BytesIO
-from unittest.mock import Mock, call
 from uuid import UUID
 
 import pytest
-from django import forms
-from PIL import Image
 from concurrency.utils import fqn
+from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from hope_flex_fields.fields import FlexImageField
+from PIL import Image
 from pytest_mock import MockerFixture
 
-
-from country_workspace.utils.fields import clean_field_name, TO_REMOVE_VALUES, clean_field_names, to_reference_key
+from country_workspace.utils.fields import TO_REMOVE_VALUES, clean_field_name, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
     Base64ImageField,
     CaseInsensitiveChoiceField,
@@ -47,17 +45,24 @@ def png_upload() -> SimpleUploadedFile:
         ("field_foo", "field_foo"),
     ],
 )
-def test_clean_field_name(input_value, expected_output):
+def test_clean_field_name(input_value: str, expected_output: str) -> None:
     assert clean_field_name(input_value) == expected_output
 
 
-def test_clean_field_names(mocker: MockerFixture) -> None:
-    clean_field_name_mock = mocker.patch("country_workspace.utils.fields.clean_field_name")
+def test_clean_field_names() -> None:
+    record = {"gender_i_c": "female", "name_i_c": "Taylor", "relationship_i_c": None}
+    original = dict(record)
 
-    cleaned = clean_field_names({(key := "foo"): "bar"})
+    assert clean_field_names(record) == {"gender": "FEMALE", "name": "Taylor", "relationship": None}
+    assert record == original
 
-    assert cleaned == {clean_field_name_mock.return_value: "bar"}
-    clean_field_name_mock.assert_called_once_with(key)
+
+@pytest.mark.parametrize(("fields", "expected"), [((), "Taylor"), (("name",), "TAYLOR")])
+def test_clean_field_names_respects_uppercase_fields(fields: tuple[str, ...], expected: str) -> None:
+    assert clean_field_names({"name_i_c": "Taylor", "gender_i_c": "female"}, fields) == {
+        "name": expected,
+        "gender": "female",
+    }
 
 
 def test_flex_image_widget_links_to_the_workspace_file_view() -> None:
@@ -110,7 +115,7 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_super_method(
     super_prepare_value_mock = mocker.patch(
         "country_workspace.utils.flex_fields.forms.MultipleChoiceField.prepare_value"
     )
-    instance = Mock(spec=ConsentSharingChoice)
+    instance = mocker.Mock(spec=ConsentSharingChoice)
 
     ConsentSharingChoice.prepare_value(instance, value)
     ConsentSharingChoice.to_python(instance, value)
@@ -124,12 +129,12 @@ def test_consent_sharing_choice_to_python_and_prepare_value_call_split_options(
 ) -> None:
     value = "test"
     split_options_mock = mocker.patch("country_workspace.utils.flex_fields.split_options")
-    instance = Mock(spec=ConsentSharingChoice)
+    instance = mocker.Mock(spec=ConsentSharingChoice)
 
     ConsentSharingChoice.to_python(instance, value)
     ConsentSharingChoice.prepare_value(instance, value)
 
-    split_options_mock.assert_has_calls([c := call(value), c])
+    split_options_mock.assert_has_calls([c := mocker.call(value), c])
 
 
 @pytest.mark.parametrize(
@@ -219,7 +224,7 @@ def test_consent_sharing_choice_returns_choice_keys() -> None:
         ("0", "0"),
     ],
 )
-def test_normalize_reference_primitives(value, expected) -> None:
+def test_normalize_reference_primitives(value: object, expected: str | None) -> None:
     assert to_reference_key(value) == expected
 
 
