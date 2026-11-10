@@ -1,6 +1,6 @@
 import pytest
 
-from country_workspace.contrib.dedup_engine.endpoint import (
+from country_workspace.contrib.dedup_engine.biometric.endpoint import (
     APIRoot,
     Approve,
     DeduplicationSet,
@@ -9,12 +9,14 @@ from country_workspace.contrib.dedup_engine.endpoint import (
     DeduplicationSetGroups,
     DeduplicationSetGroupStatus,
     DeduplicationSets,
-    Endpoint,
     Findings,
     Images,
     Process,
     Ready,
     Reject,
+)
+from country_workspace.contrib.dedup_engine.endpoint import (
+    Endpoint,
     ensure_trailing_slash,
     join_paths,
     to_segments,

@@ -18,10 +18,9 @@ class Record(TypedDict):
     payload: Payload
 
 
-class CreateDataset(TypedDict):
-    dataset_id: str
-    notification_url: NotRequired[str | None]
-    notify: NotRequired[bool]
+class CreateDataset(TypedDict, total=False):
+    notification_url: str
+    notify: bool
 
 
 class RecordsBatch(TypedDict):

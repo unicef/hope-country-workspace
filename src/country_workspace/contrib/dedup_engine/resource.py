@@ -8,6 +8,7 @@ from requests.exceptions import HTTPError
 
 
 TIMEOUT: Final[tuple[int, int]] = (10, 20)
+UPLOAD_TIMEOUT: Final[tuple[int, int]] = (10, 120)
 
 
 @dataclass(slots=True)
@@ -17,8 +18,14 @@ class GenericResource[T]:
 
 
 class CreateMixin[T, R]:
-    def create(self: GenericResource, body: T, *, params: Mapping[str, str] | None = None) -> R:
-        result = self.session.post(str(self.endpoint), json=body, params=params, timeout=TIMEOUT)
+    def create(
+        self: GenericResource,
+        body: T,
+        *,
+        params: Mapping[str, str] | None = None,
+        timeout: tuple[int, int] = TIMEOUT,
+    ) -> R:
+        result = self.session.post(str(self.endpoint), json=body, params=params, timeout=timeout)
         result.raise_for_status()
         return result.json()
 
