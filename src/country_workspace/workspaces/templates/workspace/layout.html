@@ -42,17 +42,18 @@
             if (logoBlock && color) {
                 logoBlock.style.backgroundColor = color;
                 const logoImage = document.getElementById("logo-image");
-                logoImage.src = logoImage.dataset.transparentSrc;
+                if (logoImage) logoImage.src = logoImage.dataset.transparentSrc;
             }
 
             // The user menu and the choice buttons' menus close on an outside click or Escape.
-            document.querySelectorAll("#user-menu, details.aeb-button").forEach(function (menu) {
-                document.addEventListener("click", function (e) {
+            const openMenus = () => document.querySelectorAll("#user-menu[open], details.aeb-button[open]");
+            document.addEventListener("click", function (e) {
+                openMenus().forEach(function (menu) {
                     if (!menu.contains(e.target)) menu.open = false;
                 });
-                document.addEventListener("keydown", function (e) {
-                    if (e.key === "Escape") menu.open = false;
-                });
+            });
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "Escape") openMenus().forEach(function (menu) { menu.open = false; });
             });
 
             document.querySelectorAll('li a.aeb-disable-on-click').forEach(function (link) {
