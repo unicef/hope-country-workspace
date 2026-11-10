@@ -8,8 +8,6 @@ from django.urls import reverse
 
 
 if TYPE_CHECKING:
-    from django.db.models import QuerySet
-    from django.http import HttpRequest
     from hope_flex_fields.models import DataChecker
 
     from .templatetags.workspace_list import ResultList
@@ -24,13 +22,12 @@ class WorkspaceChangeList(DjangoChangeList):
         except AttributeError:
             return field_name
 
-    def get_queryset(self, request: "HttpRequest", exclude_parameters: "list[str] | None" = None) -> "QuerySet":
-        qs = super().get_queryset(request, exclude_parameters)
-        # HOPE's Clear resets the search box too, not only the list filters.
+    @property
+    def clear_filters_and_search_qs(self) -> str:
+        """Django's clear_all_filters_qs without the search term: HOPE's Clear resets the search box too."""
         params = QueryDict(self.clear_all_filters_qs.lstrip("?"), mutable=True)
         params.pop(SEARCH_VAR, None)
-        self.clear_all_filters_qs = f"?{params.urlencode()}"
-        return qs
+        return f"?{params.urlencode()}"
 
     def get_ordering_field_columns(self) -> list[str]:
         return super().get_ordering_field_columns()
