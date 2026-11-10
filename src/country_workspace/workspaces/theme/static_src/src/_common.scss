@@ -208,6 +208,10 @@ table {
         select {
           @apply field-input min-w-full;
         }
+
+        select {
+          @apply field-select;
+        }
       }
 
       th,
@@ -220,7 +224,7 @@ table {
 
 .tenant-select-wrap {
   select {
-    @apply field-input min-w-full;
+    @apply field-input field-select min-w-full;
   }
 
   .select2-container {

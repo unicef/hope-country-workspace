@@ -53,6 +53,44 @@
     }
   }
 
+  /* MUI's outlined Select: no native chrome, ArrowDropDown 7px from the right. */
+  .field-select {
+    @apply cursor-pointer;
+    appearance: none;
+    padding-right: 32px;
+    text-overflow: ellipsis;
+    background: #fff no-repeat right 7px center / 24px
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='rgba(0,0,0,0.54)' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+
+    &:disabled {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='rgba(0,0,0,0.26)' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    }
+
+    /* List boxes, not dropdowns. */
+    &[multiple],
+    &[size]:not([size="1"]) {
+      @apply cursor-auto;
+      padding-right: 14px;
+      background-image: none;
+    }
+
+    option {
+      @apply text-ink bg-white;
+    }
+  }
+
+  /* select2's arrow box drawing the same ArrowDropDown instead of its CSS triangle. */
+  .field-select-arrow {
+    right: 7px;
+    width: 24px;
+    background: no-repeat center / 24px
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='rgba(0,0,0,0.54)' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+
+    b {
+      display: none;
+    }
+  }
+
   /* MUI's Checkbox: 18px box, navy fill with a white tick when checked, a round halo on hover and focus. */
   .field-checkbox {
     @apply bg-white cursor-pointer;

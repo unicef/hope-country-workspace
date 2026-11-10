@@ -11,9 +11,16 @@
         @apply overflow-x-auto;
       }
     .actions {
-      @apply mb-2;
+      @apply mb-2 flex flex-wrap items-center gap-2;
+
+      label {
+        @apply inline-flex items-center gap-2 text-sm;
+      }
+
+      /* HOPE's 232px select box. */
       select {
-        @apply text-sm py-2 pt-1 pb-1;
+        width: auto;
+        min-width: 232px;
       }
 
       button[type=submit] {
@@ -253,7 +260,7 @@
   }
 
   select {
-    padding-right: 32px;
+    @apply field-select;
   }
 
   textarea {
@@ -326,6 +333,7 @@
 
       select {
         width: auto !important;
+        field-sizing: content;
       }
     }
 
@@ -363,8 +371,8 @@
       }
 
       .select2-selection__arrow {
+        @apply field-select-arrow;
         height: 38px;
-        right: 6px;
       }
     }
 

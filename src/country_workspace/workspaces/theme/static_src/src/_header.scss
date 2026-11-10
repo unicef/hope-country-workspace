@@ -76,8 +76,11 @@ body.web {
           height: 40px;
           width: 36px;
           right: 0;
+          /* Undo the form-wide .field-select-arrow: the header keeps its light triangle. */
+          background: none;
 
           b {
+            display: block;
             border-color: #e3e6e7 transparent transparent transparent;
             border-width: 5px 5px 0 5px;
             margin-left: -8px;

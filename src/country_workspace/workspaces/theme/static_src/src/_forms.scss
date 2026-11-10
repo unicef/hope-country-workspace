@@ -11,6 +11,10 @@ form {
     @apply field-input;
   }
 
+  select {
+    @apply field-select;
+  }
+
   .helptext {
     @apply text-xs italic text-label mt-1 block;
   }
@@ -33,8 +37,8 @@ form {
     }
 
     .select2-selection__arrow {
+      @apply field-select-arrow;
       height: 38px;
-      right: 6px;
     }
   }
 
