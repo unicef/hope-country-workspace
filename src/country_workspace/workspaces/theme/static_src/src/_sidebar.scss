@@ -48,6 +48,10 @@ aside#sidebar,
   }
 }
 
+#logo-block.sidebar-collapsed {
+  width: theme('width.sidebar-collapsed');
+}
+
 /* HOPE's drawer `Version`: under the menu, only when the drawer is open. */
 .sidebar-version {
   @apply p-1 pb-4 text-center text-sm;

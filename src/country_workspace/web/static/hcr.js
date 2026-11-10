@@ -24,12 +24,12 @@
         }
 
         $("#close-sidebar").on("click", function () {
-            $("#sidebar").addClass("sidebar-collapsed");
+            $("#sidebar, #logo-block").addClass("sidebar-collapsed");
             $("#open-sidebar").removeClass("hidden");
             $(".display-open").hide()
         })
         $("#open-sidebar").on("click", function () {
-            $("#sidebar").removeClass("sidebar-collapsed");
+            $("#sidebar, #logo-block").removeClass("sidebar-collapsed");
             $("#logo").addClass("hidden");
             $("#open-sidebar").addClass("hidden");
             $(".display-open").show()

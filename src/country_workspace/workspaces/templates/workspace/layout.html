@@ -97,8 +97,9 @@
         <main class="flex flex-col h-screen">
             <header class="flex shadow-elevation-4 z-20">
                 {% block logo %}
-                    <div id="logo-block" class="w-sidebar bg-unicef-blue p-0 flex-none h-16 items-center display-open">
-                        <div class="inline-flex items-center w-full h-full">
+                    {# Stays as a 55px strip when the sidebar collapses, like HOPE's drawer header, so its environment colour shows. #}
+                    <div id="logo-block" class="w-sidebar bg-unicef-blue p-0 flex-none h-16 items-center">
+                        <div class="inline-flex items-center w-full h-full display-open">
                             <a href="/" class="flex items-center pl-[51px]">
                                 <img id="logo-image"
                                      src="{% static "hope_logo.jpg" %}"
