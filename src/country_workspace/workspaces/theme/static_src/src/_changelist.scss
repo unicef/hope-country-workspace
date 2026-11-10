@@ -368,6 +368,20 @@
         font-size: 14px;
         line-height: 38px;
         padding-left: 14px;
+        /* Room for the clear button beside the arrow instead of under it. */
+        padding-right: 36px;
+      }
+
+      /* MUI Autocomplete's clear indicator: a grey cross left of the arrow. */
+      .select2-selection__clear {
+        color: rgba(0, 0, 0, 0.54);
+        font-size: 20px;
+        font-weight: 400;
+        padding: 0 4px;
+
+        &:hover {
+          color: rgba(0, 0, 0, 0.87);
+        }
       }
 
       .select2-selection__arrow {
@@ -411,6 +425,25 @@
       @apply mr-auto text-label;
       font-size: 14px;
     }
+  }
+}
+
+/* The autocomplete dropdown is attached to <body>: options as MUI menu items, not navy bars. */
+body.web .select2-container--filter-autocomplete .select2-results__option {
+  @apply text-ink;
+  font-size: 14px;
+  padding: 6px 16px;
+
+  &[aria-selected="true"] {
+    background-color: theme('colors.primary.DEFAULT / 8%');
+  }
+
+  &.select2-results__option--highlighted {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  &[aria-selected="true"].select2-results__option--highlighted {
+    background-color: theme('colors.primary.DEFAULT / 12%');
   }
 }
 
