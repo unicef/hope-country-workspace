@@ -144,6 +144,15 @@ def test_hh_changelist(app: "CWTestApp", household: "CountryHousehold") -> None:
         assert res.status_code == 200, res.location
 
 
+def test_hh_changelist_clear_resets_search(app: "CWTestApp", household: "CountryHousehold") -> None:
+    url = reverse("workspace:workspaces_countryhousehold_changelist")
+    program: "CountryProgram" = household.program
+    with select_office(app, program.country_office, program):
+        res = app.get(f"{url}?q=abc&valid=v&o=1")
+        href = res.pyquery("#clear-all-filters").attr("href")
+        assert href == "?o=1"
+
+
 def test_hh_change(app: "CWTestApp", household: "CountryHousehold") -> None:
     url = reverse("workspace:workspaces_countryhousehold_change", args=[household.pk])
     program: "CountryProgram" = household.program

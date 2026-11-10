@@ -2,11 +2,14 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from django.contrib.admin.utils import quote
-from django.contrib.admin.views.main import ChangeList as DjangoChangeList
+from django.contrib.admin.views.main import SEARCH_VAR, ChangeList as DjangoChangeList
+from django.http import QueryDict
 from django.urls import reverse
 
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
+    from django.http import HttpRequest
     from hope_flex_fields.models import DataChecker
 
     from .templatetags.workspace_list import ResultList
@@ -20,6 +23,14 @@ class WorkspaceChangeList(DjangoChangeList):
             return super().get_ordering_field(field_name)
         except AttributeError:
             return field_name
+
+    def get_queryset(self, request: "HttpRequest", exclude_parameters: "list[str] | None" = None) -> "QuerySet":
+        qs = super().get_queryset(request, exclude_parameters)
+        # HOPE's Clear resets the search box too, not only the list filters.
+        params = QueryDict(self.clear_all_filters_qs.lstrip("?"), mutable=True)
+        params.pop(SEARCH_VAR, None)
+        self.clear_all_filters_qs = f"?{params.urlencode()}"
+        return qs
 
     def get_ordering_field_columns(self) -> list[str]:
         return super().get_ordering_field_columns()
