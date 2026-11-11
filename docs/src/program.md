@@ -56,6 +56,8 @@ See **[Alien Fields](data_validation/alien_fields.md)** for configuration and pr
 
 For Programs with **Biometric deduplication enabled**, the Program page displays the current deduplication settings retrieved from DedupEngine in real time.
 
+**Biographic deduplication** is enabled per Program by an administrator in the Program admin. Its matching sensitivity is configured in DedupEngine and is not shown on the Program page. See **[Biographic deduplication](rdp/operations/biographic-deduplication.md)**.
+
 The settings are not stored in the Country Workspace database. When permitted by the current policy, they can be updated from Country Workspace, with changes applied directly to DedupEngine.
 
 If DedupEngine is unavailable, the settings may be displayed as `N/A`.

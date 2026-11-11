@@ -18,7 +18,7 @@ Select the beneficiary records and choose **Create RDP**.
 
 The optional **Batch name** becomes the RDP name. If it is left blank, Country Workspace generates a name in the form `RDP YYYY-MM-DD HH:MM:SS`.
 
-The creation page also shows configuration for the **[RDP operations](operations/index.md)** enabled for the Program. **[OCR](operations/ocr.md)** is always configured; **[biometric deduplication](operations/deduplication.md)** is included when it is enabled for the Program.
+The creation page also shows configuration for the **[RDP operations](operations/index.md)** enabled for the Program. **[OCR](operations/ocr.md)** is always configured; **[biometric](operations/deduplication.md)** and **[biographic](operations/biographic-deduplication.md)** deduplication are included when enabled for the Program.
 
 Each operation has its own review threshold, configured as **Number of findings** or **Findings rate**. The rate denominator depends on the operation.
 
