@@ -4,6 +4,7 @@ from uuid import UUID
 from adminfilters.autocomplete import AutoCompleteFilter
 from adminfilters.filters import ValueFilter
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.urls import path, reverse
@@ -76,7 +77,7 @@ class FlexFieldFileAdmin(BaseModelAdmin):
 
     def content_view(self, request: HttpRequest, object_id: UUID) -> HttpResponse:
         if not self.has_view_permission(request):
-            raise Http404
+            raise PermissionDenied
         flex_file = FlexFieldFile.objects.with_content().filter(pk=object_id).first()
         if flex_file is None:
             raise Http404
@@ -90,9 +91,7 @@ class FlexFieldFileAdmin(BaseModelAdmin):
         return response
 
     @admin.display(description=_("Preview"))
-    def preview(self, obj: FlexFieldFile | None) -> str:
-        if obj is None or not obj.pk:
-            return "-"
+    def preview(self, obj: FlexFieldFile) -> str:
         url = reverse("admin:%s_%s_content" % (self.opts.app_label, self.opts.model_name), args=[obj.pk])
         if (obj.mimetype or "").startswith("image/"):
             return format_html(
