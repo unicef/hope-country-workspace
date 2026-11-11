@@ -71,6 +71,6 @@ After a successful push, Country Workspace stores the HOPE RDI ID and changes th
 
 For household-based Programs, the selected Households and their members are marked as removed. For people-only Programs, the selected People are marked as removed.
 
-When **[biometric deduplication](operations/deduplication.md)** is configured, Country Workspace also attempts to approve the associated Deduplication Set. An approval failure is recorded but does not change the RDP from `SUCCESS`.
+When **[biometric](operations/deduplication.md)** or **[biographic](operations/biographic-deduplication.md)** deduplication is configured, Country Workspace also attempts to approve the associated DedupEngine sets. An approval failure is recorded but does not change the RDP from `SUCCESS`.
 
 See **[Troubleshooting](troubleshooting.md)** if the push does not complete as expected.
