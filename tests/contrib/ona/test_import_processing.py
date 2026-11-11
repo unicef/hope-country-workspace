@@ -496,6 +496,11 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
 def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
     from country_workspace.contrib.ona import import_processing
 
+    pre_processors = (
+        import_processing.flatten_ona_data,
+        import_processing.filter_ona_sys_fields,
+        import_processing.normalize_ona_field_names,
+    )
     program = mocker.MagicMock()
     processor = mocker.MagicMock()
     build_import_processor = mocker.patch(
@@ -510,7 +515,8 @@ def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
         "program": program,
         "model": import_processing.Individual,
         "mapping_id": 11,
-        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "fields_to_uppercase": ("role", "relationship", "gender", "residence_status", "consent_sharing"),
+        "pre_processors": pre_processors,
         "post_processors": (),
         "source": import_processing.Batch.BatchSource.ONA,
     }
@@ -518,7 +524,8 @@ def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
         "program": program,
         "model": import_processing.Household,
         "mapping_id": None,
-        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "fields_to_uppercase": ("registration_method", "residence_status", "consent_sharing"),
+        "pre_processors": pre_processors,
         "post_processors": (),
         "source": import_processing.Batch.BatchSource.ONA,
     }

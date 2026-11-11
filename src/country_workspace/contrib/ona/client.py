@@ -119,6 +119,14 @@ class OnaClient:
     def get_form_metadata(self, form_id: str | int) -> dict[str, Any]:
         return self.get(f"/api/v1/forms/{form_id}")
 
+    def get_forms(self) -> list[dict[str, Any]]:
+        data = self.get("/api/v1/forms")
+
+        if not isinstance(data, list):
+            raise OnaApiError("ONA forms response must be a list")
+
+        return data
+
     def get_submissions_page(
         self,
         *,

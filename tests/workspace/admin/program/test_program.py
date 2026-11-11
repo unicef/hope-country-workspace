@@ -119,7 +119,7 @@ def test_import_ona_schedules_job_with_defaults(program_admin, mock_request, moc
             "validate_after_import": True,
             "form_id": "9153",
             "master_detail": True,
-            "individuals_key": "individuals",
+            "individuals_key": "individual_questions",
             "household_mapping_id": None,
             "individual_mapping_id": None,
             "household_transformer_id": None,

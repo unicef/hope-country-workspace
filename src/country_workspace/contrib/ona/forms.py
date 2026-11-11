@@ -1,110 +1,35 @@
-import json
 import logging
 from typing import Any
 
 from constance import config as constance_config
 from django import forms
+from django.core.cache import cache
+from requests import RequestException
 
+from country_workspace.contrib.ona.client import OnaClient
+from country_workspace.contrib.ona.exceptions import OnaApiError
+from country_workspace.contrib.ona.transformers import DEFAULT_INDIVIDUALS_KEY
 from country_workspace.models import Program
 from country_workspace.workspaces.admin.forms import BaseImportForm
 
 logger = logging.getLogger(__name__)
 
-
-def _as_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list | tuple | set):
-        return [str(item) for item in value]
-    return [str(value)]
+FORM_CHOICES_CACHE_TTL = 5 * 60
 
 
-def _normalise(value: Any) -> str:
-    return str(value).strip().lower()
+def get_ona_form_choices() -> list[tuple[str, str]]:
+    """Return the importable forms the ONA token can access as `(form_id, label)` choices."""
+    cache_key = f"ona:form-choices:{constance_config.ONA_API_URL}"
+    if (cached := cache.get(cache_key)) is not None:
+        return cached
 
-
-def _matches_any(allowed_values: list[str], actual_values: set[str]) -> bool:
-    return any(_normalise(value) in actual_values for value in allowed_values)
-
-
-def _program_identifiers(program: Program | None) -> set[str]:
-    if not program:
-        return set()
-
-    values = {
-        getattr(program, "pk", None),
-        getattr(program, "id", None),
-        getattr(program, "name", None),
-        getattr(program, "slug", None),
-        getattr(program, "code", None),
-    }
-    return {_normalise(value) for value in values if value is not None}
-
-
-def _office_identifiers(program: Program | None) -> set[str]:
-    if not program:
-        return set()
-
-    country_office = getattr(program, "country_office", None)
-    if not country_office:
-        return set()
-
-    values = {
-        getattr(country_office, "pk", None),
-        getattr(country_office, "id", None),
-        getattr(country_office, "name", None),
-        getattr(country_office, "slug", None),
-        getattr(country_office, "code", None),
-        getattr(country_office, "kobo_country_code", None),
-    }
-    return {_normalise(value) for value in values if value is not None}
-
-
-def get_approved_ona_forms() -> dict[str, dict[str, Any]]:
-    raw_config = getattr(constance_config, "ONA_APPROVED_FORMS", "") or "{}"
-
-    try:
-        parsed_config = json.loads(raw_config)
-    except json.JSONDecodeError:
-        logger.exception("ONA_APPROVED_FORMS must be valid JSON.")
-        return {}
-
-    if not isinstance(parsed_config, dict):
-        logger.error("ONA_APPROVED_FORMS must be a JSON object.")
-        return {}
-
-    return {str(form_id): config for form_id, config in parsed_config.items() if isinstance(config, dict)}
-
-
-def is_ona_form_allowed(form_id: str, program: Program | None = None) -> bool:
-    approved_forms = get_approved_ona_forms()
-    form_config = approved_forms.get(str(form_id))
-
-    if not form_config:
-        return False
-
-    allowed_programmes = _as_list(form_config.get("programmes"))
-    allowed_offices = _as_list(form_config.get("offices"))
-
-    if not allowed_programmes and not allowed_offices:
-        return False
-
-    program_match = not allowed_programmes or _matches_any(allowed_programmes, _program_identifiers(program))
-    office_match = not allowed_offices or _matches_any(allowed_offices, _office_identifiers(program))
-
-    return program_match and office_match
-
-
-def get_allowed_ona_form_choices(program: Program | None = None) -> list[tuple[str, str]]:
-    choices = []
-
-    for form_id, form_config in get_approved_ona_forms().items():
-        if is_ona_form_allowed(form_id, program):
-            label = form_config.get("label") or form_id
-            choices.append((form_id, f"{label} ({form_id})"))
-
+    client = OnaClient(base_url=constance_config.ONA_API_URL, token=constance_config.ONA_API_TOKEN)
+    choices = [
+        (str(form["formid"]), f"{form.get('title') or form['formid']} ({form['formid']})")
+        for form in client.get_forms()
+        if form.get("downloadable", True)
+    ]
+    cache.set(cache_key, choices, FORM_CHOICES_CACHE_TTL)
     return choices
 
 
@@ -112,11 +37,11 @@ class ImportOnaForm(BaseImportForm):
     form_id = forms.ChoiceField(
         required=True,
         choices=(),
-        help_text="Select an approved ONA / INFORM form for this office/programme.",
+        help_text="Select an ONA / INFORM form.",
     )
     individuals_key = forms.CharField(
         required=False,
-        initial="individuals",
+        initial=DEFAULT_INDIVIDUALS_KEY,
         help_text="JSON key that contains individual records for master/detail forms.",
     )
 
@@ -129,17 +54,20 @@ class ImportOnaForm(BaseImportForm):
         kwargs["program"] = program
         super().__init__(*args, **kwargs)
 
-        self.program = program
-        self.fields["form_id"].choices = get_allowed_ona_form_choices(program)
+        if not constance_config.ONA_API_TOKEN:
+            self._add_init_error("Please set ONA_API_TOKEN to use ONA / INFORM import")
+            return
+
+        try:
+            self.fields["form_id"].choices = get_ona_form_choices()
+        except (OnaApiError, RequestException):
+            logger.exception("Could not load ONA / INFORM forms")
+            self._add_init_error("Could not load ONA / INFORM forms. Please try again later.")
+            return
 
         if not self.fields["form_id"].choices:
-            self.cleaned_data = {}
-            self.add_error(None, "No ONA / INFORM forms are approved for this office/programme.")
+            self._add_init_error("No ONA / INFORM forms are available.")
 
-    def clean_form_id(self) -> str:
-        form_id = self.cleaned_data["form_id"]
-
-        if not is_ona_form_allowed(form_id, self.program):
-            raise forms.ValidationError("This ONA / INFORM form is not approved for this office/programme.")
-
-        return form_id
+    def _add_init_error(self, message: str) -> None:
+        self.cleaned_data = {}
+        self.add_error(None, message)

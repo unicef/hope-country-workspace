@@ -11,8 +11,10 @@ from constance import config as constance_config
 from country_workspace.contrib.ona.attachments import download_attachments
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import (
+    DEFAULT_INDIVIDUALS_KEY,
     filter_ona_sys_fields,
     flatten_ona_data,
+    normalize_ona_field_names,
     transform_submission_to_records,
 )
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
@@ -26,6 +28,11 @@ from country_workspace.models.household import (
     ROLE_PRIMARY,
 )
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
+from country_workspace.utils.fields import (
+    HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    INDIVIDUAL_FIELDS_TO_UPPERCASE,
+    TO_UPPERCASE_FIELDS,
+)
 from country_workspace.utils.flex_files import materialize_pending_files
 from country_workspace.utils.import_flow import (
     build_import_processor,
@@ -248,7 +255,7 @@ def import_submission(
     transformed = transform_submission_to_records(
         submission,
         master_detail=config.get("master_detail", False),
-        individuals_key=config.get("individuals_key", "individuals"),
+        individuals_key=config.get("individuals_key", DEFAULT_INDIVIDUALS_KEY),
     )
 
     with transaction.atomic():
@@ -439,7 +446,8 @@ def build_individual_processor(
         program=program,
         model=Individual,
         mapping_id=mapping_id,
-        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
+        fields_to_uppercase=INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields, normalize_ona_field_names),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )
@@ -453,7 +461,8 @@ def build_household_processor(
         program=program,
         model=Household,
         mapping_id=mapping_id,
-        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
+        fields_to_uppercase=HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields, normalize_ona_field_names),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )
