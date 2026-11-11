@@ -5,6 +5,7 @@ from country_workspace.contrib.ona.transformers import (
     filter_ona_sys_fields,
     flatten_ona_data,
     get_nested_value,
+    normalize_ona_field_names,
     remove_nested_value,
     transform_submission_to_records,
 )
@@ -55,6 +56,39 @@ def test_filter_ona_sys_fields_removes_metadata():
     assert filter_ona_sys_fields(source) == {
         "household/name": "Ahmad Household",
     }
+
+
+def test_normalize_ona_field_names_keeps_question_names_only():
+    source = {
+        "deviceid": "c3577347f4584c94",
+        "household_location/address_h_c": "3819 Bradley Stream",
+        "individual_questions/account_info/bank_account/account__bank__name_i_c": "AIB",
+        "meta/instanceID": "uuid:df21d62d",
+    }
+
+    assert normalize_ona_field_names(source) == {
+        "deviceid": "c3577347f4584c94",
+        "address_h_c": "3819 Bradley Stream",
+        "account__bank__name_i_c": "AIB",
+    }
+
+
+def test_transform_submission_splits_individual_questions_by_default():
+    result = transform_submission_to_records(
+        {
+            "household_status/size_h_c": 1,
+            "individual_questions": [{"individual_questions/individual_details/full_name_i_c": "Kelli Thornton"}],
+        },
+        master_detail=True,
+    )
+
+    assert result["household"]["fields"] == {"household_status/size_h_c": 1}
+    assert result["individuals"] == [
+        {
+            "fields": {"individual_questions/individual_details/full_name_i_c": "Kelli Thornton"},
+            "raw_data": {"individual_questions/individual_details/full_name_i_c": "Kelli Thornton"},
+        }
+    ]
 
 
 def test_transform_submission_to_records_master_detail():
@@ -202,7 +236,7 @@ def test_transform_submission_uses_empty_individuals_when_group_is_missing():
 
 def test_transform_submission_wraps_single_individual_mapping():
     result = transform_submission_to_records(
-        {"individuals": {"name": "Ahmad Ali"}},
+        {"individual_questions": {"name": "Ahmad Ali"}},
         master_detail=True,
     )
 
@@ -217,7 +251,7 @@ def test_transform_submission_wraps_single_individual_mapping():
 def test_transform_submission_rejects_non_mapping_individual():
     with pytest.raises(OnaMappingError, match="Invalid individual at index 0"):
         transform_submission_to_records(
-            {"individuals": ["not-a-record"]},
+            {"individual_questions": ["not-a-record"]},
             master_detail=True,
         )
 
