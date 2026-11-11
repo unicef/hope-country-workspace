@@ -7,6 +7,7 @@ from smart_admin.smart_auth.admin import ContentTypeAdmin, PermissionAdmin
 from ..cache.smart_panel import panel_cache
 from .batch import BatchAdmin
 from .flex_fields import CWDataCheckerAdmin, CWFieldsetAdmin, CWFlexFieldAdmin
+from .flex_file import FlexFieldFileAdmin
 from .beneficiary_group import BeneficiaryGroupAdmin
 from .constance import ConstanceAdmin
 from .household import HouseholdAdmin
@@ -44,6 +45,7 @@ __all__ = [
     "ConstanceAdmin",
     "CountryAdmin",
     "DataSerializerAdmin",
+    "FlexFieldFileAdmin",
     "HouseholdAdmin",
     "IndividualAdmin",
     "MappingImporterAdmin",
