@@ -35,9 +35,10 @@ def test_content_view_serves_file_in_sandbox(app: "CWTestApp", image_file: "Flex
 
 
 def test_content_view_unknown_file_returns_404(app: "CWTestApp", image_file: "FlexFieldFile"):
+    url = reverse("admin:country_workspace_flexfieldfile_content", args=[image_file.pk])
     image_file.delete()
 
-    app.get(reverse("admin:country_workspace_flexfieldfile_content", args=[image_file.pk]), status=404)
+    app.get(url, status=404)
 
 
 def test_change_view_shows_image_preview(app: "CWTestApp", image_file: "FlexFieldFile"):
