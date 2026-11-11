@@ -5,9 +5,9 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.hope.constants import ACCOUNT_ATTACHMENT_LIMIT, ACCOUNT_ATTACHMENT_SIZE_LIMIT
 from country_workspace.exceptions import BlobStorageError, InvalidAccountAttachmentError, MissingFlexFileError
 from country_workspace.models.flex_file import FlexFieldFile
-from country_workspace.services.hope_blob import sync_account_attachments
+from country_workspace.services.hope_blob import RECORD_SELECT_RELATED, sync_account_attachments
 from country_workspace.storages import HOPE_STORAGE
-from country_workspace.utils.flex_files import write_flex_file
+from country_workspace.utils.flex_files import prefetch_flex_files, write_flex_file
 from testutils.factories import CountryIndividualFactory
 
 pytestmark = pytest.mark.django_db
@@ -86,6 +86,18 @@ def test_retry_uploads_only_files_missing_from_storage(individual, mocker: Mocke
 
     assert sync_account_attachments(individual) == first
     assert [call.args[0] for call in save.call_args_list] == [first["bank_attachments"][1]["file"]]
+
+
+def test_prefetched_files_are_read_only_when_missing_from_storage(individual, django_assert_num_queries) -> None:
+    first = sync_account_attachments(individual)
+    HOPE_STORAGE.delete(first["bank_attachments"][1]["file"])
+    record = prefetch_flex_files(
+        type(individual).objects.select_related(RECORD_SELECT_RELATED).filter(pk=individual.pk), with_content=False
+    ).get()
+
+    with django_assert_num_queries(1):
+        assert sync_account_attachments(record) == first
+    assert all("content" in flex_file.get_deferred_fields() for flex_file in record.flex_field_files.all())
 
 
 def test_uploaded_files_are_never_deleted(individual, mocker: MockerFixture) -> None:

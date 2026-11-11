@@ -55,6 +55,21 @@ def test_materialize_pending_files_keeps_the_file_name_on_the_stored_file() -> N
     assert (stored.content_bytes, stored.original_filename) == (b"one", "1770915139616.jpg")
 
 
+def test_materialize_pending_files_keeps_the_name_of_each_copy_of_the_same_file() -> None:
+    individual = CountryIndividualFactory(household=None, flex_fields={}, raw_data={})
+    individual.flex_fields = {"bank_attachments": [{"file": pending_marker("q1")}, {"file": pending_marker("q2")}]}
+    files = {
+        "q1": FlexFileContent(content=b"scan", mimetype="image/jpeg", filename="front.jpg"),
+        "q2": FlexFileContent(content=b"scan", mimetype="image/jpeg", filename="back.jpg"),
+    }
+
+    materialize_pending_files(individual, files)
+
+    references = [item["file"] for item in individual.flex_fields["bank_attachments"]]
+    names = [FlexFieldFile.objects.get(pk=FlexFieldFile.parse_reference(ref)).original_filename for ref in references]
+    assert names == ["front.jpg", "back.jpg"]
+
+
 class TestAccountAttachmentsField:
     field = AccountAttachmentsField(required=False)
 

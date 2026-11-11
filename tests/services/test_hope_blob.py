@@ -10,6 +10,7 @@ from pytest_mock import MockerFixture
 from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.services.hope_blob import (
+    RECORD_SELECT_RELATED,
     decode_data_uri,
     image_field_names,
     is_data_uri,
@@ -17,7 +18,7 @@ from country_workspace.services.hope_blob import (
 )
 from country_workspace.storages import HOPE_STORAGE
 from country_workspace.utils.flex_fields import Base64ImageField
-from country_workspace.utils.flex_files import write_flex_file
+from country_workspace.utils.flex_files import prefetch_flex_files, write_flex_file
 from testutils.factories import (
     CountryIndividualFactory,
     DataCheckerFactory,
@@ -216,6 +217,19 @@ def test_sync_record_blobs_reuses_unchanged_hash_for_a_reference(offloaded_indiv
 
     save_spy.assert_not_called()
     assert paths == {"photo": offloaded_individual.hope_blob_key("photo")}
+
+
+def test_sync_record_blobs_reads_no_content_of_an_unchanged_prefetched_image(
+    offloaded_individual, django_assert_num_queries
+) -> None:
+    sync_record_blobs(offloaded_individual, ["photo"])
+    record = prefetch_flex_files(
+        type(offloaded_individual).objects.select_related(RECORD_SELECT_RELATED).filter(pk=offloaded_individual.pk),
+        with_content=False,
+    ).get()
+
+    with django_assert_num_queries(0):
+        assert sync_record_blobs(record, ["photo"]) == {"photo": record.hope_blob_key("photo")}
 
 
 def test_sync_record_blobs_does_not_reupload_after_migrating_to_a_reference(individual, mocker: MockerFixture) -> None:

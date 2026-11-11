@@ -13,6 +13,7 @@ from country_workspace.utils.flex_files import (
     FlexFileContent,
     as_data_uri,
     attach_flex_files,
+    flex_file_content,
     materialize_pending_files,
     pending_marker,
     prefetch_flex_files,
@@ -56,6 +57,19 @@ def test_write_flex_file_reuses_the_row_of_identical_content(
     assert record.flex_field_files.filter(field_name="photo").count() == 2
     resolved = resolve_flex_files(record, {"photo": first})
     assert resolved["photo"] == "data:image/png;base64,%s" % b64encode(photo_content.content).decode()
+
+
+@pytest.mark.django_db
+def test_write_flex_file_keeps_identical_content_under_another_name_apart(
+    record: Individual, photo_content: FlexFileContent
+) -> None:
+    first = write_flex_file(record, "file", photo_content.content, photo_content.mimetype, "front.png")
+    same_name = write_flex_file(record, "file", photo_content.content, photo_content.mimetype, "front.png")
+    other_name = write_flex_file(record, "file", photo_content.content, photo_content.mimetype, "back.png")
+
+    assert same_name == first
+    assert other_name != first
+    assert FlexFieldFile.objects.get(pk=FlexFieldFile.parse_reference(other_name)).original_filename == "back.png"
 
 
 @pytest.mark.django_db
@@ -236,6 +250,18 @@ def test_prefetch_flex_files_with_prefix_resolves_without_further_queries(
         resolved = resolve_flex_files(prefetched.individual)
 
     assert resolved["photo"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.django_db
+def test_prefetch_flex_files_without_content_reads_bytes_only_on_demand(
+    record_with_photo: Individual, photo_content: FlexFileContent, django_assert_num_queries: DjangoAssertNumQueries
+) -> None:
+    prefetched = prefetch_flex_files(Individual.objects.filter(pk=record_with_photo.pk), with_content=False).get()
+    [flex_file] = prefetched.flex_field_files.all()
+
+    with django_assert_num_queries(1):
+        assert flex_file_content(flex_file) == photo_content.content
+    assert "content" in flex_file.get_deferred_fields()
 
 
 @pytest.mark.django_db

@@ -7,7 +7,6 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from azure.core.exceptions import AzureError
-from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 
 from country_workspace.contrib.hope.constants import (
@@ -19,7 +18,7 @@ from country_workspace.exceptions import BlobStorageError, InvalidAccountAttachm
 from country_workspace.models.flex_file import FlexFieldFile
 from country_workspace.storages import HOPE_STORAGE
 from country_workspace.utils.account_attachments import attachment_title, iter_attachment_fields
-from country_workspace.utils.flex_files import load_flex_files
+from country_workspace.utils.flex_files import flex_file_content, load_flex_files
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
@@ -78,23 +77,24 @@ def _sync_record_blobs(
     names = [name for name in image_fields if only is None or name in only]
 
     # Reference fields are loaded together up front, so a record with several
-    # offloaded image fields costs one query instead of one per field.
+    # offloaded image fields costs one query instead of one per field. Their
+    # content is read only for images that changed since the last sync.
     reference_ids = {
         name: file_id
         for name in names
         if (file_id := FlexFieldFile.parse_reference(record.flex_fields.get(name))) is not None
     }
-    files = load_flex_files(record, set(reference_ids.values())) if reference_ids else {}
+    files = load_flex_files(record, set(reference_ids.values()), with_content=False) if reference_ids else {}
 
     for name in names:
         value = record.flex_fields.get(name)
+        flex_file: FlexFieldFile | None = None
         if name in reference_ids:
             if (flex_file := files.get(reference_ids[name])) is None:
                 raise MissingFlexFileError(
                     f"{type(record).__name__} #{record.pk}: field {name!r} references missing file {value}"
                 )
             new_hash = flex_file.checksum
-            content = flex_file.content_bytes
         elif is_data_uri(value):
             content = decode_data_uri(value)
             new_hash = hashlib.sha256(content).hexdigest()
@@ -106,6 +106,8 @@ def _sync_record_blobs(
         if hashes.get(name) != new_hash:
             # HOPE_STORAGE must be configured with overwrite semantics (enforced by
             # checks.py E004), so save() replaces any existing blob under the same key.
+            if flex_file is not None:
+                content = flex_file_content(flex_file)
             HOPE_STORAGE.save(key, ContentFile(content))
             hashes[name] = new_hash
         result[name] = key
@@ -160,15 +162,8 @@ def _sync_account_attachments(
         for item in items
         if (file_id := FlexFieldFile.parse_reference(_attachment_file(item))) is not None
     }
-    # Content is deferred: only files missing from the storage are read, one at a time.
-    files = {
-        flex_file.pk: flex_file
-        for flex_file in FlexFieldFile.objects.filter(
-            content_type=ContentType.objects.get_for_model(record, for_concrete_model=True),
-            object_id=record.pk,
-            pk__in=file_ids,
-        )
-    }
+    # Only files missing from the storage are read, one at a time.
+    files = load_flex_files(record, file_ids, with_content=False)
     result: dict[str, AttachmentItems | None] = {}
     for name, items in fields.items():
         stored: AttachmentItems = []
@@ -181,8 +176,7 @@ def _sync_account_attachments(
                 )
             key = record.hope_attachment_key(flex_file.pk, _attachment_extension(record, name, flex_file))
             if not HOPE_STORAGE.exists(key):
-                content = FlexFieldFile.objects.with_content().get(pk=flex_file.pk).content_bytes
-                key = HOPE_STORAGE.save(key, ContentFile(content))
+                key = HOPE_STORAGE.save(key, ContentFile(flex_file_content(flex_file)))
             title = (item.get("title") if isinstance(item, Mapping) else None) or attachment_title(
                 flex_file.original_filename
             )
