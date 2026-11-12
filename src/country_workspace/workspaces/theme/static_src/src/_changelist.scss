@@ -251,6 +251,7 @@
   }
 
   input[type="text"],
+  input[type="number"],
   textarea,
   select {
     @apply field-input min-w-0;
@@ -398,6 +399,26 @@
     }
   }
 
+  /* MUI FormHelperText under a field, grey or red. */
+  .filter-help,
+  .filter-error {
+    margin: 3px 14px 0;
+    font-size: 12px;
+    line-height: 1.66;
+  }
+
+  .filter-help {
+    @apply text-label;
+  }
+
+  .filter-error {
+    @apply text-hct-red;
+  }
+
+  .filter-field:has(.filter-error) :is(input, select) {
+    @apply border-hct-red;
+  }
+
   .filters-actions {
     @apply flex flex-wrap items-center justify-end gap-2;
     margin-top: 16px;
@@ -407,6 +428,29 @@
       @apply mr-auto text-label;
       font-size: 14px;
     }
+  }
+}
+
+/* RDP findings: the operation summary as a row of LabelizedFields, and table cells that wrap their details. */
+.findings-summary {
+  @apply flex flex-wrap items-start gap-x-12 gap-y-4;
+
+  .findings-note {
+    @apply flex-1 m-0 text-label;
+    min-width: 16rem;
+    font-size: 14px;
+  }
+}
+
+#changelist table.findings-table tbody {
+  td {
+    white-space: normal;
+    vertical-align: top;
+    cursor: auto;
+  }
+
+  .finding-details {
+    min-width: 24rem;
   }
 }
 
