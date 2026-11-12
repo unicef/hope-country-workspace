@@ -9,6 +9,7 @@ from .aurora import ProjectFactory, RegistrationFactory  # noqa
 from .base import AutoRegisterModelFactory, TAutoRegisterModelFactory, factories_registry
 from .batch import BatchFactory, CountryBatchFactory  # noqa
 from .django_celery_beat import PeriodicTaskFactory  # noqa
+from .flex_file import FlexFieldFileFactory  # noqa
 from .household import CountryHouseholdFactory, HouseholdFactory  # noqa
 from .individual import CountryIndividualFactory, IndividualFactory  # noqa
 from .job import AsyncJobFactory  # noqa
