@@ -32,7 +32,7 @@ from ._import_data import ImportDataMixin
 from ._operation_findings import OperationFindingsAdminMixin, OperationFindingsFilter
 from .cleaners import actions
 from .cleaners.validate import create_validation_jobs
-from .filters import get_rdp_context, get_requested_rdp_id
+from .filters import WIsValidFilter, get_rdp_context, get_requested_rdp_id
 
 if TYPE_CHECKING:
     from hope_flex_fields.forms import FlexForm
@@ -270,7 +270,7 @@ class BeneficiaryBaseAdmin(
     def get_list_filter(self, request: HttpRequest) -> list[Any]:
         filters = list(super().get_list_filter(request))
         if self._can_show_operation_findings(request, get_rdp_context(request)):
-            filters.append(OperationFindingsFilter)
+            filters.insert(filters.index(WIsValidFilter) + 1, OperationFindingsFilter)
         return filters
 
     def get_list_display(self, request: HttpRequest) -> list[str]:

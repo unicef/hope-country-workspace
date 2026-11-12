@@ -13,6 +13,7 @@ from country_workspace.rdp import RDP_OPERATION_DEFINITIONS
 from country_workspace.state import state
 from country_workspace.workspaces.admin import _operation_findings as findings_mod
 from country_workspace.workspaces.admin._operation_findings import OperationFindingsFilter
+from country_workspace.workspaces.admin.filters import WIsValidFilter
 from country_workspace.workspaces.admin.hh_ind import BeneficiaryBaseAdmin
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryProgram, CountryRdp
 from country_workspace.workspaces.sites import workspace
@@ -96,7 +97,7 @@ def findings(
 
 @pytest.fixture(params=[CountryHousehold, CountryIndividual], ids=["household", "individual"])
 def model_admin(request: pytest.FixtureRequest, mocker: MockerFixture) -> BeneficiaryBaseAdmin:
-    admin = BeneficiaryBaseAdmin(request.param, workspace)
+    admin = workspace.get_model_admin(request.param)
     mocker.patch.object(admin, "_can_view_operation_findings", return_value=True)
     return admin
 
@@ -148,8 +149,13 @@ def test_findings_context(
 
     empty_context = model_admin._get_operation_findings_context(request, records[-1], selected)
     assert [row["findings"] for row in empty_context["operation_findings"]] == ([0, 0] if selected_rdp else [])
-    assert model_admin.get_list_display(request) == ["name", "is_valid", "operation_findings"]
-    assert OperationFindingsFilter in model_admin.get_list_filter(request)
+    assert model_admin.get_list_display(request) == [
+        "name" if is_household else "name_with_latin",
+        "is_valid",
+        "operation_findings",
+    ]
+    filters = model_admin.get_list_filter(request)
+    assert filters[filters.index(WIsValidFilter) + 1] is OperationFindingsFilter
 
 
 @pytest.mark.parametrize("selected_rdp", [True, False], ids=["rdp", "latest"])
