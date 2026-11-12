@@ -120,6 +120,28 @@ body.web {
       }
     }
 
+    /* Which environment this is, as a small MUI chip with a dot in the logo block's environment colour. */
+    .env-badge {
+      @apply items-center gap-1.5 rounded-full font-medium uppercase;
+      padding: 3px 10px;
+      color: theme('colors.app-bar-text');
+      background-color: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+
+      &:not(.hidden) {
+        @apply inline-flex;
+      }
+
+      &::before {
+        content: "";
+        @apply rounded-full;
+        width: 8px;
+        height: 8px;
+        background-color: var(--env-color, currentColor);
+      }
+    }
+
     /* HOPE's UserProfileMenu: grey avatar initial and the email, uppercase like an MUI text button. */
     .user-menu {
       @apply relative;

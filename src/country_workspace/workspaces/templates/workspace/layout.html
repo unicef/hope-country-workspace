@@ -25,24 +25,37 @@
         document.addEventListener("DOMContentLoaded", function (event) {
             const hostname = window.location.hostname;
             let color = '';
+            let envLabel = '';
             if (hostname === 'localhost') {
                 color = '#A1E4B6';
+                envLabel = 'LOCAL';
             } else if (hostname.includes('trn')) {
                 color = '#BF360C';
+                envLabel = 'TRAINING';
             } else if (hostname.includes('stg')) {
                 color = '#673AB7';
+                envLabel = 'STAGING';
             } else if (hostname.includes('dev')) {
                 color = '#00796B';
+                envLabel = 'DEV';
             } else if (hostname.includes('eph')) {
                 color = '#CC00EF';
+                envLabel = 'EPH';
             } else if (hostname.includes('tst')) {
                 color = '#EF00A7';
+                envLabel = 'TEST';
             }
             const logoBlock = document.getElementById("logo-block");
             if (logoBlock && color) {
                 logoBlock.style.backgroundColor = color;
                 const logoImage = document.getElementById("logo-image");
                 if (logoImage) logoImage.src = logoImage.dataset.transparentSrc;
+            }
+            const envBadge = document.getElementById("env-badge");
+            if (envBadge && envLabel) {
+                envBadge.textContent = envLabel;
+                envBadge.style.setProperty('--env-color', color);
+                envBadge.classList.remove('hidden');
             }
 
             // The user menu and the choice buttons' menus close on an outside click or Escape.
@@ -135,6 +148,7 @@
                             <div class="flex-1">
                             </div>
                             <div class="flex items-center gap-2 pr-4">
+                                <span id="env-badge" class="env-badge hidden"></span>
                                 {% block app-bar-actions %}
                                 {% endblock app-bar-actions %}
                                 {% if request.user.is_authenticated %}
