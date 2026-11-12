@@ -2,6 +2,7 @@ import re
 
 from collections import defaultdict
 from typing import Any, TypedDict, cast
+from uuid import UUID
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -23,15 +24,23 @@ class HopeBlobMixin:
     def _sanitize(value: str) -> str:
         return re.sub(r"[^A-Za-z0-9._-]", "_", (value or "").strip())
 
-    def hope_blob_key(self, name: str) -> str:
+    def _hope_blob_directory(self) -> str:
         program = self.program
         office_slug = self.country_office.slug
         if not program.start_date or not office_slug:
             raise ImproperlyConfigured("HOPE blob key requires Program.start_date and country_office.slug")
-        office = self._sanitize(office_slug)
-        code = self._sanitize(program.code)
-        filename = f"CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
-        return f"{program.start_date.year}/{office}/{code}/{filename}"
+        return f"{program.start_date.year}/{self._sanitize(office_slug)}/{self._sanitize(program.code)}/"
+
+    def hope_blob_key(self, name: str) -> str:
+        return f"{self._hope_blob_directory()}CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_{self._sanitize(name)}.png"
+
+    def hope_attachment_key(self, file_id: UUID, extension: str) -> str:
+        """Return the HOPE storage name of an attachment file.
+
+        Unlike `hope_blob_key`, the name follows the file and not the field: file rows are
+        immutable, so a name is never reused for other content and can be kept once HOPE refers to it.
+        """
+        return f"{self._hope_blob_directory()}CW_{self.HOPE_BLOB_ENTITY}_{self.pk}_attachment_{file_id.hex}{extension}"
 
 
 class FlexFieldGroupingMixin:

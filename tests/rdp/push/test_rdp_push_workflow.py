@@ -623,7 +623,7 @@ def test_push_data_steps(
     individuals = mocker.patch.object(workflow, "qs_individuals_for_push", return_value="individuals")
     households = mocker.patch.object(workflow, "qs_households", return_value="households")
     people = mocker.patch.object(workflow, "qs_individuals_by_pks", return_value="people")
-    prefetch = mocker.patch.object(workflow, "prefetch_flex_files", side_effect=lambda queryset: queryset)
+    prefetch = mocker.patch.object(workflow, "prefetch_flex_files", side_effect=lambda queryset, **_: queryset)
 
     steps = list(workflow._push_data_steps(processor, config))
     for step in steps:
@@ -633,7 +633,10 @@ def test_push_data_steps(
         individuals.assert_called_once_with([1, 2])
         households.assert_called_once_with(pks=[1, 2])
         people.assert_not_called()
-        assert prefetch.call_args_list == [mocker.call("individuals"), mocker.call("households")]
+        assert prefetch.call_args_list == [
+            mocker.call("individuals", with_content=False),
+            mocker.call("households", with_content=False),
+        ]
         assert processor.run_with.call_args_list == [
             mocker.call("individuals", processor.rdi_push_individuals),
             mocker.call("households", processor.rdi_push_households),
@@ -642,7 +645,7 @@ def test_push_data_steps(
         people.assert_called_once_with([1, 2])
         individuals.assert_not_called()
         households.assert_not_called()
-        prefetch.assert_called_once_with("people")
+        prefetch.assert_called_once_with("people", with_content=False)
         processor.run_with.assert_called_once_with("people", processor.rdi_push_people)
 
     processor.rdi_complete.assert_called_once_with()

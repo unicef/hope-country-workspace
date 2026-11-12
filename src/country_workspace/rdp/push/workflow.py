@@ -358,18 +358,16 @@ def handle_push_ready_callback(*, rdp_id: int, push_attempt_id: UUID) -> bool:
 def _push_data_steps(processor: PushProcessor, config: PushWorkflowConfig) -> Iterator[Callable[[], None]]:
     """Yield beneficiary push steps followed by RDI completion."""
     pks = config["pks"]
+    # File content is read only for files the HOPE storage lacks, so a batch never holds all of its files.
+    with_files = partial(prefetch_flex_files, with_content=False)
 
     if config["master_detail"]:
         yield from (
-            partial(
-                processor.run_with,
-                prefetch_flex_files(qs_individuals_for_push(pks)),
-                processor.rdi_push_individuals,
-            ),
-            partial(processor.run_with, prefetch_flex_files(qs_households(pks=pks)), processor.rdi_push_households),
+            partial(processor.run_with, with_files(qs_individuals_for_push(pks)), processor.rdi_push_individuals),
+            partial(processor.run_with, with_files(qs_households(pks=pks)), processor.rdi_push_households),
         )
     else:
-        yield partial(processor.run_with, prefetch_flex_files(qs_individuals_by_pks(pks)), processor.rdi_push_people)
+        yield partial(processor.run_with, with_files(qs_individuals_by_pks(pks)), processor.rdi_push_people)
 
     yield processor.rdi_complete
 

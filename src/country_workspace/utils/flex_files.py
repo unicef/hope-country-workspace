@@ -39,7 +39,7 @@ class FlexFileContent:
 def as_data_uri(flex_file: FlexFieldFile) -> str:
     return DATA_URI_FORMAT.format(
         mimetype=flex_file.mimetype or DEFAULT_MIMETYPE,
-        content=b64encode(flex_file.content_bytes).decode(),
+        content=b64encode(flex_file_content(flex_file)).decode(),
     )
 
 
@@ -52,8 +52,10 @@ def write_flex_file(
 ) -> str:
     """Store `content` for `record.field_name` and return its reference.
 
-    Rows are append-only: an existing row for the same content is reused, any
-    other row is left untouched, so previous references stay resolvable.
+    Rows are append-only: an existing row for the same content and file name is
+    reused, any other row is left untouched, so previous references stay
+    resolvable. The same content under another name gets its own row, so each
+    reference keeps the name it was uploaded with.
     """
     checksum = hashlib.sha256(content).hexdigest()
     # proxy models resolve to their concrete model, so proxy and concrete rows never diverge
@@ -64,6 +66,7 @@ def write_flex_file(
             object_id=record.pk,
             field_name=field_name,
             checksum=checksum,
+            original_filename=filename or "",
         )
         .order_by("created_at")
         .first()
@@ -200,9 +203,27 @@ def resolve_flex_file(record: "Validable", field_name: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def prefetch_flex_files(queryset: "QuerySet[Any]", *, prefix: str = "") -> "QuerySet[Any]":
+def prefetch_flex_files(queryset: "QuerySet[Any]", *, prefix: str = "", with_content: bool = True) -> "QuerySet[Any]":
+    """Prefetch the file rows of every record, with their content unless `with_content` is False.
+
+    Without content each row costs a few bytes instead of its whole file, and
+    `flex_file_content()` reads the bytes of only the rows that need them.
+    """
     lookup = f"{prefix}__{PREFETCH_NAME}" if prefix else PREFETCH_NAME
-    return queryset.prefetch_related(Prefetch(lookup, queryset=FlexFieldFile.objects.with_content()))
+    files = FlexFieldFile.objects.with_content() if with_content else FlexFieldFile.objects.all()
+    return queryset.prefetch_related(Prefetch(lookup, queryset=files))
+
+
+def flex_file_content(flex_file: FlexFieldFile) -> bytes:
+    """Return the bytes of `flex_file`, reading deferred content without keeping it on the row.
+
+    A prefetched row lives as long as its whole batch, so caching the bytes on
+    it would hold every file of the batch in memory at once.
+    """
+    if "content" not in flex_file.get_deferred_fields():
+        return flex_file.content_bytes
+    content = FlexFieldFile.objects.with_content().filter(pk=flex_file.pk).values_list("content", flat=True).get()
+    return bytes(content or b"")
 
 
 def _resolve_markers(
@@ -245,11 +266,18 @@ def _resolve_value(
     return value
 
 
-def load_flex_files(record: "Validable", file_ids: set[UUID]) -> dict[UUID, FlexFieldFile]:
-    """Load the requested rows owned by `record`, prefetched ones included."""
+def load_flex_files(
+    record: "Validable", file_ids: set[UUID], *, with_content: bool = True
+) -> dict[UUID, FlexFieldFile]:
+    """Load the requested rows owned by `record`, prefetched ones included.
+
+    Prefetched rows are returned as they were prefetched, so callers that need
+    the bytes read them through `flex_file_content()`.
+    """
     if PREFETCH_NAME in getattr(record, "_prefetched_objects_cache", {}):
         return {flex_file.pk: flex_file for flex_file in record.flex_field_files.all() if flex_file.pk in file_ids}
-    files = FlexFieldFile.objects.with_content().filter(
+    rows = FlexFieldFile.objects.with_content() if with_content else FlexFieldFile.objects.all()
+    files = rows.filter(
         content_type=ContentType.objects.get_for_model(record, for_concrete_model=True),
         object_id=record.pk,
         pk__in=file_ids,

@@ -15,3 +15,7 @@ class BlobStorageError(RemoteUnavailableError):
 
 class MissingFlexFileError(Exception):
     """A flex field references a `FlexFieldFile` the record does not own."""
+
+
+class InvalidAccountAttachmentError(Exception):
+    """An account attachment breaks a limit HOPE enforces on account attachments."""

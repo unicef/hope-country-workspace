@@ -45,6 +45,30 @@ Handle missing blobs with `azure.core.exceptions.ResourceNotFoundError` (and `Fi
 
     Example: `2024/afghanistan/CP-2024/CW_ind_12345_photo.png`
 
+## Account attachments
+
+Account attachments (`{type}_attachments` in the **HOPE Account** Fieldset, see [Kobo account attachments](../data_import/sources/kobo.md#account-attachments)) are `FlexFieldFile` references too, but are uploaded by `services.hope_blob.sync_account_attachments` with a different key scheme:
+
+```
+{program.start_date.year}/{office.slug}/{program.code}/CW_ind_{pk}_attachment_{file uuid}{extension}
+```
+
+The key is derived from the `FlexFieldFile` id, so a key always holds the same content. This gives the following guarantees:
+
+- a push or retry uploads only files that are missing from `FILE_STORAGE_HOPE` and reuses the others;
+- replacing an attachment produces a new key instead of overwriting a file HOPE may already reference;
+- attachment blobs are never deleted by Country Workspace, and they are not tracked in `blob_hashes`.
+
+Before uploading, Country Workspace checks that every reference belongs to the pushed record and enforces HOPE Core's limits: 10 attachments per account, 10 MB per file, and the pdf, xlsx, jpg, jpeg and png file types. HOPE Core repeats these checks. It also checks that each key is inside the Program's storage directory and exists in its media storage. Because HOPE Core reads the keys from its own media storage, `FILE_STORAGE_HOPE` must point at the same container that HOPE Core uses for media.
+
+### Upgrade and deployment order
+
+1. Deploy HOPE Core with stored account attachment support first. Older HOPE Core releases ignore `attachments` on the household endpoint and expect base64 content on the people endpoint, so attachments pushed to them are lost or rejected.
+2. Deploy Country Workspace and run `python manage.py upgrade` (or `python manage.py upgradescripts apply`), which applies the versioning script script `0036_add_account_attachments`. The script adds the `attachments` field to the **HOPE Account** Fieldset and links the account Fieldsets, with the same prefixes as the Individual DataChecker, to the People DataChecker so that People can hold accounts.
+3. Reprocess Batches imported before the upgrade if their Kobo forms already used `account__{type}__attachment_{N}` questions, so the attachments are grouped into the accounts.
+
+No new settings are needed.
+
 ## Flex field files
 
 File-typed flex fields (images, document scans) can store their payload in the `FlexFieldFile` table instead of inline in `flex_fields`. A `FlexFieldFile` row is owned by the `Household` or `Individual` it belongs to (via a generic relation) and holds the raw `content`, `mimetype`, `size`, `checksum` and original filename. The owning record's `flex_fields` value becomes a `flexfile:<uuid>` reference instead of a base64 data-URI.
