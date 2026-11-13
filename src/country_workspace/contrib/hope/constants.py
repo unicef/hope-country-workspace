@@ -15,7 +15,7 @@ DOCUMENT_FIELDSET_NAME: Final[str] = "HOPE Document"
 
 DOCUMENT_TYPES = ("national_id", "national_passport")
 MAX_DOCUMENT_COLUMNS = 3
-ACCOUNT_TYPES = ("mobile", "bank")
+ACCOUNT_TYPES = ("mobile", "bank", "card", "crypto")
 ACCOUNT_ATTACHMENTS_FIELD: Final[str] = "attachments"
 
 # Limits of HOPE Core's AccountAttachment: HOPE rejects anything beyond them.

@@ -496,6 +496,11 @@ def test_import_submission_master_detail(mocker: MockerFixture, config: Config) 
 def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
     from country_workspace.contrib.ona import import_processing
 
+    pre_processors = (
+        import_processing.flatten_ona_data,
+        import_processing.filter_ona_sys_fields,
+        import_processing.normalize_ona_field_names,
+    )
     program = mocker.MagicMock()
     processor = mocker.MagicMock()
     build_import_processor = mocker.patch(
@@ -510,7 +515,8 @@ def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
         "program": program,
         "model": import_processing.Individual,
         "mapping_id": 11,
-        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "fields_to_uppercase": ("role", "relationship", "gender", "residence_status", "consent_sharing"),
+        "pre_processors": pre_processors,
         "post_processors": (),
         "source": import_processing.Batch.BatchSource.ONA,
     }
@@ -518,7 +524,8 @@ def test_build_processors_use_ona_preprocessors(mocker: MockerFixture) -> None:
         "program": program,
         "model": import_processing.Household,
         "mapping_id": None,
-        "pre_processors": (import_processing.flatten_ona_data, import_processing.filter_ona_sys_fields),
+        "fields_to_uppercase": ("registration_method", "residence_status", "consent_sharing"),
+        "pre_processors": pre_processors,
         "post_processors": (),
         "source": import_processing.Batch.BatchSource.ONA,
     }
@@ -574,6 +581,7 @@ def test_create_individual_keeps_raw_data_flat(mocker: MockerFixture, config: Co
 def test_create_household_keeps_raw_data_flat(mocker: MockerFixture, config: Config) -> None:
     batch = mocker.MagicMock()
     batch.pk = 123
+    batch.household_set.count.return_value = 4
 
     processor = mocker.MagicMock(return_value={"processed": "household"})
     mocker.patch(
@@ -604,7 +612,7 @@ def test_create_household_keeps_raw_data_flat(mocker: MockerFixture, config: Con
         "household/name": "Ahmad Household",
     }
     assert "fields" not in created_kwargs["raw_data"]
-    assert created_kwargs["flex_fields"] == {"processed": "household"}
+    assert created_kwargs["flex_fields"] == {"processed": "household", "household_id": 5}
     processor.assert_called_once_with({"household_name": "Ahmad Household"})
 
 
@@ -702,6 +710,28 @@ def test_set_roles_and_relationships_sets_all_household_refs(
     assert household.flex_fields["alternate_collector_id"] == 102
     assert household.flex_fields["head_of_household_id"] == 103
     household.save.assert_called_once_with(update_fields=["flex_fields"])
+
+
+def test_set_roles_and_relationships_drops_refs_without_matching_member(
+    mocker: MockerFixture,
+) -> None:
+    from country_workspace.contrib.ona.import_processing import (
+        ImportedIndividual,
+        set_roles_and_relationships,
+    )
+
+    household = mocker.MagicMock()
+    household.flex_fields = {"size": 2, "alternate_collector_id": "0", "primary_collector_id": "yes"}
+
+    head = mocker.MagicMock()
+    head.id = 103
+
+    set_roles_and_relationships(
+        household,
+        [ImportedIndividual(individual=head, fields={"relationship": "HEAD", "role": "PRIMARY"})],
+    )
+
+    assert household.flex_fields == {"size": 2, "primary_collector_id": 103, "head_of_household_id": 103}
 
 
 def test_import_data_emits_data_imported_signal(
