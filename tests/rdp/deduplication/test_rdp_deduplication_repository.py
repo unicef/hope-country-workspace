@@ -4,10 +4,11 @@ import pytest
 
 from country_workspace.contrib.dedup_engine import FindingStatusCode
 from country_workspace.models import Individual, Rdp, RdpOperation
-from country_workspace.rdp.deduplication.repository import (
+from country_workspace.rdp.deduplication.biographic.repository import qs_biographic_affected_individuals
+from country_workspace.rdp.deduplication.repository import operation_for_rdp, qs_affected_individuals
+from country_workspace.rdp.deduplication.biometric.repository import (
     biometric_operation_for_rdp,
     qs_biometric_affected_individuals,
-    rdp_for_dedup,
 )
 
 pytestmark = pytest.mark.django_db
@@ -49,10 +50,6 @@ def affected_individuals(
     return individuals
 
 
-def test_rdp_for_dedup(rdp: Rdp) -> None:
-    assert rdp_for_dedup(pk=rdp.pk) == rdp
-
-
 def test_biometric_operation_for_rdp(biometric_operation: RdpOperation) -> None:
     assert biometric_operation_for_rdp(rdp=biometric_operation.rdp) == biometric_operation
 
@@ -65,3 +62,40 @@ def test_biometric_affected_individuals(
     biometric_operation: RdpOperation, affected_individuals: list[Individual]
 ) -> None:
     assert list(qs_biometric_affected_individuals(operation=biometric_operation)) == affected_individuals
+
+
+@pytest.mark.parametrize(
+    ("fixture", "operation_type"),
+    [
+        ("biometric_operation", RdpOperation.Type.BIOMETRIC_DEDUPLICATION),
+        ("biographic_operation", RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION),
+    ],
+)
+def test_operation_for_rdp_finds_the_operation_of_the_type(
+    request: pytest.FixtureRequest, fixture: str, operation_type: RdpOperation.Type
+) -> None:
+    operation = request.getfixturevalue(fixture)
+
+    assert operation_for_rdp(rdp=operation.rdp, operation_type=operation_type) == operation
+    assert operation_for_rdp(rdp=operation.rdp, operation_type=RdpOperation.Type.OCR) is None
+
+
+def test_affected_individuals_of_one_type_ignore_the_findings_of_the_other(
+    people_rdp: tuple[Rdp, list[Individual]],
+) -> None:
+    from testutils.factories import (
+        BiographicRdpOperationFactory,
+        BiographicRdpOperationFindingFactory,
+        BiometricRdpOperationFactory,
+    )
+
+    rdp, individuals = people_rdp
+    biographic = BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
+    BiographicRdpOperationFindingFactory(
+        operation=biographic, individual=individuals[0], related_individual=individuals[1]
+    )
+    biometric = BiometricRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
+
+    assert set(qs_biographic_affected_individuals(operation=biographic)) == {individuals[0], individuals[1]}
+    assert not qs_biometric_affected_individuals(operation=biometric).exists()
+    assert not qs_affected_individuals(operation=biometric, finding_types=["DUPLICATE"]).exists()

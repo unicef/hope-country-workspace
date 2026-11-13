@@ -1,13 +1,14 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Final
 
 from requests import Session
-
-from . import endpoint, request, response
+from requests.exceptions import HTTPError
 
 
 TIMEOUT: Final[tuple[int, int]] = (10, 20)
+UPLOAD_TIMEOUT: Final[tuple[int, int]] = (10, 120)
 
 
 @dataclass(slots=True)
@@ -17,16 +18,16 @@ class GenericResource[T]:
 
 
 class CreateMixin[T, R]:
-    def create(self: GenericResource, body: T, *, params: Mapping[str, str] | None = None) -> R:
-        result = self.session.post(str(self.endpoint), json=body, params=params, timeout=TIMEOUT)
+    def create(
+        self: GenericResource,
+        body: T,
+        *,
+        params: Mapping[str, str] | None = None,
+        timeout: tuple[int, int] = TIMEOUT,
+    ) -> R:
+        result = self.session.post(str(self.endpoint), json=body, params=params, timeout=timeout)
         result.raise_for_status()
         return result.json()
-
-
-class DeleteMixin:
-    def delete(self: GenericResource) -> None:
-        result = self.session.delete(str(self.endpoint), timeout=TIMEOUT)
-        result.raise_for_status()
 
 
 class ListMixin[R]:
@@ -42,6 +43,16 @@ class RetrieveMixin[R]:
         result.raise_for_status()
         return result.json()
 
+    def retrieve_or_none(self: GenericResource, *, timeout: tuple[int, int] = TIMEOUT) -> R | None:
+        result = self.session.get(str(self.endpoint), timeout=timeout)
+        try:
+            result.raise_for_status()
+        except HTTPError as exc:
+            if getattr(exc.response, "status_code", None) == HTTPStatus.NOT_FOUND:
+                return None
+            raise
+        return result.json()
+
 
 class UpdateMixin[T, R]:
     def update(self: GenericResource, body: T) -> R:
@@ -50,69 +61,14 @@ class UpdateMixin[T, R]:
         return result.json()
 
 
+class DeleteMixin:
+    def delete(self: GenericResource) -> None:
+        result = self.session.delete(str(self.endpoint), timeout=TIMEOUT)
+        result.raise_for_status()
+
+
 class ActionMixin[T]:
     def call(self: GenericResource, body: T | None = None, *, params: Mapping[str, str] | None = None) -> None:
         kwargs = {"json": body} if body is not None else {}
         result = self.session.post(str(self.endpoint), params=params, timeout=TIMEOUT, **kwargs)
         result.raise_for_status()
-
-
-class DeduplicationSetCollection(
-    GenericResource[endpoint.DeduplicationSets],
-    CreateMixin[request.CreateDeduplicationSet, response.CreatedDeduplicationSet],
-): ...
-
-
-class DeduplicationSetItem(
-    GenericResource[endpoint.DeduplicationSet],
-    RetrieveMixin[response.DeduplicationSet],
-): ...
-
-
-class ImagesCollection(
-    GenericResource[endpoint.Images],
-    CreateMixin[list[request.CreateEncoding], list[response.CreatedEncoding]],
-): ...
-
-
-class ReadyDeduplicationSetAction(
-    GenericResource[endpoint.Ready],
-    ActionMixin[None],
-): ...
-
-
-class ProcessDeduplicationSetAction(
-    GenericResource[endpoint.Process],
-    ActionMixin[None],
-): ...
-
-
-class FindingsCollection(
-    GenericResource[endpoint.Findings],
-    ListMixin[response.PaginatedFindings],
-): ...
-
-
-class RejectDeduplicationSetAction(
-    GenericResource[endpoint.Reject],
-    ActionMixin[None],
-): ...
-
-
-class ApproveDeduplicationSetAction(
-    GenericResource[endpoint.Approve],
-    ActionMixin[None],
-): ...
-
-
-class DeduplicationSetGroupConfigItem(
-    GenericResource[endpoint.DeduplicationSetGroupConfig],
-    RetrieveMixin[response.DeduplicationSetGroupConfig],
-    UpdateMixin[request.DeduplicationSetGroupConfig, response.DeduplicationSetGroupConfig],
-): ...
-
-
-class DeduplicationSetGroupItem(
-    GenericResource[endpoint.DeduplicationSetGroup],
-    DeleteMixin,
-): ...

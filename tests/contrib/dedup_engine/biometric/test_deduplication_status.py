@@ -1,7 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.dedup_engine.deduplication_status import (
+from country_workspace.contrib.dedup_engine.biometric.deduplication_status import (
     DedupClientStatus,
     DeduplicationSetState,
     DedupResponseStatus,
@@ -13,7 +13,7 @@ from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 @pytest.fixture
 def dedup_status_client(mocker: MockerFixture):
-    make_client = mocker.patch("country_workspace.contrib.dedup_engine.deduplication_status.make_client")
+    make_client = mocker.patch("country_workspace.contrib.dedup_engine.biometric.deduplication_status.make_client")
     client = make_client.return_value.__enter__.return_value
     return make_client, client
 
@@ -23,7 +23,7 @@ def test_get_deduplication_status_without_deduplication_set_id(
     deduplication_set_id: str | None,
     mocker: MockerFixture,
 ) -> None:
-    make_client = mocker.patch("country_workspace.contrib.dedup_engine.deduplication_status.make_client")
+    make_client = mocker.patch("country_workspace.contrib.dedup_engine.biometric.deduplication_status.make_client")
 
     assert get_deduplication_status("GROUP_ID", deduplication_set_id) == DedupClientStatus(
         DedupResponseStatus.OK,
@@ -61,7 +61,7 @@ def test_get_deduplication_status_when_remote_is_unavailable(
     exc = RemoteUnavailableError("boom")
     client.retrieve_deduplication_set.side_effect = exc
     capture_exception = mocker.patch(
-        "country_workspace.contrib.dedup_engine.deduplication_status.sentry_sdk.capture_exception"
+        "country_workspace.contrib.dedup_engine.biometric.deduplication_status.sentry_sdk.capture_exception"
     )
 
     assert get_deduplication_status("GROUP_ID", "SET_ID") == DedupClientStatus(

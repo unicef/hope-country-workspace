@@ -11,10 +11,10 @@ from requests.exceptions import (
     Timeout as RequestsTimeout,
 )
 
-from country_workspace.contrib.dedup_engine.client import Client
-from country_workspace.contrib.dedup_engine import resource
-from country_workspace.contrib.dedup_engine.endpoint import APIRoot
-from country_workspace.contrib.dedup_engine.exceptions import DeduplicationSetGroupBusyError
+from country_workspace.contrib.dedup_engine.biometric.client import Client
+from country_workspace.contrib.dedup_engine.resource import TIMEOUT
+from country_workspace.contrib.dedup_engine.biometric.endpoint import APIRoot
+from country_workspace.contrib.dedup_engine.biometric.exceptions import DeduplicationSetGroupBusyError
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 
@@ -36,7 +36,9 @@ def test_client_create_deduplication_set(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetCollection"
+    )
     collection_cls.return_value.create.return_value = payload = {
         "id": "NEW_SET_ID",
         "reference_pk": "PROGRAM_ID",
@@ -55,7 +57,9 @@ def test_client_create_deduplication_set_with_notification_url(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetCollection"
+    )
     collection_cls.return_value.create.return_value = {
         "id": "NEW_SET_ID",
         "reference_pk": "PROGRAM_ID",
@@ -79,7 +83,9 @@ def test_client_create_deduplication_set_without_notification_url_omits_fields(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetCollection"
+    )
     collection_cls.return_value.create.return_value = {
         "id": "NEW_SET_ID",
         "reference_pk": "PROGRAM_ID",
@@ -95,7 +101,9 @@ def test_client_create_deduplication_set_without_notification_url_omits_fields(
 
 
 def test_client_create_deduplication_set_without_deduplication_set_id(mocker: MockerFixture) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetCollection")
+    collection_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetCollection"
+    )
     collection_cls.return_value.create.return_value = payload = {
         "id": "GENERATED_SET_ID",
         "reference_pk": "PROGRAM_ID",
@@ -124,7 +132,7 @@ def test_client_can_create_deduplication_set(
     assert client.can_create_deduplication_set() is can_create
 
     api_root.deduplication_set_groups.deduplication_set_group.assert_called_once_with("PROGRAM_ID")
-    session.get.assert_called_once_with(str(group_endpoint.status), timeout=resource.TIMEOUT)
+    session.get.assert_called_once_with(str(group_endpoint.status), timeout=TIMEOUT)
     session.get.return_value.raise_for_status.assert_called_once_with()
 
 
@@ -150,7 +158,7 @@ def test_client_create_images(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.ImagesCollection")
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.client.resource.ImagesCollection")
     collection_cls.return_value.create.return_value = payload = [{"filename": "a.jpg", "reference_pk": "1"}]
     client, session, api_root = client_ctx
     images = [{"filename": "a.jpg", "reference_pk": "1"}]
@@ -168,17 +176,17 @@ def test_client_create_images(
     [
         (
             "ready",
-            "country_workspace.contrib.dedup_engine.client.resource.ReadyDeduplicationSetAction",
+            "country_workspace.contrib.dedup_engine.biometric.client.resource.ReadyDeduplicationSetAction",
             "ready",
         ),
         (
             "reject",
-            "country_workspace.contrib.dedup_engine.client.resource.RejectDeduplicationSetAction",
+            "country_workspace.contrib.dedup_engine.biometric.client.resource.RejectDeduplicationSetAction",
             "reject",
         ),
         (
             "approve",
-            "country_workspace.contrib.dedup_engine.client.resource.ApproveDeduplicationSetAction",
+            "country_workspace.contrib.dedup_engine.biometric.client.resource.ApproveDeduplicationSetAction",
             "approve",
         ),
     ],
@@ -213,7 +221,9 @@ def test_client_process(
     encode_only: bool,
     params: dict[str, str] | None,
 ) -> None:
-    action_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.ProcessDeduplicationSetAction")
+    action_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.ProcessDeduplicationSetAction"
+    )
     client, session, api_root = client_ctx
 
     client.process(encode_only=encode_only)
@@ -228,7 +238,7 @@ def test_client_retrieve_deduplication_set(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetItem")
     item_cls.return_value.retrieve.return_value = payload = {
         "created_at": "2026-04-13T00:00:00Z",
         "findings_count": 2,
@@ -258,7 +268,7 @@ def test_client_retrieve_deduplication_set(
                 "duplicate_confidence_threshold": 0.2,
             },
             (),
-            {"timeout": resource.TIMEOUT},
+            {"timeout": TIMEOUT},
         ),
         (
             "post_deduplication_set_group_config",
@@ -287,7 +297,9 @@ def test_client_deduplication_set_group_config(
     expected_args: tuple[dict[str, float], ...],
     expected_kwargs: dict[str, tuple[int, int]],
 ) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
+    item_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetGroupConfigItem"
+    )
     getattr(item_cls.return_value, resource_method).return_value = payload
     client, session, api_root = client_ctx
 
@@ -306,7 +318,9 @@ def test_client_get_deduplication_set_group_config_timeout(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetGroupConfigItem")
+    item_cls = mocker.patch(
+        "country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetGroupConfigItem"
+    )
     client, _, _ = client_ctx
 
     client.get_deduplication_set_group_config(timeout=(2, 3))
@@ -411,37 +425,35 @@ def test_client_request_wraps_request_exception(
     fn.assert_called_once_with()
 
 
-@pytest.mark.parametrize(
-    ("status_code", "expected"),
-    [
-        (404, None),
-        (503, RemoteUnavailableError),
-    ],
-    ids=["not_found", "unavailable"],
-)
-def test_client_retrieve_deduplication_set_or_none(
+def test_client_retrieve_deduplication_set_or_none_returns_none(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
-    status_code: int,
-    expected: type[Exception] | None,
 ) -> None:
-    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.DeduplicationSetItem")
-    response = mocker.MagicMock(status_code=status_code, text="error")
-    item_cls.return_value.retrieve.side_effect = HTTPError("boom", response=response)
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetItem")
+    item_cls.return_value.retrieve_or_none.return_value = None
     client, _, _ = client_ctx
 
-    if expected is None:
-        assert client.retrieve_deduplication_set_or_none() is None
-    else:
-        with pytest.raises(expected):
-            client.retrieve_deduplication_set_or_none()
+    assert client.retrieve_deduplication_set_or_none() is None
+
+
+def test_client_retrieve_deduplication_set_or_none_wraps_unavailable(
+    mocker: MockerFixture,
+    client_ctx: tuple[Client, object, object],
+) -> None:
+    item_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.client.resource.DeduplicationSetItem")
+    response = mocker.MagicMock(status_code=503, text="error")
+    item_cls.return_value.retrieve_or_none.side_effect = HTTPError("boom", response=response)
+    client, _, _ = client_ctx
+
+    with pytest.raises(RemoteUnavailableError):
+        client.retrieve_deduplication_set_or_none()
 
 
 def test_client_retrieve_findings(
     mocker: MockerFixture,
     client_ctx: tuple[Client, object, object],
 ) -> None:
-    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.client.resource.FindingsCollection")
+    collection_cls = mocker.patch("country_workspace.contrib.dedup_engine.biometric.client.resource.FindingsCollection")
     collection_cls.return_value.list.side_effect = [
         {"results": [{"id": 1}], "next": "page-2"},
         {"results": [{"id": 2}], "next": None},

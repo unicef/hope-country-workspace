@@ -15,6 +15,12 @@ from country_workspace.rdp.repository import lock_rdp_for_update
 if TYPE_CHECKING:
     from country_workspace.rdp.types import OperationLogEntry
 
+# Operations without units: they cover every individual of their RDP.
+RDP_WIDE_OPERATION_TYPES = (
+    RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+    RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+)
+
 
 def lock_rdp_operation_for_update(*, pk: UUID) -> RdpOperation:
     """Return RDP operation locked for update."""
@@ -104,11 +110,11 @@ def _operation_scope_by_individual(
     ).values_list("operation_id", "individual_id"):
         result[operation_id].add(individual_id)
 
-    biometric_membership = "rdp__households__members__pk" if program.is_master_detail else "rdp__individuals__pk"
+    membership = "rdp__households__members__pk" if program.is_master_detail else "rdp__individuals__pk"
     for operation_id, individual_id in operations.filter(
-        operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
-        **{f"{biometric_membership}__in": individual_ids},
-    ).values_list("pk", biometric_membership):
+        operation_type__in=RDP_WIDE_OPERATION_TYPES,
+        **{f"{membership}__in": individual_ids},
+    ).values_list("pk", membership):
         result[operation_id].add(individual_id)
 
     return result
@@ -190,7 +196,7 @@ def _latest_relevant_operation_id(*, program: Program, operation_type: RdpOperat
     )
 
     relevant = Q(_has_unit=True) | Q(_has_finding=True)
-    if operation_type == RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+    if operation_type in RDP_WIDE_OPERATION_TYPES:
         membership = "rdp__households__members__pk" if program.is_master_detail else "rdp__individuals__pk"
         relevant |= Q(**{membership: OuterRef("pk")})
 

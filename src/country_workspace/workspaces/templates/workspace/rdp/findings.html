@@ -189,6 +189,37 @@
                                                         </div>
                                                     {% endif %}
                                                 {% endif %}
+                                                {% if finding.details.scope %}
+                                                    <div>
+                                                        <span class="text-gray-500">{% translate "Matched in" %}:</span>
+                                                        {% if finding.details.scope == "population" %}
+                                                            {% translate "Approved population" %}
+                                                        {% else %}
+                                                            {% translate "This RDP" %}
+                                                        {% endif %}
+                                                    </div>
+                                                {% endif %}
+                                                {% if finding.details.proximity_to_score is not None %}
+                                                    <div>
+                                                        <span class="text-gray-500">{% translate "Proximity to score" %}:</span>
+                                                        {{ finding.details.proximity_to_score }}
+                                                    </div>
+                                                {% endif %}
+                                                {% if finding.details.matched_full_name or finding.details.matched_birth_date %}
+                                                    <div>
+                                                        <span class="text-gray-500">{% translate "Matched person" %}:</span>
+                                                        {{ finding.details.matched_full_name|default:"" }}
+                                                        {% if finding.details.matched_birth_date %}
+                                                            ({{ finding.details.matched_birth_date }})
+                                                        {% endif %}
+                                                    </div>
+                                                {% endif %}
+                                                {% if finding.details.related_reference_pk and not finding.related_individual_url and operation.operation_type != "BIOMETRIC_DEDUPLICATION" %}
+                                                    <div>
+                                                        <span class="text-gray-500">{% translate "Matched individual" %}:</span>
+                                                        #{{ finding.details.related_reference_pk }}
+                                                    </div>
+                                                {% endif %}
                                                 {% if finding.details.error %}
                                                     <details class="mt-2">
                                                         <summary class="cursor-pointer font-medium hover:underline">

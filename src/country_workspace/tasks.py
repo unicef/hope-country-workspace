@@ -16,7 +16,7 @@ from redis_lock import Lock
 from country_workspace.cache.handlers import suppress_cache_updates
 from country_workspace.cache.manager import cache_manager
 from country_workspace.config.celery import app
-from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.contrib.dedup_engine import make_biometric_client
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
 from country_workspace.management.commands.sync import run_flex_fields_sync, run_geo_sync, run_program_sync
 from country_workspace.models import AsyncJob, Batch, Rdp, Rdi, Household, Individual, Program
@@ -307,12 +307,12 @@ def clean_program_data(job: AsyncJob, batch_size: int = 5) -> dict | None:
 
     if dedup_configured:
         reference_id = reference_id or program.unicef_id
-        with make_dedup_client(reference_id) as client:
+        with make_biometric_client(reference_id) as client:
             client.delete_deduplication_set_group()
 
         current_reference_id = Program.objects.select_related("country_office").get(pk=program_id).unicef_id
         if current_reference_id != reference_id:
-            with make_dedup_client(current_reference_id) as client:
+            with make_biometric_client(current_reference_id) as client:
                 client.delete_deduplication_set_group()
 
     deleted_counts = {"batches": 0, "households": 0, "individuals": 0, "rdps": 0, "rdis": 0, "jobs": 0}

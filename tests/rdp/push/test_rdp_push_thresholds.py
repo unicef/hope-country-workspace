@@ -6,7 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import Rdp, RdpOperation
-from country_workspace.rdp.deduplication.types import BiometricFindingType
+from country_workspace.rdp.deduplication.biometric.types import BiometricFindingType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.push import thresholds
@@ -222,3 +222,62 @@ def test_threshold_findings_count_for_selection(
     assert count(pks=pks[:1]) == 2
     assert count(pks=pks[1:]) == 1
     assert count(pks=[]) == 0
+
+
+def test_biographic_threshold_counts_individuals_not_findings(
+    people_rdp: tuple[Rdp, list],
+) -> None:
+    from testutils.factories import BiographicRdpOperationFactory, BiographicRdpOperationFindingFactory
+
+    rdp, individuals = people_rdp
+    operation = BiographicRdpOperationFactory(
+        rdp=rdp,
+        status=RdpOperation.Status.SUCCESS,
+        config={"threshold_type": ThresholdType.COUNT.value, "threshold_value": "1"},
+    )
+    # One person matched by two others, and the match reported from both sides.
+    BiographicRdpOperationFindingFactory(
+        operation=operation, individual=individuals[0], related_individual=individuals[1]
+    )
+    BiographicRdpOperationFindingFactory(
+        operation=operation, individual=individuals[0], related_individual=individuals[2]
+    )
+    BiographicRdpOperationFindingFactory(
+        operation=operation, individual=individuals[1], related_individual=individuals[0]
+    )
+
+    result, review_required = thresholds.evaluate_review_thresholds(rdp=rdp)
+
+    assert result[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION.value] == {
+        "threshold_type": ThresholdType.COUNT.value,
+        "threshold_value": "1",
+        "findings_count": 2,
+        "total_count": 3,
+        "findings_rate": "66.67",
+        "threshold_exceeded": True,
+    }
+    assert review_required is True
+
+
+def test_biographic_threshold_ignores_other_finding_types(people_rdp: tuple[Rdp, list]) -> None:
+    from testutils.factories import BiographicRdpOperationFactory, BiographicRdpOperationFindingFactory
+
+    rdp, individuals = people_rdp
+    operation = BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
+    BiographicRdpOperationFindingFactory(operation=operation, individual=individuals[0], finding_type="OTHER")
+
+    result, review_required = thresholds.evaluate_review_thresholds(rdp=rdp)
+
+    assert result[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION.value]["findings_count"] == 0
+    assert review_required is False
+
+
+def test_biographic_threshold_requires_individuals(
+    biographic_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    individuals = mocker.patch.object(thresholds, "qs_individuals_for_rdp")
+    individuals.return_value.count.return_value = 0
+
+    with pytest.raises(RdpWorkflowError, match="no individuals"):
+        thresholds.evaluate_review_thresholds(rdp=biographic_operation.rdp)

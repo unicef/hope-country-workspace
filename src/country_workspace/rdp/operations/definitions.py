@@ -9,9 +9,12 @@ from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import Program, RdpOperation
-from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
-from country_workspace.rdp.deduplication.types import BiometricFindingType
-from country_workspace.rdp.deduplication.workflow import run_biometric_deduplication
+from country_workspace.rdp.deduplication.biographic.forms import BiographicDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biographic.types import BiographicFindingType
+from country_workspace.rdp.deduplication.biographic.workflow import run_biographic_deduplication
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.types import BiometricFindingType
+from country_workspace.rdp.deduplication.biometric.workflow import run_biometric_deduplication
 from country_workspace.rdp.ocr.forms import OcrConfigForm
 from country_workspace.rdp.ocr.types import OcrFindingType
 from country_workspace.rdp.ocr.workflow import run_ocr
@@ -39,6 +42,15 @@ RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
         is_enabled=lambda program: program.biometric_deduplication_enabled,
         runner=run_biometric_deduplication,
         operation_id_label=_("Deduplication set ID"),
+    ),
+    RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION: RdpOperationDefinition(
+        operation_type=RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+        short_label=_("Biographic"),
+        config_form=BiographicDeduplicationConfigForm,
+        finding_types=BiographicFindingType,
+        is_enabled=lambda program: program.biographic_deduplication_enabled,
+        runner=run_biographic_deduplication,
+        operation_id_label=_("Dataset ID"),
     ),
     RdpOperation.Type.OCR: RdpOperationDefinition(
         operation_type=RdpOperation.Type.OCR,
