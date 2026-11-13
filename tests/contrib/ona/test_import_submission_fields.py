@@ -80,3 +80,42 @@ def test_import_submission_keys_fields_by_question_name(submission: dict[str, An
     assert household.flex_fields[HOUSEHOLD_ROLE_REF_FIELDS.head_of_household] == head.pk
     assert household.flex_fields[HOUSEHOLD_ROLE_REF_FIELDS.primary_collector] == head.pk
     assert household.flex_fields[HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector] == alternate.pk
+
+
+@pytest.mark.django_db
+def test_import_submission_assigns_sequential_household_ids(submission: dict[str, Any]) -> None:
+    batch = BatchFactory()
+    config = {"batch_name": "ONA batch", "validate_after_import": False, "form_id": "13591", "master_detail": True}
+
+    import_submission(batch=batch, submission=submission, config=config)
+    import_submission(batch=batch, submission={**submission, "_id": 13455119, "_uuid": "second"}, config=config)
+
+    assert list(batch.household_set.order_by("pk").values_list("flex_fields__household_id", flat=True)) == [1, 2]
+
+
+@pytest.mark.django_db
+def test_import_submission_ignores_mapped_collector_answer(submission: dict[str, Any]) -> None:
+    from testutils.factories import MappingImporterFactory
+
+    batch = BatchFactory()
+    mapping = MappingImporterFactory(
+        office=batch.program.country_office,
+        data_checker=batch.program.household_checker,
+        rules="alternate_collector=alternate_collector_id",
+    )
+    submission["household_status/alternate_collector"] = "0"
+    submission["individual_questions"] = submission["individual_questions"][:1]
+
+    import_submission(
+        batch=batch,
+        submission=submission,
+        config={
+            "batch_name": "ONA batch",
+            "validate_after_import": False,
+            "form_id": "13591",
+            "master_detail": True,
+            "household_mapping_id": mapping.pk,
+        },
+    )
+
+    assert HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector not in batch.household_set.get().flex_fields

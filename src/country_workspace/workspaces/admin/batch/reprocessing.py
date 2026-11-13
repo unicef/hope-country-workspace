@@ -46,6 +46,7 @@ PRESERVED_FLEX_FIELDS: Final[dict[str, dict[type[Household | Individual], tuple[
     },
     Batch.BatchSource.ONA: {
         Household: (
+            "household_id",
             HOUSEHOLD_ROLE_REF_FIELDS.primary_collector,
             HOUSEHOLD_ROLE_REF_FIELDS.alternate_collector,
         ),
