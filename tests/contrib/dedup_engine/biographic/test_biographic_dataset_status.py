@@ -13,6 +13,8 @@ from country_workspace.contrib.dedup_engine.biographic.dataset_status import (
 )
 from country_workspace.exceptions import RemoteError
 
+DATASET_ID = "5f1d3a0e-8c0b-4f5e-9d7a-2b6c1e4a9f10"
+
 
 @pytest.mark.parametrize("state", list(DatasetState))
 def test_parse_dataset_state(state: DatasetState) -> None:
@@ -44,5 +46,5 @@ def test_retrieve_dataset_state(
     client = make_client.return_value.__enter__.return_value
     client.retrieve_dataset_or_none.return_value = payload
 
-    assert retrieve_dataset_state(business_area_slug="afg", program_code="prog", dataset_id=5) == expected
-    make_client.assert_called_once_with(business_area_slug="afg", program_code="prog", dataset_id=5)
+    assert retrieve_dataset_state(business_area_slug="afg", program_code="prog", dataset_id=DATASET_ID) == expected
+    make_client.assert_called_once_with(business_area_slug="afg", program_code="prog", dataset_id=DATASET_ID)

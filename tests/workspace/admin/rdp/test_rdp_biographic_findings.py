@@ -14,7 +14,7 @@ pytestmark = pytest.mark.django_db
 def biographic_operation(rdp: CountryRdp) -> RdpOperation:
     from testutils.factories import BiographicRdpOperationFactory
 
-    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS, external_id="42")
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
 
 
 def test_operations_display_successful_biographic(

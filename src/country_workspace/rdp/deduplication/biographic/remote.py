@@ -5,7 +5,7 @@ from country_workspace.contrib.dedup_engine import (
     BiographicClient,
     DatasetState,
     make_biographic_client,
-    parse_dataset_state,
+    retrieve_dataset_state,
 )
 from country_workspace.exceptions import RemoteError
 from country_workspace.models import Program, RdpOperation
@@ -19,28 +19,35 @@ def program_route(program: Program) -> tuple[str, str]:
     return business_area_slug, program.code
 
 
-def dataset_id_of(operation: RdpOperation) -> int | None:
-    """Return the DedupEngine dataset id of an operation, or None before its dataset was created."""
-    return int(operation.external_id) if operation.external_id else None
-
-
 @contextmanager
 def make_operation_client(operation: RdpOperation) -> Generator[BiographicClient, None, None]:
-    """Open a DedupEngine client bound to the dataset of an operation, when it already has one."""
+    """Open a DedupEngine client bound to the dataset of an operation, which has the id of the operation."""
     business_area_slug, program_code = program_route(operation.rdp.program)
     with make_biographic_client(
         business_area_slug=business_area_slug,
         program_code=program_code,
-        dataset_id=dataset_id_of(operation),
+        dataset_id=operation.id,
     ) as client:
         yield client
 
 
 def retrieve_operation_state(operation: RdpOperation) -> DatasetState | None:
-    """Return the DedupEngine state of an operation dataset, or None when it does not exist."""
-    if dataset_id_of(operation) is None:
-        return None
+    """Return the DedupEngine state of the operation dataset, or None when it does not exist."""
+    business_area_slug, program_code = program_route(operation.rdp.program)
+    return retrieve_dataset_state(
+        business_area_slug=business_area_slug,
+        program_code=program_code,
+        dataset_id=operation.id,
+    )
+
+
+def approve_operation_dataset(operation: RdpOperation) -> None:
+    """Approve the DedupEngine dataset of an operation, which turns its people into the program population."""
     with make_operation_client(operation) as client:
-        if (payload := client.retrieve_dataset_or_none()) is None:
-            return None
-    return parse_dataset_state(payload)
+        client.approve()
+
+
+def reject_operation_dataset(operation: RdpOperation) -> None:
+    """Reject the DedupEngine dataset of an operation. A rejected dataset is never matched against again."""
+    with make_operation_client(operation) as client:
+        client.reject()

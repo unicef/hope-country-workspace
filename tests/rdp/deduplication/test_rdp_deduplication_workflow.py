@@ -22,7 +22,7 @@ def operations(rdp: Rdp, biometric_operation: RdpOperation, biographic_operation
 def backends(mocker: MockerFixture) -> dict[str, DeduplicationBackend]:
     """Replace the DedupEngine implementations with mocks."""
     fakes = {
-        operation_type.value: DeduplicationBackend(
+        operation_type.value: mocker.Mock(
             operation_type=operation_type,
             sync=mocker.Mock(return_value=True),
             check_cancellation=mocker.Mock(return_value=RejectionDecision(ActionCheck(True))),

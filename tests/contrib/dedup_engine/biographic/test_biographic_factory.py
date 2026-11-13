@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 from constance.test import override_config
 from pytest_mock import MockerFixture
@@ -5,8 +7,10 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.dedup_engine.biographic.factory import make_client
 
 
-@pytest.mark.parametrize("dataset_id", [None, 12])
-def test_make_client(mocker: MockerFixture, dataset_id: int | None) -> None:
+@pytest.mark.parametrize(
+    "dataset_id", ["5f1d3a0e-8c0b-4f5e-9d7a-2b6c1e4a9f10", UUID("5f1d3a0e-8c0b-4f5e-9d7a-2b6c1e4a9f10")]
+)
+def test_make_client(mocker: MockerFixture, dataset_id: UUID | str) -> None:
     session_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Session")
     auth_cls = mocker.patch("country_workspace.contrib.dedup_engine.factory.Auth")
     client_cls = mocker.patch("country_workspace.contrib.dedup_engine.biographic.factory.Client")
@@ -26,5 +30,5 @@ def test_make_client(mocker: MockerFixture, dataset_id: int | None) -> None:
         program_code="prog",
         session=session,
         api_root=api_root_cls.return_value,
-        dataset_id=dataset_id,
+        dataset_id="5f1d3a0e-8c0b-4f5e-9d7a-2b6c1e4a9f10",
     )

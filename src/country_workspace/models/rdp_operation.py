@@ -58,13 +58,6 @@ class RdpOperation(BaseModel):
         default=Status.PENDING,
         help_text=_("Current execution status of this operation."),
     )
-    external_id = models.CharField(
-        max_length=100,
-        blank=True,
-        default="",
-        editable=False,
-        help_text=_("Identifier assigned by the external system that runs this operation, when it assigns one."),
-    )
     config = models.JSONField(
         default=dict,
         blank=True,

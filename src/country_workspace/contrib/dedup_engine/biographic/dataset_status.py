@@ -1,5 +1,6 @@
 from enum import StrEnum
 from typing import Final
+from uuid import UUID
 
 from country_workspace.exceptions import RemoteError
 
@@ -66,7 +67,7 @@ def retrieve_dataset_state(
     *,
     business_area_slug: str,
     program_code: str,
-    dataset_id: int,
+    dataset_id: UUID | str,
 ) -> DatasetState | None:
     """Return the current state of a dataset, or None when DedupEngine does not know it."""
     with make_client(

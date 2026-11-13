@@ -1,6 +1,7 @@
 """Biographic deduplication against a faked DedupEngine HTTP API, from run to approval."""
 
 import json
+import re
 from collections.abc import Iterator
 
 import pytest
@@ -9,7 +10,7 @@ from constance.test import override_config
 
 from country_workspace.models import Individual, Rdp, RdpOperation, RdpOperationFinding
 from country_workspace.rdp import RdpWorkflowError
-from country_workspace.rdp.deduplication.biographic.actions import approve_biographic_dataset_after_successful_push
+from country_workspace.rdp.deduplication.biographic.backend import BIOGRAPHIC_BACKEND
 from country_workspace.rdp.deduplication.biographic.workflow import run_biographic_deduplication
 from country_workspace.rdp.deduplication.workflow import (
     check_cancellation_rejections,
@@ -55,6 +56,12 @@ def datasets(operation: RdpOperation) -> str:
     return f"{HDE}/api/biographic/{program.country_office.slug}/{program.code}/datasets/"
 
 
+@pytest.fixture
+def dataset(datasets: str, operation: RdpOperation) -> str:
+    """The DedupEngine dataset of the operation: it has the id of the operation."""
+    return f"{datasets}{operation.id}/"
+
+
 def _finding(individual: Individual, matched: Individual, scope: str = "batch") -> dict:
     return {
         "reference_pk": str(individual.pk),
@@ -67,42 +74,39 @@ def _finding(individual: Individual, matched: Individual, scope: str = "batch") 
     }
 
 
-def _deduplicated(
-    hde: responses.RequestsMock,
-    datasets: str,
-    findings: list[dict],
-    dataset_id: int = 7,
-) -> None:
-    hde.get(f"{datasets}{dataset_id}/", json={"dataset_id": dataset_id, "status": "deduplicated"})
-    hde.get(f"{datasets}{dataset_id}/findings/", json={"count": len(findings), "next": None, "results": findings})
+def _deduplicated(hde: responses.RequestsMock, dataset: str, findings: list[dict]) -> None:
+    hde.get(dataset, json={"status": "deduplicated"})
+    hde.get(f"{dataset}findings/", json={"count": len(findings), "next": None, "results": findings})
 
 
 def test_biographic_deduplication_from_run_to_approval(
     hde: responses.RequestsMock,
     datasets: str,
+    dataset: str,
     operation: RdpOperation,
     people_rdp: tuple[Rdp, list[Individual]],
 ) -> None:
     rdp, individuals = people_rdp
-    hde.post(datasets, json={"dataset_id": 7, "status": "pending"}, status=201)
-    hde.post(f"{datasets}7/records/", json={"received": 3, "records_count": 3})
-    hde.post(f"{datasets}7/process/", json={"dataset_id": 7, "status": "indexing"})
+    hde.get(dataset, status=404)
+    hde.post(datasets, json={"dataset_id": str(operation.id), "status": "pending"}, status=201)
+    hde.post(f"{dataset}records/", json={"received": 3, "records_count": 3})
+    hde.post(f"{dataset}process/", json={"dataset_id": str(operation.id), "status": "indexing"})
 
     run_biographic_deduplication(operation)
 
-    operation.refresh_from_db()
-    assert operation.external_id == "7"
-    created = json.loads(hde.calls[0].request.body)
+    assert hde.calls[0].request.url == dataset
+    created = json.loads(hde.calls[1].request.body)
+    assert created["dataset_id"] == str(operation.id)
     assert created["notify"] is True
     assert created["notification_url"].startswith("https://cw.example.org/")
-    uploaded = json.loads(hde.calls[1].request.body)["records"]
+    uploaded = json.loads(hde.calls[2].request.body)["records"]
     assert {record["reference_pk"] for record in uploaded} == {str(individual.pk) for individual in individuals}
-    assert hde.calls[2].request.url == f"{datasets}7/process/"
+    assert hde.calls[3].request.url == f"{dataset}process/"
 
     # DedupEngine calls back once scoring is done: the callback syncs the operation.
     _deduplicated(
         hde,
-        datasets,
+        dataset,
         [
             _finding(individuals[0], individuals[1]),
             _finding(individuals[1], individuals[0]),
@@ -126,22 +130,22 @@ def test_biographic_deduplication_from_run_to_approval(
     assert list(checked) == [operation]
 
     # Pushed to HOPE: the dataset becomes the population later RDPs are checked against.
-    hde.post(f"{datasets}7/approve/", json={"dataset_id": 7, "status": "approved"})
-    approve_biographic_dataset_after_successful_push(operation)
+    hde.post(f"{dataset}approve/", json={"dataset_id": str(operation.id), "status": "approved"})
+    BIOGRAPHIC_BACKEND.approve(operation)
     operation.refresh_from_db()
     assert operation.log[-1]["result"] == {"success": True}
 
 
 def test_biographic_deduplication_cancellation_rejects_the_dataset(
     hde: responses.RequestsMock,
-    datasets: str,
+    dataset: str,
     operation: RdpOperation,
     people_rdp: tuple[Rdp, list[Individual]],
     mocker,
 ) -> None:
     rdp, individuals = people_rdp
-    RdpOperation.objects.filter(pk=operation.pk).update(external_id="7", status=RdpOperation.Status.SUCCESS)
-    _deduplicated(hde, datasets, [_finding(individuals[0], individuals[1])])
+    RdpOperation.objects.filter(pk=operation.pk).update(status=RdpOperation.Status.SUCCESS)
+    _deduplicated(hde, dataset, [_finding(individuals[0], individuals[1])])
 
     check, operation_ids = check_cancellation_rejections(rdp)
 
@@ -150,23 +154,22 @@ def test_biographic_deduplication_cancellation_rejects_the_dataset(
 
     rdp.status = Rdp.PushStatus.CANCELLED
     rdp.save(update_fields=["status"])
-    hde.post(f"{datasets}7/reject/", json={"dataset_id": 7, "status": "rejected"})
+    hde.post(f"{dataset}reject/", json={"dataset_id": str(operation.id), "status": "rejected"})
     job = mocker.MagicMock(config={"rdp_id": rdp.pk, "operation_ids": [str(operation.id)]})
 
     assert reject_cancelled_rdp_set_core(job) == {"rdp_id": rdp.pk}
 
-    assert hde.calls[-1].request.url == f"{datasets}7/reject/"
+    assert hde.calls[-1].request.url == f"{dataset}reject/"
     operation.refresh_from_db()
     assert operation.log[-1]["result"] == {"success": True}
 
 
 def test_biographic_deduplication_cancellation_is_blocked_while_dedupengine_works(
     hde: responses.RequestsMock,
-    datasets: str,
+    dataset: str,
     operation: RdpOperation,
 ) -> None:
-    RdpOperation.objects.filter(pk=operation.pk).update(external_id="7")
-    hde.get(f"{datasets}7/", json={"dataset_id": 7, "status": "deduplicating"})
+    hde.get(dataset, json={"status": "deduplicating"})
 
     check, operation_ids = check_cancellation_rejections(operation.rdp)
 
@@ -177,11 +180,11 @@ def test_biographic_deduplication_cancellation_is_blocked_while_dedupengine_work
 
 def test_biographic_deduplication_clean_requires_deduplicated_dataset(
     hde: responses.RequestsMock,
-    datasets: str,
+    dataset: str,
     operation: RdpOperation,
 ) -> None:
-    RdpOperation.objects.filter(pk=operation.pk).update(external_id="7", status=RdpOperation.Status.SUCCESS)
-    hde.get(f"{datasets}7/", json={"dataset_id": 7, "status": "approved"})
+    RdpOperation.objects.filter(pk=operation.pk).update(status=RdpOperation.Status.SUCCESS)
+    hde.get(dataset, json={"status": "approved"})
 
     check, checked = check_clean_rdp_deduplication(operation.rdp)
 
@@ -196,24 +199,25 @@ def test_biographic_deduplication_run_fails_without_named_individuals(
     from testutils.factories import BiographicRdpOperationFactory
 
     operation = BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING)
+    hde.get(re.compile(r".*/datasets/[^/]+/$"), status=404)
 
     with pytest.raises(RdpWorkflowError, match="no named individuals"):
         run_biographic_deduplication(operation)
 
-    assert not hde.calls
+    assert all(call.request.method == "GET" for call in hde.calls)
 
 
 def test_schedule_deduplication_approval_reaches_dedupengine(
     hde: responses.RequestsMock,
-    datasets: str,
+    dataset: str,
     operation: RdpOperation,
     mocker,
 ) -> None:
-    RdpOperation.objects.filter(pk=operation.pk).update(external_id="7", status=RdpOperation.Status.SUCCESS)
-    hde.post(f"{datasets}7/approve/", json={"dataset_id": 7, "status": "approved"})
+    RdpOperation.objects.filter(pk=operation.pk).update(status=RdpOperation.Status.SUCCESS)
+    hde.post(f"{dataset}approve/", json={"dataset_id": str(operation.id), "status": "approved"})
     on_commit = mocker.patch("country_workspace.rdp.deduplication.workflow.transaction.on_commit")
 
     schedule_deduplication_approval(operation.rdp)
     on_commit.call_args.args[0]()
 
-    assert hde.calls[-1].request.url == f"{datasets}7/approve/"
+    assert hde.calls[-1].request.url == f"{dataset}approve/"

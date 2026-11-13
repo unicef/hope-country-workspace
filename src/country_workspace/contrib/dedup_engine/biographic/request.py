@@ -18,9 +18,11 @@ class Record(TypedDict):
     payload: Payload
 
 
-class CreateDataset(TypedDict, total=False):
-    notification_url: str
-    notify: bool
+class CreateDataset(TypedDict):
+    # Assigned by Country Workspace: the id of the RDP operation that owns the dataset.
+    dataset_id: str
+    notification_url: NotRequired[str]
+    notify: NotRequired[bool]
 
 
 class RecordsBatch(TypedDict):

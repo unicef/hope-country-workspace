@@ -41,7 +41,7 @@ External collectors are not included in biographic deduplication.
 
 Biographic deduplication starts automatically after the RDP is created.
 
-Country Workspace creates (or resumes) a DedupEngine dataset for the operation, uploads the Individuals in batches and starts processing. DedupEngine assigns the dataset ID, which is stored on the operation and shown as **Dataset ID**. Re-sending an Individual replaces its previous record, so an interrupted upload is safe to resume.
+Country Workspace creates (or resumes) a DedupEngine dataset for the operation, uploads the Individuals in batches and starts processing. Like a biometric deduplication set, the dataset is identified by the ID of the operation: Country Workspace assigns it when creating the dataset and shows it as **Dataset ID**. Because the ID is known before DedupEngine is contacted, a retry or a recovery finds the dataset that an earlier attempt created instead of creating another one. Re-sending an Individual replaces its previous record, so an interrupted upload is safe to resume.
 
 The operation remains `RUNNING` while DedupEngine processes the dataset. DedupEngine calls back Country Workspace when the state changes; when the dataset is deduplicated, Country Workspace retrieves and stores the findings and the operation becomes `SUCCESS`.
 

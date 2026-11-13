@@ -70,14 +70,14 @@ def biographic_operation(rdp: Rdp) -> RdpOperation:
 def running_biographic_operation(rdp: Rdp) -> RdpOperation:
     from testutils.factories import BiographicRdpOperationFactory
 
-    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, external_id="42")
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING)
 
 
 @pytest.fixture
 def successful_biographic_operation(rdp: Rdp) -> RdpOperation:
     from testutils.factories import BiographicRdpOperationFactory
 
-    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS, external_id="42")
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
 
 
 @pytest.fixture

@@ -4,9 +4,12 @@ from pytest_mock import MockerFixture
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Individual, Rdp, RdpOperation, RdpOperationFinding
 from country_workspace.rdp import RdpWorkflowError
+from country_workspace.rdp.deduplication import processing
 from country_workspace.rdp.deduplication.biographic import workflow
 
 pytestmark = pytest.mark.django_db
+
+DATASET_ID = "00000000-0000-0000-0000-000000000042"
 
 
 def _finding(individual_pk: int, matched_pk: int | str, scope: str = "batch", score: float = 0.95) -> dict:
@@ -32,17 +35,7 @@ def people_operation(people_rdp: tuple[Rdp, list[Individual]]) -> RdpOperation:
     from testutils.factories import BiographicRdpOperationFactory
 
     rdp, _ = people_rdp
-    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING, external_id="42")
-
-
-@pytest.mark.parametrize("value", [None, "abc", object()])
-def test_individual_id_rejects_invalid(value: object) -> None:
-    with pytest.raises(RemoteError, match="reference_pk"):
-        workflow._individual_id(value, "reference_pk")
-
-
-def test_individual_id() -> None:
-    assert workflow._individual_id("12", "reference_pk") == 12
+    return BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING)
 
 
 @pytest.mark.parametrize("finding", [{"scope": "galaxy"}, {}])
@@ -103,21 +96,15 @@ def test_sync_ignores_other_operation_types(biometric_operation: RdpOperation, c
     client.retrieve_dataset.assert_not_called()
 
 
-@pytest.mark.parametrize("scenario", ["not_running", "no_external_id"])
-def test_sync_ignores_non_matching_operations(biographic_operation: RdpOperation, client, scenario: str) -> None:
-    if scenario == "not_running":
-        biographic_operation.status = RdpOperation.Status.SUCCESS
-        biographic_operation.external_id = "42"
-    else:
-        biographic_operation.status = RdpOperation.Status.RUNNING
-        biographic_operation.external_id = ""
+def test_sync_ignores_operation_that_is_not_running(biographic_operation: RdpOperation, client) -> None:
+    biographic_operation.status = RdpOperation.Status.SUCCESS
 
     assert workflow.sync_biographic_result(biographic_operation) is False
     client.retrieve_dataset.assert_not_called()
 
 
 def test_sync_failed_state(running_biographic_operation: RdpOperation, client) -> None:
-    client.retrieve_dataset.return_value = {"dataset_id": 42, "status": "failed", "error": "boom"}
+    client.retrieve_dataset.return_value = {"dataset_id": DATASET_ID, "status": "failed", "error": "boom"}
 
     assert workflow.sync_biographic_result(running_biographic_operation) is True
 
@@ -132,7 +119,7 @@ def test_sync_failed_state(running_biographic_operation: RdpOperation, client) -
 
 @pytest.mark.parametrize("status", ["indexing", "deduplicating", "approved"])
 def test_sync_waits_until_deduplicated(running_biographic_operation: RdpOperation, client, status: str) -> None:
-    client.retrieve_dataset.return_value = {"dataset_id": 42, "status": status}
+    client.retrieve_dataset.return_value = {"dataset_id": DATASET_ID, "status": status}
 
     assert workflow.sync_biographic_result(running_biographic_operation) is False
 
@@ -147,7 +134,7 @@ def test_sync_deduplicated_creates_findings(
     client,
 ) -> None:
     _, individuals = people_rdp
-    client.retrieve_dataset.return_value = {"dataset_id": 42, "status": "deduplicated"}
+    client.retrieve_dataset.return_value = {"dataset_id": DATASET_ID, "status": "deduplicated"}
     client.retrieve_findings.return_value = [_finding(individuals[0].pk, individuals[1].pk)]
 
     assert workflow.sync_biographic_result(people_operation) is True
@@ -173,7 +160,7 @@ def test_sync_remote_error_fails_operation(
 
 
 def test_sync_invalid_findings_fail_operation(people_operation: RdpOperation, client) -> None:
-    client.retrieve_dataset.return_value = {"dataset_id": 42, "status": "deduplicated"}
+    client.retrieve_dataset.return_value = {"dataset_id": DATASET_ID, "status": "deduplicated"}
     client.retrieve_findings.return_value = [_finding(0, 0)]
 
     assert workflow.sync_biographic_result(people_operation) is True
@@ -184,7 +171,7 @@ def test_sync_invalid_findings_fail_operation(people_operation: RdpOperation, cl
 
 @pytest.fixture
 def run(mocker: MockerFixture):
-    mocker.patch.object(workflow, "build_dedup_operation_callback_url", return_value="https://cw/callback/")
+    mocker.patch.object(processing, "build_dedup_operation_callback_url", return_value="https://cw/callback/")
     return workflow.run_biographic_deduplication
 
 
@@ -194,22 +181,19 @@ def test_run_creates_dataset_uploads_and_processes(
     run,
     mocker: MockerFixture,
 ) -> None:
-    people_operation.external_id = ""
-    people_operation.save(update_fields=["external_id"])
-    client.create_dataset.return_value = {"dataset_id": 77, "status": "pending"}
+    client.retrieve_dataset_or_none.return_value = None
+    client.create_dataset.return_value = {"dataset_id": str(people_operation.id), "status": "pending"}
     client.create_records.return_value = {"received": 3, "records_count": 3}
 
     run(people_operation)
 
     client.create_dataset.assert_called_once_with(notification_url="https://cw/callback/")
-    people_operation.refresh_from_db()
-    assert people_operation.external_id == "77"
     assert sum(len(call.args[0]) for call in client.create_records.call_args_list) == 3
     client.process.assert_called_once_with()
 
 
 def test_run_resumes_pending_dataset_without_creating_a_new_one(people_operation: RdpOperation, client, run) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": "pending"}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": "pending"}
 
     run(people_operation)
 
@@ -220,17 +204,16 @@ def test_run_resumes_pending_dataset_without_creating_a_new_one(people_operation
 
 def test_run_recreates_dataset_that_no_longer_exists(people_operation: RdpOperation, client, run) -> None:
     client.retrieve_dataset_or_none.return_value = None
-    client.create_dataset.return_value = {"dataset_id": 43, "status": "pending"}
+    client.create_dataset.return_value = {"dataset_id": str(people_operation.id), "status": "pending"}
 
     run(people_operation)
 
-    people_operation.refresh_from_db()
-    assert people_operation.external_id == "43"
+    client.create_dataset.assert_called_once_with(notification_url="https://cw/callback/")
     client.process.assert_called_once_with()
 
 
 def test_run_retries_failed_dataset_without_uploading_again(people_operation: RdpOperation, client, run) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": "failed"}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": "failed"}
 
     run(people_operation)
 
@@ -240,7 +223,7 @@ def test_run_retries_failed_dataset_without_uploading_again(people_operation: Rd
 
 @pytest.mark.parametrize("status", ["indexing", "indexed", "deduplicating"])
 def test_run_waits_for_running_dataset(people_operation: RdpOperation, client, run, status: str) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": status}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": status}
 
     run(people_operation)
 
@@ -254,7 +237,7 @@ def test_run_syncs_already_deduplicated_dataset(
     run,
     mocker: MockerFixture,
 ) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": "deduplicated"}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": "deduplicated"}
     sync = mocker.patch.object(workflow, "sync_biographic_result")
 
     run(people_operation)
@@ -270,7 +253,7 @@ def test_run_rejects_dataset_that_can_not_be_processed(
     run,
     status: str,
 ) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": status}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": status}
 
     with pytest.raises(RdpWorkflowError, match="can not process"):
         run(people_operation)
@@ -280,6 +263,7 @@ def test_run_requires_named_individuals(rdp: Rdp, client, run) -> None:
     from testutils.factories import BiographicRdpOperationFactory
 
     operation = BiographicRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.RUNNING)
+    client.retrieve_dataset_or_none.return_value = None
 
     with pytest.raises(RdpWorkflowError, match="no named individuals"):
         run(operation)
@@ -293,7 +277,7 @@ def test_run_requires_uploadable_records(
     run,
     mocker: MockerFixture,
 ) -> None:
-    client.retrieve_dataset_or_none.return_value = {"dataset_id": 42, "status": "pending"}
+    client.retrieve_dataset_or_none.return_value = {"dataset_id": DATASET_ID, "status": "pending"}
     mocker.patch.object(workflow.BiographicDedupProcessor, "upload_records", return_value=0)
 
     with pytest.raises(RdpWorkflowError, match="no named individuals"):

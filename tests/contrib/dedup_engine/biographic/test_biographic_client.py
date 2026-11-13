@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 
 import pytest
@@ -14,13 +15,14 @@ from country_workspace.contrib.dedup_engine.biographic.endpoint import APIRoot
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 
 DATASETS = "https://de/api/biographic/afg/prog/datasets/"
-DATASET = f"{DATASETS}7/"
+DATASET_ID = "5f1d3a0e-8c0b-4f5e-9d7a-2b6c1e4a9f10"
+DATASET = f"{DATASETS}{DATASET_ID}/"
 
 
 @pytest.fixture
 def client() -> Iterator[Client]:
     with Session() as session:
-        yield Client("afg", "prog", session, APIRoot("https://de"), dataset_id=7)
+        yield Client("afg", "prog", session, APIRoot("https://de"), dataset_id=DATASET_ID)
 
 
 @pytest.fixture
@@ -29,32 +31,32 @@ def rsps() -> Iterator[responses.RequestsMock]:
         yield mock
 
 
-def test_dataset_endpoint_requires_dataset_id(client: Client) -> None:
-    client.dataset_id = None
-
-    with pytest.raises(RemoteError, match="dataset_id"):
-        client.retrieve_dataset()
-
-
 @pytest.mark.parametrize("notification_url", [None, "https://cw/callback/"])
-def test_create_dataset(client: Client, rsps: responses.RequestsMock, notification_url: str | None) -> None:
-    client.dataset_id = None
-    rsps.post(DATASETS, json={"dataset_id": 11, "status": "pending"}, status=201)
+def test_create_dataset_sends_the_assigned_dataset_id(
+    client: Client, rsps: responses.RequestsMock, notification_url: str | None
+) -> None:
+    rsps.post(DATASETS, json={"dataset_id": DATASET_ID, "status": "pending"}, status=201)
 
     result = client.create_dataset(notification_url)
 
-    assert result["dataset_id"] == 11
-    assert client.dataset_id == 11
-    body = rsps.calls[0].request.body
+    assert result["dataset_id"] == DATASET_ID
+    body = json.loads(rsps.calls[0].request.body)
     if notification_url:
-        assert notification_url.encode() in body
-        assert b'"notify": true' in body
+        assert body == {"dataset_id": DATASET_ID, "notification_url": notification_url, "notify": True}
     else:
-        assert body == b"{}"
+        assert body == {"dataset_id": DATASET_ID}
+
+
+def test_requests_address_the_dataset_by_its_assigned_id(client: Client, rsps: responses.RequestsMock) -> None:
+    rsps.get(DATASET, json={"dataset_id": DATASET_ID, "status": "pending"})
+
+    client.retrieve_dataset()
+
+    assert rsps.calls[0].request.url == DATASET
 
 
 def test_retrieve_dataset(client: Client, rsps: responses.RequestsMock) -> None:
-    rsps.get(DATASET, json={"dataset_id": 7, "status": "deduplicated"})
+    rsps.get(DATASET, json={"dataset_id": DATASET_ID, "status": "deduplicated"})
 
     assert client.retrieve_dataset()["status"] == "deduplicated"
 
@@ -66,9 +68,9 @@ def test_retrieve_dataset_or_none_missing(client: Client, rsps: responses.Reques
 
 
 def test_retrieve_dataset_or_none_found(client: Client, rsps: responses.RequestsMock) -> None:
-    rsps.get(DATASET, json={"dataset_id": 7, "status": "pending"})
+    rsps.get(DATASET, json={"dataset_id": DATASET_ID, "status": "pending"})
 
-    assert client.retrieve_dataset_or_none() == {"dataset_id": 7, "status": "pending"}
+    assert client.retrieve_dataset_or_none() == {"dataset_id": DATASET_ID, "status": "pending"}
 
 
 def test_retrieve_dataset_or_none_other_error(client: Client, rsps: responses.RequestsMock) -> None:
@@ -89,9 +91,9 @@ def test_create_records(client: Client, rsps: responses.RequestsMock) -> None:
 
 @pytest.mark.parametrize("method", ["approve", "reject", "cancel"])
 def test_state_actions(client: Client, rsps: responses.RequestsMock, method: str) -> None:
-    rsps.post(f"{DATASET}{method}/", json={"dataset_id": 7, "status": "approved"})
+    rsps.post(f"{DATASET}{method}/", json={"dataset_id": DATASET_ID, "status": "approved"})
 
-    assert getattr(client, method)()["dataset_id"] == 7
+    assert getattr(client, method)()["dataset_id"] == DATASET_ID
     assert rsps.calls[0].request.body is None
 
 
@@ -100,7 +102,7 @@ def test_state_actions(client: Client, rsps: responses.RequestsMock, method: str
     [(None, None), ({"duplicate_score": 0.9}, b'{"duplicate_score": 0.9}')],
 )
 def test_process(client: Client, rsps: responses.RequestsMock, overrides: dict | None, body: bytes | None) -> None:
-    rsps.post(f"{DATASET}process/", json={"dataset_id": 7, "status": "indexing"})
+    rsps.post(f"{DATASET}process/", json={"dataset_id": DATASET_ID, "status": "indexing"})
 
     client.process(overrides)
 
