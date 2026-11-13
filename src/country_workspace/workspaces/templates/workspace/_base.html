@@ -26,12 +26,12 @@
     {% if active_program %}
         <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
            id="pending-jobs-badge"
-           class="app-bar-icon-button"
+           class="app-bar-jobs{% if not pending_jobs_count %} idle{% endif %}"
            title="{% trans "View background jobs" %}">
             {% icon "jobs" %}
             {% if pending_jobs_count %}
                 <span class="app-bar-badge">{{ pending_jobs_count }}</span>
-                <span class="sr-only">
+                <span class="sr-only xl:not-sr-only">
                     {% if pending_jobs_count == 1 %}
                         {% trans "job running" %}
                     {% else %}
@@ -39,7 +39,7 @@
                     {% endif %}
                 </span>
             {% else %}
-                <span class="sr-only">{% trans "No pending jobs" %}</span>
+                <span class="sr-only xl:not-sr-only">{% trans "No pending jobs" %}</span>
             {% endif %}
         </a>
     {% endif %}

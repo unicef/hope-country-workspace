@@ -97,22 +97,36 @@ body.web {
       }
     }
 
-    .app-bar-icon-button {
-      @apply relative flex items-center justify-center rounded-full;
-      width: 40px;
-      height: 40px;
+    /* Background jobs: a chip like .env-badge with the clock, the pending count and a label, dimmed when idle. */
+    .app-bar-jobs {
+      @apply inline-flex items-center rounded-full font-medium whitespace-nowrap;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px;
       color: theme('colors.app-bar-text');
-      font-size: 20px;
+      background-color: rgba(255, 255, 255, 0.12);
+      font-size: 13px;
       transition: background-color 150ms ease;
 
       &:hover {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: rgba(255, 255, 255, 0.2);
+      }
+
+      &.idle {
+        opacity: 0.7;
+      }
+
+      > svg.icon {
+        font-size: 20px;
+      }
+
+      /* Tailwind's not-sr-only resets white-space; keep the label on one line. */
+      > span:not(.app-bar-badge) {
+        white-space: nowrap;
       }
 
       .app-bar-badge {
-        @apply absolute flex items-center justify-center rounded-full bg-hct-orange text-white font-medium;
-        top: 2px;
-        right: 2px;
+        @apply inline-flex items-center justify-center rounded-full bg-hct-orange text-white;
         min-width: 18px;
         height: 18px;
         padding: 0 4px;
