@@ -264,11 +264,13 @@
     @apply field-select;
   }
 
+  /* One line like the other filter inputs: a drag on the resize handle would stretch the whole grid row. */
   textarea {
     @apply block;
     height: 40px;
-    min-height: 40px;
-    resize: vertical;
+    max-height: 40px;
+    resize: none;
+    overflow-y: auto;
   }
 
   label:has(input[type="checkbox"]),
