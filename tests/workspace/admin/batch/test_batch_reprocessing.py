@@ -184,8 +184,9 @@ def test_build_processor_keeps_master_detail_field_names(program, batch: Country
             Batch.BatchSource.ONA,
             Household,
             {
-                "primary_collector_id": "_preserved_flex_field_0",
-                "alternate_collector_id": "_preserved_flex_field_1",
+                "household_id": "_preserved_flex_field_0",
+                "primary_collector_id": "_preserved_flex_field_1",
+                "alternate_collector_id": "_preserved_flex_field_2",
             },
         ),
         (Batch.BatchSource.ONA, Individual, None),

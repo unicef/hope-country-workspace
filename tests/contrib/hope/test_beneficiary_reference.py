@@ -201,6 +201,38 @@ def test_widget_value_from_datadict_resolves_household_code_to_pk(mocker: Mocker
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("code", ["", None], ids=["blank", "none"])
+def test_widget_value_from_datadict_ignores_missing_household_code(
+    mocker: MockerFixture, batch: Batch, code: str | None
+) -> None:
+    apps = mocker.patch(f"{MOD}.apps")
+
+    w = BeneficiarySelect2Widget(batch_id=batch.id, limit_to_household=True, household_id=None)
+    w.value_from_datadict(data={"household_id": code}, files={}, name="beneficiary")
+
+    assert w.household_id is None
+    apps.get_model.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_field_accepts_batch_member_when_households_share_blank_code(batch: Batch) -> None:
+    from testutils.factories import CountryHouseholdFactory
+
+    from country_workspace.context import batch_ctx
+
+    households = CountryHouseholdFactory.create_batch(2, batch=batch, flex_fields={"household_id": "", "size": 1})
+    looked_up = Household.objects.filter(batch_id=batch.id, flex_fields__household_id="").values_list("pk", flat=True)
+    other = next(hh for hh in households if hh.pk != looked_up.first())
+    member = other.members.first()
+
+    with batch_ctx(batch.id):
+        field = BeneficiaryReferenceModelChoiceField(limit_to_household=True)
+    field.widget.value_from_datadict(data={"household_id": ""}, files={}, name="head_of_household_id")
+
+    assert field.clean(str(member.pk)) == member.pk
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("has_batch", [True, False], ids=["with_batch", "without_batch"])
 def test_field_init(mocker: MockerFixture, batch: Batch, individual: Individual, has_batch: bool) -> None:
     mocker.patch(

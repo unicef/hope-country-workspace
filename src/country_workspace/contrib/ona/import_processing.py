@@ -362,6 +362,10 @@ def set_roles_and_relationships(
     individuals: list[ImportedIndividual],
 ) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
+    # Submission answers can share these names (e.g. the yes/no `alternate_collector`), so refs are
+    # derived from member roles only.
+    for ref_field in fields:
+        household.flex_fields.pop(ref_field, None)
 
     primary_collector = next(
         (item.individual for item in individuals if item.fields.get("role") == ROLE_PRIMARY),
@@ -401,11 +405,14 @@ def create_household(  # noqa: PLR0913
         mapping_id=config.get("household_mapping_id"),
     )
 
+    flex_fields = household_row_processor(row)
+    flex_fields["household_id"] = batch.household_set.count() + 1
+
     household = Household.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=household_row_processor(row),
+        flex_fields=flex_fields,
         raw_data=dict(raw_data),
     )
     if files:
