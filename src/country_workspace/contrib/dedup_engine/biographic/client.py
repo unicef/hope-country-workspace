@@ -15,16 +15,16 @@ FINDINGS_PAGE_SIZE = 10_000
 
 @dataclass(slots=True)
 class Client(BaseClient):
-    """Client of the DedupEngine biographic API for one program.
+    """Client of the DedupEngine biographic API for one dataset of a program.
 
-    DedupEngine assigns the dataset id, so a client starts unbound and binds to the dataset on `create_dataset`.
+    Country Workspace assigns the dataset id (the id of the RDP operation) and sends it on `create_dataset`.
     """
 
     business_area_slug: str
     program_code: str
     session: Session
     api_root: endpoint.APIRoot
-    dataset_id: int | None = None
+    dataset_id: str
 
     @property
     def datasets_endpoint(self) -> endpoint.Datasets:
@@ -32,20 +32,16 @@ class Client(BaseClient):
 
     @property
     def dataset_endpoint(self) -> endpoint.Dataset:
-        if self.dataset_id is None:
-            raise RemoteError("DedupEngine: dataset_id is not set")
         return self.datasets_endpoint.dataset(self.dataset_id)
 
     def create_dataset(self, notification_url: str | None = None) -> response.Dataset:
         collection = resource.DatasetCollection(self.session, self.datasets_endpoint)
-        payload: request.CreateDataset = {}
+        payload: request.CreateDataset = {"dataset_id": self.dataset_id}
         if notification_url:
             payload["notification_url"] = notification_url
             payload["notify"] = True
 
-        created = self._request("create_dataset", lambda: collection.create(payload))
-        self.dataset_id = created["dataset_id"]
-        return created
+        return self._request("create_dataset", lambda: collection.create(payload))
 
     def retrieve_dataset(self) -> response.Dataset:
         item = resource.DatasetItem(self.session, self.dataset_endpoint)

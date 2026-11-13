@@ -8,7 +8,7 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.dedup_engine import DeduplicationSetState
 from country_workspace.models import Individual, Program, Rdp, RdpOperation, RdpOperationUnit
 from country_workspace.models.rdp import RdpLogEntryType
-from country_workspace.rdp.deduplication.biometric import lifecycle as biometric_lifecycle
+from country_workspace.rdp.deduplication.biometric import remote as biometric_remote
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.lifecycle import clean
 from country_workspace.rdp.policy import ActionCheck
@@ -42,7 +42,7 @@ def reviewed_rdp(people_rdp: tuple[Rdp, list[Individual]], mocker: MockerFixture
     OcrRdpOperationUnitFactory(operation=ocr, individual=individuals[0], status=RdpOperationUnit.Status.SUCCESS)
     OcrRdpOperationFindingFactory(operation=ocr, individual=individuals[0])
     mocker.patch.object(
-        biometric_lifecycle,
+        biometric_remote,
         "retrieve_deduplication_set_state",
         return_value=DeduplicationSetState.DEDUPLICATED,
     )

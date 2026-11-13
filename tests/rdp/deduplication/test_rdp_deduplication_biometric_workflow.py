@@ -7,6 +7,7 @@ from country_workspace.contrib.dedup_engine import DeduplicationSetState, Findin
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Individual, Rdp, RdpOperation
 from country_workspace.rdp import RdpWorkflowError
+from country_workspace.rdp.deduplication import processing
 from country_workspace.rdp.deduplication.biometric import workflow
 
 
@@ -151,7 +152,7 @@ def test_sync_ignores_ineligible_operation(
 ) -> None:
     biometric_operation.operation_type = operation_type
     biometric_operation.status = status
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
 
     assert workflow.sync_biometric_result(biometric_operation) is False
     make_client.assert_not_called()
@@ -166,10 +167,10 @@ def test_sync_fails_operation_for_failed_remote_state(
     mocker: MockerFixture,
     state: DeduplicationSetState,
 ) -> None:
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     client = make_client.return_value.__enter__.return_value
     client.retrieve_deduplication_set.return_value = {"state": state, "findings_count": 0}
-    fail = mocker.patch.object(workflow, "fail_rdp_operation", return_value=True)
+    fail = mocker.patch.object(processing, "fail_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_result(running_biometric_operation) is True
 
@@ -181,7 +182,7 @@ def test_sync_ignores_unfinished_remote_state(
     running_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     make_client.return_value.__enter__.return_value.retrieve_deduplication_set.return_value = {
         "state": DeduplicationSetState.ENCODING_IN_PROGRESS,
         "findings_count": 0,
@@ -214,14 +215,14 @@ def test_sync_completes_operation(
             }
         ]
     )
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     client = make_client.return_value.__enter__.return_value
     client.retrieve_deduplication_set.return_value = {
         "state": DeduplicationSetState.DEDUPLICATED,
         "findings_count": len(findings),
     }
     client.retrieve_findings.return_value = findings
-    complete = mocker.patch.object(workflow, "complete_rdp_operation", return_value=True)
+    complete = mocker.patch.object(processing, "complete_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_result(running_biometric_operation) is True
 
@@ -238,7 +239,7 @@ def test_sync_fails_operation_for_system_error(
     mocker: MockerFixture,
 ) -> None:
     _, individuals = people_rdp
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     client = make_client.return_value.__enter__.return_value
     client.retrieve_deduplication_set.return_value = {
         "state": DeduplicationSetState.DEDUPLICATED,
@@ -252,7 +253,7 @@ def test_sync_fails_operation_for_system_error(
             "updated_at": "",
         }
     ]
-    fail = mocker.patch.object(workflow, "fail_rdp_operation", return_value=True)
+    fail = mocker.patch.object(processing, "fail_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_result(running_biometric_operation) is True
 
@@ -266,14 +267,14 @@ def test_sync_fails_operation_for_findings_count_mismatch(
     running_biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     client = make_client.return_value.__enter__.return_value
     client.retrieve_deduplication_set.return_value = {
         "state": DeduplicationSetState.DEDUPLICATED,
         "findings_count": 1,
     }
     client.retrieve_findings.return_value = []
-    fail = mocker.patch.object(workflow, "fail_rdp_operation", return_value=True)
+    fail = mocker.patch.object(processing, "fail_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_result(running_biometric_operation) is True
     assert "findings_count" in fail.call_args.kwargs["error"]["message"]
@@ -289,9 +290,9 @@ def test_sync_fails_operation_on_remote_error(
     mocker: MockerFixture,
     error: Exception,
 ) -> None:
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     make_client.return_value.__enter__.return_value.retrieve_deduplication_set.side_effect = error
-    fail = mocker.patch.object(workflow, "fail_rdp_operation", return_value=True)
+    fail = mocker.patch.object(processing, "fail_rdp_operation", return_value=True)
 
     assert workflow.sync_biometric_result(running_biometric_operation) is True
     assert str(error) in fail.call_args.kwargs["error"]["message"]
@@ -362,7 +363,7 @@ def test_get_or_create_biometric_set_state_creates_set(
     processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
     processor.return_value.has_images.return_value = True
     callback_url = mocker.patch.object(
-        workflow,
+        processing,
         "build_dedup_operation_callback_url",
         return_value="https://example.org/callback",
     )
@@ -391,7 +392,7 @@ def test_get_or_create_biometric_set_state_rejects_id_mismatch(
     }
     processor = mocker.patch.object(workflow, "BiometricDedupProcessor")
     processor.return_value.has_images.return_value = True
-    mocker.patch.object(workflow, "build_dedup_operation_callback_url", return_value="https://example.org/callback")
+    mocker.patch.object(processing, "build_dedup_operation_callback_url", return_value="https://example.org/callback")
 
     with pytest.raises(RemoteError, match="id mismatch"):
         workflow._get_or_create_biometric_set_state(client=client, operation=biometric_operation)
@@ -471,7 +472,7 @@ def test_run_biometric_deduplication(
     sync_called: bool,
     process_called: bool,
 ) -> None:
-    make_client = mocker.patch.object(workflow, "make_biometric_client")
+    make_client = mocker.patch.object(workflow, "make_operation_client")
     client = make_client.return_value.__enter__.return_value
     mocker.patch.object(workflow, "_prepare_biometric_set", return_value=state)
     sync = mocker.patch.object(workflow, "sync_biometric_result")
@@ -486,7 +487,7 @@ def test_run_biometric_deduplication_rejects_invalid_state(
     biometric_operation: RdpOperation,
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch.object(workflow, "make_biometric_client")
+    mocker.patch.object(workflow, "make_operation_client")
     mocker.patch.object(
         workflow,
         "_prepare_biometric_set",

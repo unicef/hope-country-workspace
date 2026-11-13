@@ -2,7 +2,7 @@ from typing import Literal, NotRequired, TypedDict
 
 
 class Dataset(TypedDict):
-    dataset_id: int
+    dataset_id: str
     status: str
     error: str | None
     records_count: int

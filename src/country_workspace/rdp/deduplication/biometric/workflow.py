@@ -7,18 +7,18 @@ from country_workspace.contrib.dedup_engine import (
     BiometricFinding,
     DeduplicationSetState,
     FindingStatusCode,
-    make_biometric_client,
 )
-from country_workspace.exceptions import RemoteError, RemoteUnavailableError
+from country_workspace.exceptions import RemoteError
 from country_workspace.models import RdpOperation, RdpOperationFinding
 from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.operations.completion import complete_rdp_operation
-from country_workspace.rdp.operations.repository import fail_rdp_operation
-from country_workspace.rdp.repository import qs_individuals_by_pks, qs_individuals_for_rdp
 from country_workspace.rdp.types import JSONValue
 
-from ..callbacks import build_dedup_operation_callback_url
+from ..findings import local_individual_pks, parse_individual_id, require_rdp_individual, rdp_individual_pks
+from ..processing import FetchOutcome, RemoteFailure, get_or_create_remote_set, sync_remote_result
 from .processor import BiometricDedupProcessor
+from .remote import make_operation_client
+
+NO_IMAGES_ERROR = {"errors": ["RDP: no biometric images to deduplicate."]}
 
 
 def _finding_status(finding: BiometricFinding) -> FindingStatusCode:
@@ -43,11 +43,7 @@ def _finding_reference_pk(finding: BiometricFinding, entry: Literal["first", "se
 
 def _finding_individual_id(finding: BiometricFinding, entry: Literal["first", "second"]) -> int:
     """Return an Individual ID from a DedupEngine finding."""
-    reference_pk = _finding_reference_pk(finding, entry)
-    try:
-        return int(reference_pk)
-    except ValueError as exc:
-        raise RemoteError(f"DedupEngine: invalid Individual reference_pk={reference_pk!r}") from exc
+    return parse_individual_id(_finding_reference_pk(finding, entry), "reference_pk")
 
 
 def _build_biometric_findings(
@@ -55,23 +51,18 @@ def _build_biometric_findings(
     findings: list[BiometricFinding],
 ) -> list[RdpOperationFinding]:
     """Build local biometric findings from a successful DedupEngine result."""
-    current_pks = set(qs_individuals_for_rdp(rdp=operation.rdp).values_list("pk", flat=True))
+    current_pks = rdp_individual_pks(operation)
     parsed: list[tuple[BiometricFinding, FindingStatusCode, int, int | None]] = []
 
     for finding in findings:
         status = _finding_status(finding)
-        individual_id = _finding_individual_id(finding, "first")
-        if individual_id not in current_pks:
-            raise RemoteError(f"DedupEngine: Individual id={individual_id} is not part of the current RDP.")
+        individual_id = require_rdp_individual(_finding_individual_id(finding, "first"), current_pks)
 
         related_id = _finding_individual_id(finding, "second") if status == FindingStatusCode.DUPLICATE else None
         parsed.append((finding, status, individual_id, related_id))
 
-    related_pks = {related_id for _, _, _, related_id in parsed if related_id is not None}
-    local_related_pks = set(
-        qs_individuals_by_pks(related_pks)
-        .filter(batch__program_id=operation.rdp.program_id)
-        .values_list("pk", flat=True)
+    local_related_pks = local_individual_pks(
+        operation, {related_id for _, _, _, related_id in parsed if related_id is not None}
     )
 
     result: list[RdpOperationFinding] = []
@@ -122,63 +113,45 @@ def _validate_findings_count(*, expected: object, findings: list[BiometricFindin
         raise RemoteError(f"DedupEngine: findings_count={expected!r}, received={received}")
 
 
+def _fetch_biometric_outcome(operation: RdpOperation) -> FetchOutcome:
+    """Read the DedupEngine set of an operation and return what it means for the operation."""
+    with make_operation_client(operation) as client:
+        deduplication_set = client.retrieve_deduplication_set()
+
+        if (state := _deduplication_set_state(deduplication_set)) in {
+            DeduplicationSetState.ENCODING_FAILED,
+            DeduplicationSetState.DEDUPLICATION_FAILED,
+        }:
+            return RemoteFailure({"message": "DedupEngine processing failed.", "state": state.value})
+
+        if state != DeduplicationSetState.DEDUPLICATED:
+            return None
+
+        findings = client.retrieve_findings()
+        _validate_findings_count(
+            expected=deduplication_set.get("findings_count"),
+            findings=findings,
+        )
+
+    if system_errors := _system_error_findings(findings):
+        return RemoteFailure(
+            {
+                "message": "DedupEngine reported system errors.",
+                "count": len(system_errors),
+                "findings": system_errors[:5],
+            }
+        )
+
+    return _build_biometric_findings(operation, findings)
+
+
 def sync_biometric_result(operation: RdpOperation) -> bool:
     """Synchronize a biometric deduplication operation with DedupEngine."""
-    if (
-        operation.operation_type != RdpOperation.Type.BIOMETRIC_DEDUPLICATION
-        or operation.status != RdpOperation.Status.RUNNING
-    ):
-        return False
-
-    try:
-        with make_biometric_client(
-            operation.rdp.program.unicef_id,
-            deduplication_set_id=str(operation.id),
-        ) as client:
-            deduplication_set = client.retrieve_deduplication_set()
-
-            if (state := _deduplication_set_state(deduplication_set)) in {
-                DeduplicationSetState.ENCODING_FAILED,
-                DeduplicationSetState.DEDUPLICATION_FAILED,
-            }:
-                return fail_rdp_operation(
-                    operation_id=operation.id,
-                    error={"message": "DedupEngine processing failed.", "state": state.value},
-                    expected_attempt=operation.attempt,
-                )
-
-            if state != DeduplicationSetState.DEDUPLICATED:
-                return False
-
-            findings = client.retrieve_findings()
-            _validate_findings_count(
-                expected=deduplication_set.get("findings_count"),
-                findings=findings,
-            )
-
-        if system_errors := _system_error_findings(findings):
-            result = fail_rdp_operation(
-                operation_id=operation.id,
-                error={
-                    "message": "DedupEngine reported system errors.",
-                    "count": len(system_errors),
-                    "findings": system_errors[:5],
-                },
-                expected_attempt=operation.attempt,
-            )
-        else:
-            result = complete_rdp_operation(
-                operation=operation,
-                findings=_build_biometric_findings(operation, findings),
-            )
-    except (RemoteError, RemoteUnavailableError) as exc:
-        return fail_rdp_operation(
-            operation_id=operation.id,
-            error={"message": str(exc)},
-            expected_attempt=operation.attempt,
-        )
-    else:
-        return result
+    return sync_remote_result(
+        operation,
+        operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        fetch=_fetch_biometric_outcome,
+    )
 
 
 def _get_or_create_biometric_set_state(
@@ -187,23 +160,21 @@ def _get_or_create_biometric_set_state(
     operation: RdpOperation,
 ) -> DeduplicationSetState:
     """Return the existing DedupEngine set state or create the operation set."""
-    if (payload := client.retrieve_deduplication_set_or_none()) is not None:
-        return _deduplication_set_state(payload)
 
-    if not BiometricDedupProcessor(operation.rdp).has_images():
-        raise RdpWorkflowError({"errors": ["RDP: no biometric images to deduplicate."]})
+    def ensure_can_create() -> None:
+        if not client.can_create_deduplication_set():
+            raise RemoteError("DedupEngine: another deduplication set is active for this program.")
 
-    if not client.can_create_deduplication_set():
-        raise RemoteError("DedupEngine: another deduplication set is active for this program.")
-
-    payload = client.create_deduplication_set(
-        notification_url=build_dedup_operation_callback_url(operation_id=operation.id),
+    payload = get_or_create_remote_set(
+        operation,
+        label="deduplication set",
+        retrieve=client.retrieve_deduplication_set_or_none,
+        create=lambda notification_url: client.create_deduplication_set(notification_url=notification_url),
+        remote_id=lambda payload: payload.get("id"),
+        has_input=lambda: BiometricDedupProcessor(operation.rdp).has_images(),
+        no_input_error=NO_IMAGES_ERROR,
+        before_create=ensure_can_create,
     )
-    if payload.get("id") != str(operation.id):
-        raise RemoteError(
-            f"DedupEngine: deduplication set id mismatch: expected={operation.id}, got={payload.get('id')!r}"
-        )
-
     return _deduplication_set_state(payload)
 
 
@@ -222,7 +193,7 @@ def _prepare_biometric_set(
         return state
 
     if not BiometricDedupProcessor(operation.rdp).upload_images(client):
-        raise RdpWorkflowError({"errors": ["RDP: no biometric images to deduplicate."]})
+        raise RdpWorkflowError(NO_IMAGES_ERROR)
 
     client.ready()
     return DeduplicationSetState.READY
@@ -230,10 +201,7 @@ def _prepare_biometric_set(
 
 def run_biometric_deduplication(operation: RdpOperation) -> None:
     """Start or resume biometric deduplication for an RDP operation."""
-    with make_biometric_client(
-        operation.rdp.program.unicef_id,
-        deduplication_set_id=str(operation.id),
-    ) as client:
+    with make_operation_client(operation) as client:
         state = _prepare_biometric_set(client=client, operation=operation)
 
         if state == DeduplicationSetState.DEDUPLICATED:

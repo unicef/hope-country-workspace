@@ -270,3 +270,106 @@ def test_findings_permissions(rf: RequestFactory, rdp: CountryRdp, mocker: Mocke
         mocker.patch.object(target, "has_view_permission", return_value=denied != permission)
 
     assert admin._can_view_operation_findings(rf.get("/"), rdp) is (denied is None)
+
+
+# Both deduplication types share the findings infrastructure: columns, filters, summaries and navigation.
+
+
+@pytest.fixture(
+    params=[RdpOperation.Type.BIOMETRIC_DEDUPLICATION, RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION],
+    ids=["biometric", "biographic"],
+)
+def dedup_finding(
+    request: pytest.FixtureRequest,
+    rdp: CountryRdp,
+    members: tuple[CountryIndividual, CountryIndividual, CountryIndividual],
+) -> RdpOperationFinding:
+    """A duplicate between two members of the first household, found by the deduplication of the given type."""
+    from testutils.factories import (
+        BiographicRdpOperationFactory,
+        BiographicRdpOperationFindingFactory,
+        BiometricRdpOperationFactory,
+        BiometricRdpOperationFindingFactory,
+    )
+
+    operation_factory, finding_factory = {
+        RdpOperation.Type.BIOMETRIC_DEDUPLICATION: (BiometricRdpOperationFactory, BiometricRdpOperationFindingFactory),
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION: (
+            BiographicRdpOperationFactory,
+            BiographicRdpOperationFindingFactory,
+        ),
+    }[request.param]
+    return finding_factory(
+        operation=operation_factory(rdp=rdp, status=RdpOperation.Status.SUCCESS),
+        individual=members[0],
+        related_individual=members[1],
+    )
+
+
+@pytest.mark.parametrize("selected_rdp", [True, False], ids=["rdp", "latest"])
+def test_deduplication_findings_navigation(
+    rf: RequestFactory,
+    model_admin: BeneficiaryBaseAdmin,
+    records: list[Beneficiary],
+    rdp: CountryRdp,
+    dedup_finding: RdpOperationFinding,
+    selected_rdp: bool,
+) -> None:
+    request = rf.get("/", {"rdp_id": rdp.pk} if selected_rdp else {})
+    is_household = model_admin.model is CountryHousehold
+    query: dict[str, str | int] = {"household_id" if is_household else "individual_id": records[0].pk}
+    if not selected_rdp:
+        query["latest_only"] = "1"
+
+    context = model_admin._get_operation_findings_context(request, records[0], rdp if selected_rdp else None)
+
+    (row,) = [row for row in context["operation_findings"] if row["findings"]]
+    assert row["type"] == dedup_finding.operation.get_operation_type_display()
+    assert row["url"] == reverse(
+        "workspace:workspaces_countryrdp_findings",
+        args=[rdp.pk, dedup_finding.operation_id],
+        query=query,
+    )
+    if is_household:
+        assert row["members"] == 2
+
+
+@pytest.mark.parametrize("selected_rdp", [True, False], ids=["rdp", "latest"])
+def test_deduplication_findings_summary_counts_both_sides(
+    rf: RequestFactory,
+    model_admin: BeneficiaryBaseAdmin,
+    records: list[Beneficiary],
+    rdp: CountryRdp,
+    dedup_finding: RdpOperationFinding,
+    selected_rdp: bool,
+) -> None:
+    request = rf.get("/", {"rdp_id": rdp.pk} if selected_rdp else {})
+    queryset = model_admin.model.objects.filter(pk__in=[obj.pk for obj in records]).order_by("pk")
+    operation_type = dedup_finding.operation.operation_type
+
+    model_admin.prepare_operation_findings(request, queryset)
+
+    counted = [obj._operation_findings_by_type.get(operation_type, 0) for obj in queryset]
+    # The household holds both people; each person is on one side of the single finding.
+    assert counted == ([1, 0] if model_admin.model is CountryHousehold else [1, 1, 0])
+    assert str(RDP_OPERATION_DEFINITIONS[operation_type].short_label) in model_admin.operation_findings(queryset[0])
+
+
+@pytest.mark.parametrize("selected_rdp", [True, False], ids=["rdp", "latest"])
+def test_deduplication_findings_filter(
+    rf: RequestFactory,
+    model_admin: BeneficiaryBaseAdmin,
+    records: list[Beneficiary],
+    rdp: CountryRdp,
+    dedup_finding: RdpOperationFinding,
+    selected_rdp: bool,
+) -> None:
+    queryset = model_admin.model.objects.filter(pk__in=[obj.pk for obj in records])
+    results = {}
+    for value in ("with", "without"):
+        request = rf.get("/", {"findings": value, **({"rdp_id": rdp.pk} if selected_rdp else {})})
+        filter_ = OperationFindingsFilter(request, dict(request.GET.lists()), model_admin.model, model_admin)
+        results[value] = set(filter_.queryset(request, queryset))
+
+    assert results["with"] == set(records[:-1] if model_admin.model is CountryIndividual else records[:1])
+    assert results["without"] == set(records) - results["with"]
