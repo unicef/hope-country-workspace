@@ -5,19 +5,22 @@
   justify-content: space-between;
 
   .changelist-form-container {
-    @apply w-1/2;
+    @apply w-full min-w-0;
     #changelist-form {
       .results {
-        width: 300px;
-        overflow: scroll;
-
-        table {
-        }
+        @apply overflow-x-auto;
       }
     .actions {
-      @apply mb-2;
+      @apply mb-2 flex flex-wrap items-center gap-2;
+
+      label {
+        @apply inline-flex items-center gap-2 text-sm;
+      }
+
+      /* HOPE's 232px select box. */
       select {
-        @apply text-sm py-2 pt-1 pb-1;
+        width: auto;
+        min-width: 232px;
       }
 
       button[type=submit] {
@@ -28,7 +31,7 @@
         @apply ml-5;
       }
       .question a, .clear a{
-        @apply text-unicef-dark
+        @apply text-primary
       }
     }
     }
@@ -40,31 +43,21 @@
     clear: both;
   }
 
+  /* HOPE's TableComponent: 70px rows, 14px text, no wrapping, sideways scroll in `.results`. */
   table {
-    border-right: none;
     border-collapse: collapse;
-    border-color: var(--border-color);
 
     thead {
-      display: table-header-group;
-      vertical-align: middle;
-      unicode-bidi: isolate;
-
       th {
-        //background: var(--selected-bg);
-        font-size: 0.6875rem;
-        border: none;
-        border-bottom: 1px solid var(--hairline-color);
-        border-top: 1px solid var(--hairline-color);
-        color: var(--body-quiet-color);
-        display: table-cell;
+        @apply text-ink;
+        font-size: 12px;
         font-weight: 500;
-        line-height: normal;
+        line-height: 24px;
         padding: 0;
         text-align: left;
-        text-transform: uppercase;
         vertical-align: middle;
         white-space: nowrap;
+        border-bottom: 1px solid theme('colors.divider');
 
         &.sorted {
           .text {
@@ -73,22 +66,26 @@
         }
 
         .text {
-          span {
-            padding: 8px 10px;
+          span,
+          a {
+            display: block;
+            padding: 16px;
           }
 
           a {
-            display: block;
+            @apply text-ink;
             cursor: pointer;
-            padding: 8px 10px;
-            color: var(--body-quiet-color);
             text-decoration: none;
-            transition: color 0.15s, background 0.15s;
+            transition: color 150ms ease;
+
+            &:hover {
+              @apply text-primary;
+            }
           }
         }
 
         .sortoptions {
-          padding: 9px 5px 0 5px;
+          padding: 21px 5px 0 5px;
           @apply block float-right text-right;
 
           a {
@@ -109,16 +106,8 @@
             background-position: 0 -56px;
           }
 
-          a:link {
-            transition: color 0.15s, background 0.15s;
-          }
-
           a.sortremove {
             background-position: 0 0;
-          }
-
-          span.sortpriority {
-
           }
         }
 
@@ -131,24 +120,33 @@
 
     tbody {
       tr {
-        @apply hover:bg-gray-100;
-        @apply border-b-gray-100 border;
+        @apply bg-white;
+        height: 70px;
+        border-bottom: 1px solid theme('colors.divider');
+        transition: background-color 150ms ease;
 
+        &:hover {
+          background-color: theme('colors.action.hover');
+        }
+
+        &.selected {
+          background-color: theme('colors.primary.DEFAULT / 8%');
+        }
       }
 
       td, th {
-        padding: 20px;
-
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: break-word;
-        vertical-align: top;
-        font-size: 0.8125rem;
-        overflow: auto;
+        @apply text-ink;
+        padding: 16px;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 20px;
+        white-space: nowrap;
+        vertical-align: middle;
+        text-align: left;
         cursor: pointer;
 
-        &.nowrap {
-          white-space: nowrap;
+        a {
+          @apply text-primary;
         }
 
         &.field-info {
@@ -160,133 +158,365 @@
           text-align: center;
         }
       }
+    }
+  }
 
-      tr:nth-child(odd) {
-        @apply hover:bg-gray-100 bg-white py-12 border-b-gray-600;
-      }
+  /* HOPE's TableComponent empty message. */
+  .results-empty {
+    @apply flex flex-col items-center justify-center text-center;
+    padding: 70px 24px;
+    color: #a9a9a9;
+    font-size: 24px;
+    line-height: 28px;
 
-      tr:nth-child(even) {
-        @apply hover:bg-gray-100 bg-white py-12 border-b-gray-600;
-      }
-
-      tr.selected:nth-child(odd), tr.selected:nth-child(even) {
-        @apply bg-blue-100
-      }
+    .results-empty-hint {
+      margin-top: 8px;
+      font-size: 16px;
     }
   }
 }
 
 
-#changelist-filter {
-  @apply border border-gray-500 ml-2 rounded;
-  h2 {
-    font-size: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 5px 15px;
-    margin-bottom: 12px;
-    border-bottom: none;
+/* Changelists: the filter panel and the table are separate cards, like HOPE's Paper sections. */
+#content #content-main.changelist-main {
+  @apply flex-col gap-4 bg-transparent shadow-none;
+  padding: 0;
+  border: 0;
+
+  > #changelist {
+    @apply section-box;
+  }
+}
+
+/* HOPE's FiltersSection: a white panel of labelled fields above the table, actions bottom right. */
+#changelist-filter.filters-section {
+  @apply section-box;
+  padding: 16px 28px 8px;
+
+  .filters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: 16px 24px;
   }
 
-  #changelist-filter-extra-actions {
-    a {
-      @apply text-sm font-sans italic;
-    }
-  }
+  .filter-field {
+    @apply flex flex-col min-w-0;
 
-  h3 {
-    font-weight: 400;
-    padding: 0 15px;
-    margin-bottom: 10px;
-  }
-
-  details {
-    @apply mt-1;
-    > * {
-      display: inline;
+    /* The JSON filter needs room for key, value and type side by side. */
+    &:has(.wjsonfieldfilter) {
+      grid-column: span 2;
     }
 
-    summary {
-      font-weight: 400;
-      padding: 0 15px;
-      margin-bottom: 10px;
-      list-style-type: none;
-      cursor: pointer;
-
-      &::before {
-        //content: '→';
-        content: '►';
-        //content: '▷';
-        font-weight: bolder;
-        font-size: 18px;
-        font-family: "Courier New", Courier, monospace;
-        color: var(--link-hover-color);
-      }
-    }
-
-    &:last-child {
-      @apply mb-4;
-    }
-
-    &.active {
-      summary {
-        @apply font-bold text-unicef-blue;
-      }
+    > .adminfilters {
+      @apply flex flex-col;
     }
   }
 
-  details[open] > summary::before {
-    //content: '↓';
-    content: '▼';
+  /* Labels: the wrapper's .filter-label and the plain <h3> of Django's own filter templates. */
+  .filter-label,
+  .filter-field > h3 {
+    @apply type-label block;
+    margin: 0 0 4px;
+    padding: 0;
   }
 
   ul {
-    margin: 0 0;
-    @apply px-2;
-    select {
-      @apply min-w-full p-1 text-sm;
-      border-radius: 4px;
-      min-height: 30px;
-      height: 28px;
-      border-color: rgb(204, 204, 204);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
-      &:active {
-        border-color: rgb(204, 204, 204)
+  li {
+    margin: 0;
+  }
 
+  /* Django's link-list filters become a row of chips. */
+  .filter-field > ul:not(.adminfilter) {
+    @apply flex flex-wrap gap-1;
+
+    a {
+      @apply inline-block rounded-full text-ink;
+      padding: 2px 10px;
+      font-size: 13px;
+      border: 1px solid theme('colors.input-border');
+
+      &:hover {
+        background-color: theme('colors.action.hover');
       }
     }
 
-    li {
-      @apply min-w-full;
-      .select2-container {
-        border-radius: 4px;
-        @apply min-w-full;
+    li.selected a {
+      @apply bg-primary border-primary text-white;
+    }
+  }
+
+  input[type="text"],
+  input[type="number"],
+  textarea,
+  select {
+    @apply field-input min-w-0;
+    /* Beats the inline `width: 90%` in the adminfilters templates. */
+    width: 100% !important;
+    margin: 0;
+  }
+
+  select {
+    @apply field-select;
+  }
+
+  /* One line like the other filter inputs: a drag on the resize handle would stretch the whole grid row. */
+  textarea {
+    @apply block;
+    height: 40px;
+    max-height: 40px;
+    resize: none;
+    overflow-y: auto;
+  }
+
+  label:has(input[type="checkbox"]),
+  li:has(> input[type="checkbox"]) {
+    @apply checkbox-label;
+
+    small {
+      font-size: 14px;
+    }
+  }
+
+  /* Per-filter "activate"/"clear" buttons: small outlined. :is() outranks adminfilters.css's
+     `#changelist-filter li a.adminfilters.button.filter`. */
+  li a.adminfilters.button:is(.filter, .clear, .delete, .button) {
+    @apply btn-outlined btn-small;
+    padding: 3px 9px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* Text filters: the field on top, then exclude and the button on one row. */
+  ul.adminfilter {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+
+    > li:has(textarea),
+    > li:has(input[type="text"]) {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+
+    > li:has(a.button) {
+      grid-column: 2;
+      justify-self: end;
+    }
+  }
+
+  /* JSON filter: key | value + type, then exclude + missing | button. */
+  .wjsonfieldfilter ul.adminfilter {
+    grid-template-columns: 1fr 1fr;
+
+    > li:has(input[name="key"]) {
+      grid-column: 1;
+      order: -2;
+    }
+
+    > li:has(.json-value-row) {
+      grid-column: 2;
+      order: -1;
+    }
+
+    > li.filter-options-row {
+      @apply flex items-center gap-4;
+      grid-column: 1;
+
+      label {
+        @apply inline-flex items-center gap-2;
       }
 
-      &.selected {
-        @apply font-bold text-unicef-blue;
+      select {
+        width: auto !important;
+        field-sizing: content;
+      }
+    }
+
+    .json-value-row {
+      @apply flex gap-2;
+
+      select {
+        width: 90px !important;
+        flex: none;
       }
     }
   }
 
-  ul:last-child {
-    border-bottom: none;
+  /* Autocomplete filters (select2 "filter-autocomplete" theme) match .field-input. */
+  .select2-container--filter-autocomplete.select2-container {
+    width: 100% !important;
+    border: 0;
+
+    .select2-selection--single {
+      @apply field-select2;
+      background: white;
+
+      .select2-selection__rendered {
+        background: transparent;
+        /* Room for the clear button beside the arrow instead of under it. */
+        padding-right: 36px;
+      }
+
+      /* MUI Autocomplete's clear indicator: a grey cross left of the arrow. */
+      .select2-selection__clear {
+        color: theme('colors.icon-muted');
+        font-size: 20px;
+        font-weight: 400;
+        padding: 0 4px;
+
+        &:hover {
+          color: theme('colors.ink');
+        }
+      }
+    }
+
+    &.select2-container--focus .select2-selection--single,
+    &.select2-container--open .select2-selection--single {
+      @apply field-focus;
+    }
+  }
+
+  .filter-search {
+    .search-input {
+      @apply relative;
+
+      img {
+        @apply absolute pointer-events-none;
+        left: 12px;
+        top: 50%;
+        width: 16px;
+        transform: translateY(-50%);
+        opacity: 0.54;
+      }
+
+      input {
+        padding-left: 36px;
+      }
+    }
+  }
+
+  /* MUI FormHelperText under a field, grey or red. */
+  .filter-help,
+  .filter-error {
+    margin: 3px 14px 0;
+    font-size: 12px;
+    line-height: 1.66;
+  }
+
+  .filter-help {
+    @apply text-label;
+  }
+
+  .filter-error {
+    @apply text-hct-red;
+  }
+
+  .filter-field:has(.filter-error) :is(input, select) {
+    @apply border-hct-red;
+  }
+
+  .filters-actions {
+    @apply flex flex-wrap items-center justify-end gap-2;
+    margin-top: 16px;
+    padding: 8px 0;
+
+    .filters-count {
+      @apply mr-auto text-label;
+      font-size: 14px;
+    }
   }
 }
 
+/* RDP findings: the operation summary as a row of LabelizedFields, and table cells that wrap their details. */
+.findings-summary {
+  @apply flex flex-wrap items-start gap-x-12 gap-y-4;
 
-table thead th.action-checkbox-column {
-  width: 1.5em;
-  text-align: center;
+  .findings-note {
+    @apply flex-1 m-0 text-label;
+    min-width: 16rem;
+    font-size: 14px;
+  }
 }
 
+#changelist table.findings-table tbody {
+  td {
+    white-space: normal;
+    vertical-align: top;
+    cursor: auto;
+  }
+
+  .finding-details {
+    min-width: 24rem;
+  }
+}
+
+/* The autocomplete dropdown is attached to <body>: options as MUI menu items, not navy bars. */
+body.web .select2-container--filter-autocomplete .select2-results__option {
+  @apply text-ink;
+  font-size: 14px;
+  padding: 6px 16px;
+
+  &[aria-selected="true"] {
+    background-color: theme('colors.primary.DEFAULT / 8%');
+  }
+
+  &.select2-results__option--highlighted {
+    background-color: theme('colors.action.hover');
+  }
+
+  &[aria-selected="true"].select2-results__option--highlighted {
+    background-color: theme('colors.primary.DEFAULT / 12%');
+  }
+}
+
+/* HOPE's TablePagination: right-aligned 14px row under the table. */
 .paginator {
-  @apply flex bg-gray-100 border p-2;
-  a, span {
-    @apply px-2 mx-1 border border-gray-600;
+  @apply flex flex-wrap items-center justify-end gap-1 text-ink;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 20px;
+
+  .paginator-count {
+    @apply mr-4;
   }
 
-  span {
-    @apply bg-gray-400 text-white;
+  .paginator-pages {
+    @apply flex items-center gap-1;
+  }
+
+  a,
+  .this-page {
+    @apply inline-flex items-center justify-center rounded;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+  }
+
+  a {
+    @apply text-ink;
+    text-decoration: none;
+
+    &:hover {
+      background-color: theme('colors.action.hover');
+    }
+  }
+
+  .this-page {
+    @apply text-primary font-medium;
+    background-color: theme('colors.primary.DEFAULT / 8%');
+  }
+
+  a.showall {
+    @apply text-primary font-medium uppercase ml-4;
+  }
+
+  input[type="submit"] {
+    @apply ml-4;
   }
 }

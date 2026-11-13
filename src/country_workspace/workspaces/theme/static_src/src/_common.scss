@@ -1,13 +1,11 @@
-$admin-main: rgb(55, 176, 248);
-$tenant-main: rgb(30, 58, 138);
-
 :root {
-  --primary: #0f2f3b;
-  --header-bg: #1E3A8AFF;
-  --breadcrumbs-bg: #0f2f3b;
-  --link-fg: #37b0f8;
-  --accent: #f5dd5d;
-  --header-color: #ffc;
+  --primary: theme('colors.primary.DEFAULT');
+  --header-bg: theme('colors.primary.DEFAULT');
+  --breadcrumbs-bg: theme('colors.secondary');
+  --link-fg: theme('colors.primary.DEFAULT');
+  --link-hover-color: theme('colors.primary.dark');
+  --accent: theme('colors.primary.DEFAULT');
+  --header-color: #fff;
   --border-color: #e5e7eb;
   --body-bg: #fff;
   --darkened-bg: #f8f8f8;
@@ -18,69 +16,97 @@ $tenant-main: rgb(30, 58, 138);
 
 * {
   font-family: "Roboto", "Helvetica", "Arial", sans-serif;
-  @apply text-gray-900;
+}
+
+body {
+  @apply text-ink;
+}
+
+input,
+select,
+textarea {
+  @apply text-ink;
 }
 
 body.web {
-  @apply bg-gray-100 antialiased;
+  @apply bg-page antialiased;
 }
 
 .breadcrumbs {
-  @apply py-2 text-unicef-dark text-sm;
+  @apply py-2 px-4 text-primary text-sm;
 }
 
+/* Page header actions, like HOPE's PageHeader: outlined, with the main action contained. */
 ul.object-tools {
-  @apply flex py-1 ml-3 my-4 pr-4;
-  justify-content: flex-end;
+  @apply flex flex-wrap items-center justify-end gap-2 m-0 p-0;
 
-  li {
-    @apply text-sm font-normal mx-1;
+  > li {
+    @apply text-sm font-normal;
 
-    a {
-      @apply text-white px-4 py-2 my-1;
-      text-decoration: none;
-      color: white;
-      cursor: pointer;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      vertical-align: middle;
-      justify-content: center;
-      min-width: 64px;
-      box-shadow:
-        0 2px 4px -1px rgba(0, 0, 0, 0.2),
-        0 4px 5px 0 rgba(0, 0, 0, 0.14);
-      outline: 0;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 4px;
-      transition:
-        background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-        box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
-      background-color: rgb(0, 60, 143);
+    > a {
+      @apply btn-outlined;
 
-      &:hover {
-        background-color: rgb(0, 50, 120);
-        box-shadow:
-          0 2px 4px -1px rgba(0, 0, 0, 0.3),
-          0 5px 8px 0 rgba(0, 0, 0, 0.2);
+      &.primary {
+        @apply btn-contained;
       }
 
       &.disabled {
-        @apply border border-unicef-dark opacity-50 pointer-events-none;
+        @apply border border-primary opacity-50 pointer-events-none;
+      }
+    }
+
+    /* admin_extra_buttons choice buttons: an outlined button with MUI's ArrowDropDown opening an MUI Menu. */
+    details.aeb-button {
+      @apply relative;
+
+      > summary {
+        @apply btn-outlined list-none cursor-pointer select-none;
+        padding-right: 36px;
+        background: no-repeat right 8px center / 24px
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 10 5 5 5-5z'/%3E%3C/svg%3E");
+
+        &::-webkit-details-marker {
+          display: none;
+        }
+      }
+
+      &[open] > summary {
+        background-color: theme('colors.primary.DEFAULT / 4%');
+        /* ArrowDropUp while open, like MUI. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23003C8F'%3E%3Cpath d='m7 14 5-5 5 5z'/%3E%3C/svg%3E");
+      }
+
+      .choice-menu-list {
+        @apply menu-paper left-0 z-30 m-0 list-none;
+        min-width: 100%;
+
+        a {
+          @apply menu-list-item;
+
+          &.selected {
+            background-color: theme('colors.primary.DEFAULT / 8%');
+          }
+        }
       }
     }
   }
 }
 
 .admin-change-link {
-  @apply text-xs text-unicef-blue;
+  @apply text-xs text-primary;
   margin-left: 0.5rem;
 
   .icon {
-    @apply align-middle text-unicef-blue;
+    @apply align-middle text-primary;
+    font-size: 20px;
   }
+}
+
+/* Inline Material icons from `{% icon %}`: 1em square, coloured by the text. */
+svg.icon {
+  @apply inline-block flex-none;
+  width: 1em;
+  height: 1em;
 }
 
 .messages {
@@ -127,12 +153,12 @@ ul.object-tools {
 
 #content {
   #content-main {
-    @apply p-4 bg-white rounded shadow-sm border border-gray-200 flex;
+    @apply section-box flex;
     margin-bottom: 0.75rem;
   }
 
   #content-related {
-    @apply mx-1 p-4 flex bg-white rounded shadow-sm border border-gray-200;
+    @apply section-box flex;
   }
 }
 
@@ -148,40 +174,55 @@ table {
   tr.error {
     @apply bg-red-100;
   }
+}
 
-  tr:nth-child(even) {
-    @apply bg-gray-50;
+/* HOPE's LoginPage: a light blue box with the logo, a white subtitle and a tall primary button. */
+.login-box {
+  @apply bg-hct-lightBlue text-center rounded box-border p-6;
+  width: calc(100% - 32px);
+  box-shadow:
+    0 0 2px 0 rgba(0, 0, 0, 0.12),
+    0 2px 2px 0 rgba(0, 0, 0, 0.24);
+
+  @media (min-width: theme('screens.sm')) {
+    @apply box-content;
+    width: 533px;
+    padding: 50px;
+  }
+
+  .login-subtitle {
+    @apply text-white mt-6 sm:mt-[52px];
+    font-size: 24px;
+    font-weight: 300;
+    line-height: 32px;
+  }
+
+  .login-button {
+    @apply w-full mt-6;
+    height: 64px;
+    font-size: 15px;
   }
 }
 
 #login-form {
-  @apply bg-transparent content-center p-0 rounded;
+  @apply bg-transparent p-0;
 
   table {
     @apply min-w-full;
 
-    tr:nth-child(even),
-    tr:nth-child(odd) {
-      @apply bg-transparent;
-
+    tr {
       td {
         padding: 0.375rem 0;
 
         input,
         select {
-          @apply min-w-full text-sm py-2 px-3 border border-gray-300 rounded;
-          background-color: white;
-
-          &:focus {
-            @apply outline-none border-unicef-blue;
-            box-shadow: 0 0 0 3px rgba(0, 173, 239, 0.15);
-          }
+          @apply min-w-full;
         }
       }
 
       th,
       td.label {
-        @apply text-xs text-gray-500 uppercase tracking-wider font-medium pt-2;
+        @apply type-label pt-2 text-white;
       }
     }
   }
@@ -189,12 +230,7 @@ table {
 
 .tenant-select-wrap {
   select {
-    @apply min-w-full text-sm py-2 px-3 border border-gray-300 rounded bg-white;
-
-    &:focus {
-      @apply outline-none border-unicef-blue;
-      box-shadow: 0 0 0 3px rgba(0, 173, 239, 0.15);
-    }
+    @apply min-w-full;
   }
 
   .select2-container {
@@ -204,34 +240,14 @@ table {
 
 body.web {
   .button {
-    @apply text-white font-medium tracking-wide uppercase py-2 px-4 rounded focus:outline-none cursor-pointer;
-    font-size: 0.8125rem;
-    letter-spacing: 0.03em;
-    border: none;
-    box-shadow:
-      0 2px 4px -1px rgba(0, 0, 0, 0.2),
-      0 4px 5px 0 rgba(0, 0, 0, 0.14);
-    transition:
-      background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-      box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
-
-    &:hover {
-      box-shadow:
-        0 2px 4px -1px rgba(0, 0, 0, 0.3),
-        0 5px 8px 0 rgba(0, 0, 0, 0.2);
-    }
+    @apply btn-contained;
 
     &.small {
-      @apply py-1 px-2 text-xs;
-    }
-
-    &.primary {
-      @apply bg-unicef-dark hover:bg-unicef-dark/90;
+      @apply btn-small;
     }
 
     &.secondary {
-      @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
-      box-shadow: none;
+      @apply btn-outlined;
     }
   }
 }

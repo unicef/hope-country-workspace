@@ -1,93 +1,82 @@
 {% extends "workspace/layout.html" %}
-{% load feature_flags i18n workspace_urls %}
+{% load feature_flags i18n workspace_app workspace_urls %}
 {% block header %}
     {{ program_form.media.css }}
-    <div class="flex-grow flex items-center gap-3">
-        <div class="flex items-center gap-2">
-            <label for="id_tenant" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+    <div class="flex items-center gap-6 ml-7">
+        <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="app-bar-select">
+            {% csrf_token %}
+            <label for="id_tenant" class="sr-only">
                 {% trans "Office" %}
             </label>
-            <form id="select-tenant" method="post" action="{% url "workspace:select_tenant" %}" class="flex items-center">
-                {% csrf_token %}
-                <span class="flex items-center">
-                    {{ tenant_form.tenant }}
-                    {% admin_url active_tenant %}
-                </span>
-            </form>
-        </div>
+            {{ tenant_form.tenant }}
+        </form>
         {% if active_tenant %}
-            <div class="flex items-center gap-2">
-                <label for="id_program" class="text-[0.65rem] uppercase tracking-wider text-white/70 hidden lg:flex">
+            <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="app-bar-select">
+                {% csrf_token %}
+                <label for="id_program" class="sr-only">
                     {% trans "Programme" %}
                 </label>
-                <form id="select-program" method="post" action="{% url "workspace:select_program" %}" class="flex items-center">
-                    {% csrf_token %}
-                    <span class="flex items-center">
-                        {{ program_form.program }}
-                        {% admin_url active_program %}
-                    </span>
-                </form>
-                {{ program_form.media.js }}
-            </div>
-            {% if active_program %}
-                <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
-                   id="pending-jobs-badge"
-                   class="flex items-center gap-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/20 rounded px-2.5 py-1 transition-colors{% if not pending_jobs_count %} opacity-60{% endif %}"
-                   title="{% trans "View background jobs" %}">
-                    <span class="icon icon-globe text-sm"></span>
-                    {% if pending_jobs_count %}
-                        <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-400 text-unicef-gray text-[0.7rem] font-bold">
-                            {{ pending_jobs_count }}
-                        </span>
-                        <span class="hidden lg:inline">
-                            {% if pending_jobs_count == 1 %}
-                                {% trans "job running" %}
-                            {% else %}
-                                {% trans "jobs running" %}
-                            {% endif %}
-                        </span>
-                    {% else %}
-                        <span class="hidden lg:inline">{% trans "No pending jobs" %}</span>
-                    {% endif %}
-                </a>
-            {% endif %}
+                {{ program_form.program }}
+            </form>
+            {{ program_form.media.js }}
         {% endif %}
     </div>
 {% endblock header %}
+{% block app-bar-actions %}
+    {% if active_program %}
+        <a href="{% url "workspace:workspaces_countryasyncjob_changelist" %}"
+           id="pending-jobs-badge"
+           class="app-bar-jobs{% if not pending_jobs_count %} idle{% endif %}"
+           title="{% trans "View background jobs" %}">
+            {% icon "jobs" %}
+            {% if pending_jobs_count %}
+                <span class="app-bar-badge">{{ pending_jobs_count }}</span>
+                <span class="sr-only xl:not-sr-only">
+                    {% if pending_jobs_count == 1 %}
+                        {% trans "job running" %}
+                    {% else %}
+                        {% trans "jobs running" %}
+                    {% endif %}
+                </span>
+            {% else %}
+                <span class="sr-only xl:not-sr-only">{% trans "No pending jobs" %}</span>
+            {% endif %}
+        </a>
+    {% endif %}
+{% endblock app-bar-actions %}
 {% block menu %}
     <ul class="menu p-0 w-full pt-4 pb-8">
         {% for item in menu_items %}
-            <li class="menu-item flex {% if item.selected %}selected{% endif %}{% if item.indent %} pl-3{% endif %}">
-                {% if item.is_form %}
-                    <form method="post" action="{{ item.url }}" class="w-full">
-                        {% csrf_token %}
-                        <button type="submit" class="flex w-full items-center px-4 py-2.5 text-left">
-                            <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                            <div class="display-open flex-grow text-sm font-medium">
-                                {{ item.name }}
-                            </div>
-                        </button>
-                    </form>
-                {% else %}
-                    <a class="flex w-full items-center px-4 py-2.5"
-                       href="{{ item.url }}"
-                       {% if item.target %}target="{{ item.target }}"{% endif %}>
-                        <span class="text-xl pr-3 icon {{ item.icon }} text-gray-500"></span>
-                        <div class="display-open flex-grow text-sm font-medium">
-                            {{ item.name }}
-                        </div>
-                    </a>
+            {% ifchanged item.section %}
+                {% if item.section %}
+                    <li class="menu-section display-open" role="presentation">
+                        {{ item.section }}
+                    </li>
                 {% endif %}
+            {% endifchanged %}
+            <li class="menu-item flex {% if item.selected %}selected{% endif %}{% if item.indent %} pl-3{% endif %}">
+                <a class="flex w-full items-center px-4 py-2"
+                   href="{{ item.url }}"
+                   {% if item.target %}target="{{ item.target }}"{% endif %}>
+                    <span class="menu-icon">{% icon item.icon %}</span>
+                    <div class="display-open flex-grow text-sm font-medium leading-4">
+                        {{ item.name }}
+                    </div>
+                </a>
             </li>
         {% endfor %}
     </ul>
 {% endblock menu %}
 {% block page-top %}
     <div class="title-top">
-        <h2>
-            {% block page-title %}
-                {{ title|default_if_none:"" }}
-            {% endblock %}
-        </h2>
+        {% page_heading %}
+        {% block page-title %}
+            {{ title|default_if_none:"" }}
+        {% endblock %}
+    {% endpage_heading %}
+    <div class="title-actions">
+        {% block object-tools %}
+        {% endblock object-tools %}
     </div>
+</div>
 {% endblock page-top %}

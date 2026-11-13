@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING
 
 from django.contrib.admin.utils import quote
-from django.contrib.admin.views.main import ChangeList as DjangoChangeList
-from django.http import HttpRequest
+from django.contrib.admin.views.main import SEARCH_VAR, ChangeList as DjangoChangeList
+from django.http import HttpRequest, QueryDict
 from django.urls import reverse
 
 if TYPE_CHECKING:
@@ -20,6 +20,13 @@ class WorkspaceChangeList(DjangoChangeList):
             return super().get_ordering_field(field_name)
         except AttributeError:
             return field_name
+
+    @property
+    def clear_filters_and_search_qs(self) -> str:
+        """Django's clear_all_filters_qs without the search term: HOPE's Clear resets the search box too."""
+        params = QueryDict(self.clear_all_filters_qs.lstrip("?"), mutable=True)
+        params.pop(SEARCH_VAR, None)
+        return f"?{params.urlencode()}"
 
     def get_ordering_field_columns(self) -> list[str]:
         return super().get_ordering_field_columns()

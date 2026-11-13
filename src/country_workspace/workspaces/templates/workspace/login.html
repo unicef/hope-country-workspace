@@ -9,67 +9,46 @@
 {% block sidebar %}
 {% endblock %}
 {% block content-header %}
-    <div class="flex flex-1 items-center bg-unicef-blue h-16 px-6 shadow-md">
-        <a href="/" class="flex items-center">
-            <img src="{% static "hope_logo.png" %}" class="h-10" alt="HOPE" />
-        </a>
-        <div class="flex-1">
-        </div>
-        <span class="text-white text-sm font-medium tracking-wide hidden md:flex">
-            {% trans "Country Workspace" %}
-        </span>
-    </div>
 {% endblock content-header %}
 {% block content %}
     {% flag_enabled 'LOCAL_LOGIN' as FLAG_LOCAL_LOGIN %}
-    <div class="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4">
-        <div class="w-full max-w-md">
-            <div class="text-center mb-8">
-                <div class="text-3xl font-light text-gray-800 tracking-tight">
-                    {% trans "Welcome to" %}
-                </div>
-                <div class="text-5xl font-medium text-unicef-dark mt-1">
-                    HOPE Workspace
-                </div>
-                <p class="text-sm text-gray-500 mt-3">
-                    {% trans "Please sign in to continue" %}
-                </p>
-            </div>
-            <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-8">
-                <div class="text-center">
-                    <form method="post" action="{% url 'social:begin' 'azuread-tenant-oauth2' %}">
-                        {% csrf_token %}
-                        <button class="button primary inline-block w-full text-center" type="submit">
-                            {% translate "Sign in with SSO" %}
-                        </button>
-                    </form>
-                </div>
+    <div class="flex flex-1 flex-col items-center justify-center py-8">
+        <div class="login-box">
+            <img src="{% static "hope_logo_with_subtitle.jpg" %}" class="mx-auto w-full max-w-[343px] h-auto" alt="HOPE" />
+            <h1 class="login-subtitle">
+                {% trans "Sign in to Country Workspace" %}
+            </h1>
+            <div class="sm:mx-11">
+                <form method="post" action="{% url 'social:begin' 'azuread-tenant-oauth2' %}">
+                    {% csrf_token %}
+                    <button class="button login-button" type="submit">
+                        {% translate "Sign in with SSO" %}
+                    </button>
+                </form>
                 {% if FLAG_LOCAL_LOGIN %}
                     <div class="flex items-center my-6">
-                        <div class="flex-grow border-t border-gray-200">
+                        <div class="flex-grow border-t border-white/40">
                         </div>
-                        <span class="px-3 text-xs uppercase tracking-wider text-gray-400">
+                        <span class="px-3 text-xs uppercase tracking-wider text-white">
                             {% trans "or" %}
                         </span>
-                        <div class="flex-grow border-t border-gray-200">
+                        <div class="flex-grow border-t border-white/40">
                         </div>
                     </div>
-                    <form id="login-form" method="post" class="space-y-4">
+                    <form id="login-form" method="post" class="space-y-4 text-left">
                         {% csrf_token %}
                         <table class="w-full">
                             {{ form.as_table }}
                         </table>
-                        <div class="text-center pt-2">
-                            <button class="button primary w-full" type="submit">
-                                {% translate "Sign in" %}
-                            </button>
-                        </div>
+                        <button class="button login-button" type="submit">
+                            {% translate "Sign in" %}
+                        </button>
                     </form>
                 {% endif %}
             </div>
-            <p class="text-center text-xs text-gray-400 mt-6">
-                {% blocktranslate %}© UNICEF — All rights reserved{% endblocktranslate %}
-            </p>
         </div>
+        <p class="text-center text-xs text-label mt-6">
+            {% blocktranslate %}© UNICEF — All rights reserved{% endblocktranslate %}
+        </p>
     </div>
 {% endblock content %}

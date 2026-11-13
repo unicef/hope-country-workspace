@@ -6,22 +6,56 @@
         <script src="{% url "workspace:jsi18n" %}"></script>
     {% endif %}
 {% endblock extrahead %}
+{% block object-tools %}
+    <ul class="object-tools">
+        {% block object-tools-items %}
+            {% change_list_object_tools %}
+            {% include "workspace/admin_extra_buttons/includes/change_list_buttons.html" %}
+        {% endblock object-tools-items %}
+    </ul>
+{% endblock object-tools %}
 {% block content %}
     <div id="content">
-        {% block object-tools %}
-            <ul class="object-tools">
-                {% block object-tools-items %}
-                    {% change_list_object_tools %}
-                    {% include "workspace/admin_extra_buttons/includes/change_list_buttons.html" %}
-                {% endblock object-tools-items %}
-            </ul>
-        {% endblock object-tools %}
-        <div id="content-main">
-            <div class="module{% if cl.has_filters %} filtered{% endif %}  min-w-full  flex" id="changelist">
-                <div class="changelist-form-container flex-1">
-                    {% block search %}
-                        {% search_form cl %}
-                    {% endblock %}
+        <div id="content-main" class="changelist-main">
+            {% block filters %}
+                {% if cl.has_filters or cl.search_fields %}
+                    {# HOPE's FiltersSection: a panel of labelled fields above the table. #}
+                    <nav id="changelist-filter" class="filters-section" aria-labelledby="changelist-filter-header">
+                        <h2 id="changelist-filter-header" class="sr-only">
+                            {% translate 'Filter' %}
+                        </h2>
+                        <div class="filters-grid">
+                            {% block search %}
+                                {% search_form cl %}
+                            {% endblock %}
+                            {% for spec in cl.filter_specs %}
+                                <div class="filter-field">
+                                    {% admin_list_filter cl spec %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="filters-actions">
+                            <span class="filters-count">
+                                {% blocktranslate count counter=cl.result_count %}{{ counter }} result{% plural %}{{ counter }} results{% endblocktranslate %}
+                            </span>
+                            {% if cl.is_facets_optional %}
+                                {% if cl.add_facets %}
+                                    <a href="{{ cl.remove_facet_link }}" class="btn-text hidelink">{% translate "Hide counts" %}</a>
+                                {% else %}
+                                    <a href="{{ cl.add_facet_link }}" class="btn-text viewlink">{% translate "Show counts" %}</a>
+                                {% endif %}
+                            {% endif %}
+                            {# HOPE's ClearApplyButtons: Clear as text, Apply outlined. #}
+                            <a href="{{ cl.clear_filters_and_search_qs }}" id="clear-all-filters" class="btn-text">{% translate "Clear" %}</a>
+                            <button type="button" id="apply-filters" class="button secondary">
+                                {% translate "Apply" %}
+                            </button>
+                        </div>
+                    </nav>
+                {% endif %}
+            {% endblock filters %}
+            <div class="module{% if cl.has_filters %} filtered{% endif %} min-w-full" id="changelist">
+                <div class="changelist-form-container">
                     <form id="changelist-form"
                           method="post"
                           {% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %}
@@ -46,36 +80,6 @@
                         {% endblock %}
                     </form>
                 </div>
-                {% block filters %}
-                    {% if cl.has_filters %}
-                        <nav id="changelist-filter" class="flex-none w-1/6" aria-labelledby="changelist-filter-header">
-                            <h2 id="changelist-filter-header">
-                                {% translate 'Filter' %}
-                            </h2>
-                            {% if cl.is_facets_optional or cl.has_active_filters %}
-                                <div id="changelist-filter-extra-actions">
-                                    {% if cl.is_facets_optional %}
-                                        <h3>
-                                            {% if cl.add_facets %}
-                                                <a href="{{ cl.remove_facet_link }}" class="hidelink">{% translate "Hide counts" %}</a>
-                                            {% else %}
-                                                <a href="{{ cl.add_facet_link }}" class="viewlink">{% translate "Show counts" %}</a>
-                                            {% endif %}
-                                        </h3>
-                                    {% endif %}
-                                    {% if cl.has_active_filters %}
-                                        <h3>
-                                            <a href="{{ cl.clear_all_filters_qs }}">&#10006; {% translate "Clear all filters" %}</a>
-                                        </h3>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                            {% for spec in cl.filter_specs %}
-                                {% admin_list_filter cl spec %}
-                            {% endfor %}
-                        </nav>
-                    {% endif %}
-                {% endblock filters %}
             </div>
         </div>
     </div>

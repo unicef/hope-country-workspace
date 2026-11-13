@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n workspace_app %}
 {% if result_hidden_fields %}
     <div class="hiddenfields">
         {# DIV for HTML validation #}
@@ -9,7 +9,7 @@
 {% endif %}
 {% if results %}
     <div class="results min-w-full">
-        <table id="result_list" class="table-fixed min-w-full caption-bottom border-collapse  ">
+        <table id="result_list" class="min-w-full">
             <thead>
                 <tr>
                     {% for header in result_headers %}
@@ -56,5 +56,15 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+{% else %}
+    <div class="results-empty">
+        {% icon "find-in-page" "text-[50px] text-gray-500" %}
+        <div class="mt-2">
+            {% translate "No results" %}
+        </div>
+        <div class="results-empty-hint">
+            {% translate "Try adjusting your search or your filters to find what you are looking for." %}
+        </div>
     </div>
 {% endif %}

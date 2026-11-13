@@ -345,6 +345,7 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                     "operation_id_label": definition.operation_id_label if definition else _("Operation ID"),
                     "type": operation.get_operation_type_display(),
                     "status": operation.get_status_display(),
+                    "status_code": operation.status,
                     "attempts": operation.attempt,
                     "started_at": self._format_datetime(operation.started_at),
                     "finished_at": self._format_datetime(operation.finished_at),

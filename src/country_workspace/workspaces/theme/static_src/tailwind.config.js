@@ -48,36 +48,58 @@ module.exports = {
     ],
     theme: {
         extend: {
+            width: {
+                sidebar: '270px',
+                'sidebar-collapsed': '55px',
+            },
+            // MUI elevations used by HOPE: 1 for Paper, 2 for contained buttons, 4 for the app bar, drawer header and
+            // hovered buttons, 8 for menus.
+            boxShadow: {
+                'elevation-1': '0px 2px 1px -1px rgba(0, 0, 0, 0.2), 0px 1px 1px 0px rgba(0, 0, 0, 0.14), 0px 1px 3px 0px rgba(0, 0, 0, 0.12)',
+                'elevation-2': '0px 3px 1px -2px rgba(0, 0, 0, 0.2), 0px 2px 2px 0px rgba(0, 0, 0, 0.14), 0px 1px 5px 0px rgba(0, 0, 0, 0.12)',
+                'elevation-4': '0px 2px 4px -1px rgba(0, 0, 0, 0.2), 0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12)',
+                'elevation-8': '0px 5px 5px -3px rgba(0, 0, 0, 0.2), 0px 8px 10px 1px rgba(0, 0, 0, 0.14), 0px 3px 14px 2px rgba(0, 0, 0, 0.12)',
+            },
             colors: {
+                // Logo blocks only. Use `primary` for accents.
                 unicef: {
                     blue: '#00ADEF',
-                    dark: '#003C8F',
-                    gray: '#233944',
                 },
-            //     primary: {
-            //         50: '#eff6ff',
-            //         100: '#dbeafe',
-            //         200: '#bfdbfe',
-            //         300: '#93c5fd',
-            //         400: '#60a5fa',
-            //         500: '#3b82f6',
-            //         600: '#2563eb',
-            //         700: '#1d4ed8',
-            //         800: '#1e40af',
-            //         900: '#1e3a8a',
-            //     },
-            //     secondary: {
-            //         50: '#f8fafc',
-            //         100: '#f1f5f9',
-            //         200: '#e2e8f0',
-            //         300: '#cbd5e1',
-            //         400: '#94a3b8',
-            //         500: '#64748b',
-            //         600: '#475569',
-            //         700: '#334155',
-            //         800: '#1e293b',
-            //         900: '#0f172a',
-            //     },
+                primary: {
+                    DEFAULT: '#003C8F',
+                    dark: '#003278',
+                },
+                secondary: '#233944',
+                page: '#EEEEEE',
+                label: 'rgba(37, 59, 70, 0.6)',
+                value: '#253B46',
+                ink: 'rgba(0, 0, 0, 0.87)',
+                // MUI's light palette as HOPE renders it.
+                action: {
+                    hover: 'rgba(0, 0, 0, 0.04)',
+                },
+                divider: 'rgba(224, 224, 224, 1)',
+                'input-border': 'rgba(0, 0, 0, 0.23)',
+                'icon-muted': 'rgba(0, 0, 0, 0.54)',
+                // HOPE's app bar text and icons.
+                'app-bar-text': '#e3e6e7',
+                // HOPE's theme.ts hctPalette
+                hct: {
+                    orange: '#FC942A',
+                    blue: '#D8E1EE',
+                    darkerBlue: '#033D90',
+                    green: '#10CB16',
+                    gray: '#4E606A',
+                    lightGray: '#D8D8D8',
+                    lighterGray: '#C0C0C0',
+                    lightestGray: '#FAFAFA',
+                    red: '#EF4343',
+                    brown: '#D9D1CE',
+                    darkBrown: '#715247',
+                    navyBlue: '#003C8F',
+                    lightBlue: '#00ADEF',
+                    teal: '#00897B',
+                },
             },
         },
         screens: {

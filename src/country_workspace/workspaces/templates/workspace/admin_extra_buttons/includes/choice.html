@@ -1,9 +1,9 @@
 {% load i18n %}
 {% spaceless %}
     <li>
-        <select {% include "admin_extra_buttons/includes/attrs.html" with button=button %}
-                onchange="if (this.value) { window.location.href = this.value; }">
-            <option value="#">
+        {# HOPE's ButtonDropdown: an outlined button opening an MUI Menu of links. #}
+        <details {% include "admin_extra_buttons/includes/attrs.html" with button=button %}>
+            <summary class="choice-menu-button">
                 {% if button.label == "Individual Columns" %}
                     {{ btnlabels.individual_columns|default:button.label }}
                 {% elif button.label == "Household Columns" %}
@@ -11,12 +11,14 @@
                 {% else %}
                     {{ button.label }}
                 {% endif %}
-            </option>
-            {% for choice in button.get_choices %}
-                <option value="{{ choice.url }}"{% if choice.selected %} selected="selected"{% endif %}>
-                    {{ choice.label }}
-                </option>
-            {% endfor %}
-        </select>
+            </summary>
+            <ul class="choice-menu-list" role="menu">
+                {% for choice in button.get_choices %}
+                    <li>
+                        <a href="{{ choice.url }}" role="menuitem" {% if choice.selected %}class="selected"{% endif %}>{{ choice.label }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </details>
     </li>
 {% endspaceless %}
