@@ -10,7 +10,7 @@ class OcrUnitConfig(TypedDict):
 
 class OcrDocumentRequest(TypedDict):
     individual_id: ReadOnly[int]
-    content: ReadOnly[str]
+    filename: ReadOnly[str]
     pattern: ReadOnly[str]
 
 

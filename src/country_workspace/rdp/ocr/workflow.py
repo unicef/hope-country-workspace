@@ -18,6 +18,7 @@ from country_workspace.rdp.operations.repository import (
     prepare_rdp_operation_units_for_retry,
 )
 from country_workspace.rdp.repository import qs_individuals_for_rdp
+from country_workspace.services.hope_blob import RECORD_SELECT_RELATED
 from country_workspace.stream import OCR_REQUEST_ROUTING_KEY, PublishOutcome, publish
 from country_workspace.utils.flex_files import prefetch_flex_files
 
@@ -85,8 +86,9 @@ def run_ocr(operation: RdpOperation) -> None:
         return
 
     units = prefetch_flex_files(
-        pending_rdp_operation_units(operation_id=operation.id),
+        pending_rdp_operation_units(operation_id=operation.id).select_related(f"individual__{RECORD_SELECT_RELATED}"),
         prefix="individual",
+        with_content=False,
     )
     unit_count = units.count()
     if not unit_count:

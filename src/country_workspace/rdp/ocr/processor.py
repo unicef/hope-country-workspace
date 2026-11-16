@@ -5,7 +5,7 @@ from hope_flex_fields.references import parse_reference
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
 from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models import Individual, RdpOperationUnit
-from country_workspace.utils.flex_files import resolve_flex_file
+from country_workspace.services.hope_blob import sync_record_blobs
 
 from .constants import DATA_URI_BASE64_MARKER
 from .types import OcrDocumentRequest, OcrUnitConfig
@@ -39,20 +39,24 @@ def iter_ocr_unit_configs(individuals: Iterable[Individual]) -> Iterator[tuple[i
 
 
 def build_ocr_document_request(unit: RdpOperationUnit) -> OcrDocumentRequest | None:
-    """Build an OCR request from a persisted operation unit."""
+    """Upload the unit document image to the HOPE storage and build an OCR request pointing at it.
+
+    Raises BlobStorageError when the storage backend is unreachable or fails.
+    """
     if (document_type := unit.config.get("document_type")) not in DOCUMENT_TYPES:
         return None
 
-    fields = unit.individual.flex_fields
-    pattern = fields.get(f"{document_type}_document_number")
+    pattern = unit.individual.flex_fields.get(f"{document_type}_document_number")
+    if not (isinstance(pattern, str) and (pattern := pattern.strip())):
+        return None
 
+    image_field = f"{document_type}_image"
     try:
-        image = resolve_flex_file(unit.individual, f"{document_type}_image")
+        filename = sync_record_blobs(unit.individual, [image_field], only={image_field}).get(image_field)
     except MissingFlexFileError:
         return None
 
-    content = extract_base64_content(image)
-    if not (isinstance(pattern, str) and (pattern := pattern.strip()) and content):
+    if not filename:
         return None
 
-    return {"individual_id": unit.individual_id, "content": content, "pattern": pattern}
+    return {"individual_id": unit.individual_id, "filename": filename, "pattern": pattern}
