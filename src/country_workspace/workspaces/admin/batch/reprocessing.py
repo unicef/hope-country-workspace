@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from collections.abc import Callable
 from functools import partial
 from typing import Any, Final, NamedTuple
@@ -88,9 +89,57 @@ def _get_batch_from_job(job: AsyncJob) -> tuple[int, Batch]:
     return batch_id, batch
 
 
+def _role_reference_pk(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _drop_invalid_role_refs(batch: Batch) -> None:
+    """Drop role references that do not point at a member or an external collector.
+
+    Reprocessing rebuilds household fields from raw data, so a mapped form answer such as
+    ``alternate_collector="0"`` comes back as ``alternate_collector_id``. A reference that
+    already points at a household member or a program-wide external collector is kept.
+    """
+    member_pks: dict[int, set[int]] = defaultdict(set)
+    for household_id, pk in batch.individual_set.filter(removed=False, household_id__isnull=False).values_list(
+        "household_id", "pk"
+    ):
+        member_pks[household_id].add(pk)
+    external_pks = set(
+        Individual.objects.filter(
+            removed=False,
+            household__isnull=True,
+            batch__program_id=batch.program_id,
+        ).values_list("pk", flat=True)
+    )
+
+    for household in batch.household_set.filter(removed=False).only("pk", "flex_fields").iterator():
+        flex_fields = dict(household.flex_fields or {})
+        valid_pks = member_pks.get(household.pk, set()) | external_pks
+        removed_any = False
+        for field_name in HOUSEHOLD_ROLE_REF_FIELDS:
+            if field_name not in flex_fields:
+                continue
+            if _role_reference_pk(flex_fields[field_name]) not in valid_pks:
+                flex_fields.pop(field_name)
+                removed_any = True
+        if removed_any:
+            household.flex_fields = flex_fields
+            household.save(update_fields=["flex_fields"])
+
+
 def _sync_household_refs(batch: Batch) -> None:
     match batch.source:
-        case Batch.BatchSource.KOBO | Batch.BatchSource.ONA:
+        case Batch.BatchSource.KOBO:
+            _sync_kobo_household_refs(batch)
+        case Batch.BatchSource.ONA:
+            _drop_invalid_role_refs(batch)
             _sync_kobo_household_refs(batch)
         case Batch.BatchSource.RDI:
             _sync_rdi_household_refs(batch)
