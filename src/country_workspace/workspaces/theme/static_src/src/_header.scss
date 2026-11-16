@@ -1,77 +1,205 @@
-$height: 36px;
-$height2: 32px;
-
 body.web {
   li.select2-results__option.select2-results__option--highlighted {
-    @apply bg-unicef-blue;
-  }
-
-  #select2-id_program-results > li.select2-results__option.select2-results__option--highlighted {
-    @apply bg-unicef-blue;
+    @apply bg-primary;
   }
 
   header {
-    @apply bg-unicef-gray;
+    @apply bg-secondary;
     color: white;
     z-index: 20;
 
-    .select2 {
-      background-color: white;
-    }
+    /* HOPE's BusinessAreaSelect and GlobalProgramSelect: 232x40 translucent boxes, no labels. */
+    .app-bar-select {
+      @apply flex items-center;
 
-    .select2-container.select2-container--default {
-      @apply text-sm;
-      min-width: 240px;
-      max-width: 320px;
-      height: $height;
-      border-radius: 4px;
-      border-width: 0;
-
-      @screen lg {
-        min-width: 280px;
-      }
-
-      .select2-results__option--highlighted[aria-selected] {
-        @apply bg-unicef-blue;
-        color: white;
-      }
-
-      .selection {
-        @apply text-sm;
-        height: $height2;
+      > select,
+      .select2-container.select2-container--default {
+        /* 232px like HOPE, narrower on tablets so the user menu stays on screen. */
+        width: clamp(140px, 18vw, 232px) !important;
+        height: 40px;
+        border: 0;
         border-radius: 4px;
-        line-height: $height2;
-        border-width: 0;
+        background-color: rgba(104, 119, 127, 0.5);
+        color: theme('colors.app-bar-text');
+        font-size: 16px;
+        transition: background-color 150ms ease;
 
-        .select2-selection.select2-selection--single {
-          height: $height2;
-          border-radius: 4px;
-          border-width: 0;
-          background: rgba(255, 255, 255, 0.95);
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        &:hover {
+          background-color: rgba(104, 119, 127, 0.7);
+        }
+      }
 
-          .select2-selection__rendered {
-            line-height: $height2;
-            color: #233944;
-            border-width: 0;
-            border-radius: 4px;
-          }
+      > select {
+        @apply cursor-pointer;
+        min-width: 0;
+        padding: 0 36px 0 10px;
+        border: 0;
+        appearance: none;
+        /* MUI's ArrowDropDown in the app-bar text colour. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23e3e6e7' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 7px center;
+        background-size: 24px;
 
-          .select2-selection__arrow {
-            height: $height2;
-            line-height: $height2;
+        &:focus {
+          outline: 2px solid theme('colors.app-bar-text');
+          outline-offset: 1px;
+        }
+
+        option {
+          @apply text-ink bg-white;
+        }
+      }
+
+      .select2-selection.select2-selection--single {
+        height: 40px;
+        border: 0;
+        background: transparent;
+
+        .select2-selection__rendered {
+          /* adminfilters.css paints this span with --body-bg. */
+          background: transparent;
+          color: theme('colors.app-bar-text');
+          line-height: 40px;
+          padding: 0 36px 0 10px;
+        }
+
+        .select2-selection__placeholder {
+          color: theme('colors.app-bar-text');
+        }
+
+        .select2-selection__arrow {
+          height: 40px;
+          width: 36px;
+          right: 0;
+          /* Undo the form-wide .field-select-arrow: the header keeps its light triangle. */
+          background: none;
+
+          b {
+            display: block;
+            border-color: theme('colors.app-bar-text') transparent transparent transparent;
+            border-width: 5px 5px 0 5px;
+            margin-left: -8px;
+            margin-top: -2px;
           }
         }
       }
-    }
-  }
 
-  select {
-    @apply min-w-48 py-2 text-sm;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: rgb(107 114 128 / var(--tw-border-opacity, 1));
-    padding-right: 2.5rem;
+      .select2-container--focus,
+      .select2-container--open {
+        outline: 2px solid theme('colors.app-bar-text');
+        outline-offset: 1px;
+      }
+
+      .select2-container--open .select2-selection__arrow b {
+        border-color: transparent transparent theme('colors.app-bar-text') transparent;
+        border-width: 0 5px 5px 5px;
+      }
+    }
+
+    /* Background jobs: a chip like .env-badge with the clock, the pending count and a label, dimmed when idle. */
+    .app-bar-jobs {
+      @apply inline-flex items-center rounded-full font-medium whitespace-nowrap;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px;
+      color: theme('colors.app-bar-text');
+      background-color: rgba(255, 255, 255, 0.12);
+      font-size: 13px;
+      transition: background-color 150ms ease;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+      }
+
+      &.idle {
+        opacity: 0.7;
+      }
+
+      > svg.icon {
+        font-size: 20px;
+      }
+
+      /* Tailwind's not-sr-only resets white-space; keep the label on one line. */
+      > span:not(.app-bar-badge) {
+        white-space: nowrap;
+      }
+
+      .app-bar-badge {
+        @apply inline-flex items-center justify-center rounded-full bg-hct-orange text-white;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        font-size: 11px;
+      }
+    }
+
+    /* Which environment this is, as a small MUI chip with a dot in the logo block's environment colour. */
+    .env-badge {
+      @apply items-center gap-1.5 rounded-full font-medium uppercase;
+      padding: 3px 10px;
+      color: theme('colors.app-bar-text');
+      background-color: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+
+      &:not(.hidden) {
+        @apply inline-flex;
+      }
+
+      &::before {
+        content: "";
+        @apply rounded-full;
+        width: 8px;
+        height: 8px;
+        background-color: var(--env-color, currentColor);
+      }
+    }
+
+    /* HOPE's UserProfileMenu: grey avatar initial and the email, uppercase like an MUI text button. */
+    .user-menu {
+      @apply relative;
+
+      .user-menu-button {
+        @apply flex items-center cursor-pointer rounded font-medium uppercase list-none;
+        padding: 6px 8px;
+        color: theme('colors.app-bar-text');
+        font-size: 14px;
+        letter-spacing: 0.02857em;
+        transition: background-color 150ms ease;
+
+        &::-webkit-details-marker {
+          display: none;
+        }
+
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.08);
+        }
+      }
+
+      .user-menu-avatar {
+        @apply flex items-center justify-center rounded-full text-white font-normal;
+        width: 40px;
+        height: 40px;
+        background-color: #bdbdbd;
+        font-size: 20px;
+      }
+
+      .user-menu-name {
+        @apply hidden md:inline;
+        margin-left: 8px;
+      }
+
+      .user-menu-list {
+        @apply menu-paper right-0;
+        min-width: 180px;
+
+        a,
+        button {
+          @apply menu-list-item w-full text-left;
+        }
+      }
+    }
   }
 
   svg.sidebar-button {
@@ -88,21 +216,62 @@ body.web {
 }
 
 .title-top {
+  position: relative;
+  width: 100%;
   background-color: #ffffff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 4px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.05),
-    0 1px 3px rgba(0, 0, 0, 0.06);
-  margin-bottom: 1rem;
+  box-shadow: theme('boxShadow.elevation-4');
+
+  @apply flex items-center gap-x-6;
+  padding: 28px 44px 28px 64px;
+
+  > h2,
+  .page-heading {
+    flex: 0 1 auto;
+    min-width: 12rem;
+  }
 
   h2 {
-    font-size: 1.375rem;
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0;
-    color: rgba(0, 0, 0, 0.87);
-    padding: 1.125rem 1.5rem;
+    @apply type-page-title;
+    line-height: 1.334;
     margin: 0;
+  }
+
+  /* HOPE's BreadCrumbs: the path to this page, without the page itself, above the title. */
+  .page-breadcrumbs ol {
+    @apply flex flex-wrap items-center m-0 p-0 list-none;
+
+    li {
+      @apply flex items-center text-ink;
+      font-size: 16px;
+      line-height: 32px;
+
+      a {
+        @apply text-ink no-underline hover:underline;
+      }
+
+      &:not(:last-child)::after {
+        content: "";
+        width: 24px;
+        height: 24px;
+        background-color: currentColor;
+        /* MUI ChevronRightRounded */
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01'/%3E%3C/svg%3E") center / contain no-repeat;
+      }
+    }
+  }
+
+  .page-title-row {
+    @apply flex items-center;
+  }
+
+  /* HOPE's PageHeader `flags`: the admin link for this page, right of the title. */
+  .page-flags {
+    @apply flex ml-2;
+  }
+
+  /* Beside the title, right-aligned; many actions wrap into more rows instead of pushing the title away. */
+  .title-actions {
+    flex: 1 1 0;
+    min-width: 0;
   }
 }

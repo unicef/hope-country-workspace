@@ -6,16 +6,16 @@
     {# {% if user.is_superuser %}<a class="icon icon-cogs" href="{% url "admin:country_workspace_program_change" selected_program.pk %}"></a>{% endif %} #}
     {# </h1> #}
 {% endblock pretitle %}
+{% block object-tools %}
+    {% if change and not is_popup %}
+        <ul class="object-tools">
+            {% block object-tools-items %}
+                {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
+            {% endblock object-tools-items %}
+        </ul>
+    {% endif %}
+{% endblock object-tools %}
 {% block content %}
-    {% block object-tools %}
-        {% if change and not is_popup %}
-            <ul class="object-tools">
-                {% block object-tools-items %}
-                    {% include "admin_extra_buttons/includes/change_form_buttons.html" %}
-                {% endblock object-tools-items %}
-            </ul>
-        {% endif %}
-    {% endblock object-tools %}
     <form method="post" id="import-aurora">
         {% csrf_token %}
         <table>

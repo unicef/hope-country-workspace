@@ -12,8 +12,9 @@ from country_workspace.state import State
 from country_workspace.workspaces.models import CountryIndividual
 from country_workspace.workspaces.templatetags.workspace_urls import (
     ADMIN_CHANGE_VIEW,
-    ADMIN_URL,
     add_preserved_filters,
+    admin_href,
+    admin_link_html,
     admin_url,
 )
 
@@ -88,10 +89,21 @@ def test_admin_url_user_is_staff_model_passed(
     user.is_staff = True
     model._meta = options
     options.proxy_for_model = model if has_proxy else None
-    assert admin_url(model) == ADMIN_URL.format(url=TEST_URL, query="")
+    assert admin_url(model) == admin_link_html(TEST_URL, "")
     reverse_mock.assert_called_once_with(
         ADMIN_CHANGE_VIEW.format(app=options.app_label, model=options.model_name), args=(model.pk,)
     )
+
+
+def test_admin_href_is_the_bare_url(user: User, model: Model, reverse_mock: MockType) -> None:
+    user.is_staff = True
+    assert admin_href(model) == TEST_URL
+    assert admin_href(model, household__exact=1) == f"{TEST_URL}?household__exact=1"
+
+
+def test_admin_href_user_is_not_staff(user: User, model: Model) -> None:
+    user.is_staff = False
+    assert admin_href(model) == ""
 
 
 @pytest.mark.parametrize(

@@ -1,337 +1,275 @@
 {% extends "workspace/_base.html" %}
-{% load i18n workspace_list %}
+{% load i18n workspace_app workspace_list workspace_status %}
 {% block page-title %}
     &rsaquo; <a href="{% url 'workspace:workspaces_countryrdp_change' original.pk %}">{{ original }}</a>
     &rsaquo; {{ operation.get_operation_type_display }}
     &rsaquo; {% translate "Findings" %}
 {% endblock page-title %}
 {% block content %}
-    <div id="content-main" class="space-y-6">
-        <div class="flex flex-wrap items-center gap-8 rounded border border-gray-200 bg-white px-5 py-4 shadow-sm">
-            <div>
-                <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
-                    {% translate "Operation status" %}
-                </div>
-                <div class="mt-1 text-lg font-semibold">
-                    {{ operation.get_status_display }}
-                </div>
-            </div>
-            {% if not filter_form.errors %}
+    <div id="content">
+        <div id="content-main" class="changelist-main">
+            {# HOPE's LabelizedFields in a Paper section. #}
+            <section class="section-box findings-summary">
                 <div>
-                    <div class="text-xs font-medium uppercase tracking-wide text-gray-500">
-                        {% translate "Matching findings" %}
-                    </div>
-                    <div class="mt-1 text-lg font-semibold">
-                        {{ page.paginator.count }}
+                    <span class="type-label">{% translate "Operation status" %}</span>
+                    <div class="type-value">
+                        {% status_box operation.status operation.get_status_display %}
                     </div>
                 </div>
-            {% endif %}
-            {% if not results_complete %}
-                <div class="min-w-64 flex-1 text-sm text-gray-600">
-                    {% translate "This operation has not completed successfully. The list shows findings saved so far." %}
-                </div>
-            {% endif %}
-        </div>
-        <div class="module filtered min-w-full flex" id="changelist">
-            <div class="changelist-form-container min-w-0 flex-1">
-                <div class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-left">
-                            <thead class="border-b border-gray-200 bg-gray-50">
-                                <tr>
-                                    <th class="px-5 py-3 text-sm font-semibold">
-                                        {% translate "Individual" %}
-                                    </th>
-                                    <th class="px-5 py-3 text-sm font-semibold">
-                                        {% translate "Finding" %}
-                                    </th>
-                                    <th class="px-5 py-3 text-sm font-semibold">
-                                        {% translate "Details" %}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                {% for finding in page %}
-                                    <tr class="align-top">
-                                        <td class="px-5 py-4">
-                                            <a href="{{ finding.individual_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                {{ finding.individual_id }}
-                                                {% if finding.individual__name %}
-                                                    — {{ finding.individual__name }}
-                                                {% endif %}
-                                            </a>
-                                            {% if finding.household_url %}
-                                                <div class="mt-1 text-sm text-gray-500">
-                                                    {% translate "Household" %}:
-                                                    <a href="{{ finding.household_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                        #{{ finding.individual__household_id }}
-                                                    </a>
-                                                </div>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-5 py-4">
-                                            <span class="inline-block rounded-full bg-gray-100 px-3 py-1 text-sm font-medium">
-                                                {{ finding.label }}
-                                            </span>
-                                        </td>
-                                        <td class="px-5 py-4 text-sm">
-                                            <div class="space-y-1">
-                                                {% if finding.field_name %}
-                                                    <div>
-                                                        <span class="text-gray-500">{% translate "Field" %}:</span>
-                                                        <span class="font-medium">{{ finding.field_name }}</span>
+                {% if not filter_form.errors %}
+                    <div>
+                        <span class="type-label">{% translate "Matching findings" %}</span>
+                        <div class="type-value">
+                            {{ page.paginator.count }}
+                        </div>
+                    </div>
+                {% endif %}
+                {% if not results_complete %}
+                    <p class="findings-note">
+                        {% translate "This operation has not completed successfully. The list shows findings saved so far." %}
+                    </p>
+                {% endif %}
+            </section>
+            {# HOPE's FiltersSection, as on the changelists: labelled fields above the table, actions bottom right. #}
+            <nav id="changelist-filter" class="filters-section" aria-labelledby="changelist-filter-header">
+                <h2 id="changelist-filter-header" class="sr-only">
+                    {% translate "Filter" %}
+                </h2>
+                <form method="get" action="{{ request.path }}">
+                    {% for hidden in filter_form.hidden_fields %}
+                        {{ hidden }}
+                    {% endfor %}
+                    <div class="filters-grid">
+                        {% for field in filter_form.visible_fields %}
+                            <div class="filter-field">
+                                <label class="filter-label" for="{{ field.id_for_label }}">
+                                    {{ field.label }}
+                                </label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <small class="filter-help">{{ field.help_text }}</small>
+                                {% endif %}
+                                {% for error in field.errors %}
+                                    <small class="filter-error">{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="filters-actions">
+                        <a href="{{ clear_filters_url }}" class="btn-text">{% translate "Clear" %}</a>
+                        <button type="submit" class="button secondary">
+                            {% translate "Apply" %}
+                        </button>
+                    </div>
+                </form>
+            </nav>
+            <div class="module min-w-full" id="changelist">
+                <div class="changelist-form-container">
+                    {% if page %}
+                        <div class="results overflow-x-auto">
+                            <table id="result_list" class="findings-table min-w-full">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">
+                                            <div class="text">
+                                                <span>{% translate "Individual" %}</span>
+                                            </div>
+                                        </th>
+                                        <th scope="col">
+                                            <div class="text">
+                                                <span>{% translate "Finding" %}</span>
+                                            </div>
+                                        </th>
+                                        <th scope="col">
+                                            <div class="text">
+                                                <span>{% translate "Details" %}</span>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for finding in page %}
+                                        <tr>
+                                            <td>
+                                                <a href="{{ finding.individual_url }}">
+                                                    {{ finding.individual_id }}
+                                                    {% if finding.individual__name %}
+                                                        — {{ finding.individual__name }}
+                                                    {% endif %}
+                                                </a>
+                                                {% if finding.household_url %}
+                                                    <div class="mt-1 text-label">
+                                                        {% translate "Household" %}:
+                                                        <a href="{{ finding.household_url }}">#{{ finding.individual__household_id }}</a>
                                                     </div>
                                                 {% endif %}
-                                                {% if operation.operation_type == "BIOMETRIC_DEDUPLICATION" and finding.finding_type == "DUPLICATE" %}
-                                                    {% if finding.details.score is not None %}
+                                            </td>
+                                            <td>
+                                                {% status_box finding.finding_type finding.label %}
+                                            </td>
+                                            <td class="finding-details">
+                                                <div class="space-y-1">
+                                                    {% if finding.field_name %}
                                                         <div>
-                                                            <span class="text-gray-500">{% translate "Score" %}:</span>
-                                                            {{ finding.details.score }}
+                                                            <span class="text-label">{% translate "Field" %}:</span>
+                                                            <span class="font-medium">{{ finding.field_name }}</span>
                                                         </div>
                                                     {% endif %}
-                                                    <div class="mt-3 flex flex-wrap items-start gap-8">
-                                                        {% if finding.individual_photo %}
+                                                    {% if operation.operation_type == "BIOMETRIC_DEDUPLICATION" and finding.finding_type == "DUPLICATE" %}
+                                                        {% if finding.details.score is not None %}
                                                             <div>
-                                                                <div class="mb-1 text-gray-500">
+                                                                <span class="text-label">{% translate "Score" %}:</span>
+                                                                {{ finding.details.score }}
+                                                            </div>
+                                                        {% endif %}
+                                                        <div class="mt-3 flex flex-wrap items-start gap-8">
+                                                            {% if finding.individual_photo %}
+                                                                <div>
+                                                                    <div class="mb-1 text-label">
+                                                                        {% translate "Image" %}
+                                                                    </div>
+                                                                    {{ finding.individual_photo|flex_field_image }}
+                                                                </div>
+                                                            {% endif %}
+                                                            <div>
+                                                                {% if finding.related_individual_photo %}
+                                                                    <div class="mb-1 text-label">
+                                                                        {% translate "Related image" %}
+                                                                    </div>
+                                                                    {{ finding.related_individual_photo|flex_field_image }}
+                                                                {% endif %}
+                                                                {% if finding.related_individual_url %}
+                                                                    <div class="{% if finding.related_individual_photo %}mt-2{% endif %} space-y-1">
+                                                                        <div>
+                                                                            <span class="text-label">
+                                                                                {% translate "Related individual" %}:
+                                                                            </span>
+                                                                            <a href="{{ finding.related_individual_url }}">
+                                                                                {{ finding.related_individual_id }}
+                                                                                {% if finding.related_individual__name %}
+                                                                                    — {{ finding.related_individual__name }}
+                                                                                {% endif %}
+                                                                            </a>
+                                                                        </div>
+                                                                        {% if finding.related_household_url %}
+                                                                            <div>
+                                                                                <span class="text-label">
+                                                                                    {% translate "Related household" %}:
+                                                                                </span>
+                                                                                <a href="{{ finding.related_household_url }}">
+                                                                                    #{{ finding.related_individual__household_id }}
+                                                                                </a>
+                                                                            </div>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                {% elif finding.details.related_reference_pk %}
+                                                                    <div class="{% if finding.related_individual_photo %}mt-2{% endif %}">
+                                                                        <span class="text-label">
+                                                                            {% translate "Related reference" %}:
+                                                                        </span>
+                                                                        #{{ finding.details.related_reference_pk }}
+                                                                        <span class="text-label">
+                                                                            ({% translate "local record unavailable" %})
+                                                                        </span>
+                                                                    </div>
+                                                                {% else %}
+                                                                    <div class="{% if finding.related_individual_photo %}mt-2{% endif %} text-label">
+                                                                        {% translate "Related individual unavailable" %}
+                                                                    </div>
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                    {% elif operation.operation_type == "BIOMETRIC_DEDUPLICATION" %}
+                                                        {% if finding.individual_photo %}
+                                                            <div class="mt-3">
+                                                                <div class="mb-1 text-label">
                                                                     {% translate "Image" %}
                                                                 </div>
                                                                 {{ finding.individual_photo|flex_field_image }}
                                                             </div>
                                                         {% endif %}
+                                                    {% endif %}
+                                                    {% if finding.details.document_type %}
                                                         <div>
-                                                            {% if finding.related_individual_photo %}
-                                                                <div class="mb-1 text-gray-500">
-                                                                    {% translate "Related image" %}
-                                                                </div>
-                                                                {{ finding.related_individual_photo|flex_field_image }}
-                                                            {% endif %}
-                                                            {% if finding.related_individual_url %}
-                                                                <div class="{% if finding.related_individual_photo %}mt-2{% endif %} space-y-1">
-                                                                    <div>
-                                                                        <span class="text-gray-500">
-                                                                            {% translate "Related individual" %}:
-                                                                        </span>
-                                                                        <a href="{{ finding.related_individual_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                                            {{ finding.related_individual_id }}
-                                                                            {% if finding.related_individual__name %}
-                                                                                — {{ finding.related_individual__name }}
-                                                                            {% endif %}
-                                                                        </a>
-                                                                    </div>
-                                                                    {% if finding.related_household_url %}
-                                                                        <div>
-                                                                            <span class="text-gray-500">
-                                                                                {% translate "Related household" %}:
-                                                                            </span>
-                                                                            <a href="{{ finding.related_household_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                                                #{{ finding.related_individual__household_id }}
-                                                                            </a>
-                                                                        </div>
-                                                                    {% endif %}
-                                                                </div>
-                                                            {% elif finding.details.related_reference_pk %}
-                                                                <div class="{% if finding.related_individual_photo %}mt-2{% endif %}">
-                                                                    <span class="text-gray-500">
-                                                                        {% translate "Related reference" %}:
-                                                                    </span>
-                                                                    #{{ finding.details.related_reference_pk }}
-                                                                    <span class="text-gray-500">
-                                                                        ({% translate "local record unavailable" %})
-                                                                    </span>
-                                                                </div>
-                                                            {% else %}
-                                                                <div class="{% if finding.related_individual_photo %}mt-2{% endif %} text-gray-500">
-                                                                    {% translate "Related individual unavailable" %}
-                                                                </div>
-                                                            {% endif %}
-                                                        </div>
-                                                    </div>
-                                                {% elif operation.operation_type == "BIOMETRIC_DEDUPLICATION" %}
-                                                    {% if finding.individual_photo %}
-                                                        <div class="mt-3">
-                                                            <div class="mb-1 text-gray-500">
-                                                                {% translate "Image" %}
-                                                            </div>
-                                                            {{ finding.individual_photo|flex_field_image }}
+                                                            <span class="text-label">{% translate "Document type" %}:</span>
+                                                            {{ finding.details.document_type }}
                                                         </div>
                                                     {% endif %}
-                                                {% endif %}
-                                                {% if finding.details.document_type %}
-                                                    <div>
-                                                        <span class="text-gray-500">{% translate "Document type" %}:</span>
-                                                        {{ finding.details.document_type }}
-                                                    </div>
-                                                {% endif %}
-                                                {% if operation.operation_type != "BIOMETRIC_DEDUPLICATION" and finding.related_individual_url %}
-                                                    <div>
-                                                        <span class="text-gray-500">{% translate "Related individual" %}:</span>
-                                                        <a href="{{ finding.related_individual_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                            {{ finding.related_individual_id }}
-                                                            {% if finding.related_individual__name %}
-                                                                — {{ finding.related_individual__name }}
-                                                            {% endif %}
-                                                        </a>
-                                                    </div>
-                                                    {% if finding.related_household_url %}
+                                                    {% if operation.operation_type != "BIOMETRIC_DEDUPLICATION" and finding.related_individual_url %}
                                                         <div>
-                                                            <span class="text-gray-500">{% translate "Related household" %}:</span>
-                                                            <a href="{{ finding.related_household_url }}" class="font-medium text-[var(--link-fg)] hover:underline">
-                                                                #{{ finding.related_individual__household_id }}
+                                                            <span class="text-label">{% translate "Related individual" %}:</span>
+                                                            <a href="{{ finding.related_individual_url }}">
+                                                                {{ finding.related_individual_id }}
+                                                                {% if finding.related_individual__name %}
+                                                                    — {{ finding.related_individual__name }}
+                                                                {% endif %}
                                                             </a>
                                                         </div>
+                                                        {% if finding.related_household_url %}
+                                                            <div>
+                                                                <span class="text-label">{% translate "Related household" %}:</span>
+                                                                <a href="{{ finding.related_household_url }}">
+                                                                    #{{ finding.related_individual__household_id }}
+                                                                </a>
+                                                            </div>
+                                                        {% endif %}
                                                     {% endif %}
-                                                {% endif %}
-                                                {% if finding.details.score is not None %}
-                                                    {% if operation.operation_type != "BIOMETRIC_DEDUPLICATION" or finding.finding_type != "DUPLICATE" %}
-                                                        <div>
-                                                            <span class="text-gray-500">{% translate "Score" %}:</span>
-                                                            {{ finding.details.score }}
-                                                        </div>
+                                                    {% if finding.details.score is not None %}
+                                                        {% if operation.operation_type != "BIOMETRIC_DEDUPLICATION" or finding.finding_type != "DUPLICATE" %}
+                                                            <div>
+                                                                <span class="text-label">{% translate "Score" %}:</span>
+                                                                {{ finding.details.score }}
+                                                            </div>
+                                                        {% endif %}
                                                     {% endif %}
-                                                {% endif %}
-                                                {% if finding.details.error %}
-                                                    <details class="mt-2">
-                                                        <summary class="cursor-pointer font-medium hover:underline">
-                                                            {{ finding.details.error|truncatechars:100 }}
-                                                        </summary>
-                                                        <div class="mt-2 whitespace-pre-wrap break-words rounded bg-gray-50 p-3">
-                                                            {{ finding.details.error }}
-                                                        </div>
-                                                    </details>
-                                                {% endif %}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                {% empty %}
-                                    <tr>
-                                        <td colspan="3" class="px-5 py-10 text-center text-gray-500">
-                                            {% if filter_form.errors %}
-                                                {% translate "Correct the filters to view findings." %}
-                                            {% else %}
-                                                {% translate "No findings." %}
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                {% if page.has_other_pages %}
-                    <nav class="mt-4 flex items-center justify-between text-sm" aria-label="{% translate 'Pagination' %}">
-                        <div>
-                            {% if page.has_previous %}
-                                <a href="{% querystring page=page.previous_page_number %}" class="font-medium hover:underline">
-                                    &larr; {% translate "Previous" %}
-                                </a>
-                            {% endif %}
-                        </div>
-                        <span class="text-gray-500">
-                            {% blocktranslate with number=page.number total=page.paginator.num_pages %}
-                                Page {{ number }} of {{ total }}
-                            {% endblocktranslate %}
-                        </span>
-                        <div>
-                            {% if page.has_next %}
-                                <a href="{% querystring page=page.next_page_number %}" class="font-medium hover:underline">
-                                    {% translate "Next" %} &rarr;
-                                </a>
-                            {% endif %}
-                        </div>
-                    </nav>
-                {% endif %}
-            </div>
-            <nav id="changelist-filter" class="flex-none w-1/6" aria-labelledby="changelist-filter-header">
-                <h2 id="changelist-filter-header">
-                    {% translate "Filter" %}
-                </h2>
-                {% if filter_form.finding_type.value or filter_form.individual_id.value or filter_form.household_id.value %}
-                    <div id="changelist-filter-extra-actions">
-                        <h3>
-                            <a href="{{ clear_filters_url }}">&#10006; {% translate "Clear all filters" %}</a>
-                        </h3>
-                    </div>
-                {% endif %}
-                <form method="get" action="{{ request.path }}">
-                    {% for hidden in filter_form.hidden_fields %}
-                        {{ hidden }}
-                    {% endfor %}
-                    <details {% if filter_form.finding_type.value or filter_form.finding_type.errors %}open{% endif %}>
-                        <summary>
-                            {% blocktranslate with filter_title=filter_form.finding_type.label %}
-                                By {{ filter_title }}
-                            {% endblocktranslate %}
-                        </summary>
-                        <div class="filter-content">
-                            <ul>
-                                <li>
-                                    {{ filter_form.finding_type }}
-                                </li>
-                                {% for error in filter_form.finding_type.errors %}
-                                    <li class="errornote">
-                                        {{ error }}
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </details>
-                    <details {% if filter_form.individual_id.value or filter_form.individual_id.errors %}open{% endif %}>
-                        <summary>
-                            {% blocktranslate with filter_title=filter_form.individual_id.label %}
-                                By {{ filter_title }}
-                            {% endblocktranslate %}
-                        </summary>
-                        <div class="filter-content">
-                            <ul>
-                                <li>
-                                    {{ filter_form.individual_id }}
-                                </li>
-                                {% if filter_form.individual_id.help_text %}
-                                    <li>
-                                        <small>{{ filter_form.individual_id.help_text }}</small>
-                                    </li>
-                                {% endif %}
-                                {% for error in filter_form.individual_id.errors %}
-                                    <li class="errornote">
-                                        {{ error }}
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </details>
-                    {% if filter_form.household_id %}
-                        <details {% if filter_form.household_id.value or filter_form.household_id.errors %}open{% endif %}>
-                            <summary>
-                                {% blocktranslate with filter_title=filter_form.household_id.label %}
-                                    By {{ filter_title }}
-                                {% endblocktranslate %}
-                            </summary>
-                            <div class="filter-content">
-                                <ul>
-                                    <li>
-                                        {{ filter_form.household_id }}
-                                    </li>
-                                    {% if filter_form.household_id.help_text %}
-                                        <li>
-                                            <small>{{ filter_form.household_id.help_text }}</small>
-                                        </li>
-                                    {% endif %}
-                                    {% for error in filter_form.household_id.errors %}
-                                        <li class="errornote">
-                                            {{ error }}
-                                        </li>
+                                                    {% if finding.details.error %}
+                                                        <details class="mt-2">
+                                                            <summary class="cursor-pointer font-medium hover:underline">
+                                                                {{ finding.details.error|truncatechars:100 }}
+                                                            </summary>
+                                                            <div class="mt-2 whitespace-pre-wrap break-words rounded bg-page p-3">
+                                                                {{ finding.details.error }}
+                                                            </div>
+                                                        </details>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                        </tr>
                                     {% endfor %}
-                                </ul>
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        {# HOPE's TableComponent empty message. #}
+                        <div class="results-empty">
+                            {% icon "find-in-page" "text-[50px] text-gray-500" %}
+                            <div class="mt-2">
+                                {% if filter_form.errors %}
+                                    {% translate "Correct the filters to view findings." %}
+                                {% else %}
+                                    {% translate "No findings." %}
+                                {% endif %}
                             </div>
-                        </details>
+                        </div>
                     {% endif %}
-                    <div class="px-4 py-3">
-                        <button type="submit" class="button w-full">
-                            {% translate "Apply filters" %}
-                        </button>
-                    </div>
-                </form>
-            </nav>
+                    {% if page.has_other_pages %}
+                        {# HOPE's TablePagination. #}
+                        <nav class="paginator" aria-label="{% translate 'Pagination' %}">
+                            <span class="paginator-count">
+                                {% blocktranslate with number=page.number total=page.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktranslate %}
+                            </span>
+                            <span class="paginator-pages">
+                                {% if page.has_previous %}
+                                    <a href="{% querystring page=page.previous_page_number %}" title="{% translate 'Previous' %}">{% icon "page-previous" %}</a>
+                                {% endif %}
+                                {% if page.has_next %}
+                                    <a href="{% querystring page=page.next_page_number %}" title="{% translate 'Next' %}">{% icon "page-next" %}</a>
+                                {% endif %}
+                            </span>
+                        </nav>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 {% endblock content %}

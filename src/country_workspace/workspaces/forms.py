@@ -29,6 +29,7 @@ class SelectTenantForm(forms.Form):
     tenant = forms.ModelChoiceField(
         label=_("Office"),
         queryset=None,
+        empty_label=_("Select an office"),
         required=True,
         blank=False,
         limit_choices_to={"active": True},
@@ -94,7 +95,7 @@ class SelectProgramForm(forms.Form):
         widget=ProgramWidget(
             attrs={
                 "data-minimum-input-length": 0,
-                "data-placeholder": "Select a Program",
+                "data-placeholder": _("Select a programme"),
                 "data-close-on-select": "true",
             },
         ),

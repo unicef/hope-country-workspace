@@ -123,6 +123,27 @@ def test_list_household_clickable_row(browser, admin_user, household: "CountryHo
 
 
 @pytest.mark.selenium
+def test_list_household_apply_sends_text_filters(browser, household: "CountryHousehold"):
+    from testutils.factories import CountryHouseholdFactory
+
+    other = CountryHouseholdFactory(batch=household.batch)
+    browser.login_as_user()
+    browser.select_option_by_text("select[name=tenant]", household.program.country_office.name)
+    browser.select2_select("id_program", household.program.name)
+    browser.click_link("Households")
+    browser.assert_text("2 results", ".filters-count")
+
+    browser.type("#changelist-filter textarea", str(household.pk))
+    browser.type("#searchbar", household.name)
+    browser.click("#apply-filters")
+
+    browser.assert_text("1 result", ".filters-count")
+    assert f"id__in={household.pk}" in browser.get_current_url()
+    assert "q=" in browser.get_current_url()
+    browser.assert_element_not_present(f"a[href='{other.get_change_url()}']")
+
+
+@pytest.mark.selenium
 def test_program_list_redirects(browser, admin_user, program):
     from testutils.perms import user_grant_permissions
 

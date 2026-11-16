@@ -618,7 +618,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     @button(
         label=_("Import Data"),
         permission=can_import_program_data,
-        html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora."},
+        html_attrs={"title": "Import Data using XLS/RDI, Kobo or Aurora.", "class": "primary"},
     )
     def import_data(self, request: HttpRequest, pk: str) -> "HttpResponse":
         program: "CountryProgram" = self.get_object(request, pk)

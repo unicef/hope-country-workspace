@@ -24,7 +24,7 @@
         {% endif %}
         {% if show_delete_link and original %}
             {% url opts|workspace_urlname:'delete' original.pk|admin_urlquote as delete_url %}
-            <a href="{% add_preserved_filters delete_url %}" class="deletelink float-right">{% translate "Delete" %}</a>
+            <a href="{% add_preserved_filters delete_url %}" class="deletelink">{% translate "Delete" %}</a>
         {% endif %}
     {% endblock submit-row %}
 </div>

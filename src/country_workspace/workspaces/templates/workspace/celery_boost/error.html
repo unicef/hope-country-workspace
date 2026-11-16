@@ -7,11 +7,17 @@
     &rsaquo; <a href="{% add_preserved_filters wcc %}">{{ original }}</a>{% admin_url original %}
     &rsaquo; Inspect
 {% endblock page-title %}
-{% block action-content %}
+{% block object-tools %}
     {% if flower_addr %}
-        <a class="button" target="flower" href="{{ flower_addr }}/task/{{ original.curr_async_result_id }}">Flower</a>
+        <ul class="object-tools">
+            <li>
+                <a target="flower" href="{{ flower_addr }}/task/{{ original.curr_async_result_id }}">Flower</a>
+            </li>
+        </ul>
     {% endif %}
-    <h3 class="text-xl">
+{% endblock object-tools %}
+{% block action-content %}
+    <h3 class="text-xl mb-2">
         Task Info
     </h3>
     <table>
@@ -36,7 +42,7 @@
             </td>
         </tr>
     </table>
-    <h3 class="text-xl">
+    <h3 class="text-xl mt-6 mb-2">
         Queue Info
     </h3>
     <table>

@@ -1,0 +1,25 @@
+@layer components {
+  .type-label {
+    @apply text-label font-medium uppercase;
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.39px;
+  }
+
+  .type-value {
+    @apply text-value;
+    font-size: 14px;
+    line-height: 19px;
+    overflow-wrap: break-word;
+  }
+
+  .type-page-title {
+    @apply text-ink font-normal;
+    font-size: 24px;
+  }
+
+  .type-section-title {
+    @apply text-ink font-normal;
+    font-size: 20px;
+  }
+}

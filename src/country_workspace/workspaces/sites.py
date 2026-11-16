@@ -227,7 +227,7 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
             {
                 "name": _("Home"),
                 "url": reverse("workspace:index"),
-                "icon": "icon-home",
+                "icon": "home",
                 "selected": is_index,
             },
         ]
@@ -239,7 +239,7 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                 {
                     "name": program._meta.verbose_name,
                     "url": reverse("workspace:workspaces_countryprogram_change", args=[program.pk]),
-                    "icon": "icon-equalizer",
+                    "icon": "programme",
                     "selected": current_admin == "CountryProgramAdmin",
                 },
             )
@@ -250,13 +250,13 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                         {
                             "name": bg.group_label_plural,
                             "url": reverse("workspace:workspaces_countryhousehold_changelist"),
-                            "icon": "icon-members",
+                            "icon": "households",
                             "selected": current_admin == "CountryHouseholdAdmin",
                         },
                         {
                             "name": bg.member_label_plural,
                             "url": reverse("workspace:workspaces_countryindividual_changelist"),
-                            "icon": "icon-user",
+                            "icon": "individuals",
                             "selected": current_admin == "CountryIndividualAdmin",
                             "indent": True,
                         },
@@ -267,7 +267,7 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                     {
                         "name": bg.member_label_plural,
                         "url": reverse("workspace:workspaces_countryindividual_changelist"),
-                        "icon": "icon-user",
+                        "icon": "individuals",
                         "selected": current_admin == "CountryIndividualAdmin",
                     }
                 )
@@ -277,13 +277,13 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                         {
                             "name": _("Households"),
                             "url": reverse("workspace:workspaces_countryhousehold_changelist"),
-                            "icon": "icon-members",
+                            "icon": "households",
                             "selected": current_admin == "CountryHouseholdAdmin",
                         },
                         {
                             "name": _("Individuals"),
                             "url": reverse("workspace:workspaces_countryindividual_changelist"),
-                            "icon": "icon-user",
+                            "icon": "individuals",
                             "selected": current_admin == "CountryIndividualAdmin",
                             "indent": True,
                         },
@@ -295,54 +295,46 @@ class TenantAdminSite(ProgramCleanupSiteMixin, admin.AdminSite):
                     {
                         "name": apps.get_model("country_workspace", "Batch")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countrybatch_changelist"),
-                        "icon": "icon-sign",
+                        "icon": "batches",
                         "selected": current_admin == "CountryBatchAdmin",
                     },
                     {
                         "name": _("Mappings"),
                         "url": reverse("workspace:workspaces_countrymappingimporter_changelist"),
-                        "icon": "icon-loop",
+                        "icon": "mappings",
                         "selected": current_admin == "CountryMappingImporterAdmin",
                     },
                     {
                         "name": _("Transformers"),
                         "url": reverse("workspace:workspaces_countrytransformer_changelist"),
-                        "icon": "icon-equalizer",
+                        "icon": "transformers",
                         "selected": current_admin == "CountryTransformerAdmin",
                     },
                     {
                         "name": apps.get_model("country_workspace", "Rdp")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryrdp_changelist"),
-                        "icon": "icon-mail-envelope",
+                        "icon": "rdp",
                         "selected": current_admin == "CountryRdpAdmin",
                     },
                     {
                         "name": apps.get_model("country_workspace", "AsyncJob")._meta.verbose_name_plural,
                         "url": reverse("workspace:workspaces_countryasyncjob_changelist"),
-                        "icon": "icon-globe",
+                        "icon": "jobs",
                         "selected": current_admin == "CountryJobAdmin",
                     },
                 )
             )
 
-        items.append(
-            {
-                "name": _("Logout"),
-                "url": reverse("admin:logout"),
-                "icon": "icon-logout",
-                "selected": False,
-                "is_form": True,
-            }
-        )
-
+        # Logout is in the user menu, like HOPE. Links that open elsewhere go under "Resources", like HOPE's drawer.
         if request.user.is_staff:
             items.append(
                 {
                     "name": _("Admin"),
                     "url": reverse("admin:index"),
-                    "icon": "icon-star",
+                    "icon": "admin",
                     "selected": False,
                     "target": "_admin",
+                    "section": _("Resources"),
                 }
             )
 

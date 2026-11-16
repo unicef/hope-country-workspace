@@ -1,5 +1,5 @@
 {% extends "workspace/change_form.html" %}
-{% load admin_modify i18n static workspace_modify workspace_urls %}
+{% load admin_modify i18n static workspace_modify workspace_status workspace_urls %}
 {% block page-title %}
     {% url "workspace:workspaces_countryasyncjob_changelist" as wcl %}
     &rsaquo; <a href="{% add_preserved_filters wcl %}">Background Jobs</a>{% admin_url modeladmin %}
@@ -7,8 +7,9 @@
 {% endblock page-title %}
 {% block object-tools %}
     <div class="flex items-center">
-        <div class="flex-none px-10 text-xl font-bold text-blue-700">
-            {{ original.verbose_status }}
+        <div class="flex-none px-10">
+            {# task_status queries Celery: read it once, and add local_status as verbose_status would. #}
+            {% status_box original.task_status detail=original.local_status %}
         </div>
         <div class="grow">
             {{ block.super }}
@@ -16,7 +17,7 @@
     </div>
 {% endblock object-tools %}
 {% block after_field_sets %}
-    <table class="min-w-full">
+    <table class="labelized-table min-w-full">
         <tr>
             <th>
                 Queue time

@@ -80,24 +80,23 @@ def test_configure_hh_columns(app, household: "CountryHousehold", master_detail:
         res = app.get(program.get_change_url())
         doc = res.pyquery
 
-        # Select rendered by @choice household_group
-        select_el = doc("select[name='household_group']")
+        # Menu rendered by @choice household_group
+        menu_el = doc("details[name='household_group']")
 
         if should_be_visible:
-            # 1) Select must be present when master_detail=True
-            assert select_el, "household_group choice select must be rendered when master_detail=True"
+            # 1) Menu must be present when master_detail=True
+            assert menu_el, "household_group choice menu must be rendered when master_detail=True"
 
-            options = list(select_el.find("option").items())
-            assert options, "household_group select must have options"
+            options = list(menu_el.find(".choice-menu-list a").items())
+            assert options, "household_group menu must have items"
 
-            # 2) First option must display group_label
-            first_text = options[0].text().strip()
-            assert first_text == program.beneficiary_group.group_label
+            # 2) The menu button must display group_label
+            assert menu_el.find("summary").text().strip() == program.beneficiary_group.group_label
 
-            # 3) Collect values of all options
+            # 3) Collect links of all items
             option_values: set[str] = set()
             for opt in options:
-                value = opt.attr("value")
+                value = opt.attr("href")
                 if value:
                     option_values.add(value)
 
@@ -123,8 +122,8 @@ def test_configure_hh_columns(app, household: "CountryHousehold", master_detail:
             # Human-readable label from checker must be visible
             assert res.pyquery("div.text a:contains('Consent')")
         else:
-            # When master_detail=False, select must not be rendered
-            assert not select_el, "household_group choice select must NOT be rendered when master_detail=False"
+            # When master_detail=False, the menu must not be rendered
+            assert not menu_el, "household_group choice menu must NOT be rendered when master_detail=False"
 
 
 def test_configure_ind_columns(app, household: "CountryHousehold"):
@@ -134,21 +133,20 @@ def test_configure_ind_columns(app, household: "CountryHousehold"):
         res = app.get(program.get_change_url())
         doc = res.pyquery
 
-        # Select rendered by @choice individual_group
-        select_el = doc("select[name='individual_group']")
-        assert select_el, "individual_group choice select must be rendered"
+        # Menu rendered by @choice individual_group
+        menu_el = doc("details[name='individual_group']")
+        assert menu_el, "individual_group choice menu must be rendered"
 
-        options = list(select_el.find("option").items())
-        assert options, "individual_group select must have options"
+        options = list(menu_el.find(".choice-menu-list a").items())
+        assert options, "individual_group menu must have items"
 
-        # 1) First option must display member_label
-        first_text = options[0].text().strip()
-        assert first_text == program.beneficiary_group.member_label
+        # 1) The menu button must display member_label
+        assert menu_el.find("summary").text().strip() == program.beneficiary_group.member_label
 
-        # 2) Collect values of all options
+        # 2) Collect links of all items
         option_values: set[str] = set()
         for opt in options:
-            value = opt.attr("value")
+            value = opt.attr("href")
             if value:
                 option_values.add(value)
 
@@ -188,10 +186,10 @@ def test_household_alien_fields_to_ignore_in_choice_dropdown(app, household: "Co
         res = app.get(program.get_change_url())
         doc = res.pyquery
 
-        select_el = doc("select[name='household_group']")
-        assert select_el
+        menu_el = doc("details[name='household_group']")
+        assert menu_el
 
-        option_values = {opt.attr("value") for opt in select_el.find("option").items() if opt.attr("value")}
+        option_values = {a.attr("href") for a in menu_el.find(".choice-menu-list a").items()}
         expected_url = reverse(
             "workspace:workspaces_countryprogram_household_alien_fields_to_ignore", args=[program.pk]
         )
@@ -205,10 +203,10 @@ def test_individual_alien_fields_to_ignore_in_choice_dropdown(app, household: "C
         res = app.get(program.get_change_url())
         doc = res.pyquery
 
-        select_el = doc("select[name='individual_group']")
-        assert select_el
+        menu_el = doc("details[name='individual_group']")
+        assert menu_el
 
-        option_values = {opt.attr("value") for opt in select_el.find("option").items() if opt.attr("value")}
+        option_values = {a.attr("href") for a in menu_el.find(".choice-menu-list a").items()}
         expected_url = reverse(
             "workspace:workspaces_countryprogram_individual_alien_fields_to_ignore", args=[program.pk]
         )
@@ -382,5 +380,29 @@ def test_household_alien_fields_not_visible_when_master_detail_false(app, househ
         res = app.get(program.get_change_url())
         doc = res.pyquery
 
-        select_el = doc("select[name='household_group']")
-        assert not select_el
+        menu_el = doc("details[name='household_group']")
+        assert not menu_el
+
+
+def test_user_menu_links_office_and_programme_admin(app, household: "CountryHousehold"):
+    program: "CountryProgram" = household.program
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+
+    links = {a.text.strip(): a.attrib["href"] for a in res.pyquery("#user-menu .user-menu-list a")}
+    assert links["Office in Admin"] == reverse(
+        "admin:country_workspace_office_change", args=[program.country_office.pk]
+    )
+    assert links["Programme in Admin"] == reverse("admin:country_workspace_program_change", args=[program.pk])
+
+
+@pytest.mark.parametrize("view", ["household_columns", "household_alien_fields_to_ignore", "household_defaults"])
+def test_program_action_pages_have_no_header_actions(app, household: "CountryHousehold", view: str):
+    program: "CountryProgram" = household.program
+
+    with select_office(app, program.country_office, program):
+        res = app.get(reverse(f"workspace:workspaces_countryprogram_{view}", args=[program.pk]))
+
+    assert res.status_code == 200
+    assert not res.pyquery(".title-actions .object-tools")

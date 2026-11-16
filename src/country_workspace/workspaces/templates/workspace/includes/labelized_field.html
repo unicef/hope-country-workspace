@@ -1,0 +1,10 @@
+<div>
+    <span class="type-label">{{ label }}</span>
+    <div class="type-value">
+        {% if value or value == 0 %}
+            {{ value }}
+        {% else %}
+            -
+        {% endif %}
+    </div>
+</div>

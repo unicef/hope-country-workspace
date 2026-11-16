@@ -1,5 +1,5 @@
 {% extends "workspace/_base.html" %}
-{% load i18n %}
+{% load i18n workspace_app %}
 {% block page-top %}
     <div class="title-top">
         <h2>
@@ -10,15 +10,15 @@
     </div>
 {% endblock page-top %}
 {% block content %}
-    <div class="p-2">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-6xl mx-auto pt-4">
-            <div class="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 section-box">
                 <div class="flex items-start gap-4">
-                    <div class="hidden sm:flex w-12 h-12 rounded-full bg-unicef-blue/10 items-center justify-center flex-shrink-0">
-                        <span class="icon icon-home text-2xl text-unicef-blue"></span>
+                    <div class="hidden sm:flex w-12 h-12 rounded-full bg-primary/10 items-center justify-center flex-shrink-0">
+                        {% icon "home" "text-2xl text-primary" %}
                     </div>
                     <div class="flex-1">
-                        <h3 class="text-xl font-medium text-gray-800">
+                        <h3 class="type-section-title">
                             {% if program %}
                                 {% blocktrans with program_name=program %}You are working on {{ program_name }}{% endblocktrans %}
                             {% else %}
@@ -35,51 +35,28 @@
                     </div>
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h4 class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-3">
+            <div class="section-box">
+                <h4 class="type-section-title mb-3">
                     {% trans "Current context" %}
                 </h4>
-                <dl class="space-y-3 text-sm">
-                    <div>
-                        <dt class="text-gray-500">
-                            {% trans "Office" %}
-                        </dt>
-                        <dd class="font-medium text-gray-800">
-                            {{ active_tenant|default:_("Not selected") }}
-                        </dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500">
-                            {% trans "Programme" %}
-                        </dt>
-                        <dd class="font-medium text-gray-800">
-                            {{ active_program|default:_("Not selected") }}
-                        </dd>
-                    </div>
-                    <div>
-                        <dt class="text-gray-500">
-                            {% trans "User" %}
-                        </dt>
-                        <dd class="font-medium text-gray-800">
-                            {{ request.user }}
-                        </dd>
-                    </div>
-                </dl>
+                <div class="space-y-3">
+                    {% include "workspace/includes/labelized_field.html" with label=_("Office") value=active_tenant|default:_("Not selected") %}
+                    {% include "workspace/includes/labelized_field.html" with label=_("Programme") value=active_program|default:_("Not selected") %}
+                    {% include "workspace/includes/labelized_field.html" with label=_("User") value=request.user %}
+                </div>
             </div>
         </div>
         {% if menu_items %}
-            <div class="max-w-6xl mx-auto mt-6">
-                <h4 class="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-3 pl-1">
+            <div class="mt-6">
+                <h4 class="type-label mb-3">
                     {% trans "Quick navigation" %}
                 </h4>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {% for item in menu_items %}
-                        {% if not item.is_form and not item.selected %}
-                            <a href="{{ item.url }}"
-                               {% if item.target %}target="{{ item.target }}"{% endif %}
-                               class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center gap-3 hover:shadow-md hover:border-unicef-blue/40 transition">
-                                <span class="icon {{ item.icon }} text-2xl text-unicef-blue"></span>
-                                <span class="text-sm font-medium text-gray-700 truncate">{{ item.name }}</span>
+                        {% if not item.selected %}
+                            <a href="{{ item.url }}" {% if item.target %}target="{{ item.target }}"{% endif %} class="section-tile">
+                                {% icon item.icon "text-2xl text-primary" %}
+                                <span class="text-sm font-medium text-secondary truncate">{{ item.name }}</span>
                             </a>
                         {% endif %}
                     {% endfor %}

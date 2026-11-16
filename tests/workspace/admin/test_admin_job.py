@@ -217,3 +217,28 @@ def test_has_queue_permission_during_program_cleanup(
     mocker.patch.object(job_admin, "can_debug_async_job", return_value=True)
 
     assert admin.has_queue_permission("queue", request, job) is allowed
+
+
+@pytest.mark.django_db
+def test_job_change_page_status_box(django_app_factory):
+    from testutils.factories import SuperUserFactory
+    from testutils.utils import select_office
+
+    from country_workspace.workspaces.templatetags.workspace_status import STATUS_TONES
+
+    job = AsyncJobFactory(local_status="importing")
+    app = django_app_factory(csrf_checks=False)
+    app.set_user(SuperUserFactory())
+    url = reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk])
+    with (
+        select_office(app, job.program.country_office, job.program),
+        patch("country_workspace.models.AsyncJob.task_status", new_callable=PropertyMock) as task_status,
+    ):
+        # Each Celery query answers differently: the pill must show one answer, not mix two.
+        task_status.side_effect = iter(["SUCCESS", "FAILURE", "STARTED", "RETRY"])
+        res = app.get(url)
+
+    pill = res.pyquery(".title-actions .status-box")
+    status = pill.text().removesuffix(" (importing)")
+    assert pill.text() == f"{status} (importing)"
+    assert f"status-box--{STATUS_TONES[status]}" in pill.attr("class")

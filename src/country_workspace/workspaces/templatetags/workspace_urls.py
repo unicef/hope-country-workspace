@@ -16,9 +16,11 @@ from django.contrib.admin.templatetags.admin_urls import (
 from django.db.models import Model
 from django.db.models.options import Options
 from django.urls import NoReverseMatch, reverse
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
+from django.utils.safestring import SafeString
 
 from country_workspace.state import state
+from country_workspace.workspaces.templatetags.workspace_app import icon
 
 logger = logging.getLogger(__name__)
 register = template.Library()
@@ -26,41 +28,57 @@ register = template.Library()
 
 ADMIN_CHANGE_VIEW = "admin:{app}_{model}_change"
 ADMIN_CHANGELIST_VIEW = "admin:{app}_{model}_changelist"
-ADMIN_URL = """
-<a class="admin-change-link" target="_admin" href="{url}?{query}">
-    <span class="icon icon-star1" style="font-size: 15px;"></span>
-</a>
-"""
+
+
+def admin_link_html(url: str, query: str) -> SafeString:
+    """HOPE's AdminButton: an ArrowCircleRight icon linking to the admin page."""
+    return format_html(
+        '<a class="admin-change-link" target="_admin" href="{}?{}" title="Admin">{}</a>', url, query, icon("admin-link")
+    )
+
+
+def _admin_link(obj: Model | ModelAdmin | str | None, extra: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the admin URL and query for `obj`, or None when the user isn't staff or there is no admin page."""
+    if not (state.request.user.is_staff and obj):
+        return None
+    try:
+        if isinstance(obj, Model):
+            if obj._meta.proxy_for_model:
+                opts = obj._meta.proxy_for_model._meta
+            else:
+                opts = obj._meta
+            url = reverse(ADMIN_CHANGE_VIEW.format(app=opts.app_label, model=opts.model_name), args=(obj.pk,))
+        elif isinstance(obj, ModelAdmin):
+            opts = obj.opts.proxy_for_model._meta
+            url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
+        elif isinstance(obj, str):
+            model = apps.get_model(obj)
+            opts = model._meta
+            url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
+        else:
+            url = ""
+        return url, urllib.parse.urlencode(extra) if extra else ""
+    except NoReverseMatch as e:
+        logger.exception(e)
+    return None
 
 
 @register.simple_tag()
 def admin_url(obj: Model | ModelAdmin | str | None, **extra: dict[str, Any]) -> str:
-    url = ""
-    filters = ""
-    if state.request.user.is_staff and obj:
-        try:
-            if isinstance(obj, Model):
-                if obj._meta.proxy_for_model:
-                    opts = obj._meta.proxy_for_model._meta
-                else:
-                    opts = obj._meta
-                url = reverse(ADMIN_CHANGE_VIEW.format(app=opts.app_label, model=opts.model_name), args=(obj.pk,))
-            elif isinstance(obj, ModelAdmin):
-                opts = obj.opts.proxy_for_model._meta
-                url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
-            elif isinstance(obj, str):
-                model = apps.get_model(obj)
-                opts = model._meta
-                url = reverse(ADMIN_CHANGELIST_VIEW.format(app=opts.app_label, model=opts.model_name))
+    link = _admin_link(obj, extra)
+    if link is None:
+        return ""
+    return admin_link_html(*link)
 
-            if extra:
-                filters = urllib.parse.urlencode(extra)
 
-            return mark_safe(ADMIN_URL.format(url=url, query=filters))  # noqa: S308
-        except NoReverseMatch as e:
-            logger.exception(e)
-
-    return ""
+@register.simple_tag()
+def admin_href(obj: Model | ModelAdmin | str | None, **extra: dict[str, Any]) -> str:
+    """Return the same admin URL as `admin_url`, without the icon link, for use as a plain href."""
+    link = _admin_link(obj, extra)
+    if link is None:
+        return ""
+    url, query = link
+    return f"{url}?{query}" if query else url
 
 
 @register.filter

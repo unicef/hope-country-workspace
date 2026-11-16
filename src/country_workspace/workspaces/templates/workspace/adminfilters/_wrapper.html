@@ -1,9 +1,8 @@
 {% load i18n static %}
-<details {% include "adminfilters/_attrs.html" with spec=spec %}>
+{# Always open, with HOPE's field label in place of the collapsible "By ..." summary. #}
+<div {% include "adminfilters/_attrs.html" with spec=spec %}>
     {% block title %}
-        <summary>
-            {% blocktranslate with filter_title=spec.get_title %} By {{ filter_title }} {% endblocktranslate %}
-        </summary>
+        <span class="filter-label">{{ spec.get_title }}</span>
     {% endblock title %}
     <div class="filter-content">
         {% block content %}
@@ -11,4 +10,4 @@
         {% block script %}
         {% endblock %}
     </div>
-</details>
+</div>

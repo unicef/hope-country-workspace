@@ -4,9 +4,9 @@
     @apply flex flex-wrap -mb-px text-sm font-medium text-center;
     li {
       button {
-        @apply inline-block p-4 border-b-2 rounded-t-lg hover:text-unicef-blue hover:border-unicef-dark dark:hover:text-gray-300;
+        @apply inline-block p-4 border-b-2 rounded-t-lg hover:text-primary hover:border-primary dark:hover:text-gray-300;
         &.selected {
-          @apply border-unicef-dark;
+          @apply border-primary;
         }
       }
     }
