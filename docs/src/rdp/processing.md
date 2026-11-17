@@ -27,7 +27,7 @@ sequenceDiagram
         DE-->>CW: Notify state change
         CW->>DE: Retrieve result and findings
         CW->>CW: Store biometric findings
-    and Biographic deduplication, when enabled
+    and Biographic deduplication
         CW->>DE: Create/resume dataset and upload individuals
         DE-->>CW: Notify state change
         CW->>DE: Retrieve result and findings
@@ -62,7 +62,7 @@ sequenceDiagram
 
 ## Operation processing
 
-The configured operations are created with the RDP and run independently. **[OCR](operations/ocr.md)** sends identity documents to Hope Documents through RabbitMQ, while **[biometric](operations/deduplication.md)** and **[biographic](operations/biographic-deduplication.md)** deduplication use DedupEngine when enabled for the Program.
+The configured operations are created with the RDP and run independently. **[OCR](operations/ocr.md)** sends identity documents to Hope Documents through RabbitMQ, while **[biometric](operations/deduplication.md)** (when enabled for the Program) and **[biographic](operations/biographic-deduplication.md)** deduplication use DedupEngine.
 
 A technical operation failure leaves the RDP in `PENDING` and prevents it from continuing. Use **Retry operations** for failed or otherwise recoverable operations; the RDP is evaluated for the next step only after all configured operations reach `SUCCESS`.
 

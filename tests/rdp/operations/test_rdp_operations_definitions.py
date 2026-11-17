@@ -18,28 +18,7 @@ from country_workspace.rdp.operations.definitions import (
 @pytest.mark.parametrize(
     ("enabled", "expected"),
     [
-        (True, (RdpOperation.Type.BIOMETRIC_DEDUPLICATION, RdpOperation.Type.OCR)),
-        (False, (RdpOperation.Type.OCR,)),
-    ],
-)
-def test_get_enabled_rdp_operation_definitions(
-    program,
-    enabled: bool,
-    expected: tuple[RdpOperation.Type, ...],
-) -> None:
-    program.biometric_deduplication_enabled = enabled
-
-    definitions = get_enabled_rdp_operation_definitions(program)
-
-    assert tuple(definition.operation_type for definition in definitions) == expected
-
-
-@pytest.mark.parametrize(
-    ("biometric", "biographic", "expected"),
-    [
-        (False, True, (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR)),
         (
-            True,
             True,
             (
                 RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
@@ -47,16 +26,16 @@ def test_get_enabled_rdp_operation_definitions(
                 RdpOperation.Type.OCR,
             ),
         ),
+        (False, (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR)),
     ],
 )
-def test_get_enabled_rdp_operation_definitions_with_biographic(
+def test_get_enabled_rdp_operation_definitions(
     program,
-    biometric: bool,
-    biographic: bool,
+    enabled: bool,
     expected: tuple[RdpOperation.Type, ...],
 ) -> None:
-    program.biometric_deduplication_enabled = biometric
-    program.biographic_deduplication_enabled = biographic
+    """Biographic deduplication and OCR are always enabled; only biometric depends on the Program."""
+    program.biometric_deduplication_enabled = enabled
 
     definitions = get_enabled_rdp_operation_definitions(program)
 
@@ -79,12 +58,15 @@ def test_get_rdp_operation_forms(program) -> None:
 
     assert [definition.operation_type for definition, _ in forms] == [
         RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
         RdpOperation.Type.OCR,
     ]
     assert isinstance(forms[0][1], BiometricDeduplicationConfigForm)
-    assert isinstance(forms[1][1], OcrConfigForm)
+    assert isinstance(forms[1][1], BiographicDeduplicationConfigForm)
+    assert isinstance(forms[2][1], OcrConfigForm)
     assert [form.prefix for _, form in forms] == [
         RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value.lower(),
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION.value.lower(),
         RdpOperation.Type.OCR.value.lower(),
     ]
 

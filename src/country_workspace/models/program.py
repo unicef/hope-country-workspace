@@ -126,10 +126,6 @@ class Program(BaseModel):
         default=False,
         help_text="Is biometric deduplication enabled for this program?",
     )
-    biographic_deduplication_enabled = models.BooleanField(
-        default=False,
-        help_text="Is biographic deduplication enabled for this program?",
-    )
     cleanup_in_progress = models.BooleanField(
         default=False,
         editable=False,

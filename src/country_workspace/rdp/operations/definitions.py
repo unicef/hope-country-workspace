@@ -48,7 +48,7 @@ RDP_OPERATION_DEFINITIONS: dict[str, RdpOperationDefinition] = {
         short_label=_("Biographic"),
         config_form=BiographicDeduplicationConfigForm,
         finding_types=BiographicFindingType,
-        is_enabled=lambda program: program.biographic_deduplication_enabled,
+        is_enabled=lambda __: True,
         runner=run_biographic_deduplication,
         operation_id_label=_("Dataset ID"),
     ),

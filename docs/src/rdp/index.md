@@ -41,7 +41,7 @@ See **[Create an RDP](create.md)** for details.
 
 Country Workspace currently supports **[OCR](operations/ocr.md)**, **[biometric deduplication](operations/deduplication.md)** and **[biographic deduplication](operations/biographic-deduplication.md)**.
 
-OCR is enabled for every Program. Biometric and biographic deduplication run when enabled in the Program configuration. Each operation has its own processing state, findings, recovery, and review threshold.
+OCR and biographic deduplication are enabled for every Program. Biometric deduplication runs when enabled in the Program configuration. Each operation has its own processing state, findings, recovery, and review threshold.
 
 See **[RDP operations](operations/index.md)** for the common operation lifecycle.
 

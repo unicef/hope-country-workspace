@@ -10,7 +10,7 @@ Operations run independently and keep their own configuration, status, attempts,
 | --- | --- | --- |
 | **[OCR](ocr.md)** | Enabled for every Program | Checks identity-document images against the expected document number. |
 | **[Biometric deduplication](deduplication.md)** | Enabled by Program configuration | Checks beneficiary photos for duplicates and image-quality problems. |
-| **[Biographic deduplication](biographic-deduplication.md)** | Enabled by Program configuration | Checks beneficiary names, birth dates and phone numbers for duplicate people. |
+| **[Biographic deduplication](biographic-deduplication.md)** | Enabled for every Program | Checks beneficiary names, birth dates and phone numbers for duplicate people. |
 
 ## Configuration
 

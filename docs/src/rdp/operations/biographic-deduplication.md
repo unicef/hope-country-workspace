@@ -2,17 +2,16 @@
 
 Biographic deduplication compares beneficiary personal data (names, birth date, phone numbers and similar) to find people who are likely the same person. It runs before an **[RDP](../index.md)** can be pushed to HOPE Core.
 
-It runs as an **[RDP operation](index.md)** when biographic deduplication is enabled for the selected Program. It can be enabled together with **[biometric deduplication](deduplication.md)**; both use the same DedupEngine connection and the same RDP lifecycle.
+It runs as an **[RDP operation](index.md)** for every Program, like OCR, and alongside **[biometric deduplication](deduplication.md)** where that is enabled; both use the same DedupEngine connection and the same RDP lifecycle.
 
 ## Requirements
 
-- The Program must have **Biographic deduplication enabled**. Unlike biometric deduplication, this flag is not synchronized from HOPE; an administrator sets it in the Program admin.
 - Country Workspace reuses the DedupEngine connection of biometric deduplication (`DEDUP_API_URL` and `DEDUP_API_TOKEN`). The token must carry the **API Biographic** grant in DedupEngine.
 - The Program needs a `code`, because DedupEngine addresses biographic data by business area and Program code.
 
 ## Configuration
 
-When creating an RDP, Country Workspace shows the biographic deduplication settings for Programs where this operation is enabled.
+When creating an RDP, Country Workspace shows the biographic deduplication settings for every Program.
 
 The biographic findings threshold can be configured as **Number of findings** or **Findings rate**. Unlike the other operations, it counts **Individuals with duplicates**: when two people match each other, DedupEngine reports the pair from both sides, but each person is counted once. The rate is calculated per 100 Individuals represented by the RDP. The default is `0`.
 
