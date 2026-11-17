@@ -6,7 +6,6 @@ from .app import (
     NEW_USER_DEFAULT_GROUP,
     ONA_API_TOKEN,
     ONA_API_URL,
-    ONA_APPROVED_FORMS,
 )
 from .dedup import DEDUP_API_URL, DEDUP_API_TOKEN, APP_BASE_URL
 from .kobo import KOBO_API_TOKEN, KOBO_KF_URL, KOBO_MASTER_API_TOKEN, KOBO_PROJECT_VIEW_ID
@@ -63,11 +62,6 @@ CONSTANCE_CONFIG = {
         10,
         "Maximum size in MB of a single ONA attachment; larger ones are skipped. 0 disables",
         int,
-    ),
-    "ONA_APPROVED_FORMS": (
-        ONA_APPROVED_FORMS,
-        "JSON mapping of approved ONA / INFORM forms to CW programmes/offices",
-        str,
     ),
     "HOPE_API_TOKEN": (HOPE_API_TOKEN, "HOPE API Access Token", "write_only_text_input"),
     "HOPE_API_URL": (HOPE_API_URL, "HOPE API Server address", str),
@@ -182,7 +176,6 @@ CONSTANCE_CONFIG_FIELDSETS = {
     "Remote System Settings - ONA": (
         "ONA_API_TOKEN",
         "ONA_API_URL",
-        "ONA_APPROVED_FORMS",
         "ONA_IMPORT_TIMEBOX_MINUTES",
         "ONA_ATTACHMENT_MAX_MB",
         "ONA_HH_FIELDS_TO_IGNORE",

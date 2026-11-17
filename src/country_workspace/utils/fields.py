@@ -11,6 +11,8 @@ Record = Mapping[str, Any]
 
 TO_REMOVE_VALUES = "_h_c", "_h_f", "_i_c", "_i_f"
 TO_UPPERCASE_FIELDS = "relationship", "gender", "residence_status", "consent_sharing"
+INDIVIDUAL_FIELDS_TO_UPPERCASE = ("role",)
+HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method", "residence_status", "consent_sharing")
 
 
 def clean_field_name(v: str) -> str:

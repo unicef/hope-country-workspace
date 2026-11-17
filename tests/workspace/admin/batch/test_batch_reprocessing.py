@@ -184,8 +184,9 @@ def test_build_processor_keeps_master_detail_field_names(program, batch: Country
             Batch.BatchSource.ONA,
             Household,
             {
-                "primary_collector_id": "_preserved_flex_field_0",
-                "alternate_collector_id": "_preserved_flex_field_1",
+                "household_id": "_preserved_flex_field_0",
+                "primary_collector_id": "_preserved_flex_field_1",
+                "alternate_collector_id": "_preserved_flex_field_2",
             },
         ),
         (Batch.BatchSource.ONA, Individual, None),
@@ -479,6 +480,45 @@ def test_sync_household_refs_keeps_preserved_external_collector_refs(program, so
     assert household.flex_fields[fields.head_of_household] == head.pk
     assert household.flex_fields[fields.primary_collector] == collector.pk
     assert household.flex_fields[fields.alternate_collector] == collector.pk
+
+
+def test_sync_ona_household_refs_drops_invalid_refs_and_keeps_collectors(program) -> None:
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory, CountryIndividualFactory
+
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.ONA)
+    collector = CountryIndividualFactory(
+        batch=CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.ONA),
+        household=None,
+        flex_fields={"relationship": "NON_BENEFICIARY", "role": "PRIMARY"},
+    )
+    household = CountryHouseholdFactory(batch=batch, flex_fields={fields.primary_collector: str(collector.pk)})
+    head = CountryIndividualFactory(batch=batch, household=household, flex_fields={"relationship": "HEAD"})
+    removed = CountryIndividualFactory(batch=batch, household=household, removed=True)
+    household.flex_fields[fields.alternate_collector] = removed.pk
+    household.flex_fields[fields.head_of_household] = "not-a-person"
+    household.save(update_fields=["flex_fields"])
+
+    _sync_household_refs(batch)
+
+    household.refresh_from_db()
+    assert household.flex_fields[fields.primary_collector] == str(collector.pk)
+    assert household.flex_fields[fields.head_of_household] == head.pk
+    assert fields.alternate_collector not in household.flex_fields
+
+
+def test_sync_ona_household_refs_drops_placeholder_without_members(program) -> None:
+    from testutils.factories import CountryBatchFactory, CountryHouseholdFactory
+
+    fields = HOUSEHOLD_ROLE_REF_FIELDS
+    batch = CountryBatchFactory(program=program, country_office=program.country_office, source=Batch.BatchSource.ONA)
+    household = CountryHouseholdFactory(batch=batch, flex_fields={fields.alternate_collector: "0", "address": "Kabul"})
+
+    _sync_household_refs(batch)
+
+    household.refresh_from_db()
+    assert fields.alternate_collector not in household.flex_fields
+    assert household.flex_fields["address"] == "Kabul"
 
 
 # --- reprocess_batch -------------------------------------------------------------

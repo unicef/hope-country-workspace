@@ -62,13 +62,6 @@ CONFIG: "dict[str, ConfigItem]" = {
         False,
         "ONA / INFORM API url",
     ),
-    "ONA_APPROVED_FORMS": (
-        str,
-        "{}",
-        "{}",
-        False,
-        "JSON mapping of approved ONA / INFORM form IDs to CW programmes/offices",
-    ),
     "CACHE_URL": (str, "redis://localhost:6379/0", "", True, setting("cache-url")),
     "SELECT2_CACHE": (
         str,

@@ -18,7 +18,6 @@ The connector uses the following ONA / INFORM settings:
 
 - `ONA_API_TOKEN` — ONA API access token.
 - `ONA_API_URL` — ONA API server address.
-- `ONA_APPROVED_FORMS` — JSON configuration of ONA / INFORM forms that are allowed for import.
 - `ONA_IMPORT_TIMEBOX_MINUTES` — maximum number of minutes an import job processes submissions before scheduling a continuation for the same batch. The default is `30`; set to `0` to disable timeboxing.
 - `ONA_HH_FIELDS_TO_IGNORE` — comma-separated default ONA household fields to ignore during data import. The default is empty.
 - `ONA_IND_FIELDS_TO_IGNORE` — comma-separated default ONA individual fields to ignore during data import. The default is empty.
@@ -35,23 +34,17 @@ For a form ID such as `9153`, the data endpoint is:
 https://data.inform.unicef.org/api/v1/data/9153
 ```
 
-## Approved ONA / INFORM forms
+## Available ONA / INFORM forms
 
-ONA / INFORM imports are restricted by `ONA_APPROVED_FORMS`.
+The import form lists every form the `ONA_API_TOKEN` account can access, fetched from the ONA API:
 
-Users cannot manually enter an arbitrary ONA form ID. Approved forms are configured centrally and presented as controlled choices for the current Country Workspace office/programme.
-
-Example:
-
-```json
-{
-  "9153": {
-    "label": "Yemen INFORM Registration",
-    "programmes": ["IDP"],
-    "offices": ["Yemen CO"]
-  }
-}
+```text
+https://data.inform.unicef.org/api/v1/forms
 ```
+
+The list is the same for every office: access is controlled by which forms are shared with that account in ONA / INFORM.
+
+Only forms that still accept submissions (`downloadable`) are offered. Users cannot enter an arbitrary ONA form ID: the selected form must be one of the fetched choices. The list is cached for five minutes, so a newly shared form can take up to five minutes to appear.
 
 ## Field mapping
 

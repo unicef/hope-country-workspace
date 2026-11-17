@@ -14,6 +14,35 @@ from country_workspace.contrib.ona.exceptions import (
 )
 
 
+def test_get_forms_returns_forms_list():
+    with responses.RequestsMock() as mocked:
+        mocked.add(
+            responses.GET,
+            "https://data.inform.unicef.org/api/v1/forms",
+            json=[{"formid": 13591, "title": "Registration"}],
+            status=200,
+        )
+
+        client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token")
+
+        assert client.get_forms() == [{"formid": 13591, "title": "Registration"}]
+
+
+def test_get_forms_rejects_non_list_response():
+    with responses.RequestsMock() as mocked:
+        mocked.add(
+            responses.GET,
+            "https://data.inform.unicef.org/api/v1/forms",
+            json={"detail": "unexpected"},
+            status=200,
+        )
+
+        client = OnaClient(base_url="https://data.inform.unicef.org", token="test-token")
+
+        with pytest.raises(OnaApiError, match="must be a list"):
+            client.get_forms()
+
+
 def test_get_submissions_page_uses_token_auth():
     with responses.RequestsMock() as mocked:
         mocked.add(

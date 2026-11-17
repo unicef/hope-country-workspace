@@ -26,7 +26,11 @@ from country_workspace.models.household import (
     ROLE_PRIMARY,
 )
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
-from country_workspace.utils.fields import TO_UPPERCASE_FIELDS
+from country_workspace.utils.fields import (
+    HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    INDIVIDUAL_FIELDS_TO_UPPERCASE,
+    TO_UPPERCASE_FIELDS,
+)
 from country_workspace.utils.flex_files import materialize_pending_files
 from country_workspace.utils.imports import get_kobo_originating_id
 from country_workspace.utils.import_flow import (
@@ -57,9 +61,6 @@ RETRY_STATUS_FORCELIST: Final[tuple[int, ...]] = (429, 502, 503, 504)
 RETRY_ALLOWED_METHODS: Final[frozenset[str]] = frozenset(("GET", "HEAD", "OPTIONS"))
 
 SUBMISSION_PATH_RE = re.compile(r".*/assets/[^/]+/data(?:/.*)?$")
-
-INDIVIDUAL_FIELDS_TO_UPPERCASE = ("role",)
-HOUSEHOLD_FIELDS_TO_UPPERCASE = ("registration_method", "residence_status", "consent_sharing")
 
 
 def is_submission_data_url(url: str) -> bool:

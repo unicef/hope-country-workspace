@@ -11,8 +11,10 @@ from constance import config as constance_config
 from country_workspace.contrib.ona.attachments import download_attachments
 from country_workspace.contrib.ona.client import OnaClient
 from country_workspace.contrib.ona.transformers import (
+    DEFAULT_INDIVIDUALS_KEY,
     filter_ona_sys_fields,
     flatten_ona_data,
+    normalize_ona_field_names,
     transform_submission_to_records,
 )
 from country_workspace.constants import HOUSEHOLD_ROLE_REF_FIELDS
@@ -26,6 +28,11 @@ from country_workspace.models.household import (
     ROLE_PRIMARY,
 )
 from country_workspace.utils.config import BatchNameConfig, ValidateModeConfig
+from country_workspace.utils.fields import (
+    HOUSEHOLD_FIELDS_TO_UPPERCASE,
+    INDIVIDUAL_FIELDS_TO_UPPERCASE,
+    TO_UPPERCASE_FIELDS,
+)
 from country_workspace.utils.flex_files import materialize_pending_files
 from country_workspace.utils.import_flow import (
     build_import_processor,
@@ -248,7 +255,7 @@ def import_submission(
     transformed = transform_submission_to_records(
         submission,
         master_detail=config.get("master_detail", False),
-        individuals_key=config.get("individuals_key", "individuals"),
+        individuals_key=config.get("individuals_key", DEFAULT_INDIVIDUALS_KEY),
     )
 
     with transaction.atomic():
@@ -355,6 +362,10 @@ def set_roles_and_relationships(
     individuals: list[ImportedIndividual],
 ) -> None:
     fields = HOUSEHOLD_ROLE_REF_FIELDS
+    # Submission answers can share these names (e.g. the yes/no `alternate_collector`), so refs are
+    # derived from member roles only.
+    for ref_field in fields:
+        household.flex_fields.pop(ref_field, None)
 
     primary_collector = next(
         (item.individual for item in individuals if item.fields.get("role") == ROLE_PRIMARY),
@@ -394,11 +405,14 @@ def create_household(  # noqa: PLR0913
         mapping_id=config.get("household_mapping_id"),
     )
 
+    flex_fields = household_row_processor(row)
+    flex_fields["household_id"] = batch.household_set.count() + 1
+
     household = Household.objects.create(
         batch_id=batch.pk,
         name="",
         originating_id=originating_id,
-        flex_fields=household_row_processor(row),
+        flex_fields=flex_fields,
         raw_data=dict(raw_data),
     )
     if files:
@@ -439,7 +453,8 @@ def build_individual_processor(
         program=program,
         model=Individual,
         mapping_id=mapping_id,
-        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
+        fields_to_uppercase=INDIVIDUAL_FIELDS_TO_UPPERCASE + TO_UPPERCASE_FIELDS,
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields, normalize_ona_field_names),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )
@@ -453,7 +468,8 @@ def build_household_processor(
         program=program,
         model=Household,
         mapping_id=mapping_id,
-        pre_processors=(flatten_ona_data, filter_ona_sys_fields),
+        fields_to_uppercase=HOUSEHOLD_FIELDS_TO_UPPERCASE,
+        pre_processors=(flatten_ona_data, filter_ona_sys_fields, normalize_ona_field_names),
         post_processors=(),
         source=Batch.BatchSource.ONA,
     )

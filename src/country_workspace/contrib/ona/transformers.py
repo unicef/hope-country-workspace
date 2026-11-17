@@ -5,6 +5,9 @@ from typing import Any
 
 from .exceptions import OnaMappingError
 
+DEFAULT_INDIVIDUALS_KEY = "individual_questions"
+ONA_META_GROUP = "meta"
+
 
 def get_nested_value(data: Mapping[str, Any], path: str) -> Any:
     """
@@ -78,11 +81,18 @@ def filter_ona_sys_fields(data: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in data.items() if not is_sys_field(key)}
 
 
+def normalize_ona_field_names(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Key fields by question name, dropping their group path and the ODK `meta` group."""
+    return {
+        str(key).split("/")[-1]: value for key, value in data.items() if not str(key).startswith(f"{ONA_META_GROUP}/")
+    }
+
+
 def transform_submission_to_records(
     submission: Mapping[str, Any],
     *,
     master_detail: bool,
-    individuals_key: str = "individuals",
+    individuals_key: str = DEFAULT_INDIVIDUALS_KEY,
 ) -> dict[str, Any]:
     """
     Transform one ONA submission into source records with separate raw source data.

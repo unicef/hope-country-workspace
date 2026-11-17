@@ -52,7 +52,7 @@ class BeneficiarySelect2Widget(ModelSelect2Widget):
             self.limit_to_hh
             and self.household_id is None
             and self.batch_id is not None
-            and (code := data.get("household_id")) is not None
+            and (code := data.get("household_id")) not in (None, "")
         ):
             Household = apps.get_model("country_workspace", "Household")
             self.household_id = (
