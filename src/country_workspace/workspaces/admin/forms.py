@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from django import forms
 from django.utils.translation import gettext_lazy as _
@@ -53,6 +53,15 @@ class BulkUpdateImportForm(forms.Form):
 
 
 class BaseImportForm(forms.Form):
+    def defer_choices(self, field_name: str, source: str) -> None:
+        """Render ``field_name`` disabled; the page script fills it from the ``source`` choices endpoint.
+
+        Used for choices that need an external API call, so that rendering the page never waits on it.
+        """
+        field = cast("forms.ChoiceField", self.fields[field_name])
+        field.choices = [("", _("Loading..."))]
+        field.widget.attrs.update({"disabled": True, "data-lazy-choices": source})
+
     batch_name = forms.CharField(required=False, help_text="Label for this batch")
     validate_after_import = forms.BooleanField(initial=True, required=False)
     household_transformer = forms.ModelChoiceField(

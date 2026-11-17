@@ -49,6 +49,7 @@ class ImportOnaForm(BaseImportForm):
         self,
         *args: Any,
         program: Program | None = None,
+        load_choices: bool = True,
         **kwargs: Any,
     ) -> None:
         kwargs["program"] = program
@@ -56,6 +57,10 @@ class ImportOnaForm(BaseImportForm):
 
         if not constance_config.ONA_API_TOKEN:
             self._add_init_error("Please set ONA_API_TOKEN to use ONA / INFORM import")
+            return
+
+        if not load_choices:
+            self.defer_choices("form_id", "ona")
             return
 
         try:
