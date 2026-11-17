@@ -22,7 +22,7 @@
                 <form method="post" action="{% url 'social:begin' 'azuread-tenant-oauth2' %}">
                     {% csrf_token %}
                     <button class="button login-button" type="submit">
-                        {% translate "Sign in with SSO" %}
+                        {% translate "Sign in" %}
                     </button>
                 </form>
                 {% if FLAG_LOCAL_LOGIN %}
