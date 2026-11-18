@@ -15,7 +15,7 @@ Country Workspace stores files through Django's `STORAGES` dict, configured via 
 
 ## Shared HOPE storage (`FILE_STORAGE_HOPE`)
 
-`FILE_STORAGE_HOPE` points at the **shared HOPE Azure blob container**, which is used across multiple HOPE services. Country Workspace needs **read-write** access to it (unlike the dedup-engine, which is read-only).
+`FILE_STORAGE_HOPE` points at the **shared HOPE Azure blob container**, which is used across multiple HOPE services. Country Workspace needs **read-write** access to it (unlike the dedup-engine and Hope Documents, which only read the images Country Workspace uploads for deduplication and [OCR](../flows/ocr.md#document-images)).
 
 Access it at runtime through the lazily-resolved storage singletons in `country_workspace.storages`, not Django's `storages[...]` registry directly:
 

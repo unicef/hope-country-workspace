@@ -17,6 +17,7 @@ sequenceDiagram
     participant CW as Country Workspace
     participant DB as CW Database
     participant MQ as RabbitMQ
+    participant Blob as HOPE blob storage
     participant HD as Hope Documents
 
     CW->>DB: Claim operation and increment attempt
@@ -30,10 +31,12 @@ sequenceDiagram
         Note over CW,DB: Retry preserves SUCCESS units<br/>and resets unresolved units to PENDING
 
         loop Each non-empty batch
-            CW->>CW: Build batch request
+            CW->>Blob: Upload document images
+            CW->>CW: Build batch request with blob names
             Note right of CW: Same correlation_id for the attempt<br/>New batch_id for each batch
             CW->>MQ: hd.ocr.request
             MQ->>HD: Deliver request
+            HD->>Blob: Read document images
             HD->>HD: Validate and process every document
             HD->>MQ: hcw.ocr.result
         end
@@ -171,6 +174,18 @@ If several operations are retryable, `FAILURE` operations are retried first; a s
 
 ---
 
+## Document images
+
+Images are not embedded in `hd.ocr.request`. As for biometric deduplication, CW uploads each document image to the shared HOPE blob container (`FILE_STORAGE_HOPE`, see [Blob Storage](../config/storage.md)) with `services.hope_blob.sync_record_blobs` and sends only the blob name:
+
+```json
+{"individual_id": 12345, "filename": "2024/afghanistan/CP-2024/CW_ind_12345_national_id_image.png", "pattern": "AB123456"}
+```
+
+The upload is scoped to the document image field, so the other image blobs of the Individual are left untouched, and an unchanged image is not uploaded again. A unit whose image references a missing file is marked `FAILURE`. A storage failure fails the whole attempt, which can then be retried.
+
+Hope Documents must point its own `FILE_STORAGE_HOPE` at the same container, with read access. A blob it cannot read or decode becomes a document result with `status="error"`.
+
 ## Hope Documents mapping
 
 Hope Documents builds each result directly from the request batch and preserves the original `individual_id`:
@@ -178,7 +193,7 @@ Hope Documents builds each result directly from the request batch and preserves 
 ```python
 for item in payload.get("documents") or []:
     outcome = process_document(
-        item["content"],
+        item["filename"],
         item["pattern"],
         individual_id=item["individual_id"],
     )

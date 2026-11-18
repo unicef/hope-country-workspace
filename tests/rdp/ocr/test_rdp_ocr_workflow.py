@@ -64,7 +64,7 @@ def test_prepare_ocr_batch_with_available_units(
     mocker: MockerFixture,
 ) -> None:
     unit = mocker.MagicMock()
-    document = {"individual_id": 1, "content": "IMAGE", "pattern": "ID-1"}
+    document = {"individual_id": 1, "filename": "IMAGE.png", "pattern": "ID-1"}
     mocker.patch.object(workflow, "build_ocr_document_request", return_value=document)
     fail = mocker.patch.object(workflow, "fail_rdp_operation_units")
 
@@ -78,7 +78,7 @@ def test_prepare_ocr_batch_marks_unavailable_units_failed(
 ) -> None:
     available = mocker.MagicMock(pk=1)
     unavailable = mocker.MagicMock(pk=2)
-    document = {"individual_id": 1, "content": "IMAGE", "pattern": "ID-1"}
+    document = {"individual_id": 1, "filename": "IMAGE.png", "pattern": "ID-1"}
     build = mocker.patch.object(workflow, "build_ocr_document_request", side_effect=[document, None])
     fail = mocker.patch.object(workflow, "fail_rdp_operation_units")
 
@@ -175,10 +175,10 @@ def test_run_ocr_batches_and_publishes(
         "_prepare_ocr_batch",
         side_effect=[
             [
-                {"individual_id": 1, "content": "A", "pattern": "P1"},
-                {"individual_id": 2, "content": "B", "pattern": "P2"},
+                {"individual_id": 1, "filename": "A.png", "pattern": "P1"},
+                {"individual_id": 2, "filename": "B.png", "pattern": "P2"},
             ],
-            [{"individual_id": 3, "content": "C", "pattern": "P3"}],
+            [{"individual_id": 3, "filename": "C.png", "pattern": "P3"}],
         ],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
@@ -200,10 +200,10 @@ def test_run_ocr_batches_and_publishes(
     assert (first[1]["batch_index"], first[1]["batch_total"]) == (1, 2)
     assert (second[1]["batch_index"], second[1]["batch_total"]) == (2, 2)
     assert first[1]["documents"] == [
-        {"individual_id": 1, "content": "A", "pattern": "P1"},
-        {"individual_id": 2, "content": "B", "pattern": "P2"},
+        {"individual_id": 1, "filename": "A.png", "pattern": "P1"},
+        {"individual_id": 2, "filename": "B.png", "pattern": "P2"},
     ]
-    assert second[1]["documents"] == [{"individual_id": 3, "content": "C", "pattern": "P3"}]
+    assert second[1]["documents"] == [{"individual_id": 3, "filename": "C.png", "pattern": "P3"}]
     assert all(UUID(call.args[1]["batch_id"]) for call in publish.call_args_list)
     finalize.assert_called_once_with(operation=running_ocr_operation)
 
@@ -224,8 +224,8 @@ def test_run_ocr_continues_after_unknown_publish_outcome(
         workflow,
         "_prepare_ocr_batch",
         side_effect=[
-            [{"individual_id": 1, "content": "A", "pattern": "P1"}],
-            [{"individual_id": 2, "content": "B", "pattern": "P2"}],
+            [{"individual_id": 1, "filename": "A.png", "pattern": "P1"}],
+            [{"individual_id": 2, "filename": "B.png", "pattern": "P2"}],
         ],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
@@ -259,7 +259,7 @@ def test_run_ocr_marks_not_sent_batch_failed(
     mocker.patch.object(
         workflow,
         "_prepare_ocr_batch",
-        return_value=[{"individual_id": 1, "content": "A", "pattern": "P1"}],
+        return_value=[{"individual_id": 1, "filename": "A.png", "pattern": "P1"}],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=running_ocr_operation)
     mocker.patch.object(workflow, "publish", return_value=PublishOutcome.NOT_SENT)
@@ -290,7 +290,7 @@ def test_run_ocr_stops_when_attempt_is_no_longer_current(
     mocker.patch.object(
         workflow,
         "_prepare_ocr_batch",
-        return_value=[{"individual_id": 1, "content": "A", "pattern": "P1"}],
+        return_value=[{"individual_id": 1, "filename": "A.png", "pattern": "P1"}],
     )
     mocker.patch.object(workflow, "lock_current_rdp_operation", return_value=None)
     publish = mocker.patch.object(workflow, "publish")
