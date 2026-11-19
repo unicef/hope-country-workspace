@@ -115,7 +115,7 @@ Unit semantics:
 ```text
 PENDING  - result may still arrive
 SUCCESS  - processing completed; duplicate results are ignored
-FAILURE  - local unit work could not proceed
+FAILURE  - the document could not be prepared, or its result could not be applied
 ```
 
 On retry, `SUCCESS` units are preserved and unresolved units are reset to `PENDING`.
@@ -188,19 +188,11 @@ Hope Documents must point its own `FILE_STORAGE_HOPE` at the same container, wit
 
 ## Hope Documents mapping
 
-Hope Documents builds each result directly from the request batch and preserves the original `individual_id`:
+Hope Documents processes each document in the request on its own and preserves the original `individual_id`. An unexpected exception from one document becomes that document's error result (`status="error"`). The other documents are still processed, and the batch result is still published.
 
-```python
-for item in payload.get("documents") or []:
-    outcome = process_document(
-        item["filename"],
-        item["pattern"],
-        individual_id=item["individual_id"],
-    )
-    documents.append({"individual_id": item["individual_id"], **outcome})
-```
+Country Workspace treats that error result as a normal OCR outcome: it records an `OCR_ERROR` finding and marks the unit `SUCCESS`.
 
-It also preserves:
+Hope Documents also preserves:
 
 ```text
 correlation_id
@@ -209,6 +201,21 @@ batch_id
 batch_index
 batch_total
 ```
+
+## Result items Country Workspace cannot apply
+
+A problem with one result item does not reject the rest of the response.
+
+| Item | What Country Workspace does |
+| --- | --- |
+| Invalid result for a known Individual | Marks that unit `FAILURE` and stores the other valid results. |
+| Unknown or missing `individual_id` | Skips and logs the item. Units that were not matched stay `PENDING`. |
+| Unit already `SUCCESS` | Ignores the item. |
+| Unit already `FAILURE` | Skips the item and processes the others. |
+
+When a valid result and an invalid item name the same Individual, the valid result is stored.
+
+Envelope errors, such as a missing `correlation_id` or an empty document list, still reject the whole response.
 
 So the core model is:
 
