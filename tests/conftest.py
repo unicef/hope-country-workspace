@@ -108,6 +108,8 @@ def pytest_configure(config):
     settings.CELERY_TASK_STORE_EAGER_RESULT = True
     settings.SOCIAL_AUTH_REDIRECT_IS_HTTPS = False
     settings.SESSION_COOKIE_SECURE = False
+    # PBKDF2 is deliberately slow; every UserFactory and test login would pay for it.
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     settings.STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
