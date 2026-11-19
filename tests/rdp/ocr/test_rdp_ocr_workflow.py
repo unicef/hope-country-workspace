@@ -4,7 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.contrib.hope.constants import DOCUMENT_TYPES
-from country_workspace.models import RdpOperation
+from country_workspace.models import RdpOperation, RdpOperationUnit
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.ocr import workflow
 from country_workspace.stream import PublishOutcome
@@ -318,6 +318,7 @@ def _result_payload(operation: RdpOperation, *, correlation_id: str | None = Non
                 "error": None,
             }
         ],
+        "issues": [],
     }
 
 
@@ -333,7 +334,11 @@ def test_handle_ocr_result(
 
     workflow.handle_ocr_result(payload)
 
-    apply.assert_called_once_with(operation=running_ocr_operation, documents=payload["documents"])
+    apply.assert_called_once_with(
+        operation=running_ocr_operation,
+        documents=payload["documents"],
+        issues=[],
+    )
     finalize.assert_called_once_with(operation=running_ocr_operation)
 
 
@@ -395,3 +400,53 @@ def test_handle_ocr_result_does_not_record_error_before_operation_is_locked(
         workflow.handle_ocr_result(payload)
 
     handle_error.assert_not_called()
+
+
+def test_handle_ocr_result_isolates_invalid_items(
+    running_ocr_operation: RdpOperation,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    valid = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    invalid = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    untouched = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    payload = _result_payload(running_ocr_operation)
+    payload["documents"] = [
+        {
+            "individual_id": valid.individual_id,
+            "status": "ok",
+            "found": False,
+            "match": None,
+            "error": None,
+        },
+        {
+            "individual_id": invalid.individual_id,
+            "status": "ok",
+            "found": True,
+            "match": None,
+            "error": None,
+        },
+        {"status": "ok", "found": False, "match": None, "error": None},
+        {
+            "individual_id": 999999,
+            "status": "ok",
+            "found": False,
+            "match": None,
+            "error": None,
+        },
+    ]
+    handle_error = mocker.patch.object(workflow, "handle_rdp_operation_error")
+
+    workflow.handle_ocr_result(payload)
+
+    handle_error.assert_not_called()
+    valid.refresh_from_db()
+    invalid.refresh_from_db()
+    untouched.refresh_from_db()
+    running_ocr_operation.refresh_from_db()
+    assert valid.status == RdpOperationUnit.Status.SUCCESS
+    assert invalid.status == RdpOperationUnit.Status.FAILURE
+    assert invalid.error["message"] == "OCR result is invalid."
+    assert untouched.status == RdpOperationUnit.Status.PENDING
+    assert running_ocr_operation.status == RdpOperation.Status.RUNNING
