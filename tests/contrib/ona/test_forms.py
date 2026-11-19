@@ -106,3 +106,12 @@ def test_import_ona_form_rejects_unlisted_form() -> None:
 
     assert not form.is_valid()
     assert "form_id" in form.errors
+
+
+def test_import_ona_form_defers_choices_without_calling_api() -> None:
+    form = ImportOnaForm(program=None, load_choices=False)
+
+    field = form.fields["form_id"]
+    assert field.widget.attrs["disabled"] is True
+    assert field.widget.attrs["data-lazy-choices"] == "ona"
+    assert not form.non_field_errors()

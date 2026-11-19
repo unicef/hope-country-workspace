@@ -1,8 +1,11 @@
 from typing import TYPE_CHECKING, Any
 
+import logging
+
+from requests import RequestException
 from django.contrib import messages
 from django.forms import Media
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -14,13 +17,14 @@ from country_workspace.contrib.aurora.import_processing import (
     import_data as import_from_aurora,
 )
 
-from country_workspace.contrib.ona.forms import ImportOnaForm
+from country_workspace.contrib.ona.exceptions import OnaApiError
+from country_workspace.contrib.ona.forms import ImportOnaForm, get_ona_form_choices
 from country_workspace.contrib.ona.import_processing import (
     Config as OnaConfig,
     import_data as import_from_ona,
 )
 from country_workspace.contrib.ona.transformers import DEFAULT_INDIVIDUALS_KEY
-from country_workspace.contrib.kobo.forms import ImportKoboForm
+from country_workspace.contrib.kobo.forms import ImportKoboForm, get_kobo_project_choices
 from country_workspace.contrib.kobo.sync import (
     Config as KoboConfig,
     import_data as import_from_kobo,
@@ -33,11 +37,15 @@ from country_workspace.models import AsyncJob
 from country_workspace.utils.fields import batch_name_default
 from .forms import ImportFileForm
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from ..models import CountryProgram
 
 
 KOBO_IMPORT_JOB_DESCRIPTION = "Kobo import: {program_name}"
+
+CHOICES_PARAM = "_import_choices"
 
 
 class ImportDataMixin:
@@ -84,38 +92,62 @@ class ImportDataMixin:
             css={},
         )
 
-        form_rdi = ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program)
-        form_aurora = ImportAuroraForm(prefix="aurora", program=program)
-        form_kobo = ImportKoboForm(
-            prefix="kobo",
-            kobo_country_code=program.country_office.kobo_country_code,
-            program=program,
-        )
-        form_ona = ImportOnaForm(prefix="ona", program=program)
+        if source := self._get_choices_source(request):
+            return self._render_choices(program, source)
 
-        if request.method == "POST":
-            success_url = self._get_import_success_url(request, program)
-            match request.POST.get("_selected_tab"):
-                case "rdi":
-                    if not (form_rdi := self.import_rdi(request, program)):
-                        return HttpResponseRedirect(success_url)
-                case "aurora":
-                    if not (form_aurora := self.import_aurora(request, program)):
-                        return HttpResponseRedirect(success_url)
-                case "kobo":
-                    if not (form_kobo := self.import_kobo(request, program)):
-                        return HttpResponseRedirect(success_url)
-                case "ona":
-                    if not (form_ona := self.import_ona(request, program)):
-                        return HttpResponseRedirect(success_url)
+        # Kobo and ONA choices need an external API call: the page script loads them after render.
+        forms: dict[str, Any] = {
+            "rdi": ImportFileForm(prefix="rdi", beneficiary_group=program.beneficiary_group, program=program),
+            "aurora": ImportAuroraForm(prefix="aurora", program=program),
+            "kobo": ImportKoboForm(
+                prefix="kobo",
+                kobo_country_code=program.country_office.kobo_country_code,
+                program=program,
+                load_choices=False,
+            ),
+            "ona": ImportOnaForm(prefix="ona", program=program, load_choices=False),
+        }
 
-        context["form_rdi"] = form_rdi
-        context["form_aurora"] = form_aurora
-        context["form_kobo"] = form_kobo
-        context["form_ona"] = form_ona
+        if request.method == "POST" and (tab := request.POST.get("_selected_tab")) in forms:
+            forms[tab] = getattr(self, f"import_{tab}")(request, program)
+            if not forms[tab]:
+                return HttpResponseRedirect(self._get_import_success_url(request, program))
+
+        for tab, form in forms.items():
+            context[f"form_{tab}"] = form
         context.update(extra_context or {})
 
         return render(request, self.import_data_template, context)
+
+    @staticmethod
+    def _get_choices_source(request: HttpRequest) -> str | None:
+        """Return ``kobo``/``ona`` when this GET asks for the choices of an API-backed field."""
+        source = request.GET.get(CHOICES_PARAM) if request.method == "GET" else None
+        return source if source in {"kobo", "ona"} else None
+
+    @staticmethod
+    def _render_choices(program: "CountryProgram", source: str) -> JsonResponse:
+        """Return the choices of an API-backed field as JSON, or an error message."""
+        kobo_country_code = program.country_office.kobo_country_code
+        if source == "kobo" and not kobo_country_code:
+            # Without a country code the Kobo client is not scoped to this office and could list other countries.
+            return JsonResponse(
+                {"error": _("Please set country iso code for office to use Kobo import")},
+                status=400,
+            )
+        try:
+            if source == "kobo":
+                choices = get_kobo_project_choices(kobo_country_code)
+            elif source == "ona":
+                choices = get_ona_form_choices()
+            else:
+                return JsonResponse({"error": _("Unknown choices source.")}, status=400)
+        except (OnaApiError, RequestException):
+            logger.exception("Could not load %s choices", source)
+            return JsonResponse({"error": _("Could not load the list. Please try again later.")}, status=502)
+        if not choices:
+            return JsonResponse({"error": _("Nothing is available to import.")}, status=404)
+        return JsonResponse({"choices": choices})
 
     def import_rdi(self, request: HttpRequest, program: "CountryProgram") -> "ImportFileForm | None":
         form = ImportFileForm(
