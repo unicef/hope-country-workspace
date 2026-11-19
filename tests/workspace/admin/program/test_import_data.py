@@ -88,6 +88,21 @@ def test_get_choices_reports_empty_list(program_admin, mock_request, mocker: Moc
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize("kobo_country_code", [None, ""], ids=["none", "empty"])
+def test_get_kobo_choices_requires_country_code(
+    program_admin, mock_request, mocker: MockerFixture, kobo_country_code: str | None
+) -> None:
+    get_choices = mocker.patch.object(import_data_mod, "get_kobo_project_choices")
+    program_admin._program.country_office.kobo_country_code = kobo_country_code
+    mock_request.GET = {import_data_mod.CHOICES_PARAM: "kobo"}
+
+    response = program_admin._render_import_data(mock_request, program=program_admin._program)
+
+    assert response.status_code == 400
+    assert "country iso code" in json.loads(response.content)["error"]
+    get_choices.assert_not_called()
+
+
 def test_get_unknown_choices_source_renders_full_page(
     program_admin, mock_request, patched_forms, mocker: MockerFixture
 ) -> None:

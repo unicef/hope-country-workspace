@@ -128,9 +128,16 @@ class ImportDataMixin:
     @staticmethod
     def _render_choices(program: "CountryProgram", source: str) -> JsonResponse:
         """Return the choices of an API-backed field as JSON, or an error message."""
+        kobo_country_code = program.country_office.kobo_country_code
+        if source == "kobo" and not kobo_country_code:
+            # Without a country code the Kobo client is not scoped to this office and could list other countries.
+            return JsonResponse(
+                {"error": _("Please set country iso code for office to use Kobo import")},
+                status=400,
+            )
         try:
             if source == "kobo":
-                choices = get_kobo_project_choices(program.country_office.kobo_country_code)
+                choices = get_kobo_project_choices(kobo_country_code)
             elif source == "ona":
                 choices = get_ona_form_choices()
             else:
