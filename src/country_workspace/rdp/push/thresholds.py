@@ -3,7 +3,8 @@ from decimal import Decimal
 from django.db.models import Q, QuerySet
 
 from country_workspace.models import Rdp, RdpOperation, RdpOperationFinding
-from country_workspace.rdp.deduplication.constants import BIOMETRIC_AFFECTING_FINDING_TYPES
+from country_workspace.rdp.deduplication.biographic.constants import BIOGRAPHIC_AFFECTING_FINDING_TYPES
+from country_workspace.rdp.deduplication.biometric.constants import BIOMETRIC_AFFECTING_FINDING_TYPES
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.ocr.constants import OCR_AFFECTING_FINDING_TYPES
 from country_workspace.rdp.repository import (
@@ -37,6 +38,8 @@ def _threshold_findings(operation: RdpOperation) -> QuerySet[RdpOperationFinding
     match operation.operation_type:
         case RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
             finding_types = BIOMETRIC_AFFECTING_FINDING_TYPES
+        case RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
+            finding_types = BIOGRAPHIC_AFFECTING_FINDING_TYPES
         case RdpOperation.Type.OCR:
             finding_types = OCR_AFFECTING_FINDING_TYPES
         case _:
@@ -47,7 +50,7 @@ def _threshold_findings(operation: RdpOperation) -> QuerySet[RdpOperationFinding
 def _threshold_total_count(operation: RdpOperation) -> int | None:
     """Return the threshold denominator for a supported RDP operation."""
     match operation.operation_type:
-        case RdpOperation.Type.BIOMETRIC_DEDUPLICATION:
+        case RdpOperation.Type.BIOMETRIC_DEDUPLICATION | RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
             if not (total_count := qs_individuals_for_rdp(rdp=operation.rdp).count()):
                 raise RdpWorkflowError({"errors": ["RDP: no individuals available for push."]})
             return total_count
@@ -55,6 +58,13 @@ def _threshold_total_count(operation: RdpOperation) -> int | None:
             return operation.units.count()
         case _:
             return None
+
+
+def _count_threshold_findings(operation: RdpOperation, findings: QuerySet[RdpOperationFinding]) -> int:
+    """Count threshold findings; biographic matches are reported from both sides, so count individuals."""
+    if operation.operation_type == RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION:
+        return findings.values("individual_id").distinct().count()
+    return findings.count()
 
 
 def _build_threshold_result(
@@ -91,7 +101,7 @@ def _operation_threshold_result(operation: RdpOperation) -> OperationLogResult |
         return None
     return _build_threshold_result(
         operation=operation,
-        findings_count=findings.count(),
+        findings_count=_count_threshold_findings(operation, findings),
         total_count=total_count,
     )
 
@@ -129,14 +139,13 @@ def threshold_findings_count_for_selection(
     remaining_ids = remaining.values("pk")
     current_ids = current.values("pk")
 
-    return (
-        findings.filter(individual_id__in=remaining_ids)
-        .filter(
+    return _count_threshold_findings(
+        operation,
+        findings.filter(individual_id__in=remaining_ids).filter(
             Q(related_individual_id__isnull=True)
             | ~Q(related_individual_id__in=current_ids)
             | Q(related_individual_id__in=remaining_ids)
-        )
-        .count()
+        ),
     )
 
 

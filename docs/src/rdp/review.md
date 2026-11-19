@@ -18,7 +18,7 @@ flowchart TD
     G --> J[CANCELLED]
 ```
 
-See **[OCR](operations/ocr.md#review)** and **[Biometric deduplication](operations/deduplication.md#review)** for operation-specific findings and threshold calculation.
+See **[OCR](operations/ocr.md#review)**, **[Biometric deduplication](operations/deduplication.md#review)** and **[Biographic deduplication](operations/biographic-deduplication.md#review)** for operation-specific findings and threshold calculation.
 
 ## Review decisions
 
@@ -69,7 +69,7 @@ flowchart LR
     E --> F[Run all configured operations again]
 ```
 
-If biometric deduplication is configured, Country Workspace also rejects the source **[Deduplication Set](operations/deduplication.md#deduplication-set-lifecycle)** before processing of the replacement RDP continues.
+If biometric or biographic deduplication is configured, Country Workspace also rejects the source **[Deduplication Set](operations/deduplication.md#deduplication-set-lifecycle)** and **[dataset](operations/biographic-deduplication.md#dataset-lifecycle)** before processing of the replacement RDP continues.
 
 Creation is blocked if no beneficiaries would remain, or if the operation results or beneficiary selection changed while the review decision was being made.
 
@@ -77,6 +77,6 @@ Creation is blocked if no beneficiaries would remain, or if the operation result
 
 **Cancel RDP** changes the reviewed RDP to `CANCELLED` without creating a replacement.
 
-For biometric RDPs, Country Workspace also handles DedupEngine cleanup when required.
+For biometric and biographic RDPs, Country Workspace also handles DedupEngine cleanup when required.
 
 See **[Cancel an RDP](lifecycle.md#cancel-an-rdp)** for the general cancellation rules.

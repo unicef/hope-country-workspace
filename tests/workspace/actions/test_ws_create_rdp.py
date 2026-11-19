@@ -122,12 +122,19 @@ def test_create_rdp_action(
         "pushed_by_id": app._user.id,
         "operations": [
             {
+                "operation_type": RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+                "config": {
+                    "threshold_type": ThresholdType.COUNT,
+                    "threshold_value": "0",
+                },
+            },
+            {
                 "operation_type": RdpOperation.Type.OCR,
                 "config": {
                     "threshold_type": ThresholdType.COUNT,
                     "threshold_value": "0",
                 },
-            }
+            },
         ],
     }
 
@@ -157,6 +164,13 @@ def test_create_rdp_action_with_biometric_deduplication(
             "config": {
                 "threshold_type": ThresholdType.COUNT,
                 "threshold_value": "1",
+            },
+        },
+        {
+            "operation_type": RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+            "config": {
+                "threshold_type": ThresholdType.COUNT,
+                "threshold_value": "0",
             },
         },
         {

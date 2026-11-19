@@ -4,13 +4,15 @@ from pytest_mock import MockerFixture
 from requests import Session
 from responses import matchers
 
-from country_workspace.contrib.dedup_engine.endpoint import DeduplicationSetGroup
+from country_workspace.contrib.dedup_engine.biometric.endpoint import DeduplicationSetGroup
+from country_workspace.contrib.dedup_engine.biometric.resource import (
+    ApproveDeduplicationSetAction,
+    DeduplicationSetGroupItem,
+)
 from country_workspace.contrib.dedup_engine.resource import (
     TIMEOUT,
     ActionMixin,
-    ApproveDeduplicationSetAction,
     CreateMixin,
-    DeduplicationSetGroupItem,
     ListMixin,
     RetrieveMixin,
     UpdateMixin,

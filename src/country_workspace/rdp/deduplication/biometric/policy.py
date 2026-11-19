@@ -1,6 +1,6 @@
 from django.db.models import Q
 
-from country_workspace.contrib.dedup_engine import make_dedup_client
+from country_workspace.contrib.dedup_engine import make_biometric_client
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Program, Rdp, RdpOperation
 from country_workspace.models.rdp import NON_TERMINAL_RDP_STATUSES
@@ -55,7 +55,7 @@ class ProgramDedupSettingsPolicy:
 
     def _has_blocking_deduplication_set(self) -> bool:
         """Check whether DedupEngine has a set blocking further changes."""
-        with make_dedup_client(self.program.unicef_id) as client:
+        with make_biometric_client(self.program.unicef_id) as client:
             return not client.can_create_deduplication_set()
 
 
