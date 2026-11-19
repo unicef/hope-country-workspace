@@ -160,40 +160,117 @@ def test_apply_ocr_document_results_is_idempotent_for_successful_unit(
     assert ocr_unit.last_modified == first_result_at
 
 
-def test_apply_ocr_document_results_rejects_unknown_individual(
+def _document(individual_id: int, *, found: bool = False) -> dict[str, object]:
+    return {
+        "individual_id": individual_id,
+        "status": "ok",
+        "found": found,
+        "match": ["ID-1", 0.0] if found else None,
+        "error": None,
+    }
+
+
+def test_apply_ocr_document_results_skips_unknown_individual(
     running_ocr_operation: RdpOperation,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with pytest.raises(ValueError, match="unknown Individual"):
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    pending = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+
+    with caplog.at_level("WARNING"):
         repository.apply_ocr_document_results(
             operation=running_ocr_operation,
-            documents=[
-                {
-                    "individual_id": 999999,
-                    "status": "ok",
-                    "found": False,
-                    "match": None,
-                    "error": None,
-                }
-            ],
+            documents=[_document(pending.individual_id), _document(999999)],
         )
 
+    pending.refresh_from_db()
+    assert pending.status == RdpOperationUnit.Status.SUCCESS
+    assert "999999" in caplog.text
+    assert "unknown individual_id" in caplog.text
 
-def test_apply_ocr_document_results_rejects_failed_unit(
+
+def test_apply_ocr_document_results_fails_invalid_item_and_saves_valid_results(
+    running_ocr_operation: RdpOperation,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    valid = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    invalid = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    reason = "OCR result documents[1]: inconsistent result"
+
+    repository.apply_ocr_document_results(
+        operation=running_ocr_operation,
+        documents=[_document(valid.individual_id, found=True)],
+        issues=[{"individual_id": invalid.individual_id, "reason": reason}],
+    )
+
+    valid.refresh_from_db()
+    invalid.refresh_from_db()
+    assert valid.status == RdpOperationUnit.Status.SUCCESS
+    assert valid.error == {}
+    assert invalid.status == RdpOperationUnit.Status.FAILURE
+    assert invalid.error == {"message": "OCR result is invalid.", "reason": reason}
+    assert running_ocr_operation.findings.count() == 0
+
+
+def test_apply_ocr_document_results_prefers_valid_result_over_invalid_item(
     ocr_unit: RdpOperationUnit,
 ) -> None:
-    ocr_unit.status = RdpOperationUnit.Status.FAILURE
-    ocr_unit.save(update_fields=["status"])
+    repository.apply_ocr_document_results(
+        operation=ocr_unit.operation,
+        documents=[_document(ocr_unit.individual_id)],
+        issues=[{"individual_id": ocr_unit.individual_id, "reason": "duplicate individual_id"}],
+    )
 
-    with pytest.raises(ValueError, match="can not accept"):
+    ocr_unit.refresh_from_db()
+    assert ocr_unit.status == RdpOperationUnit.Status.SUCCESS
+    assert ocr_unit.error == {}
+
+
+def test_apply_ocr_document_results_skips_missing_individual_id(
+    running_ocr_operation: RdpOperation,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    pending = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    applied = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+    reason = "OCR result documents[0]: invalid field types"
+
+    with caplog.at_level("WARNING"):
         repository.apply_ocr_document_results(
-            operation=ocr_unit.operation,
-            documents=[
-                {
-                    "individual_id": ocr_unit.individual_id,
-                    "status": "ok",
-                    "found": False,
-                    "match": None,
-                    "error": None,
-                }
-            ],
+            operation=running_ocr_operation,
+            documents=[_document(applied.individual_id)],
+            issues=[{"individual_id": None, "reason": reason}],
         )
+
+    pending.refresh_from_db()
+    applied.refresh_from_db()
+    assert pending.status == RdpOperationUnit.Status.PENDING
+    assert applied.status == RdpOperationUnit.Status.SUCCESS
+    assert reason in caplog.text
+
+
+def test_apply_ocr_document_results_skips_failed_unit(
+    running_ocr_operation: RdpOperation,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from testutils.factories import OcrRdpOperationUnitFactory
+
+    failed = OcrRdpOperationUnitFactory(operation=running_ocr_operation, status=RdpOperationUnit.Status.FAILURE)
+    other = OcrRdpOperationUnitFactory(operation=running_ocr_operation)
+
+    with caplog.at_level("INFO"):
+        repository.apply_ocr_document_results(
+            operation=running_ocr_operation,
+            documents=[_document(failed.individual_id), _document(other.individual_id)],
+        )
+
+    failed.refresh_from_db()
+    other.refresh_from_db()
+    assert failed.status == RdpOperationUnit.Status.FAILURE
+    assert other.status == RdpOperationUnit.Status.SUCCESS
+    assert running_ocr_operation.findings.filter(individual_id=other.individual_id).count() == 1
+    assert running_ocr_operation.findings.filter(individual_id=failed.individual_id).count() == 0
+    assert str(failed.individual_id) in caplog.text

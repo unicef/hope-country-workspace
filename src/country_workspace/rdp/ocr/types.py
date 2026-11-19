@@ -40,6 +40,15 @@ class OcrResultMessage(TypedDict):
     documents: list[OcrDocumentResult]
 
 
+class OcrDocumentIssue(TypedDict):
+    individual_id: int | None
+    reason: str
+
+
+class ValidatedOcrResult(OcrResultMessage):
+    issues: list[OcrDocumentIssue]
+
+
 class OcrFindingType(TextChoices):
     NO_MATCH = "NO_MATCH", _("No match")
     OCR_ERROR = "OCR_ERROR", _("OCR error")

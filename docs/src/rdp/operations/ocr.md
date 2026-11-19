@@ -54,6 +54,8 @@ Both are valid OCR outcomes. They create findings but do not by themselves repre
 
 A successful match creates no adverse finding.
 
+A result that Country Workspace cannot apply does not discard the rest of the response. An invalid result for a known Individual marks that unit `FAILURE`. A result with an unknown or missing Individual is skipped and logged, and units that were not matched stay `PENDING`. A result for a unit that is already `FAILURE` is skipped.
+
 OCR findings are available through the shared **[RDP Findings UI](index.md#findings-and-review)** and participate in the OCR review threshold.
 
 ## Recovery
