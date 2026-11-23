@@ -1,38 +1,13 @@
-x-env: &env
-  environment:
-    - DEBUG=true
-    - ADMIN_EMAIL=adm@hcw.org
-    - ADMIN_PASSWORD=123
-    - ALLOWED_HOSTS=*
-    - CSRF_COOKIE_SECURE=False
-    - CSRF_TRUSTED_ORIGINS=http://localhost
-    - AUTHENTICATION_BACKENDS=country_workspace.security.backends.AnyUserAuthBackend
-    - HOPE_API_TOKEN=${HOPE_API_TOKEN}
-    - CACHE_URL=redis://redis:6379/1
-    - CELERY_BROKER_URL=redis://redis:6379/9
-    - CELERY_TASK_ALWAYS_EAGER=False
-    - DATABASE_URL=postgres://hcw:password@db:5432/country_workspace
-    - MEDIA_ROOT=/var/country_workspace/media
-    - SECRET_KEY=sensitive-secret-key
-    - STATIC_ROOT=/var/country_workspace/static
-    - FILE_STORAGE_HOPE=storages.backends.azure_storage.AzureStorage?azure_container=hope&overwrite_files=True&connection_string=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
-    - INIT_HOPE_STORAGE=1
-    - STREAMING_BROKER_URL=rabbit://guest:guest@rabbitmq:5672/?vhost=/&exchange=django-streaming-broadcast
-
 x-common: &common
   build:
     context: .
     dockerfile: docker/Dockerfile
     target: dist
   platform: linux/amd64
-
-  #  volumes:
-  #    - ./src/:/app/src/
-  #    - ./tests/:/app/tests/
-  #    - ./pyproject.toml:/app/pyproject.toml
-  #    - ./uv.lock:/app/uv.lock
-  #    - /var/run/docker.sock:/var/run/docker.sock
-  restart: always
+  env_file:
+    - .env
+  extra_hosts:
+    - host.docker.internal:host-gateway
   depends_on:
     db:
       condition: service_healthy
@@ -40,57 +15,65 @@ x-common: &common
       condition: service_healthy
     azurite:
       condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
 
 services:
   backend:
-    <<:  [*common, *env]
+    <<: *common
     ports:
-      - 8000:8000
+      - "${BACKEND_PORT}:8000"
     command: run
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/healthcheck" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthcheck', timeout=5)"]
+      start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5
 
   celery_worker:
-    <<:  [*common, *env]
-    # entrypoint: ["sh", "-c", "exec docker-entrypoint.sh \"$0\" \"$@\""]
+    <<: *common
     command: worker
+    depends_on:
+      backend:
+        condition: service_healthy
 
   celery-beat:
-    <<:  [*common, *env]
+    <<: *common
     command: beat
+    depends_on:
+      backend:
+        condition: service_healthy
 
-  flower:
-    <<:  [*common, *env]
+  celery-flower:
+    <<: *common
+    ports:
+      - "${FLOWER_PORT}:5555"
     command: flower
-    environment:
-      - DEBUG=true
-      - DATABASE_URL="sqlite://:memory:"
+    depends_on:
+      backend:
+        condition: service_healthy
 
   stream_listener:
-    <<:  [*common, *env]
+    <<: *common
     command: stream-listener
     depends_on:
-      db:
-        condition: service_healthy
-      rabbitmq:
+      backend:
         condition: service_healthy
 
   db:
-    image: postgres:14
+    image: postgres:15
     environment:
-      - POSTGRES_USER=hcw
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=country_workspace
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
     volumes:
-      - postgres_data14:/var/lib/postgresql14/data/
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - 5432:5432
+      - "${POSTGRES_PORT}:5432"
     restart: always
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "hcw", "-d", "country_workspace" ]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
@@ -100,10 +83,10 @@ services:
   redis:
     image: redis:7.2
     ports:
-     - 6379:6379
+      - "${REDIS_PORT}:6379"
     restart: always
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
@@ -114,32 +97,45 @@ services:
     image: mcr.microsoft.com/azure-storage/azurite
     command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck
     ports:
-      - 10010:10000
+      - "${AZURITE_PORT}:10000"
     volumes:
       - azurite_data:/data
     restart: always
     healthcheck:
-      test: [ "CMD", "nc", "-z", "127.0.0.1", "10000" ]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10000"]
       start_period: 5s
       start_interval: 1s
       interval: 5s
       timeout: 4s
       retries: 5
+
   rabbitmq:
-    image: rabbitmq:3.13-management
-    #    ports:
-    #      - 5672:5672
-    #      - 15672:15672
+    image: rabbitmq:4.3.2-management
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD}"
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
     restart: always
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      test:
+        - CMD
+        - gosu
+        - rabbitmq
+        - sh
+        - -c
+        - test -s /var/lib/rabbitmq/.erlang.cookie && exec rabbitmq-diagnostics -q ping
       start_period: 10s
       start_interval: 1s
       interval: 5s
       timeout: 5s
       retries: 10
 
+networks:
+  default:
+    name: cw-local
 
 volumes:
-  postgres_data14:
   azurite_data:
+  postgres_data:
