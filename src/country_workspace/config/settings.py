@@ -148,13 +148,17 @@ CACHES = {
     "default": {
         "BACKEND": "redis_lock.django_cache.RedisCache",
         "LOCATION": CACHE_URL,
-        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SOCKET_TIMEOUT": 70,
+        },
     },
     "select2": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": SELECT2_CACHE or CACHE_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SOCKET_TIMEOUT": 70,
         },
     },
 }
