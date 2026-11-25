@@ -5,10 +5,130 @@ from django.utils.translation import gettext_lazy as _
 
 from country_workspace.models import BeneficiaryGroup, Program
 from country_workspace.workspaces.admin.cleaners.base import BaseActionForm
+from country_workspace.workspaces.models import CountryProgram
 from country_workspace.workspaces.validators import ValidatableFileValidator
 
 if TYPE_CHECKING:
     from hope_flex_fields.models import DataChecker
+
+
+class ProgramForm(forms.ModelForm):
+    rdp_operations = forms.MultipleChoiceField(
+        label=_("RDP operations"),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = CountryProgram
+        fields = (
+            "name",
+            "code",
+            "status",
+            "sector",
+            "beneficiary_validator",
+            "alien_validation_enabled",
+            "household_checker",
+            "individual_checker",
+            "household_search",
+            "individual_search",
+            "household_columns",
+            "individual_columns",
+            "extra_fields",
+            "serializer",
+            "rdp_operations",
+        )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        from country_workspace.rdp import RDP_OPERATION_DEFINITIONS, get_enabled_rdp_operation_definitions
+
+        super().__init__(*args, **kwargs)
+
+        if (field := self.fields.get("rdp_operations")) is None:
+            return
+
+        field.choices = [
+            (definition.operation_type.value, definition.operation_type.label)
+            for definition in RDP_OPERATION_DEFINITIONS.values()
+            if definition.is_cw_managed
+        ]
+        self.initial["rdp_operations"] = [
+            definition.operation_type.value
+            for definition in get_enabled_rdp_operation_definitions(self.instance)
+            if definition.is_cw_managed
+        ]
+
+        if self.instance.pk and self.instance.rdps.exists():
+            field.disabled = True
+            field.help_text = _("RDP operations cannot be changed after an RDP has been created for this program.")
+
+    def save(self, commit: bool = True) -> CountryProgram:
+        if self.is_valid() and "rdp_operations" in self.changed_data:
+            self.instance.enabled_rdp_operations = self.cleaned_data["rdp_operations"]
+        return super().save(commit=commit)
+
+
+class SelectColumnsForm(forms.Form):
+    columns = forms.MultipleChoiceField(choices=(), widget=forms.CheckboxSelectMultiple)
+    model_core_fields = [("name", "name"), ("id", "id")]
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.checker: "DataChecker" = kwargs.pop("checker")
+        super().__init__(*args, **kwargs)
+        columns: list[tuple[str, str]] = []
+        checker_form_class = self.checker.get_form_class()
+        for name, field in checker_form_class.base_fields.items():
+            label = getattr(field, "label", "") or name
+            suffix = " [file]" if isinstance(field, forms.FileField) else ""
+            columns.append((f"flex_fields__{name}", f"{label} ({name}){suffix}"))
+        self.fields["columns"].choices = self.model_core_fields + columns
+
+
+class SelectIndividualColumnsForm(SelectColumnsForm):
+    model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
+
+
+class AlienColumnsForm(forms.Form):
+    new_columns = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.SelectMultiple(),
+    )
+
+    def __init__(self, data: list[str] | None = None, existing_columns: list | None = None, **kwargs: Any) -> None:
+        super().__init__(data=data, **kwargs)
+
+        if data and "new_columns" in data:
+            choices = [(v, v) for v in data.get("new_columns")]
+            self.fields["new_columns"].choices = choices
+        elif existing_columns:
+            choices = [(v, v) for v in existing_columns]
+            self.fields["new_columns"].choices = choices
+            self.initial["new_columns"] = existing_columns
+
+
+class MassDefaultsForm(forms.Form):
+    def __init__(self, *args: Any, checker: "DataChecker", **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        source_form = checker.get_form()()
+        for field in source_form.fields.values():
+            field.required = False
+        self.fields.update(source_form.fields)
+
+
+class DedupSettingsForm(forms.Form):
+    def __init__(self, *args: Any, settings: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        for name, value in settings.items():
+            self.fields[name] = forms.FloatField(
+                min_value=0,
+                max_value=1,
+                required=True,
+                initial=value,
+                widget=forms.NumberInput(attrs={"step": "0.01"}),
+            )
+
+    def get_payload(self) -> dict[str, float]:
+        return {name: float(value) for name, value in self.cleaned_data.items()}
 
 
 class BulkUpdateExportForm(BaseActionForm):
@@ -176,31 +296,6 @@ class ImportFileForm(BaseImportForm):
 
         [self.fields.pop(field_name, None) for field_name in fields_to_exclude]
         [setattr(self.fields["beneficiary_id_column"], attr, v) for attr, v in field_cfg.items()]
-
-
-class MassDefaultsForm(forms.Form):
-    def __init__(self, *args: Any, checker: "DataChecker", **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        source_form = checker.get_form()()
-        for field in source_form.fields.values():
-            field.required = False
-        self.fields.update(source_form.fields)
-
-
-class DedupSettingsForm(forms.Form):
-    def __init__(self, *args: Any, settings: dict[str, Any], **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        for name, value in settings.items():
-            self.fields[name] = forms.FloatField(
-                min_value=0,
-                max_value=1,
-                required=True,
-                initial=value,
-                widget=forms.NumberInput(attrs={"step": "0.01"}),
-            )
-
-    def get_payload(self) -> dict[str, float]:
-        return {name: float(value) for name, value in self.cleaned_data.items()}
 
 
 class CreateRDPForm(BaseActionForm):

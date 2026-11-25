@@ -6,6 +6,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin import display, register
+from django.db import transaction
 from django.db.models import Field, QuerySet
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -16,15 +17,23 @@ from django.utils.text import slugify
 from strategy_field.utils import fqn
 
 from country_workspace.contrib.dedup_engine import make_biometric_client
-from country_workspace.rdp import get_program_dedup_settings_policy
 from country_workspace.exceptions import RemoteError, RemoteUnavailableError
 from country_workspace.models import Household, Individual
 from country_workspace.models.base import Validable
+from country_workspace.rdp import get_enabled_rdp_operation_definitions, get_program_dedup_settings_policy
 from country_workspace.state import state
 from country_workspace.utils.import_template import NoDataCheckerError, build_import_template, get_sheet_plans
 from ._import_data import ImportDataMixin
 from .cleaners.bulk_update import import_household_updates, import_individual_updates
-from .forms import BulkUpdateImportForm, MassDefaultsForm, DedupSettingsForm
+from .forms import (
+    AlienColumnsForm,
+    BulkUpdateImportForm,
+    DedupSettingsForm,
+    MassDefaultsForm,
+    ProgramForm,
+    SelectColumnsForm,
+    SelectIndividualColumnsForm,
+)
 from ..permissions import can_change_country_program, can_export_import_template, can_import_program_data
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
@@ -37,65 +46,6 @@ if TYPE_CHECKING:
 
 DEDUP_SETTINGS_FETCH_TIMEOUT: Final[tuple[int, int]] = (2, 3)
 XLSX_CONTENT_TYPE: Final[str] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-class SelectColumnsForm(forms.Form):
-    columns = forms.MultipleChoiceField(choices=(), widget=forms.CheckboxSelectMultiple)
-    model_core_fields = [("name", "name"), ("id", "id")]
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.checker: "DataChecker" = kwargs.pop("checker")
-        super().__init__(*args, **kwargs)
-        columns: list[tuple[str, str]] = []
-        checker_form_class = self.checker.get_form_class()
-        for name, field in checker_form_class.base_fields.items():
-            label = getattr(field, "label", "") or name
-            suffix = " [file]" if isinstance(field, forms.FileField) else ""
-            columns.append((f"flex_fields__{name}", f"{label} ({name}){suffix}"))
-        self.fields["columns"].choices = self.model_core_fields + columns
-
-
-class AlienColumnsForm(forms.Form):
-    new_columns = forms.MultipleChoiceField(
-        required=False,
-        widget=forms.SelectMultiple(),
-    )
-
-    def __init__(self, data: list[str] | None = None, existing_columns: list | None = None, **kwargs: Any) -> None:
-        super().__init__(data=data, **kwargs)
-
-        if data and "new_columns" in data:
-            choices = [(v, v) for v in data.get("new_columns")]
-            self.fields["new_columns"].choices = choices
-        elif existing_columns:
-            choices = [(v, v) for v in existing_columns]
-            self.fields["new_columns"].choices = choices
-            self.initial["new_columns"] = existing_columns
-
-
-class SelectIndividualColumnsForm(SelectColumnsForm):
-    model_core_fields = [("name", "name"), ("id", "id"), ("household", "household")]
-
-
-class ProgramForm(forms.ModelForm):
-    class Meta:
-        model = CountryProgram
-        fields = (
-            "name",
-            "code",
-            "status",
-            "sector",
-            "beneficiary_validator",
-            "alien_validation_enabled",
-            "household_checker",
-            "individual_checker",
-            "household_search",
-            "individual_search",
-            "household_columns",
-            "individual_columns",
-            "extra_fields",
-            "serializer",
-        )
 
 
 @register(CountryProgram, site=workspace)
@@ -119,6 +69,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         "sector",
         "name",
         "dedup_settings",
+        "non_cw_managed_rdp_operations",
     )
     form = ProgramForm
     ordering = ("name",)
@@ -146,63 +97,49 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     def get_fieldsets(
         self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
-        fieldsets = [
-            (
-                None,
-                {
-                    "fields": (
-                        ("name", "code"),
-                        ("status", "sector"),
-                    ),
-                },
-            ),
+        master_detail = obj is None or obj.is_master_detail
+        checker_fields = ("household_checker", "individual_checker") if master_detail else "individual_checker"
+        column_fields = ("household_columns", "individual_columns") if master_detail else ("individual_columns",)
+
+        operation_fields: tuple[str, ...] = ("rdp_operations",)
+        if obj and any(not definition.is_cw_managed for definition in get_enabled_rdp_operation_definitions(obj)):
+            operation_fields = ("non_cw_managed_rdp_operations", *operation_fields)
+
+        fieldsets: list[tuple[str | None, dict[str, Any]]] = [
+            (None, {"fields": (("name", "code"), ("status", "sector"))}),
             (
                 _("Validators"),
-                {
-                    "fields": (
-                        "beneficiary_validator",
-                        "alien_validation_enabled",
-                        ("household_checker", "individual_checker"),
-                    )
-                },
+                {"fields": ("beneficiary_validator", "alien_validation_enabled", checker_fields)},
             ),
+            (_("Columns"), {"fields": column_fields}),
+            (_("Alien Columns to Ignore"), {"fields": ("hh_alien_columns_to_ignore", "ind_alien_columns_to_ignore")}),
+            (_("Serializer"), {"fields": ("serializer",)}),
             (
-                _("Columns"),
+                _("RDP Operations"),
                 {
-                    "fields": (
-                        "household_columns",
-                        "individual_columns",
-                    ),
-                },
-            ),
-            (
-                _("Alien Columns to Ignore"),
-                {
-                    "fields": (
-                        "hh_alien_columns_to_ignore",
-                        "ind_alien_columns_to_ignore",
-                    ),
-                },
-            ),
-            (
-                _("Serializer"),
-                {
-                    "fields": ("serializer",),
+                    "fields": operation_fields,
+                    "classes": ("content-only", "checkbox-list"),
                 },
             ),
         ]
+
         if obj and obj.biometric_deduplication_enabled:
-            fieldsets.append(
-                (
-                    _("Deduplication Configuration"),
-                    {"fields": ("dedup_settings",)},
-                )
-            )
-        if obj and obj.beneficiary_group and not obj.beneficiary_group.master_detail:
-            fieldsets[1][1]["fields"] = ("beneficiary_validator", "alien_validation_enabled", "individual_checker")
-            fieldsets[2][1]["fields"] = ("individual_columns",)
+            fieldsets.append((_("Biometric Deduplication Settings"), {"fields": ("dedup_settings",)}))
 
         return fieldsets
+
+    def rdp_operations(self, obj: CountryProgram) -> str:
+        return ProgramForm(instance=obj)["rdp_operations"].as_widget(attrs={"disabled": True})
+
+    def non_cw_managed_rdp_operations(self, obj: CountryProgram) -> str:
+        choices = {
+            definition.operation_type.value: definition.operation_type.label
+            for definition in get_enabled_rdp_operation_definitions(obj)
+            if not definition.is_cw_managed
+        }
+        return forms.CheckboxSelectMultiple(choices=choices, attrs={"disabled": True}).render(
+            "non_cw_managed_rdp_operations", list(choices)
+        )
 
     def _get_dedup_settings(self, program: CountryProgram) -> dict[str, Any]:
         with make_biometric_client(group_reference_id=program.unicef_id, max_retries=0) as client:
@@ -269,20 +206,22 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
 
     def changeform_view(
         self,
-        request: "HttpRequest",
+        request: HttpRequest,
         object_id: str | None = None,
         form_url: str = "",
         extra_context: dict[str, Any] | None = None,
     ) -> HttpResponse:
         extra_context = extra_context or {}
-        if (obj := self.get_object(request, object_id)) and obj.beneficiary_group:
+        obj = self.get_object(request, object_id)
+
+        if obj and obj.beneficiary_group:
             group_label = obj.beneficiary_group.group_label or _("Household")
             member_label = obj.beneficiary_group.member_label or _("Individual")
-            dynamic_labels = {
-                "individual_columns": f"{member_label}",
-            }
+            dynamic_labels = {"individual_columns": f"{member_label}"}
+
             if obj.beneficiary_group.master_detail:
                 dynamic_labels["household_columns"] = f"{group_label}"
+
             extra_context = {
                 **extra_context,
                 "dynamic_field_labels": dynamic_labels,
@@ -291,6 +230,13 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
                     "household_columns": f"{group_label}",
                 },
             }
+
+        if request.method == "POST" and obj:
+            with transaction.atomic():
+                # Serialize settings changes with RDP creation.
+                self.get_queryset(request).select_for_update().filter(pk=obj.pk).exists()
+                return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
+
         return super().changeform_view(request, object_id, form_url, extra_context=extra_context)
 
     @staticmethod
@@ -557,7 +503,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         return render(request, "workspace/actions/bulk_update_import.html", context)
 
     @button(
-        label=_("Update Dedup Settings"),
+        label=_("Update Biometric Dedup Settings"),
         permission=can_change_country_program,
         visible=lambda btn: bool(
             (program := btn.context.get("original"))
@@ -567,10 +513,10 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
             (program := btn.context.get("original"))
             and get_program_dedup_settings_policy(program).update_dedup_settings_check().allowed
         ),
-        html_attrs={"title": "Update Deduplication settings on DedupEngine."},
+        html_attrs={"title": "Update Biometric Deduplication settings on DedupEngine."},
     )
     def update_dedup_settings(self, request: HttpRequest, pk: str) -> HttpResponse:
-        context = self.get_common_context(request, pk, title=_("Update Deduplication Settings"))
+        context = self.get_common_context(request, pk, title=_("Update Biometric Deduplication Settings"))
         program: CountryProgram = context["original"]
         change_url = reverse("workspace:workspaces_countryprogram_change", args=[program.pk])
 
@@ -589,7 +535,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         except (RemoteError, RemoteUnavailableError) as exc:
             self.message_user(
                 request,
-                _("Failed to fetch Deduplication settings from DedupEngine. %(error)s") % {"error": str(exc)},
+                _("Failed to fetch Biometric Deduplication settings from DedupEngine. %(error)s") % {"error": str(exc)},
                 messages.ERROR,
             )
             return HttpResponseRedirect(change_url)
@@ -605,11 +551,12 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
             except (RemoteError, RemoteUnavailableError) as exc:
                 self.message_user(
                     request,
-                    _("Failed to update Deduplication settings on DedupEngine. %(error)s") % {"error": str(exc)},
+                    _("Failed to update Biometric Deduplication settings on DedupEngine. %(error)s")
+                    % {"error": str(exc)},
                     messages.ERROR,
                 )
             else:
-                self.message_user(request, _("Deduplication settings have been updated."), messages.SUCCESS)
+                self.message_user(request, _("Biometric Deduplication settings have been updated."), messages.SUCCESS)
                 return HttpResponseRedirect(change_url)
 
         context["form"] = form

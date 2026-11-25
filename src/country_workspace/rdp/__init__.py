@@ -13,6 +13,7 @@ from .ocr.repository import ocr_affected_individuals_count
 from .ocr.workflow import handle_ocr_result
 from .operations.definitions import (
     RDP_OPERATION_DEFINITIONS,
+    get_enabled_rdp_operation_definitions,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "create_rdp_core",
     "exceeded_operation_thresholds",
     "fail_stuck_rdp_push",
+    "get_enabled_rdp_operation_definitions",
     "get_program_dedup_settings_policy",
     "get_push_policy",
     "get_rdp_operation_forms",
