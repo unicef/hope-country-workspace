@@ -10,6 +10,7 @@ from country_workspace.contrib.name_parser.parser import (
     load_model,
     get_line_to_tensor_converter,
     get_parser,
+    has_name_parser_model,
     BASE_PATH,
     MODEL_PATH_TEMPLATE,
 )
@@ -135,6 +136,18 @@ def test_load_model(mocker: MockerFixture) -> None:
     lstm_mock.return_value.load_state_dict.assert_called_once_with(load_mock.return_value)
     lstm_mock.return_value.to.assert_called_once_with(device_mock)
     lstm_mock.return_value.eval.assert_called_once()
+
+
+def test_line_to_tensor_truncates_tokens_longer_than_the_model_window() -> None:
+    converter = get_line_to_tensor_converter(("_", "a", "b"), max_name_len=3)
+
+    assert tuple(converter("ababa").tolist()) == (1, 2, 1)
+    assert tuple(converter("a").tolist()) == (1, 4, 4)
+
+
+def test_has_name_parser_model_matches_shipped_weights() -> None:
+    assert has_name_parser_model("UKR") is True
+    assert has_name_parser_model("USA") is False
 
 
 def test_get_line_to_tensor_converter(mocker: MockerFixture) -> None:

@@ -44,6 +44,12 @@ def form_data(**extra: str | bool) -> dict[str, str | bool]:
     return base
 
 
+def test_concatenate_field_form_defaults_to_hope_name_fields():
+    form = ConcatenateFieldForm(checker=MagicMock())
+
+    assert form.fields["pattern"].initial == "{given_name} {middle_name} {family_name}"
+
+
 def test_concatenate_field_form_sets_choices_and_valid_pattern():
     form = ConcatenateFieldForm(data=form_data(), checker=MagicMock())
 

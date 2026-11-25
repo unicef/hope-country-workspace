@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 class ConcatenateFieldForm(BaseActionForm):
     destination_field = forms.ChoiceField(choices=[], help_text="Field to update with concatenated value")
     pattern = forms.CharField(
-        help_text='Pattern with field placeholders, e.g., "{first_name} {middle_name} {last_name}"'
+        initial="{given_name} {middle_name} {family_name}",
+        help_text='Pattern with field placeholders, e.g., "{given_name} {middle_name} {family_name}"',
     )
     replace_only_empty = forms.BooleanField(
         required=False,
