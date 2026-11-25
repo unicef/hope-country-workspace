@@ -2,8 +2,7 @@ from itertools import batched
 from collections.abc import Iterator
 
 from country_workspace.models import Rdp
-from country_workspace.contrib.dedup_engine.client import Client
-from country_workspace.contrib.dedup_engine.request import CreateEncoding
+from country_workspace.contrib.dedup_engine import BiometricClient, CreateEncoding
 from country_workspace.rdp.repository import qs_individuals_for_rdp
 from country_workspace.services.hope_blob import RECORD_SELECT_RELATED, image_field_names, sync_record_blobs
 
@@ -29,7 +28,7 @@ class BiometricDedupProcessor:
         """Return whether the RDP has at least one biometric image."""
         return next(self._iter_images(), None) is not None
 
-    def upload_images(self, client: Client) -> int:
+    def upload_images(self, client: BiometricClient) -> int:
         """Upload biometric images and return the number submitted."""
         images_sent = 0
         for batch in batched(self._iter_images(), IMAGES_TO_DEDUPLICATE_BULK_BATCH_SIZE, strict=False):

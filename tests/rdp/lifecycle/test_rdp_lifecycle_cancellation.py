@@ -1,8 +1,9 @@
+from uuid import uuid4
+
 import pytest
 from pytest_mock import MockerFixture
 
-from country_workspace.contrib.dedup_engine import DeduplicationSetState
-from country_workspace.models import Program, Rdp, RdpOperation
+from country_workspace.models import Program, Rdp
 from country_workspace.models.rdp import RdpLogEntryType
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.lifecycle import cancellation
@@ -12,57 +13,20 @@ from country_workspace.rdp.policy import ActionCheck
 pytestmark = pytest.mark.django_db
 
 
-def test_biometric_rejection_check_without_operation(rdp: Rdp, mocker: MockerFixture) -> None:
-    mocker.patch.object(cancellation, "biometric_operation_for_rdp", return_value=None)
-    retrieve = mocker.patch.object(cancellation, "retrieve_deduplication_set_state")
-
-    check, set_id = cancellation._biometric_rejection_check(rdp)
-
-    assert check.allowed is True
-    assert set_id is None
-    retrieve.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("state", "allowed", "reject"),
-    [
-        (DeduplicationSetState.DEDUPLICATED, True, True),
-        (DeduplicationSetState.REJECTED, True, False),
-        (None, True, False),
-        (DeduplicationSetState.ENCODING_IN_PROGRESS, False, False),
-    ],
-)
-def test_biometric_rejection_check(
-    rdp: Rdp,
-    biometric_operation: RdpOperation,
-    mocker: MockerFixture,
-    state: DeduplicationSetState | None,
-    allowed: bool,
-    reject: bool,
-) -> None:
-    mocker.patch.object(cancellation, "biometric_operation_for_rdp", return_value=biometric_operation)
-    mocker.patch.object(cancellation, "retrieve_deduplication_set_state", return_value=state)
-
-    check, set_id = cancellation._biometric_rejection_check(rdp)
-
-    assert check.allowed is allowed
-    assert set_id == (str(biometric_operation.id) if reject else None)
-
-
 def test_cancel_rdp_rejects_initial_policy_check(rdp: Rdp, mocker: MockerFixture) -> None:
     policy = mocker.patch.object(cancellation, "get_rdp_policy").return_value
     policy.cancel_check.return_value = check = ActionCheck(False, "blocked")
-    biometric = mocker.patch.object(cancellation, "_biometric_rejection_check")
+    rejections = mocker.patch.object(cancellation, "check_cancellation_rejections")
 
     assert cancellation.cancel_rdp(rdp.pk, user_id=1) == (check, False)
-    biometric.assert_not_called()
+    rejections.assert_not_called()
 
 
-def test_cancel_rdp_rejects_biometric_state(rdp: Rdp, mocker: MockerFixture) -> None:
+def test_cancel_rdp_rejects_deduplication_state(rdp: Rdp, mocker: MockerFixture) -> None:
     policy = mocker.patch.object(cancellation, "get_rdp_policy").return_value
     policy.cancel_check.return_value = ActionCheck(True)
     rejection = ActionCheck(False, "blocked")
-    mocker.patch.object(cancellation, "_biometric_rejection_check", return_value=(rejection, None))
+    mocker.patch.object(cancellation, "check_cancellation_rejections", return_value=(rejection, ()))
     lock = mocker.patch.object(cancellation, "lock_rdp_for_update")
 
     assert cancellation.cancel_rdp(rdp.pk, user_id=1) == (rejection, False)
@@ -75,25 +39,26 @@ def test_cancel_rdp_rechecks_policy_after_lock(rdp: Rdp, mocker: MockerFixture) 
     second = mocker.MagicMock()
     second.cancel_check.return_value = check = ActionCheck(False, "changed")
     mocker.patch.object(cancellation, "get_rdp_policy", side_effect=[first, second])
-    mocker.patch.object(cancellation, "_biometric_rejection_check", return_value=(ActionCheck(True), None))
+    mocker.patch.object(cancellation, "check_cancellation_rejections", return_value=(ActionCheck(True), ()))
     mocker.patch.object(cancellation, "lock_rdp_for_update", return_value=rdp)
 
     assert cancellation.cancel_rdp(rdp.pk, user_id=1) == (check, False)
 
 
 @pytest.mark.parametrize(
-    ("status", "rejection_set_id", "logged"),
+    ("status", "rejection_operation_ids", "logged"),
     [
-        (Rdp.PushStatus.PENDING, None, False),
-        (Rdp.PushStatus.REVIEW_PENDING, None, True),
-        (Rdp.PushStatus.REVIEW_PENDING, "SET", True),
+        (Rdp.PushStatus.PENDING, (), False),
+        (Rdp.PushStatus.REVIEW_PENDING, (), True),
+        (Rdp.PushStatus.REVIEW_PENDING, (uuid4(),), True),
+        (Rdp.PushStatus.REVIEW_PENDING, (uuid4(), uuid4()), True),
     ],
 )
 def test_cancel_rdp(
     rdp: Rdp,
     mocker: MockerFixture,
     status: Rdp.PushStatus,
-    rejection_set_id: str | None,
+    rejection_operation_ids: tuple,
     logged: bool,
 ) -> None:
     rdp.status = status
@@ -103,8 +68,8 @@ def test_cancel_rdp(
     policy.cancel_check.return_value = ActionCheck(True)
     mocker.patch.object(
         cancellation,
-        "_biometric_rejection_check",
-        return_value=(ActionCheck(True), rejection_set_id),
+        "check_cancellation_rejections",
+        return_value=(ActionCheck(True), rejection_operation_ids),
     )
     mocker.patch.object(cancellation, "lock_rdp_for_update", return_value=rdp)
     cancel = mocker.patch.object(rdp, "mark_cancelled")
@@ -112,13 +77,15 @@ def test_cancel_rdp(
     reject = mocker.patch.object(cancellation, "schedule_cancelled_rdp_set_rejection")
 
     check, scheduled = cancellation.cancel_rdp(rdp.pk, user_id=7)
-    should_reject = rejection_set_id is not None
+    should_reject = bool(rejection_operation_ids)
 
     assert check.allowed is True
     assert scheduled is should_reject
     cancel.assert_called_once_with()
     assert append.called is logged
     assert reject.called is should_reject
+    if should_reject:
+        assert reject.call_args.kwargs["operation_ids"] == rejection_operation_ids
 
     if logged:
         assert append.call_args.kwargs["entry_type"] == RdpLogEntryType.REVIEW_DECISION
@@ -134,7 +101,7 @@ def test_cancel_rdp_during_program_cleanup(rdp: Rdp, mocker: MockerFixture) -> N
 
     policy = mocker.patch.object(cancellation, "get_rdp_policy").return_value
     policy.cancel_check.return_value = ActionCheck(True)
-    rejection_check = mocker.patch.object(cancellation, "_biometric_rejection_check")
+    rejection_check = mocker.patch.object(cancellation, "check_cancellation_rejections")
     reject = mocker.patch.object(cancellation, "schedule_cancelled_rdp_set_rejection")
 
     check, scheduled = cancellation.cancel_rdp(rdp.pk, user_id=7)

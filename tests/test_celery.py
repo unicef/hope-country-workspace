@@ -525,7 +525,7 @@ def test_clean_program_data_without_dedup_engine(
     batch,
     mocker: MockerFixture,
 ) -> None:
-    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    make_client = mocker.patch("country_workspace.tasks.make_biometric_client")
 
     clean_program_data(cleanup_job)
 
@@ -540,7 +540,7 @@ def test_clean_program_data_deletes_stored_and_current_dedup_groups(
     cleanup_job.config = {"deduplication_set_group_reference_id": "old-reference"}
     cleanup_job.save(update_fields=["config"])
     current_reference = cleanup_job.program.unicef_id
-    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    make_client = mocker.patch("country_workspace.tasks.make_biometric_client")
     client = make_client.return_value.__enter__.return_value
 
     with override_config(DEDUP_API_URL="https://dedup.example.org", DEDUP_API_TOKEN="token"):
@@ -560,7 +560,7 @@ def test_clean_program_data_rejects_missing_dedup_config(
 ) -> None:
     cleanup_job.config = {"deduplication_set_group_reference_id": "stored-reference"}
     cleanup_job.save(update_fields=["config"])
-    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    make_client = mocker.patch("country_workspace.tasks.make_biometric_client")
 
     with (
         override_config(DEDUP_API_URL="", DEDUP_API_TOKEN=""),
@@ -581,7 +581,7 @@ def test_clean_program_data_stops_on_dedup_error(
 ) -> None:
     cleanup_job.config = {"deduplication_set_group_reference_id": cleanup_job.program.unicef_id}
     cleanup_job.save(update_fields=["config"])
-    make_client = mocker.patch("country_workspace.tasks.make_dedup_client")
+    make_client = mocker.patch("country_workspace.tasks.make_biometric_client")
     make_client.return_value.__enter__.return_value.delete_deduplication_set_group.side_effect = RemoteError("failed")
 
     with (

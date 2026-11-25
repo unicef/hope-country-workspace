@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 
 from country_workspace.exceptions import MissingFlexFileError
 from country_workspace.models import Individual
-from country_workspace.rdp.deduplication.processor import BiometricDedupProcessor
+from country_workspace.rdp.deduplication.biometric.processor import BiometricDedupProcessor
 from country_workspace.storages import HOPE_STORAGE
 
 pytestmark = pytest.mark.django_db

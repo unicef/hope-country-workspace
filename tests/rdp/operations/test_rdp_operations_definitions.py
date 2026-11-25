@@ -4,7 +4,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from country_workspace.models import RdpOperation
-from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biographic.forms import BiographicDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
 from country_workspace.rdp.ocr.forms import OcrConfigForm
 from country_workspace.rdp.operations.definitions import (
     RDP_OPERATION_DEFINITIONS,
@@ -17,8 +18,15 @@ from country_workspace.rdp.operations.definitions import (
 @pytest.mark.parametrize(
     ("enabled", "expected"),
     [
-        (True, (RdpOperation.Type.BIOMETRIC_DEDUPLICATION, RdpOperation.Type.OCR)),
-        (False, (RdpOperation.Type.OCR,)),
+        (
+            True,
+            (
+                RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+                RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+                RdpOperation.Type.OCR,
+            ),
+        ),
+        (False, (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR)),
     ],
 )
 def test_get_enabled_rdp_operation_definitions(
@@ -26,11 +34,21 @@ def test_get_enabled_rdp_operation_definitions(
     enabled: bool,
     expected: tuple[RdpOperation.Type, ...],
 ) -> None:
+    """Biographic deduplication and OCR are always enabled; only biometric depends on the Program."""
     program.biometric_deduplication_enabled = enabled
 
     definitions = get_enabled_rdp_operation_definitions(program)
 
     assert tuple(definition.operation_type for definition in definitions) == expected
+
+
+def test_biographic_operation_definition() -> None:
+    definition = RDP_OPERATION_DEFINITIONS[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION]
+
+    assert definition.config_form is BiographicDeduplicationConfigForm
+    assert definition.short_label == "Biographic"
+    assert definition.operation_id_label == "Dataset ID"
+    assert definition.can_retry_while_running is False
 
 
 def test_get_rdp_operation_forms(program) -> None:
@@ -40,12 +58,15 @@ def test_get_rdp_operation_forms(program) -> None:
 
     assert [definition.operation_type for definition, _ in forms] == [
         RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
         RdpOperation.Type.OCR,
     ]
     assert isinstance(forms[0][1], BiometricDeduplicationConfigForm)
-    assert isinstance(forms[1][1], OcrConfigForm)
+    assert isinstance(forms[1][1], BiographicDeduplicationConfigForm)
+    assert isinstance(forms[2][1], OcrConfigForm)
     assert [form.prefix for _, form in forms] == [
         RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value.lower(),
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION.value.lower(),
         RdpOperation.Type.OCR.value.lower(),
     ]
 
