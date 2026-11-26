@@ -30,7 +30,9 @@ def test_job_status(rf, async_job, admin_site):
     expected_status = "PENDING"
     with patch("country_workspace.models.AsyncJob.task_status", new_callable=PropertyMock) as mock_status:
         mock_status.return_value = expected_status
-        assert admin.status(async_job) == expected_status
+        html = admin.status(async_job)
+    assert "status-box--pending" in html
+    assert f">{expected_status}<" in html
 
 
 @pytest.mark.django_db
@@ -242,3 +244,23 @@ def test_job_change_page_status_box(django_app_factory):
     status = pill.text().removesuffix(" (importing)")
     assert pill.text() == f"{status} (importing)"
     assert f"status-box--{STATUS_TONES[status]}" in pill.attr("class")
+
+
+@pytest.mark.django_db
+def test_job_changelist_status_box(django_app_factory):
+    from testutils.factories import SuperUserFactory
+    from testutils.utils import select_office
+
+    job = AsyncJobFactory()
+    app = django_app_factory(csrf_checks=False)
+    app.set_user(SuperUserFactory())
+    url = reverse("workspace:workspaces_countryasyncjob_changelist")
+    with (
+        select_office(app, job.program.country_office, job.program),
+        patch("country_workspace.models.AsyncJob.task_status", new_callable=PropertyMock, return_value="FAILURE"),
+    ):
+        res = app.get(url)
+
+    pill = res.pyquery("#result_list .field-status .status-box")
+    assert pill.text() == "FAILURE"
+    assert "status-box--error" in pill.attr("class")

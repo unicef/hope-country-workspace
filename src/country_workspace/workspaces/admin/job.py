@@ -13,6 +13,7 @@ from country_workspace.workspaces.models import CountryAsyncJob
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.permissions import can_debug_async_job
 from country_workspace.workspaces.sites import workspace
+from country_workspace.workspaces.templatetags.workspace_status import render_status_box
 
 from .filters import ChoiceFilter, UserAutoCompleteFilter, WFailedFilter
 
@@ -75,7 +76,7 @@ class CountryJobAdmin(
         return not obj.program.cleanup_in_progress
 
     def status(self, obj: "CountryAsyncJob|None") -> str:
-        return obj.task_status
+        return render_status_box(obj.task_status)
 
     def completed_time(self, obj: "CountryAsyncJob|None") -> str:
         try:

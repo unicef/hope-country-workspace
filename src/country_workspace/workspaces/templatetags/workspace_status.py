@@ -1,6 +1,8 @@
 from typing import Any
 
 from django.template import Library
+from django.utils.html import format_html
+from django.utils.safestring import SafeString
 
 register = Library()
 
@@ -31,3 +33,13 @@ def status_box(status: Any, label: Any = None, detail: Any = None) -> dict[str, 
     if detail:
         label = f"{label} ({detail})"
     return {"tone": STATUS_TONES.get(str(status).upper(), "neutral"), "label": label}
+
+
+def render_status_box(status: Any, label: Any = None, detail: Any = None) -> SafeString:
+    """Return the status pill as HTML for list cells that cannot use the template tag."""
+    context = status_box(status, label, detail)
+    return format_html(
+        '<span class="status-box status-box--{}">{}</span>',
+        context["tone"],
+        context["label"],
+    )
