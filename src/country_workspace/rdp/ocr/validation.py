@@ -1,6 +1,6 @@
 from typing import Literal, cast
 
-from .types import OcrDocumentResult, OcrResultMessage
+from .types import OcrDocumentIssue, OcrDocumentResult, ValidatedOcrResult
 
 
 _DOCUMENT_RESULT_KEYS = ("individual_id", "status", "found", "match", "error")
@@ -72,8 +72,44 @@ def _parse_document_result(value: object, *, index: int) -> OcrDocumentResult:
             raise ValueError(f"{path}: inconsistent result")
 
 
-def validate_ocr_result(payload: object) -> OcrResultMessage:
-    """Validate and normalize an OCR result message."""
+def _positive_individual_id(value: object) -> int | None:
+    """Return a positive individual id when the document item carries one."""
+    if not isinstance(value, dict):
+        return None
+    individual_id = cast("dict[str, object]", value).get("individual_id")
+    if type(individual_id) is int and individual_id > 0:
+        return individual_id
+    return None
+
+
+def _partition_documents(
+    raw_documents: list[object],
+) -> tuple[list[OcrDocumentResult], list[OcrDocumentIssue]]:
+    """Split document items into applicable results and per-item problems."""
+    documents: list[OcrDocumentResult] = []
+    issues: list[OcrDocumentIssue] = []
+    seen: set[int] = set()
+    for index, value in enumerate(raw_documents):
+        try:
+            result = _parse_document_result(value, index=index)
+        except (TypeError, ValueError) as exc:
+            issues.append({"individual_id": _positive_individual_id(value), "reason": str(exc)})
+            continue
+        if result["individual_id"] in seen:
+            issues.append(
+                {
+                    "individual_id": result["individual_id"],
+                    "reason": f"OCR result documents[{index}]: duplicate individual_id",
+                }
+            )
+            continue
+        seen.add(result["individual_id"])
+        documents.append(result)
+    return documents, issues
+
+
+def validate_ocr_result(payload: object) -> ValidatedOcrResult:
+    """Validate an OCR result and isolate documents that cannot be applied."""
     data = _object(payload, required=_RESULT_MESSAGE_KEYS, path="OCR result")
 
     match data:
@@ -98,10 +134,7 @@ def validate_ocr_result(payload: object) -> OcrResultMessage:
     if not raw_documents:
         raise ValueError("OCR result: documents must not be empty")
 
-    documents = [_parse_document_result(value, index=index) for index, value in enumerate(raw_documents)]
-    if len(individual_ids := [document["individual_id"] for document in documents]) != len(set(individual_ids)):
-        raise ValueError("OCR result: duplicate individual_id")
-
+    documents, issues = _partition_documents(raw_documents)
     return {
         "correlation_id": correlation_id,
         "rdp_id": rdp_id,
@@ -109,4 +142,5 @@ def validate_ocr_result(payload: object) -> OcrResultMessage:
         "batch_index": batch_index,
         "batch_total": batch_total,
         "documents": documents,
+        "issues": issues,
     }

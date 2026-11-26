@@ -164,7 +164,11 @@ def handle_ocr_result(payload: object) -> None:
                 return
 
             current_operation = operation
-            apply_ocr_document_results(operation=operation, documents=result["documents"])
+            apply_ocr_document_results(
+                operation=operation,
+                documents=result["documents"],
+                issues=result["issues"],
+            )
             finalize_rdp_operation_from_units(operation=operation)
     except Exception as exc:
         if current_operation is not None:

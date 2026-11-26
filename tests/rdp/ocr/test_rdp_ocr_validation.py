@@ -59,6 +59,7 @@ def test_validate_ocr_result_normalizes_valid_documents() -> None:
     assert isinstance(result["documents"][0]["match"][1], float)
     assert result["documents"][1]["found"] is False
     assert result["documents"][2]["status"] == "error"
+    assert result["issues"] == []
 
 
 @pytest.mark.parametrize(
@@ -71,88 +72,6 @@ def test_validate_ocr_result_normalizes_valid_documents() -> None:
         (_payload(rdp_id=0), ValueError, "must be positive"),
         (_payload(batch_index=2, batch_total=1), ValueError, "batch position"),
         (_payload(documents=[]), ValueError, "documents must not be empty"),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": False, "match": None, "error": None},
-                    {"individual_id": 1, "status": "ok", "found": False, "match": None, "error": None},
-                ]
-            ),
-            ValueError,
-            "duplicate individual_id",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 0, "status": "ok", "found": False, "match": None, "error": None},
-                ]
-            ),
-            ValueError,
-            "must be positive",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "invalid", "found": False, "match": None, "error": None},
-                ]
-            ),
-            ValueError,
-            "status",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": True, "match": None, "error": None},
-                ]
-            ),
-            ValueError,
-            "inconsistent",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": True, "match": ["ID-1", -1], "error": None},
-                ]
-            ),
-            ValueError,
-            "negative",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": True, "match": ["ID-1"], "error": None},
-                ]
-            ),
-            ValueError,
-            "two items",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": True, "match": [1, 0.1], "error": None},
-                ]
-            ),
-            TypeError,
-            "string, number",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": True, "match": "ID-1", "error": None},
-                ]
-            ),
-            TypeError,
-            "expected list or null",
-        ),
-        (
-            _payload(
-                documents=[
-                    {"individual_id": 1, "status": "ok", "found": "yes", "match": None, "error": None},
-                ]
-            ),
-            TypeError,
-            "invalid field types",
-        ),
     ],
 )
 def test_validate_ocr_result_rejects_invalid_payload(
@@ -162,3 +81,78 @@ def test_validate_ocr_result_rejects_invalid_payload(
 ) -> None:
     with pytest.raises(exception, match=match):
         validate_ocr_result(payload)
+
+
+@pytest.mark.parametrize(
+    ("document", "individual_id", "match"),
+    [
+        (
+            {"individual_id": 0, "status": "ok", "found": False, "match": None, "error": None},
+            None,
+            "must be positive",
+        ),
+        (
+            {"individual_id": 1, "status": "invalid", "found": False, "match": None, "error": None},
+            1,
+            "status",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": True, "match": None, "error": None},
+            1,
+            "inconsistent",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": True, "match": ["ID-1", -1], "error": None},
+            1,
+            "negative",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": True, "match": ["ID-1"], "error": None},
+            1,
+            "two items",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": True, "match": [1, 0.1], "error": None},
+            1,
+            "string, number",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": True, "match": "ID-1", "error": None},
+            1,
+            "expected list or null",
+        ),
+        (
+            {"individual_id": 1, "status": "ok", "found": "yes", "match": None, "error": None},
+            1,
+            "invalid field types",
+        ),
+        (
+            {"status": "ok", "found": False, "match": None, "error": None},
+            None,
+            "missing keys: individual_id",
+        ),
+    ],
+)
+def test_validate_ocr_result_isolates_invalid_documents(
+    document: dict[str, object],
+    individual_id: int | None,
+    match: str,
+) -> None:
+    valid = {"individual_id": 7, "status": "ok", "found": False, "match": None, "error": None}
+
+    result = validate_ocr_result(_payload(documents=[document, valid]))
+
+    assert [item["individual_id"] for item in result["documents"]] == [7]
+    assert result["issues"][0]["individual_id"] == individual_id
+    assert match in result["issues"][0]["reason"]
+
+
+def test_validate_ocr_result_keeps_first_document_when_individual_id_is_duplicated() -> None:
+    document = {"individual_id": 1, "status": "ok", "found": False, "match": None, "error": None}
+
+    result = validate_ocr_result(_payload(documents=[document, document]))
+
+    assert result["documents"] == [document]
+    assert result["issues"] == [
+        {"individual_id": 1, "reason": "OCR result documents[1]: duplicate individual_id"},
+    ]
