@@ -4,7 +4,7 @@ from .deduplication.biometric.repository import qs_biometric_affected_individual
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
 from .deduplication.workflow import sync_deduplication_result
 from .exceptions import RdpWorkflowError
-from .forms import CleanRdpForm, RdpFindingsFilterForm
+from .forms import CleanRdpForm, RdpFindingsFilterForm, RdpOperationSelectionForm
 from .lifecycle.cancellation import cancel_rdp
 from .lifecycle.clean import create_clean_rdp
 from .lifecycle.creation import create_rdp_core, rdp_name_default
@@ -41,6 +41,7 @@ __all__ = [
     "CreateRdpConfig",
     "RdpActionPolicy",
     "RdpFindingsFilterForm",
+    "RdpOperationSelectionForm",
     "RdpWorkflowError",
     "cancel_rdp",
     "claim_review_rdp_push",

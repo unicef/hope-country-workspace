@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -84,15 +84,25 @@ def get_rdp_operation_forms(
     *,
     program: Program,
     data: Any = None,
+    selected_operations: Collection[str] | None = None,
 ) -> list[tuple[RdpOperationDefinition, forms.Form]]:
-    """Build enabled operation configuration forms."""
-    return [
-        (
-            definition,
-            definition.config_form(data, prefix=definition.operation_type.value.lower()),
+    """Build operation forms, binding only selected and non-CW-managed operations."""
+    operation_forms = []
+
+    for definition in get_enabled_rdp_operation_definitions(program):
+        selected = (
+            selected_operations is None
+            or not definition.is_cw_managed
+            or definition.operation_type.value in selected_operations
         )
-        for definition in get_enabled_rdp_operation_definitions(program)
-    ]
+        operation_forms.append(
+            (
+                definition,
+                definition.config_form(data if selected else None, prefix=definition.operation_type.value.lower()),
+            )
+        )
+
+    return operation_forms
 
 
 def get_validated_rdp_operation_configs(
