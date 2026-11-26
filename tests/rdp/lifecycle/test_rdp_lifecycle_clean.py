@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 from country_workspace.contrib.dedup_engine import DeduplicationSetState
 from country_workspace.models import Individual, Program, Rdp, RdpOperation, RdpOperationUnit
 from country_workspace.models.rdp import RdpLogEntryType
+from country_workspace.rdp.deduplication.biometric import remote as biometric_remote
 from country_workspace.rdp.exceptions import RdpWorkflowError
 from country_workspace.rdp.lifecycle import clean
 from country_workspace.rdp.policy import ActionCheck
@@ -40,18 +41,19 @@ def reviewed_rdp(people_rdp: tuple[Rdp, list[Individual]], mocker: MockerFixture
     ocr = OcrRdpOperationFactory(rdp=rdp, status=RdpOperation.Status.SUCCESS)
     OcrRdpOperationUnitFactory(operation=ocr, individual=individuals[0], status=RdpOperationUnit.Status.SUCCESS)
     OcrRdpOperationFindingFactory(operation=ocr, individual=individuals[0])
-    mocker.patch.object(clean, "retrieve_deduplication_set_state", return_value=DeduplicationSetState.DEDUPLICATED)
+    mocker.patch.object(
+        biometric_remote,
+        "retrieve_deduplication_set_state",
+        return_value=DeduplicationSetState.DEDUPLICATED,
+    )
     return rdp
 
 
 @pytest.mark.parametrize(
-    ("status", "operation_status", "state", "allowed"),
+    ("status", "allowed"),
     [
-        (Rdp.PushStatus.PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.DEDUPLICATED, False),
-        (Rdp.PushStatus.REVIEW_PENDING, None, None, True),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.FAILURE, DeduplicationSetState.DEDUPLICATED, False),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.READY, False),
-        (Rdp.PushStatus.REVIEW_PENDING, RdpOperation.Status.SUCCESS, DeduplicationSetState.DEDUPLICATED, True),
+        (Rdp.PushStatus.PENDING, False),
+        (Rdp.PushStatus.REVIEW_PENDING, True),
     ],
 )
 def test_clean_rdp_check(
@@ -59,42 +61,45 @@ def test_clean_rdp_check(
     biometric_operation: RdpOperation,
     mocker: MockerFixture,
     status: Rdp.PushStatus,
-    operation_status: RdpOperation.Status | None,
-    state: DeduplicationSetState | None,
     allowed: bool,
 ) -> None:
     rdp.status = status
-    operation = biometric_operation if operation_status is not None else None
-    if operation_status is not None:
-        biometric_operation.status = operation_status
-    mocker.patch.object(clean, "biometric_operation_for_rdp", return_value=operation)
-    retrieve = mocker.patch.object(clean, "retrieve_deduplication_set_state", return_value=state)
+    check_deduplication = mocker.patch.object(
+        clean,
+        "check_clean_rdp_deduplication",
+        return_value=(ActionCheck(True), (biometric_operation,)),
+    )
 
-    check, result = clean._clean_rdp_check(rdp)
+    check, operations = clean._clean_rdp_check(rdp)
 
     assert check.allowed is allowed
-    assert result is (operation if allowed else None)
-    if status != Rdp.PushStatus.REVIEW_PENDING or operation_status != RdpOperation.Status.SUCCESS:
-        retrieve.assert_not_called()
+    assert operations == ((biometric_operation,) if allowed else ())
+    assert check_deduplication.called is allowed
+
+
+def test_clean_rdp_check_returns_deduplication_denial(rdp: Rdp, mocker: MockerFixture) -> None:
+    rdp.status = Rdp.PushStatus.REVIEW_PENDING
+    denied = ActionCheck(False, "wrong state")
+    mocker.patch.object(clean, "check_clean_rdp_deduplication", return_value=(denied, ()))
+
+    assert clean._clean_rdp_check(rdp) == (denied, ())
 
 
 def test_clean_rdp_check_during_program_cleanup(review_pending_rdp: Rdp, mocker: MockerFixture) -> None:
     review_pending_rdp.program.cleanup_in_progress = True
-    operation = mocker.patch.object(clean, "biometric_operation_for_rdp")
-    retrieve = mocker.patch.object(clean, "retrieve_deduplication_set_state")
+    check_deduplication = mocker.patch.object(clean, "check_clean_rdp_deduplication")
 
-    check, result = clean._clean_rdp_check(review_pending_rdp)
+    check, operations = clean._clean_rdp_check(review_pending_rdp)
 
     assert check.allowed is False
     assert "cleanup" in (check.reason or "")
-    assert result is None
-    operation.assert_not_called()
-    retrieve.assert_not_called()
+    assert operations == ()
+    check_deduplication.assert_not_called()
 
 
 def test_create_clean_rdp_rejects_failed_check(review_pending_rdp: Rdp, mocker: MockerFixture) -> None:
     check = ActionCheck(False, "blocked")
-    mocker.patch.object(clean, "_clean_rdp_check", return_value=(check, None))
+    mocker.patch.object(clean, "_clean_rdp_check", return_value=(check, ()))
 
     assert clean.create_clean_rdp(review_pending_rdp.pk, user_id=1, clean_operation_ids=set()) == (check, None)
 
@@ -205,7 +210,7 @@ def test_create_clean_rdp(reviewed_rdp: Rdp, mocker: MockerFixture, with_biometr
         reject.assert_called_once_with(
             rdp=reviewed_rdp,
             user_id=reviewed_rdp.pushed_by_id,
-            deduplication_set_id=str(biometric.pk),
+            operation_ids=frozenset({biometric.pk}),
             clean_rdp_id=result.pk,
         )
         schedule.assert_not_called()
@@ -238,3 +243,35 @@ def test_create_clean_rdp_converts_integrity_error(reviewed_rdp: Rdp, mocker: Mo
 
     reviewed_rdp.refresh_from_db()
     assert reviewed_rdp.status == Rdp.PushStatus.REVIEW_PENDING
+
+
+def test_create_clean_rdp_rejects_every_deduplication_operation(
+    reviewed_rdp: Rdp,
+    mocker: MockerFixture,
+) -> None:
+    from testutils.factories import BiographicRdpOperationFactory
+
+    biographic = BiographicRdpOperationFactory(rdp=reviewed_rdp, status=RdpOperation.Status.SUCCESS)
+    biometric = reviewed_rdp.operations.get(operation_type=RdpOperation.Type.BIOMETRIC_DEDUPLICATION)
+    mocker.patch.object(
+        clean,
+        "check_clean_rdp_deduplication",
+        return_value=(ActionCheck(True), (biographic, biometric)),
+    )
+    mocker.patch.object(clean, "deduplication_operations_for_rdp", return_value=[biographic, biometric])
+    reject = mocker.patch.object(clean, "schedule_cancelled_rdp_set_rejection", return_value=mocker.Mock(pk=456))
+    ocr = reviewed_rdp.operations.get(operation_type=RdpOperation.Type.OCR)
+
+    check, result = clean.create_clean_rdp(
+        reviewed_rdp.pk,
+        user_id=reviewed_rdp.pushed_by_id,
+        clean_operation_ids={ocr.pk},
+    )
+
+    assert check.allowed is True
+    reject.assert_called_once_with(
+        rdp=reviewed_rdp,
+        user_id=reviewed_rdp.pushed_by_id,
+        operation_ids=frozenset({biographic.pk, biometric.pk}),
+        clean_rdp_id=result.pk,
+    )

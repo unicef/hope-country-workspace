@@ -2,14 +2,14 @@
 {% load i18n workspace_urls %}
 {% block page-title %}
     &rsaquo; {{ original }}{% admin_url original %}
-    &rsaquo; {% translate "Update deduplication settings" %}
+    &rsaquo; {% translate "Update biometric deduplication settings" %}
 {% endblock page-title %}
 {% block content %}
     <div id="content">
         <div id="content-main">
             <div class="block px-5">
                 <h1 class="block text-2xl mb-5">
-                    {% translate "Update deduplication settings" %}
+                    {% translate "Update biometric deduplication settings" %}
                 </h1>
                 <form method="post" id="dedup-settings-form" novalidate>
                     {% csrf_token %}

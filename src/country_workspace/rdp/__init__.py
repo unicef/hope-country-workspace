@@ -1,9 +1,10 @@
+from .deduplication.biographic.repository import qs_biographic_affected_individuals
+from .deduplication.biometric.policy import get_program_dedup_settings_policy
+from .deduplication.biometric.repository import qs_biometric_affected_individuals
 from .deduplication.constants import DEDUP_CALLBACK_MAX_AGE, DEDUP_CALLBACK_SALT
-from .deduplication.policy import get_program_dedup_settings_policy
-from .deduplication.repository import qs_biometric_affected_individuals
-from .deduplication.workflow import sync_biometric_deduplication_result
+from .deduplication.workflow import sync_deduplication_result
 from .exceptions import RdpWorkflowError
-from .forms import CleanRdpForm, RdpFindingsFilterForm
+from .forms import CleanRdpForm, RdpFindingsFilterForm, RdpOperationSelectionForm
 from .lifecycle.cancellation import cancel_rdp
 from .lifecycle.clean import create_clean_rdp
 from .lifecycle.creation import create_rdp_core, rdp_name_default
@@ -12,6 +13,7 @@ from .ocr.repository import ocr_affected_individuals_count
 from .ocr.workflow import handle_ocr_result
 from .operations.definitions import (
     RDP_OPERATION_DEFINITIONS,
+    get_enabled_rdp_operation_definitions,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
 )
@@ -39,6 +41,7 @@ __all__ = [
     "CreateRdpConfig",
     "RdpActionPolicy",
     "RdpFindingsFilterForm",
+    "RdpOperationSelectionForm",
     "RdpWorkflowError",
     "cancel_rdp",
     "claim_review_rdp_push",
@@ -46,6 +49,7 @@ __all__ = [
     "create_rdp_core",
     "exceeded_operation_thresholds",
     "fail_stuck_rdp_push",
+    "get_enabled_rdp_operation_definitions",
     "get_program_dedup_settings_policy",
     "get_push_policy",
     "get_rdp_operation_forms",
@@ -56,6 +60,7 @@ __all__ = [
     "has_retryable_rdp_operations",
     "latest_operation_findings_by_individual",
     "ocr_affected_individuals_count",
+    "qs_biographic_affected_individuals",
     "qs_biometric_affected_individuals",
     "qs_individuals_with_latest_operation_findings",
     "qs_individuals_with_rdp_findings",
@@ -64,5 +69,5 @@ __all__ = [
     "reset_rdp",
     "retry_rdp_operations",
     "retry_rdp_push",
-    "sync_biometric_deduplication_result",
+    "sync_deduplication_result",
 ]

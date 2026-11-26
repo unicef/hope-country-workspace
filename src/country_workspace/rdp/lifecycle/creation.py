@@ -52,6 +52,26 @@ def schedule_rdp_processing(*, rdp: Rdp) -> None:
         schedule_rdp_push_evaluation(rdp=rdp)
 
 
+def _validate_selected_cw_operations(*, program: Program, config: CreateRdpConfig) -> None:
+    """Reject selected CW-managed operations disabled for the program."""
+    from country_workspace.rdp.operations.definitions import (
+        RDP_OPERATION_DEFINITIONS,
+        get_enabled_rdp_operation_definitions,
+    )
+
+    selected = {operation["operation_type"] for operation in config["operations"]}
+    enabled = {definition.operation_type.value for definition in get_enabled_rdp_operation_definitions(program)}
+    disabled = sorted(
+        operation_type
+        for operation_type in selected - enabled
+        if (definition := RDP_OPERATION_DEFINITIONS.get(operation_type)) is not None and definition.is_cw_managed
+    )
+    if disabled:
+        raise RdpWorkflowError(
+            {"errors": [f"RDP: selected operations are disabled for this program: {', '.join(disabled)}."]}
+        )
+
+
 def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
     """Create an RDP and schedule its processing."""
     config: CreateRdpConfig = job.config
@@ -62,6 +82,8 @@ def create_rdp_core(job: AsyncJob) -> dict[str, Any]:
             program = Program.objects.select_for_update().get(pk=config["program_id"])
             if program.cleanup_in_progress:
                 raise RdpWorkflowError({"errors": ["Program cleanup is in progress."]})
+
+            _validate_selected_cw_operations(program=program, config=config)
 
             rdp = create_rdp(config=config)
             AsyncJob.objects.filter(id=job.id).update(rdp=rdp)

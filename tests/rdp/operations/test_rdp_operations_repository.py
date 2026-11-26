@@ -586,3 +586,41 @@ def test_record_rdp_operation_error_ignores_inactive_operation(
 
     running_ocr_operation.refresh_from_db()
     assert running_ocr_operation.status == RdpOperation.Status.RUNNING
+
+
+@pytest.mark.parametrize("master_detail", [True, False], ids=["households", "people"])
+def test_latest_clean_biographic_operation_clears_only_members_findings(
+    successful_biographic_operation: RdpOperation,
+    master_detail: bool,
+) -> None:
+    from testutils.factories import (
+        BiographicRdpOperationFactory,
+        BiographicRdpOperationFindingFactory,
+        HouseholdFactory,
+        IndividualFactory,
+        RdpFactory,
+    )
+
+    rdp = successful_biographic_operation.rdp
+    program = rdp.program
+    rdp.status = Rdp.PushStatus.SUCCESS
+    rdp.save(update_fields=["status"])
+    program.beneficiary_group.master_detail = master_detail
+    program.beneficiary_group.save(update_fields=["master_detail"])
+    households = HouseholdFactory.create_batch(2, batch__program=program, individuals=[])
+    first, second = (IndividualFactory(household=household) for household in households)
+    duplicate = BiographicRdpOperationFindingFactory(
+        operation=successful_biographic_operation,
+        individual=first,
+        related_individual=second,
+    )
+    newer = RdpFactory(program=program, status=Rdp.PushStatus.SUCCESS)
+    Rdp.objects.filter(pk=newer.pk).update(push_date=rdp.push_date)
+    BiographicRdpOperationFactory(rdp=newer, status=RdpOperation.Status.SUCCESS)
+    if master_detail:
+        newer.households.add(first.household)
+    else:
+        newer.individuals.add(first)
+
+    expected = {second.pk: [RdpOperationFindingsSummary(duplicate.operation, frozenset({duplicate.pk}))]}
+    assert latest_operation_findings_by_individual(program=program, individual_ids=[first.pk, second.pk]) == expected

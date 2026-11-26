@@ -1,4 +1,5 @@
 nav:
   - Overview: index.md
   - OCR: ocr.md
-  - Biometric deduplication: deduplication.md
+  - Biometric deduplication: biometric-deduplication.md
+  - Biographic deduplication: biographic-deduplication.md

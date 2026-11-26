@@ -126,6 +126,13 @@ class Program(BaseModel):
         default=False,
         help_text="Is biometric deduplication enabled for this program?",
     )
+    enabled_rdp_operations = models.JSONField(
+        default=None,
+        null=True,
+        blank=True,
+        editable=False,
+        help_text=_("Enabled CW-managed RDP operations."),
+    )
     cleanup_in_progress = models.BooleanField(
         default=False,
         editable=False,

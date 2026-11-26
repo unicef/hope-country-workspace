@@ -18,15 +18,20 @@ Select the beneficiary records and choose **Create RDP**.
 
 The optional **Batch name** becomes the RDP name. If it is left blank, Country Workspace generates a name in the form `RDP YYYY-MM-DD HH:MM:SS`.
 
-The creation page also shows configuration for the **[RDP operations](operations/index.md)** enabled for the Program. **[OCR](operations/ocr.md)** is always configured; **[biometric deduplication](operations/deduplication.md)** is included when it is enabled for the Program.
+The creation page shows only the **[RDP operations](operations/index.md)** enabled for the [Program](../program.md). All available operations are selected by default.
 
-Each operation has its own review threshold, configured as **Number of findings** or **Findings rate**. The rate denominator depends on the operation.
+- **[OCR](operations/ocr.md)** and **[biographic deduplication](operations/biographic-deduplication.md)** can be deselected for the RDP without changing the Program configuration.
+- **[Biometric deduplication](operations/biometric-deduplication.md)** is mandatory when enabled by HOPE and cannot be deselected.
+
+If no operations are available, the Operations section is not displayed. If biometric deduplication is not enabled, the RDP can be created without any operations.
+
+Each selected operation has its own review threshold, configured as **Max number of findings** or **Max findings rate (%)**. The rate calculation depends on the operation. Threshold inputs are disabled for deselected operations.
 
 See the operation-specific pages for threshold details and **[Review and Clean RDP](review.md)** for how thresholds affect the workflow.
 
 ## Create the RDP
 
-After the configuration is submitted, Country Workspace schedules RDP creation. The background job validates the selection before saving the RDP.
+After the configuration is submitted, Country Workspace schedules RDP creation. The background job validates the beneficiary selection and checks that the selected CW-managed operations are still enabled for the Program before saving the RDP.
 
 ```mermaid
 flowchart LR
@@ -36,10 +41,12 @@ flowchart LR
         --> D{Creation checks pass?}
     D -->|No| E[Creation fails]
     D -->|Yes| F[Create RDP<br/>PENDING]
-    F --> G[Start RDP operations]
+    F --> G{Any operations selected?}
+    G -->|Yes| H[Start RDP operations]
+    G -->|No| I[Evaluate RDP for push]
 ```
 
-If the checks succeed, Country Workspace creates the RDP in `PENDING`, links the selected beneficiaries, creates its configured operations, and starts processing automatically.
+If the checks succeed, Country Workspace creates the RDP in `PENDING`, links the selected beneficiaries, creates only the selected operations, and starts processing automatically.
 
 If a check fails, the RDP is not created and the failure is recorded in the background job.
 
@@ -47,6 +54,8 @@ If a check fails, the RDP is not created and the failure is recorded in the back
 
 Configured operations run independently while the RDP remains `PENDING`.
 
-After all operations complete successfully, Country Workspace evaluates their review thresholds. The RDP then either continues automatically toward the **[HOPE Core push](push.md)** or moves to `REVIEW_PENDING`.
+After all configured operations complete successfully, Country Workspace evaluates their review thresholds. The RDP then either continues automatically toward the **[HOPE Core push](push.md)** or moves to `REVIEW_PENDING`.
+
+An RDP without operations proceeds directly to push evaluation and continues automatically toward the HOPE Core push without manual review. The usual push preflight checks still apply.
 
 See **[RDP operations](operations/index.md)** for operation processing, **[Review and Clean RDP](review.md)** for manual review, and **[Lifecycle and statuses](lifecycle.md)** for the complete state flow.

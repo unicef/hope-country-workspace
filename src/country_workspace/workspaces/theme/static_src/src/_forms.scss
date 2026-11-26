@@ -61,7 +61,7 @@ a.closelink {
 .submit-row {
   @apply mt-5 flex flex-wrap items-center justify-end gap-2;
 
-  > * {
+  >* {
     order: 2;
   }
 
@@ -124,7 +124,7 @@ fieldset.module {
       &:has(textarea, select[multiple], ul, .readonly) {
         align-items: flex-start;
 
-        > label {
+        >label {
           padding-top: 4px;
         }
       }
@@ -160,7 +160,7 @@ fieldset.module {
         padding: 0;
       }
 
-      + .helptext {
+      +.helptext {
         padding-left: 27px;
       }
     }
@@ -179,6 +179,21 @@ fieldset.module {
     }
   }
 
+  &.checkbox-list>.form-row {
+    padding-block: 0;
+
+    &:not(:last-child) {
+      border-bottom: 0;
+    }
+
+    label:has(> input[type="checkbox"]) {
+      @apply checkbox-label;
+      width: auto;
+      min-width: 0;
+      min-height: 40px;
+      padding: 0;
+    }
+  }
 }
 
 .beneficiary-form {

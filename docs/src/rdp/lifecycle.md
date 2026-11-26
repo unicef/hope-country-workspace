@@ -48,7 +48,7 @@ A newly created RDP starts in `PENDING` while Country Workspace runs its configu
 
 An operation failure does not change the RDP to `FAILURE`; the RDP remains `PENDING`. Failed or otherwise recoverable operations can use **Retry operations**.
 
-After all configured operations complete successfully, Country Workspace evaluates their review thresholds. If no threshold is exceeded, the RDP moves to `PUSH_PENDING` and the HOPE Core push starts automatically. Otherwise, it moves to `REVIEW_PENDING`.
+After all configured operations complete successfully, Country Workspace evaluates their review thresholds. If no threshold is exceeded, the RDP moves to `PUSH_PENDING` and the HOPE Core push starts automatically. Otherwise, it moves to `REVIEW_PENDING`. An RDP without operations proceeds directly to push evaluation and does not require manual review.
 
 From `REVIEW_PENDING`, the user can **Push all to HOPE**, **Create clean RDP**, or **Cancel RDP**. See **[Review and Clean RDP](review.md)** for the complete review flow.
 
@@ -78,9 +78,9 @@ See **[Retry a failed push](push.md#retry-a-failed-push)** and **[Troubleshootin
 
 **Cancel RDP** is available for RDPs in `PENDING`, `REVIEW_PENDING`, or `FAILURE`.
 
-Cancellation is blocked while an RDP operation is `RUNNING`. For biometric RDPs, Country Workspace must also verify that the associated Deduplication Set can be safely handled; cancellation fails if its state cannot be handled or verified. When cancellation succeeds, the set is rejected when required. If the RDP is linked to a HOPE RDI, Country Workspace asks the user to confirm that the RDI has been deleted manually in HOPE before cancellation continues. Operations that have not started yet do not block cancellation.
+Cancellation is blocked while an RDP operation is `RUNNING`. For biometric and biographic RDPs, Country Workspace must also verify that the associated DedupEngine set can be safely handled; cancellation fails if its state cannot be handled or verified. When cancellation succeeds, the set is rejected when required. If the RDP is linked to a HOPE RDI, Country Workspace asks the user to confirm that the RDI has been deleted manually in HOPE before cancellation continues. Operations that have not started yet do not block cancellation.
 
-Cancellation from `REVIEW_PENDING` is one of the **[review decisions](review.md#review-decisions)**. See **[Biometric deduplication](operations/deduplication.md#deduplication-set-lifecycle)** for DedupEngine cleanup.
+Cancellation from `REVIEW_PENDING` is one of the **[review decisions](review.md#review-decisions)**. See **[Biometric deduplication](operations/biometric-deduplication.md#deduplication-set-lifecycle)** and **[Biographic deduplication](operations/biographic-deduplication.md#dataset-lifecycle)** for DedupEngine cleanup.
 
 ## Staff Reset
 

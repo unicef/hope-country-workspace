@@ -6,9 +6,30 @@ from django import forms
 from django.http import QueryDict
 from django.utils.translation import gettext_lazy as _
 
-from country_workspace.models import Household, Individual, RdpOperation
+from country_workspace.models import Household, Individual, Program, RdpOperation
 
 from .types import OperationLogResult, ThresholdType
+
+
+class RdpOperationSelectionForm(forms.Form):
+    rdp_operations = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args: Any, program: Program, **kwargs: Any) -> None:
+        from .operations.definitions import get_enabled_rdp_operation_definitions
+
+        super().__init__(*args, **kwargs)
+
+        choices = {
+            definition.operation_type.value: definition.operation_type.label
+            for definition in get_enabled_rdp_operation_definitions(program)
+            if definition.is_cw_managed
+        }
+        field = cast("forms.MultipleChoiceField", self.fields["rdp_operations"])
+        field.choices = choices
+        self.initial["rdp_operations"] = list(choices)
 
 
 class ThresholdConfigForm(forms.Form):
@@ -32,8 +53,8 @@ class ThresholdConfigForm(forms.Form):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fields["threshold_type"].choices = (
-            (ThresholdType.COUNT, "Number of findings"),
-            (ThresholdType.RATE, "Findings rate"),
+            (ThresholdType.COUNT, "Max number of findings"),
+            (ThresholdType.RATE, "Max findings rate (%)"),
         )
 
     def clean(self) -> dict[str, object]:

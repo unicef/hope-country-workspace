@@ -2,19 +2,19 @@
 
 Biometric deduplication checks beneficiary photos for duplicate people and image-related problems before an **[RDP](../index.md)** can be pushed to HOPE Core.
 
-It runs as an **[RDP operation](index.md)** when biometric deduplication is enabled for the selected Program.
+It runs as a mandatory **[RDP operation](index.md)** when biometric deduplication is enabled by HOPE for the selected Program.
 
 ## Configuration
 
-When creating an RDP, Country Workspace shows biometric deduplication settings for Programs where this operation is enabled.
+When creating an RDP, Country Workspace shows the biometric review threshold for Programs where this operation is enabled. The operation is selected and cannot be deselected.
 
-The biometric findings threshold can be configured as **Number of findings** or **Findings rate**. The rate is calculated per 100 Individuals represented by the RDP. For household-based Programs, this means actual Household members; external collectors are not included.
+The biometric findings threshold can be configured as **Max number of findings** or **Max findings rate (%)**. The rate is calculated per 100 Individuals represented by the RDP. For household-based Programs, this means actual Household members; external collectors are not included.
 
 See **[Create an RDP](../create.md)** for the RDP creation flow and **[Review and Clean RDP](../review.md)** for threshold-based review.
 
 ## Processing
 
-Biometric deduplication starts automatically after the RDP is created.
+When enabled, biometric deduplication starts automatically after the RDP is created.
 
 Country Workspace checks for beneficiary photos, creates or resumes the corresponding Deduplication Set in DedupEngine, uploads the available photos, and starts processing.
 

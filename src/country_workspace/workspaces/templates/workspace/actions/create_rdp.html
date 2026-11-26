@@ -1,5 +1,5 @@
 {% extends "workspace/actions/base.html" %}
-{% load i18n workspace_urls %}
+{% load i18n static workspace_urls %}
 {% block action-content %}
     <div class="max-w-4xl">
         <p class="mb-6 text-lg text-gray-700">
@@ -19,6 +19,7 @@
                     </table>
                 </div>
             </section>
+            {{ operation_selection_form.rdp_operations.errors }}
             {% if operation_forms %}
                 <div class="mt-6 mb-3">
                     <h2 class="text-xl font-semibold">
@@ -34,10 +35,23 @@
                             <section class="overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
                                 <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
                                     <h3 class="text-lg font-semibold">
-                                        {{ definition.operation_type.label }}
+                                        {% if definition.is_cw_managed %}
+                                            {% for option in operation_selection_form.rdp_operations %}
+                                                {% if option.data.value == definition.operation_type.value %}
+                                                    <label for="{{ option.id_for_label }}">
+                                                        {{ option.tag }}{{ option.choice_label }}
+                                                    </label>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            <label>
+                                                <input type="checkbox" value="{{ definition.operation_type.value }}" checked disabled />
+                                                {{ definition.operation_type.label }}
+                                            </label>
+                                        {% endif %}
                                     </h3>
                                 </div>
-                                <div class="px-5 py-4">
+                                <fieldset class="px-5 py-4 min-w-0 border-0">
                                     {% for hidden in operation_form.hidden_fields %}
                                         {{ hidden }}
                                     {% endfor %}
@@ -86,7 +100,7 @@
                                             </td>
                                         </tr>
                                     </table>
-                                </div>
+                                </fieldset>
                             </section>
                         {% endwith %}
                     {% endfor %}
@@ -100,4 +114,5 @@
             </div>
         </form>
     </div>
+    <script src="{% static 'workspace/js/create_rdp.js' %}" defer></script>
 {% endblock action-content %}

@@ -1,6 +1,6 @@
 import pytest
 
-from country_workspace.rdp.deduplication.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
 from country_workspace.rdp.types import ThresholdType
 
 

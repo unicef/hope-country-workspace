@@ -9,6 +9,7 @@ from strategy_field.utils import fqn
 from country_workspace.workspaces.admin.forms import BulkUpdateExportForm, CreateRDPForm
 from country_workspace.rdp import (
     CreateRdpConfig,
+    RdpOperationSelectionForm,
     create_rdp_core,
     get_rdp_operation_forms,
     get_validated_rdp_operation_configs,
@@ -277,11 +278,18 @@ def create_rdp(
             "_selected_action": _post_selected_actions(request),
         },
     )
-    operation_forms = get_rdp_operation_forms(program=program, data=data)
+    operation_selection_form = RdpOperationSelectionForm(data, program=program)
+    operation_forms = get_rdp_operation_forms(
+        program=program,
+        data=data,
+        selected_operations=operation_selection_form["rdp_operations"].value() or (),
+    )
 
     if is_create:
-        operation_configs = get_validated_rdp_operation_configs(operation_forms)
-        if form.is_valid() and operation_configs is not None:
+        operation_configs = get_validated_rdp_operation_configs(
+            [(definition, operation_form) for definition, operation_form in operation_forms if operation_form.is_bound]
+        )
+        if form.is_valid() and operation_selection_form.is_valid() and operation_configs is not None:
             config: CreateRdpConfig = {
                 "pks": list(selected_pks),
                 "master_detail": master_detail,
@@ -303,7 +311,11 @@ def create_rdp(
             return redirect("workspace:workspaces_countryrdp_changelist")
 
     ctx = model_admin.get_common_context(
-        request, title=create_rdp.short_description, form=form, operation_forms=operation_forms
+        request,
+        title=create_rdp.short_description,
+        form=form,
+        operation_selection_form=operation_selection_form,
+        operation_forms=operation_forms,
     )
     return render(request, "workspace/actions/create_rdp.html", ctx)
 
