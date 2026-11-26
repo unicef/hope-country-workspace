@@ -1,8 +1,8 @@
 # Biographic deduplication
 
-Biographic deduplication compares beneficiary personal data (names, birth date, phone numbers and similar) to find people who are likely the same person. It runs before an **[RDP](../index.md)** can be pushed to HOPE Core.
+Biographic deduplication compares beneficiary personal data (names, birth date, phone numbers and similar) to find people who are likely the same person. It runs before an **[RDP](../index.md)** is pushed to HOPE Core.
 
-It runs as an **[RDP operation](index.md)** for every Program, like OCR, and alongside **[biometric deduplication](deduplication.md)** where that is enabled; both use the same DedupEngine connection and the same RDP lifecycle.
+It runs as an **[RDP operation](index.md)** when selected for an RDP and uses the same DedupEngine connection and RDP lifecycle as **[biometric deduplication](biometric-deduplication.md)**.
 
 ## Requirements
 
@@ -11,9 +11,9 @@ It runs as an **[RDP operation](index.md)** for every Program, like OCR, and alo
 
 ## Configuration
 
-When creating an RDP, Country Workspace shows the biographic deduplication settings for every Program.
+Biographic deduplication is enabled by default in the **[Program configuration](../../program.md#rdp-operations)**. When enabled, it is selected by default during RDP creation but can be deselected.
 
-The biographic findings threshold can be configured as **Number of findings** or **Findings rate**. Unlike the other operations, it counts **Individuals with duplicates**: when two people match each other, DedupEngine reports the pair from both sides, but each person is counted once. The rate is calculated per 100 Individuals represented by the RDP. The default is `0`.
+The biographic findings threshold can be configured as **Max number of findings** or **Max findings rate (%)**. Unlike the other operations, it counts **Individuals with duplicates**: when two people match each other, DedupEngine reports the pair from both sides, but each person is counted once. The rate is calculated per 100 Individuals represented by the RDP. The default is `0`.
 
 The matching sensitivity (duplicate score and maximum hits) is configured in DedupEngine, not in Country Workspace.
 
@@ -38,7 +38,7 @@ External collectors are not included in biographic deduplication.
 
 ## Processing
 
-Biographic deduplication starts automatically after the RDP is created.
+When selected, biographic deduplication starts automatically after the RDP is created.
 
 Country Workspace creates (or resumes) a DedupEngine dataset for the operation, uploads the Individuals in batches and starts processing. Like a biometric deduplication set, the dataset is identified by the ID of the operation: Country Workspace assigns it when creating the dataset and shows it as **Dataset ID**. Because the ID is known before DedupEngine is contacted, a retry or a recovery finds the dataset that an earlier attempt created instead of creating another one. Re-sending an Individual replaces its previous record, so an interrupted upload is safe to resume.
 

@@ -3,10 +3,16 @@ from typing import TYPE_CHECKING
 import pytest
 from django.urls import reverse
 from django.conf import LazySettings
+from django.test import Client
+from pyquery import PyQuery
+from pytest_mock import MockerFixture
 
+from testutils.perms import user_grant_permissions
 from testutils.utils import select_office
 
+from country_workspace.models import Rdp, RdpOperation, User
 from country_workspace.state import state
+from country_workspace.workspaces.admin.program import CountryProgramAdmin
 
 if TYPE_CHECKING:
     from django_webtest import DjangoTestApp
@@ -406,3 +412,146 @@ def test_program_action_pages_have_no_header_actions(app, household: "CountryHou
 
     assert res.status_code == 200
     assert not res.pyquery(".title-actions .object-tools")
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [None, [RdpOperation.Type.OCR], []],
+    ids=["defaults", "explicit", "empty"],
+)
+def test_configure_rdp_operations(
+    app: "DjangoTestApp",
+    program: "CountryProgram",
+    selection: list[str] | None,
+) -> None:
+    default_operations = {RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR}
+    selector = 'input[name="rdp_operations"]'
+
+    with select_office(app, program.country_office, program):
+        url = program.get_change_url()
+        res = app.get(url)
+
+        assert {el.get("value") for el in res.pyquery(selector)} == default_operations
+        assert {el.get("value") for el in res.pyquery(f"{selector}[checked]")} == default_operations
+        assert not res.pyquery(f"{selector}[disabled]")
+
+        form = res.forms["countryprogram_form"]
+        form["alien_validation_enabled"] = False
+        data = form.submit_fields("_save")
+        if selection is not None:
+            data = [(name, value) for name, value in data if name != "rdp_operations"]
+            data.extend(("rdp_operations", operation) for operation in selection)
+
+        assert app.post(url, data).status_code == 302
+
+        program.refresh_from_db()
+        assert program.enabled_rdp_operations == selection
+        assert not program.alien_validation_enabled
+
+        res = app.get(url)
+        expected = default_operations if selection is None else set(selection)
+        assert {el.get("value") for el in res.pyquery(f"{selector}[checked]")} == expected
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_program_biometric_operation_display(
+    app: "DjangoTestApp",
+    program: "CountryProgram",
+    mocker: MockerFixture,
+    enabled: bool,
+) -> None:
+    program.biometric_deduplication_enabled = enabled
+    program.save(update_fields=["biometric_deduplication_enabled"])
+    mocker.patch.object(CountryProgramAdmin, "_get_dedup_settings", return_value={})
+
+    with select_office(app, program.country_office, program):
+        res = app.get(program.get_change_url())
+
+    checkbox = res.pyquery(
+        f'input[name="non_cw_managed_rdp_operations"][value="{RdpOperation.Type.BIOMETRIC_DEDUPLICATION}"]'
+    )
+
+    assert bool(checkbox) is enabled
+    if enabled:
+        assert checkbox.is_("[checked][disabled]")
+
+
+@pytest.mark.parametrize("status", list(Rdp.PushStatus))
+def test_rdp_operations_locked_after_rdp_creation(
+    app: "DjangoTestApp",
+    program: "CountryProgram",
+    status: Rdp.PushStatus,
+) -> None:
+    from testutils.factories import RdpFactory
+
+    program.enabled_rdp_operations = [RdpOperation.Type.OCR]
+    program.save(update_fields=["enabled_rdp_operations"])
+    RdpFactory(program=program, status=status)
+
+    with select_office(app, program.country_office, program):
+        url = program.get_change_url()
+        res = app.get(url)
+
+        selector = 'input[name="rdp_operations"]'
+        assert {el.get("value") for el in res.pyquery(f"{selector}[disabled]")} == {
+            RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+            RdpOperation.Type.OCR,
+        }
+        assert {el.get("value") for el in res.pyquery(f"{selector}[checked]")} == {RdpOperation.Type.OCR}
+
+        form = res.forms["countryprogram_form"]
+        form["alien_validation_enabled"] = False
+        data = [(name, value) for name, value in form.submit_fields("_save") if name != "rdp_operations"]
+        data.append(("rdp_operations", RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION))
+
+        assert app.post(url, data).status_code == 302
+
+    program.refresh_from_db()
+    assert program.enabled_rdp_operations == [RdpOperation.Type.OCR]
+    assert not program.alien_validation_enabled
+
+
+@pytest.mark.parametrize("operation_type", [RdpOperation.Type.BIOMETRIC_DEDUPLICATION, "UNKNOWN"])
+def test_configure_rdp_operations_rejects_invalid_operation(
+    app: "DjangoTestApp",
+    program: "CountryProgram",
+    operation_type: str,
+) -> None:
+    with select_office(app, program.country_office, program):
+        url = program.get_change_url()
+        form = app.get(url).forms["countryprogram_form"]
+        data = [(name, value) for name, value in form.submit_fields("_save") if name != "rdp_operations"]
+        data.append(("rdp_operations", operation_type))
+        response = app.post(url, data)
+
+    assert response.status_code == 200
+    assert response.pyquery(".field-rdp_operations .errorlist")
+
+    program.refresh_from_db()
+    assert program.enabled_rdp_operations is None
+
+
+def test_rdp_operations_readonly_for_view_only_user(
+    client: Client,
+    user: User,
+    program: "CountryProgram",
+) -> None:
+    client.force_login(user)
+
+    with user_grant_permissions(user, "workspaces.view_countryprogram", program):
+        client.post(reverse("workspace:select_tenant"), data={"tenant": program.country_office_id})
+
+        url = program.get_change_url()
+        response = client.get(url)
+
+        assert response.status_code == 200
+        checkboxes = PyQuery(response.content)('input[name="rdp_operations"]')
+        assert {el.get("value") for el in checkboxes} == {
+            RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+            RdpOperation.Type.OCR,
+        }
+        assert all("disabled" in el.attrib for el in checkboxes)
+        assert client.post(url, {"rdp_operations": RdpOperation.Type.OCR}).status_code == 403
+
+    program.refresh_from_db()
+    assert program.enabled_rdp_operations is None

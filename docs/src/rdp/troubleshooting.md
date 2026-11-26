@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Use the RDP **Operations** and **Processing history** sections to identify where processing stopped.
+Use the RDP **Operations** (when present) and **Processing history** sections to identify where processing stopped.
 
 For the normal workflow, see **[RDP processing flow](processing.md)** and **[Lifecycle and statuses](lifecycle.md)**.
 
@@ -8,8 +8,8 @@ For the normal workflow, see **[RDP processing flow](processing.md)** and **[Lif
 
 | Problem | What to check |
 | --- | --- |
-| RDP creation failed | Open the failed **Create RDP** job in **Processing history** and check the error. See **[Create an RDP](create.md)**. |
-| RDP remains `PENDING` | Check **Operations** first. Recover an available operation with **Retry operations**; if all operations are `SUCCESS`, check the push-evaluation job in **Processing history**. |
+| RDP creation failed | Check the failed **Create RDP** job. If a selected operation is no longer enabled for the Program, reopen **Create RDP** using the current configuration. See **[Create an RDP](create.md)**. |
+| RDP remains `PENDING` | Check **Operations** if present. Recover an available operation with **Retry operations**; if all configured operations are `SUCCESS` or the RDP has no operations, check the push-evaluation job in **Processing history**. |
 | Clean replacement RDP remains `PENDING` | With biometric or biographic deduplication, replacement operations start only after the source DedupEngine sets are rejected. Check the source RDP's **Processing history**. See **[Replacement RDP](review.md#replacement-rdp)**. |
 | RDP is `REVIEW_PENDING` | This is not a processing failure. See **[Review and Clean RDP](review.md)**. |
 | RDP is `FAILURE` | The push attempt failed. Check **Processing history**, resolve the cause, then use **Retry push to HOPE**. |
@@ -24,11 +24,11 @@ Check the operation status, error, and execution log in **Operations**. Use **Re
 
 For OCR, use **Processed** and **Last result** to see whether a `RUNNING` attempt is still receiving results. Restart a `RUNNING` attempt only when further results are no longer expected. Completed OCR work is preserved and stale results from the previous attempt are ignored. A `RUNNING` biometric or biographic operation should not be restarted because DedupEngine may still be processing it.
 
-See **[RDP operations](operations/index.md#operation-statuses)**, **[OCR recovery](operations/ocr.md#recovery)**, and **[Failed biometric operation](operations/deduplication.md#failed-biometric-operation)**.
+See **[RDP operations](operations/index.md#operation-statuses)**, **[OCR recovery](operations/ocr.md#recovery)**, and **[Failed biometric operation](operations/biometric-deduplication.md#failed-biometric-operation)**.
 
 ## Push evaluation failed
 
-After all configured operations reach `SUCCESS`, Country Workspace runs **Evaluate RDP for push** to determine whether review is required or the push can start.
+After all configured operations reach `SUCCESS`, or directly after creation if the RDP has no operations, Country Workspace runs **Evaluate RDP for push** to determine whether review is required or the push can start.
 
 If that job fails, the RDP remains `PENDING`. Open the failed job in **Processing history** and use **Queue** to run the repeatable evaluation again after the cause has been resolved.
 
@@ -58,4 +58,4 @@ For biometric and biographic RDPs, Country Workspace attempts to approve the Ded
 
 An approval failure does not change the RDP from `SUCCESS`; the beneficiary data has already been pushed successfully. Do not retry the HOPE push for this reason alone.
 
-See **[Deduplication Set lifecycle](operations/deduplication.md#deduplication-set-lifecycle)**.
+See **[Deduplication Set lifecycle](operations/biometric-deduplication.md#deduplication-set-lifecycle)**.

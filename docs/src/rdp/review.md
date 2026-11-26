@@ -18,7 +18,7 @@ flowchart TD
     G --> J[CANCELLED]
 ```
 
-See **[OCR](operations/ocr.md#review)**, **[Biometric deduplication](operations/deduplication.md#review)** and **[Biographic deduplication](operations/biographic-deduplication.md#review)** for operation-specific findings and threshold calculation.
+See **[OCR](operations/ocr.md#review)**, **[Biometric deduplication](operations/biometric-deduplication.md#review)** and **[Biographic deduplication](operations/biographic-deduplication.md#review)** for operation-specific findings and threshold calculation.
 
 ## Review decisions
 
@@ -42,7 +42,7 @@ For each exceeded operation, the user decides whether its findings should clean 
 
 | Selection | Replacement behavior |
 | --- | --- |
-| Checked | Beneficiaries affected by that operation's findings are excluded. Its replacement threshold becomes **Number of findings = 0**. |
+| Checked | Beneficiaries affected by that operation's findings are excluded. Its replacement threshold becomes **Max number of findings = 0**. |
 | Unchecked | The operation does not exclude beneficiaries by itself. Its replacement threshold becomes the number of findings that still apply after the selected cleanups. |
 
 Operations whose thresholds were not exceeded keep their original configuration.
@@ -55,7 +55,7 @@ Findings associated only with beneficiaries already removed by another selected 
 
 After the decisions are validated, the source RDP changes to `CANCELLED` and Country Workspace creates a new `PENDING` RDP from the remaining beneficiaries.
 
-The replacement RDP keeps all configured **[RDP operations](operations/index.md)** and runs them again using the adjusted review thresholds.
+The replacement RDP keeps all **[RDP operations](operations/index.md)** configured in the source RDP and runs them again using the adjusted review thresholds.
 
 For a selected operation, any new finding can require review again because its threshold is reset to `0`. For an unchecked exceeded operation, the adjusted threshold accepts the reviewed findings that still apply to the replacement selection, while additional findings can trigger review again.
 
@@ -69,7 +69,7 @@ flowchart LR
     E --> F[Run all configured operations again]
 ```
 
-If biometric or biographic deduplication is configured, Country Workspace also rejects the source **[Deduplication Set](operations/deduplication.md#deduplication-set-lifecycle)** and **[dataset](operations/biographic-deduplication.md#dataset-lifecycle)** before processing of the replacement RDP continues.
+If biometric or biographic deduplication is configured, Country Workspace also rejects the source **[Deduplication Set](operations/biometric-deduplication.md#deduplication-set-lifecycle)** and **[dataset](operations/biographic-deduplication.md#dataset-lifecycle)** before processing of the replacement RDP continues.
 
 Creation is blocked if no beneficiaries would remain, or if the operation results or beneficiary selection changed while the review decision was being made.
 

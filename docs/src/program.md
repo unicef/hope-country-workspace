@@ -6,7 +6,7 @@ Within the [Analyst / Collector Workspace](interfaces.md#analyst-collector-works
 
 ## What a Program defines
 
-A Program defines how beneficiary data is imported, validated, and displayed.
+A Program defines how beneficiary data is imported, validated, displayed, and processed before transfer to HOPE Core.
 
 ### Beneficiary structure
 
@@ -52,15 +52,26 @@ During import and reprocessing, matching fields are also removed before Transfor
 
 See **[Alien Fields](data_validation/alien_fields.md)** for configuration and processing details.
 
-### Deduplication settings
+### RDP operations
 
-For Programs with **Biometric deduplication enabled**, the Program page displays the current deduplication settings retrieved from DedupEngine in real time.
+The **RDP Operations** section on the Program page defines which **[RDP operations](rdp/operations/index.md)** are available when creating an RDP.
 
-**Biographic deduplication** is enabled for every Program and has no Program setting. Its matching sensitivity is configured in DedupEngine and is not shown on the Program page. See **[Biographic deduplication](rdp/operations/biographic-deduplication.md)**.
+- **[OCR](rdp/operations/ocr.md)** and **[biographic deduplication](rdp/operations/biographic-deduplication.md)** are enabled by default and can be disabled independently in Country Workspace.
+- **[Biometric deduplication](rdp/operations/biometric-deduplication.md)** is controlled by HOPE. When enabled, it is displayed as a checked, read-only checkbox.
 
-The settings are not stored in the Country Workspace database. When permitted by the current policy, they can be updated from Country Workspace, with changes applied directly to DedupEngine.
+Users with permission to change the Program can update the CW-managed operation configuration only while no RDP exists for the Program. Once any RDP exists, including a `CANCELLED` RDP, the operation checkboxes become read-only.
+
+See **[Create an RDP](rdp/create.md#configure-rdp-processing)** for operation selection and review thresholds.
+
+### Biometric deduplication settings
+
+For Programs with biometric deduplication enabled, the **Biometric Deduplication Settings** section displays the current deduplication settings retrieved from DedupEngine in real time.
+
+The settings are not stored in the Country Workspace database. When permitted by the current policy, use **Update Biometric Dedup Settings** to update them directly in DedupEngine.
 
 If DedupEngine is unavailable, the settings may be displayed as `N/A`.
+
+Biographic matching sensitivity is configured in DedupEngine and is not shown on the Program page. See **[Biographic deduplication](rdp/operations/biographic-deduplication.md)**.
 
 ## Start an import
 

@@ -265,23 +265,22 @@ def test_evaluate_rdp_for_push_waits_for_operations(
     assert result["outcome"] == Rdp.PushStatus.PENDING
 
 
-def test_evaluate_rdp_for_push_without_biometric_operation(
+def test_evaluate_rdp_for_push_without_operations(
     rdp: Rdp,
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch.object(workflow, "lock_rdp_for_update", return_value=rdp)
-    mocker.patch.object(workflow, "has_incomplete_rdp_operations", return_value=False)
-    mocker.patch.object(workflow, "biometric_operation_for_rdp", return_value=None)
-    append_log = mocker.patch.object(workflow, "append_rdp_log")
+    assert not rdp.operations.exists()
     schedule = mocker.patch.object(workflow, "_schedule_push_preparation")
 
     result = workflow.evaluate_rdp_for_push(rdp_id=rdp.pk)
 
+    rdp.refresh_from_db()
     assert result["evaluated"] is True
-    assert result["outcome"] == Rdp.PushStatus.PUSH_PENDING
-    assert "push_attempt_id" in result
-    assert append_log.call_args.kwargs["entry_type"] == RdpLogEntryType.PUSH_TO_HOPE
-    schedule.assert_called_once()
+    assert result["thresholds"] == {}
+    assert result["outcome"] == rdp.status == Rdp.PushStatus.PUSH_PENDING
+    assert rdp.push_attempt_id is not None
+    assert rdp.operation_log[-1]["action"] == RdpLogEntryType.PUSH_TO_HOPE
+    schedule.assert_called_once_with(rdp=rdp, user_id=rdp.pushed_by_id)
 
 
 def test_evaluate_rdp_for_push_propagates_threshold_error(

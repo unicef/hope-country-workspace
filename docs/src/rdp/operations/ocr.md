@@ -1,14 +1,14 @@
 # OCR
 
-OCR checks identity-document images before an **[RDP](../index.md)** can be pushed to HOPE Core.
+OCR checks identity-document images before an **[RDP](../index.md)** is pushed to HOPE Core.
 
-It runs as an **[RDP operation](index.md)** for every Program. Country Workspace sends document requests to Hope Documents through RabbitMQ and applies the returned results to the RDP operation.
+It runs as an **[RDP operation](index.md)** when selected for an RDP. Country Workspace sends document requests to Hope Documents through RabbitMQ and applies the returned results to the RDP operation.
 
 ## Configuration
 
-When creating an RDP, Country Workspace shows the OCR findings threshold.
+OCR is enabled by default in the **[Program configuration](../../program.md#rdp-operations)**. When enabled, it is selected by default during RDP creation but can be deselected.
 
-The threshold can be configured as **Number of findings** or **Findings rate**. The rate is calculated per 100 Individuals with an OCR document selected for the operation.
+The threshold can be configured as **Max number of findings** or **Max findings rate (%)**. The rate is calculated per 100 Individuals with documents selected for OCR.
 
 See **[Create an RDP](../create.md)** for the creation flow and **[Review and Clean RDP](../review.md)** for how thresholds affect the RDP.
 
@@ -22,7 +22,7 @@ Individuals without an eligible document are not included in OCR processing. For
 
 ## Processing
 
-OCR starts automatically as part of normal RDP processing.
+When selected, OCR starts automatically as part of normal RDP processing.
 
 ```mermaid
 sequenceDiagram

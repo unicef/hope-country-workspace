@@ -2,7 +2,7 @@
 
 Pushing an **[RDP](index.md)** transfers its beneficiary records from Country Workspace to HOPE Core as a Registration Data Import (RDI).
 
-The push starts automatically after all required **[RDP operations](operations/index.md)** succeed when no manual review is required. From `REVIEW_PENDING`, **Push all to HOPE** starts the same push flow after explicit approval.
+The push starts automatically after all configured **[RDP operations](operations/index.md)** succeed when no manual review is required, or when the RDP has no operations. From `REVIEW_PENDING`, **Push all to HOPE** starts the same push flow after explicit approval.
 
 See **[Review and Clean RDP](review.md)** for review decisions.
 
@@ -53,7 +53,7 @@ An RDP in `FAILURE` can be retried with **Retry push to HOPE** after the cause o
 
 Retry creates a new push attempt, returns the RDP to `PUSH_PENDING`, and repeats the HOPE preparation flow. Any previous RDI is handled before new beneficiary data is sent.
 
-All **[RDP operations](operations/index.md)** must have completed successfully before the push can be retried.
+All configured **[RDP operations](operations/index.md)** must have completed successfully before the push can be retried.
 
 See **[Recover a stuck push](lifecycle.md#recover-a-stuck-push)** if an active push remains in `PUSH_PENDING` and can no longer continue.
 
@@ -71,6 +71,6 @@ After a successful push, Country Workspace stores the HOPE RDI ID and changes th
 
 For household-based Programs, the selected Households and their members are marked as removed. For people-only Programs, the selected People are marked as removed.
 
-When **[biometric](operations/deduplication.md)** or **[biographic](operations/biographic-deduplication.md)** deduplication is configured, Country Workspace also attempts to approve the associated DedupEngine sets. An approval failure is recorded but does not change the RDP from `SUCCESS`.
+When **[biometric](operations/biometric-deduplication.md)** or **[biographic](operations/biographic-deduplication.md)** deduplication is configured, Country Workspace also attempts to approve the associated DedupEngine sets. An approval failure is recorded but does not change the RDP from `SUCCESS`.
 
 See **[Troubleshooting](troubleshooting.md)** if the push does not complete as expected.

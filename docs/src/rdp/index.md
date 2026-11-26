@@ -8,7 +8,9 @@ RDPs are managed within the selected **[Program](../program.md)** in the **[Anal
 
 ```mermaid
 flowchart LR
-    A[Create RDP] --> B[Run RDP operations]
+    A[Create RDP] --> J{Any operations selected?}
+    J -->|Yes| B[Run RDP operations]
+    J -->|No| D[Push to HOPE Core]
     B --> C{Review required?}
     C -->|No| D[Push to HOPE Core]
     C -->|Yes| E[REVIEW_PENDING]
@@ -25,7 +27,7 @@ Creating an RDP starts its processing automatically. Country Workspace runs the 
 
 If an operation threshold is exceeded, the RDP moves to `REVIEW_PENDING`. The user can then push all beneficiaries, create a clean replacement RDP, or cancel the RDP. See **[Review and Clean RDP](review.md)**.
 
-If review is not required, the RDP continues automatically to the **[HOPE Core push](push.md)**.
+If review is not required or the RDP has no operations, it continues automatically to the **[HOPE Core push](push.md)**.
 
 See **[Lifecycle and statuses](lifecycle.md)** for the complete state flow.
 
@@ -39,9 +41,9 @@ See **[Create an RDP](create.md)** for details.
 
 ## RDP operations
 
-Country Workspace currently supports **[OCR](operations/ocr.md)**, **[biometric deduplication](operations/deduplication.md)** and **[biographic deduplication](operations/biographic-deduplication.md)**.
+Country Workspace currently supports **[OCR](operations/ocr.md)**, **[biometric deduplication](operations/biometric-deduplication.md)** and **[biographic deduplication](operations/biographic-deduplication.md)**.
 
-OCR and biographic deduplication are enabled for every Program. Biometric deduplication runs when enabled in the Program configuration. Each operation has its own processing state, findings, recovery, and review threshold.
+OCR and biographic deduplication are enabled by default and can be configured in the [Program](../program.md). Biometric deduplication is controlled by HOPE and is mandatory when enabled. Available CW-managed operations can be deselected when creating an RDP. Each operation has its own processing state, findings, recovery, and review threshold.
 
 See **[RDP operations](operations/index.md)** for the common operation lifecycle.
 

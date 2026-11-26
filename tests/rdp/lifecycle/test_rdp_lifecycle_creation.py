@@ -1,109 +1,155 @@
-import pytest
-from django.db import IntegrityError
-from pytest_mock import MockerFixture, MockType
+from decimal import Decimal
 
-from country_workspace.models import Program, Rdp, User
-from country_workspace.rdp.exceptions import RdpWorkflowError
-from country_workspace.rdp.lifecycle import creation
-from country_workspace.rdp.types import CreateRdpConfig
+import pytest
+from pytest_mock import MockerFixture
+
+from country_workspace.models import Program, RdpOperation
+from country_workspace.rdp.deduplication.biographic.forms import BiographicDeduplicationConfigForm
+from country_workspace.rdp.deduplication.biometric.forms import BiometricDeduplicationConfigForm
+from country_workspace.rdp.ocr.forms import OcrConfigForm
+from country_workspace.rdp.operations.definitions import (
+    RDP_OPERATION_DEFINITIONS,
+    get_enabled_rdp_operation_definitions,
+    get_rdp_operation_forms,
+    get_validated_rdp_operation_configs,
+)
 
 
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture
-def creation_config(program: Program, user: User) -> CreateRdpConfig:
-    return {
-        "batch_name": "Test RDP",
-        "country_office_id": program.country_office_id,
-        "program_id": program.pk,
-        "pushed_by_id": user.pk,
-        "master_detail": False,
-        "pks": [1],
-        "operations": [],
-    }
-
-
-@pytest.fixture
-def creation_job(program: Program, creation_config: CreateRdpConfig, mocker: MockerFixture) -> MockType:
-    return mocker.MagicMock(id=10, program=program, config=creation_config)
-
-
-@pytest.mark.parametrize("errors", [[], ["invalid"]], ids=["valid", "invalid"])
-def test_validate_rdp_creation(
-    program: Program, creation_config: CreateRdpConfig, mocker: MockerFixture, errors: list[str]
+@pytest.mark.parametrize("enabled", [True, False], ids=["biometric-enabled", "biometric-disabled"])
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR)),
+        ([], ()),
+        ([RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION], (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,)),
+        ([RdpOperation.Type.OCR], (RdpOperation.Type.OCR,)),
+        (
+            [RdpOperation.Type.OCR, RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION],
+            (RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR),
+        ),
+    ],
+    ids=["defaults", "empty", "biographic", "ocr", "both"],
+)
+def test_get_enabled_rdp_operation_definitions(
+    program: Program,
+    enabled: bool,
+    configured: list[str] | None,
+    expected: tuple[RdpOperation.Type, ...],
 ) -> None:
-    preflight = mocker.patch.object(creation, "preflight_errors", return_value=errors)
+    program.biometric_deduplication_enabled = enabled
+    program.enabled_rdp_operations = configured
 
-    if errors:
-        with pytest.raises(RdpWorkflowError) as exc:
-            creation.validate_rdp_creation(program=program, config=creation_config)
-        assert "invalid" in str(exc.value)
-    else:
-        creation.validate_rdp_creation(program=program, config=creation_config)
+    if enabled:
+        expected = (RdpOperation.Type.BIOMETRIC_DEDUPLICATION, *expected)
 
-    preflight.assert_called_once_with(pks=[1], master_detail=False, exclude_rdp_ids=())
+    definitions = get_enabled_rdp_operation_definitions(program)
 
-
-def test_validate_rdp_creation_requires_beneficiary_group(program: Program, creation_config: CreateRdpConfig) -> None:
-    program.beneficiary_group = None
-
-    with pytest.raises(RdpWorkflowError, match="beneficiary_group"):
-        creation.validate_rdp_creation(program=program, config=creation_config)
+    assert tuple(definition.operation_type for definition in definitions) == expected
 
 
-def test_create_rdp_core(creation_job: MockType, mocker: MockerFixture) -> None:
-    mocker.patch.object(creation, "validate_rdp_creation")
-    created = mocker.MagicMock(id=123)
-    mocker.patch.object(creation, "create_rdp", return_value=created)
-    update = mocker.patch.object(creation.AsyncJob.objects, "filter")
-    schedule = mocker.patch.object(creation, "schedule_rdp_processing")
+def test_biographic_operation_definition() -> None:
+    definition = RDP_OPERATION_DEFINITIONS[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION]
 
-    assert creation.create_rdp_core(creation_job) == {"rdp_id": 123}
-
-    update.assert_called_once_with(id=creation_job.id)
-    update.return_value.update.assert_called_once_with(rdp=created)
-    schedule.assert_called_once_with(rdp=created)
+    assert definition.config_form is BiographicDeduplicationConfigForm
+    assert definition.short_label == "Biographic"
+    assert definition.operation_id_label == "Dataset ID"
+    assert definition.can_retry_while_running is False
 
 
-def test_create_rdp_core_during_program_cleanup(creation_job: MockType, mocker: MockerFixture) -> None:
-    Program.objects.filter(pk=creation_job.program.pk).update(cleanup_in_progress=True)
-    mocker.patch.object(creation, "validate_rdp_creation")
-    create = mocker.patch.object(creation, "create_rdp")
-    schedule = mocker.patch.object(creation, "schedule_rdp_processing")
+def test_get_rdp_operation_forms(program: Program) -> None:
+    program.biometric_deduplication_enabled = True
+    program.enabled_rdp_operations = None
 
-    with pytest.raises(RdpWorkflowError, match="cleanup"):
-        creation.create_rdp_core(creation_job)
+    forms = get_rdp_operation_forms(program=program)
 
-    create.assert_not_called()
-    schedule.assert_not_called()
+    assert [definition.operation_type for definition, _ in forms] == [
+        RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+        RdpOperation.Type.OCR,
+    ]
+    assert all(not form.is_bound for _, form in forms)
+    assert isinstance(forms[0][1], BiometricDeduplicationConfigForm)
+    assert isinstance(forms[1][1], BiographicDeduplicationConfigForm)
+    assert isinstance(forms[2][1], OcrConfigForm)
+    assert [form.prefix for _, form in forms] == [
+        RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value.lower(),
+        RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION.value.lower(),
+        RdpOperation.Type.OCR.value.lower(),
+    ]
 
 
 @pytest.mark.parametrize(
-    ("message", "expected"),
-    [("uniq_non_terminal_rdp_per_program", "unfinished"), ("other constraint", "create record")],
+    ("selected", "expected"),
+    [
+        (
+            None,
+            {
+                RdpOperation.Type.BIOMETRIC_DEDUPLICATION,
+                RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION,
+                RdpOperation.Type.OCR,
+            },
+        ),
+        ([RdpOperation.Type.OCR], {RdpOperation.Type.BIOMETRIC_DEDUPLICATION, RdpOperation.Type.OCR}),
+        ([], {RdpOperation.Type.BIOMETRIC_DEDUPLICATION}),
+    ],
+    ids=["all-by-default", "ocr-selected", "none-selected"],
 )
-def test_create_rdp_core_converts_integrity_error(
-    creation_job: MockType, mocker: MockerFixture, message: str, expected: str
+def test_get_rdp_operation_forms_binds_only_selected_operations(
+    program: Program,
+    selected: list[str] | None,
+    expected: set[RdpOperation.Type],
 ) -> None:
-    mocker.patch.object(creation, "validate_rdp_creation")
-    mocker.patch.object(creation, "create_rdp", side_effect=IntegrityError(message))
+    program.biometric_deduplication_enabled = True
+    program.enabled_rdp_operations = None
 
-    with pytest.raises(RdpWorkflowError, match=expected):
-        creation.create_rdp_core(creation_job)
+    forms = get_rdp_operation_forms(program=program, data={}, selected_operations=selected)
+
+    assert len(forms) == 3
+    assert {definition.operation_type for definition, form in forms if form.is_bound} == expected
 
 
-@pytest.mark.parametrize("with_operation", [True, False])
-def test_schedule_rdp_processing(rdp: Rdp, mocker: MockerFixture, with_operation: bool) -> None:
-    from testutils.factories import BiometricRdpOperationFactory
+def test_get_rdp_operation_forms_excludes_disabled_operations(program: Program) -> None:
+    program.biometric_deduplication_enabled = False
+    program.enabled_rdp_operations = [RdpOperation.Type.OCR]
 
-    if with_operation:
-        BiometricRdpOperationFactory(rdp=rdp)
+    forms = get_rdp_operation_forms(
+        program=program,
+        data={},
+        selected_operations=[RdpOperation.Type.BIOGRAPHIC_DEDUPLICATION, RdpOperation.Type.OCR],
+    )
 
-    operations = mocker.patch.object(creation, "schedule_rdp_operations")
-    push = mocker.patch.object(creation, "schedule_rdp_push_evaluation")
+    assert [definition.operation_type for definition, _ in forms] == [RdpOperation.Type.OCR]
+    assert forms[0][1].is_bound
 
-    creation.schedule_rdp_processing(rdp=rdp)
 
-    assert operations.called is with_operation
-    assert push.called is not with_operation
+def test_get_validated_rdp_operation_configs(mocker: MockerFixture) -> None:
+    definition = RDP_OPERATION_DEFINITIONS[RdpOperation.Type.BIOMETRIC_DEDUPLICATION]
+    form = mocker.MagicMock()
+    form.is_valid.return_value = True
+    form.cleaned_data = {
+        "threshold_type": "count",
+        "threshold_value": Decimal(2),
+    }
+
+    assert get_validated_rdp_operation_configs([(definition, form)]) == [
+        {
+            "operation_type": RdpOperation.Type.BIOMETRIC_DEDUPLICATION.value,
+            "config": {
+                "threshold_type": "count",
+                "threshold_value": "2",
+            },
+        }
+    ]
+
+
+def test_get_validated_rdp_operation_configs_returns_none_for_invalid_form(
+    mocker: MockerFixture,
+) -> None:
+    definition = RDP_OPERATION_DEFINITIONS[RdpOperation.Type.BIOMETRIC_DEDUPLICATION]
+    form = mocker.MagicMock()
+    form.is_valid.return_value = False
+
+    assert get_validated_rdp_operation_configs([(definition, form)]) is None
