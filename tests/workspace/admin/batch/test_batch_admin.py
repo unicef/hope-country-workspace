@@ -430,7 +430,7 @@ def test_batch_admin_permissions_are_disabled(batch_admin, rf: RequestFactory, u
 
 
 def test_batch_admin_fields_include_related_jobs(batch_admin) -> None:
-    expected = ("name", "import_date", "imported_by", "source", "status", "related_jobs")
+    expected = ("name", "import_date", "imported_by", "source", "status_display", "related_jobs")
     assert batch_admin.fields == expected
     assert batch_admin.readonly_fields == expected
     assert batch_admin.form.Meta.help_texts["related_jobs"]
@@ -449,6 +449,15 @@ def test_related_jobs(batch_admin, batch: CountryBatch, mocker) -> None:
 
     assert "/job-url" in result
     assert str(job) in result
+    assert "status-box" in result
+    assert "Not scheduled" in result
+
+
+def test_batch_status_display_is_a_pill(batch_admin, batch: CountryBatch) -> None:
+    html = str(batch_admin.status_display(batch))
+
+    assert "status-box--success" in html
+    assert batch.get_status_display() in html
 
 
 def test_batch_admin_picture_payload_helpers(batch_admin, batch: CountryBatch, rf: RequestFactory, user) -> None:

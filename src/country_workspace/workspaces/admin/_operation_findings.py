@@ -95,6 +95,7 @@ class OperationFindingsAdminMixin:
             row = {
                 "type": operation.get_operation_type_display(),
                 "status": operation.get_status_display(),
+                "status_code": operation.status,
                 "findings": operation.findings_count,
                 "url": reverse(
                     "workspace:workspaces_countryrdp_findings",

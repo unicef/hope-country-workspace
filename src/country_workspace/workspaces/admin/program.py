@@ -29,6 +29,7 @@ from ..permissions import can_change_country_program, can_export_import_template
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
+from ..templatetags.workspace_status import render_status_box
 from ...models import AsyncJob
 
 
@@ -103,7 +104,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     list_display = (
         "name",
         "sector",
-        "status",
+        "status_display",
     )
     search_fields = ("name",)
     list_filter = ("status", "sector")
@@ -115,7 +116,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
         "hh_alien_columns_to_ignore",
         "ind_alien_columns_to_ignore",
         "code",
-        "status",
+        "status_display",
         "sector",
         "name",
         "dedup_settings",
@@ -143,6 +144,10 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
     def has_delete_permission(self, request: HttpRequest, obj: CountryProgram | None = None) -> bool:
         return False
 
+    @display(description=_("Status"), ordering="status")
+    def status_display(self, obj: CountryProgram) -> str:
+        return render_status_box(obj.status, obj.get_status_display())
+
     def get_fieldsets(
         self, request: HttpRequest, obj: CountryProgram | None = None
     ) -> list[tuple[str | None, dict[str, Any]]]:
@@ -152,7 +157,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
                 {
                     "fields": (
                         ("name", "code"),
-                        ("status", "sector"),
+                        ("status_display", "sector"),
                     ),
                 },
             ),

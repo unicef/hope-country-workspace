@@ -8,8 +8,10 @@ register = Library()
 
 STATUS_TONES = {
     "ACTIVE": "success",
+    "COMPLETE": "success",
     "DONE": "success",
     "SUCCESS": "success",
+    "LOADING": "pending",
     "PENDING": "pending",
     "PROGRESS": "pending",
     "PUSH_PENDING": "pending",
