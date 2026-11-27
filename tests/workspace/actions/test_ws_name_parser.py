@@ -47,6 +47,7 @@ def test_name_parser_impl():
         CountryIndividualFactory(flex_fields={full_name_field: "John Doe"}),
         CountryIndividualFactory(flex_fields={full_name_field: "Jane Marie Smith"}),
     ]
+    original_checksums = [individual.checksum for individual in individuals]
 
     config = {
         "source_field": full_name_field,
@@ -79,6 +80,7 @@ def test_name_parser_impl():
     assert individuals[0].flex_fields[given_name_field] == "John"
     assert individuals[0].flex_fields[family_name_field] == "Doe"
     assert middle_name_field not in individuals[0].flex_fields
+    assert individuals[0].checksum != original_checksums[0]
 
     # Jane Marie Smith
     individuals[1].refresh_from_db()
@@ -177,6 +179,33 @@ def test_name_parser_form_requires_at_least_one_destination():
 
     assert not form.is_valid()
     assert "At least one destination field must be selected" in str(form.errors)
+
+
+def test_name_parser_form_rejects_country_without_model():
+    """Countries without a shipped model must not be queued."""
+    country = CountryFactory(iso_code2="QZ", iso_code3="QZZ", name="No Parser Land")
+    office = OfficeFactory()
+    office.countries.add(country)
+
+    checker = DataCheckerFactory()
+    fieldset = FieldsetFactory()
+    FlexFieldFactory(fieldset=fieldset, name="full_name")
+    FlexFieldFactory(fieldset=fieldset, name="given_name")
+    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix="")
+
+    form = NameParserForm(
+        data={
+            **HIDDEN_FORM_FIELDS,
+            "source_field": "full_name",
+            "given_name_field": "given_name",
+            "country_code": "QZZ",
+        },
+        checker=checker,
+        tenant=office,
+    )
+
+    assert not form.is_valid()
+    assert "No name parsing model is available for QZZ." in form.errors["country_code"]
 
 
 def test_name_parser_impl_with_non_string_value():
@@ -372,7 +401,7 @@ def test_name_parser_form_with_multiple_countries():
 @pytest.fixture
 def office():
     co = OfficeFactory()
-    country = CountryFactory(iso_code2="US", name="United States")
+    country = CountryFactory(iso_code2="UA", iso_code3="UKR", name="Ukraine")
     co.countries.add(country)
     state.tenant = co
     return co
@@ -435,7 +464,7 @@ def test_name_parser_action_integration(
             form["source_field"].select(text="Full Name")
             form["given_name_field"].select(text="Given Name")
             form["family_name_field"].select(text="Family Name")
-            form["country_code"].select(text="United States")
+            form["country_code"].select(text="Ukraine")
             res = form.submit("_apply")
 
             assert res.status_code == 200

@@ -71,11 +71,18 @@ def get_line_to_tensor_converter(alphabet: Alphabet, max_name_len: int) -> Calla
 
     def line_to_tensor(line: str) -> torch.Tensor:
         tensor = torch.ones(max_name_len, dtype=torch.long) * oob
-        for li, letter in enumerate(line):
+        for li, letter in enumerate(line[:max_name_len]):
             tensor[li] = letter_to_index(letter)
         return tensor
 
     return line_to_tensor
+
+
+def has_name_parser_model(country_code: str) -> bool:
+    """Return whether both the config and the weights exist for a country."""
+    config_path = BASE_PATH / CONFIG_PATH_TEMPLATE.format(country_code=country_code)
+    model_path = BASE_PATH / MODEL_PATH_TEMPLATE.format(country_code=country_code)
+    return config_path.is_file() and model_path.is_file()
 
 
 def get_parser(country_code: str) -> Parser:

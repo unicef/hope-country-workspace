@@ -1,10 +1,10 @@
 {% extends "workspace/actions/base.html" %}
-{% load i18n %}
+{% load i18n workspace_urls %}
 {% block action-content %}
     <div class="min-w-full py-5">
         All selected {{ opts.verbose_name_plural }} will be updated by concatenating fields based on the pattern.
         <br />
-        Use field placeholders like <code>{first_name}</code>, <code>{middle_name}</code>, <code>{last_name}</code> in the pattern.
+        Use field placeholders like <code>{given_name} {middle_name} {family_name}</code> in the pattern.
     </div>
     <div class="m-2 bg-white">
         <form method="post" id="concatenate-field-form">
@@ -17,6 +17,8 @@
             </div>
             <div class="submit-row">
                 <input type="submit" value="{% translate 'Preview' %}" class="default" name="_preview" />
+                {% url opts|workspace_urlname:'changelist' as changelist_url %}
+                <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Go back' %}</a>
             </div>
             {% if changes %}
                 <h3>
@@ -54,6 +56,7 @@
                 </table>
                 <div class="submit-row">
                     <input type="submit" value="{% translate 'Apply' %}" class="default" name="_apply" />
+                    <a href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Go back' %}</a>
                 </div>
             {% endif %}
         </form>

@@ -3,12 +3,14 @@ from typing import TYPE_CHECKING, Any
 from django import forms
 from django.db import transaction
 
-from country_workspace.contrib.name_parser.parser import NAME_TYPES, get_parser
+from country_workspace.contrib.name_parser.parser import NAME_TYPES, Parser, get_parser, has_name_parser_model
 from country_workspace.utils.flex_fields import get_checker_fields
 
 from .base import BaseActionForm
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from django.db.models import QuerySet
     from hope_flex_fields.models import DataChecker
 
@@ -47,11 +49,16 @@ class NameParserForm(BaseActionForm):
 
         country_choices = [(c.iso_code3.upper(), c.name) for c in tenant.countries.all()]
         self.fields["country_code"].choices = country_choices
+        self.fields["country_code"].help_text = "A trained model must exist for the selected country."
         if len(country_choices) == 1:
             self.fields["country_code"].initial = country_choices[0][0]
 
     def clean(self) -> dict[str, Any]:
         cleaned_data = super().clean()
+
+        country_code = cleaned_data.get("country_code")
+        if country_code and not has_name_parser_model(country_code):
+            self.add_error("country_code", f"No name parsing model is available for {country_code}.")
 
         if not any(
             [
@@ -85,6 +92,51 @@ class NameParserForm(BaseActionForm):
         return cleaned_data
 
 
+def update_checksum(records: "Iterable[Beneficiary]", initial_fields: set[str]) -> set[str]:
+    """Update checksum for changed records and return the fields to persist."""
+    fields = set(initial_fields)
+    for record in records:
+        if update_fields := record.update_checksum(initial_fields):
+            fields.update(update_fields)
+    return fields
+
+
+def apply_parsed_name(
+    record: "Beneficiary",
+    source_field: str,
+    field_mapping: dict[str, str],
+    parser: Parser,
+) -> bool:
+    """Write parsed name parts onto the record. Return whether anything changed."""
+    flex_fields = record.flex_fields if isinstance(record.flex_fields, dict) else None
+    if flex_fields is None:
+        return False
+
+    full_name = flex_fields.get(source_field)
+    if not isinstance(full_name, str):
+        return False
+
+    name_parts = full_name.split()
+    if not name_parts:
+        return False
+
+    grouped_parts: dict[str, list[str]] = {name_type: [] for name_type in NAME_TYPES}
+    for part, name_type in zip(name_parts, parser(full_name), strict=False):
+        grouped_parts[name_type].append(part)
+
+    changed = False
+    for name_type, field_name in field_mapping.items():
+        parts = grouped_parts[name_type]
+        if not parts:
+            continue
+        flex_fields[field_name] = " ".join(parts)
+        changed = True
+
+    if changed:
+        record.flex_fields = flex_fields
+    return changed
+
+
 def name_parser_impl(
     records: "QuerySet[Beneficiary]",
     config: dict[str, Any],
@@ -96,32 +148,13 @@ def name_parser_impl(
         "middle_name": config.get("middle_name_field"),
         "family_name": config.get("family_name_field"),
     }
-    # Filter out empty fields
     field_mapping = {k: v for k, v in field_mapping.items() if v}
 
     parser = get_parser(config["country_code"])
-
     with transaction.atomic():
-        for record in records:
-            full_name = record.flex_fields.get(source_field)
-            if not isinstance(full_name, str):
-                continue
-
-            name_parts = full_name.split()
-            if not name_parts:
-                continue
-
-            parsed_types = parser(full_name)
-
-            # Group parts by type
-            grouped_parts: dict[str, list[str]] = {name_type: [] for name_type in NAME_TYPES}
-            for part, name_type in zip(name_parts, parsed_types, strict=False):
-                grouped_parts[name_type].append(part)
-
-            for name_type, field_name in field_mapping.items():
-                parts = grouped_parts[name_type]
-                if parts:  # Only set the field if there are parts to join
-                    record.flex_fields[field_name] = " ".join(parts)
-
-        if save:
-            records.bulk_update(records, ["flex_fields"], batch_size=1000)
+        updated_records = [
+            record for record in records if apply_parsed_name(record, source_field, field_mapping, parser)
+        ]
+        if save and updated_records:
+            fields = update_checksum(updated_records, {"flex_fields"})
+            records.model.objects.bulk_update(updated_records, list(fields), batch_size=1000)
