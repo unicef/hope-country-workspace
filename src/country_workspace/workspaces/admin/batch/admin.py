@@ -21,7 +21,7 @@ from country_workspace.models import AsyncJob, MappingImporter, Program, Transfo
 from ....state import state
 from ...models import CountryBatch
 from ...options import WorkspaceModelAdmin
-from ...templatetags.workspace_status import render_status_box
+from ...templatetags.workspace_status import status_box
 from ...permissions import can_import_program_data, can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
@@ -147,6 +147,7 @@ class CountryBatchAdminForm(forms.ModelForm):
         fields = ("name", "imported_by", "source", "status")
         help_texts = {
             "related_jobs": _("Background jobs associated with this batch."),
+            "status_display": CountryBatch._meta.get_field("status").help_text,
         }
 
 
@@ -182,7 +183,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     @display(description=_("Status"), ordering="status")
     def status_display(self, obj: CountryBatch) -> str:
-        return render_status_box(obj.status, obj.get_status_display())
+        return status_box(obj.status, obj.get_status_display())
 
     def related_jobs(self, obj: CountryBatch) -> str:
         if not (jobs := obj.jobs.order_by("datetime_created")).exists():
@@ -197,7 +198,7 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
                 (
                     reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
                     str(job),
-                    render_status_box(status) if (status := getattr(job, "task_status", None)) else "—",
+                    status_box(status) if (status := getattr(job, "task_status", None)) else "—",
                 )
                 for job in jobs
             ),

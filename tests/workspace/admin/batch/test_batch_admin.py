@@ -434,6 +434,7 @@ def test_batch_admin_fields_include_related_jobs(batch_admin) -> None:
     assert batch_admin.fields == expected
     assert batch_admin.readonly_fields == expected
     assert batch_admin.form.Meta.help_texts["related_jobs"]
+    assert batch_admin.form.Meta.help_texts["status_display"] == CountryBatch._meta.get_field("status").help_text
 
 
 def test_related_jobs(batch_admin, batch: CountryBatch, mocker) -> None:

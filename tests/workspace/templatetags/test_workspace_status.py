@@ -35,13 +35,13 @@ def test_status_box_escapes_status() -> None:
     assert "<b>" not in render("{% status_box status %}", status="<b>boom</b>")
 
 
-def test_render_status_box_matches_the_pill() -> None:
-    from country_workspace.workspaces.templatetags.workspace_status import render_status_box
+def test_status_box_callable_matches_the_template() -> None:
+    from country_workspace.workspaces.templatetags.workspace_status import status_box
 
-    html = render_status_box("FAILURE", detail="importing")
-    assert 'class="status-box status-box--error"' in html
-    assert "FAILURE (importing)" in html
-    assert "<b>" not in render_status_box("<b>boom</b>")
+    assert status_box("FAILURE", detail="importing") == render(
+        "{% status_box status detail=detail %}", status="FAILURE", detail="importing"
+    )
+    assert "<b>" not in status_box("<b>boom</b>")
 
 
 def test_status_box_detail() -> None:

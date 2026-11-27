@@ -29,7 +29,7 @@ from ..permissions import can_change_country_program, can_export_import_template
 from ..models import CountryProgram
 from ..options import WorkspaceModelAdmin
 from ..sites import workspace
-from ..templatetags.workspace_status import render_status_box
+from ..templatetags.workspace_status import status_box
 from ...models import AsyncJob
 
 
@@ -146,7 +146,7 @@ class CountryProgramAdmin(ImportDataMixin, WorkspaceModelAdmin):
 
     @display(description=_("Status"), ordering="status")
     def status_display(self, obj: CountryProgram) -> str:
-        return render_status_box(obj.status, obj.get_status_display())
+        return status_box(obj.status, obj.get_status_display())
 
     def get_fieldsets(
         self, request: HttpRequest, obj: CountryProgram | None = None
