@@ -1,0 +1,59 @@
+x-dev: &dev
+  build:
+    target: tests
+  volumes:
+    - .:/app
+
+services:
+  backend:
+    <<: *dev
+    ports:
+      - "${BACKEND_DEBUG_PORT}:5680"
+    command:
+      - sh
+      - -c
+      - |
+        if [ "$${INIT_HOPE_STORAGE:-0}" = "1" ]; then
+          django-admin init_hope_storage
+        fi
+        django-admin upgrade --with-check
+        exec python -Xfrozen_modules=off -u -m debugpy --listen 0.0.0.0:5680 manage.py runserver 0.0.0.0:8000
+
+  celery_worker:
+    <<: *dev
+    environment:
+      C_FORCE_ROOT: "1"
+    ports:
+      - "${CELERY_DEBUG_PORT}:5681"
+    command:
+      - sh
+      - -c
+      - |
+        exec python -Xfrozen_modules=off -u -m debugpy --listen 0.0.0.0:5681           -m celery -A country_workspace.config.celery worker -E           --loglevel=INFO --concurrency=1
+
+  celery-beat:
+    <<: *dev
+    command:
+      - celery
+      - -A
+      - country_workspace.config.celery
+      - beat
+      - --loglevel=INFO
+      - --scheduler
+      - django_celery_beat.schedulers:DatabaseScheduler
+
+  celery-flower:
+    <<: *dev
+    command:
+      - celery
+      - -A
+      - country_workspace.config.celery
+      - flower
+      - --address=0.0.0.0
+
+  stream_listener:
+    <<: *dev
+    command:
+      - sh
+      - -c
+      - stream configure --queues && exec stream listen -q ocr_results
