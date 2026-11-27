@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n workspace_status %}
 {% if operation_findings %}
     <section id="operation-findings" class="mb-6 overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-200 bg-gray-50 px-5 py-3">
@@ -61,8 +61,8 @@
                                 <td class="px-5 py-3 font-medium">
                                     {{ row.type }}
                                 </td>
-                                <td class="px-5 py-3 font-semibold">
-                                    {{ row.status }}
+                                <td class="px-5 py-3">
+                                    {% status_box row.status_code row.status %}
                                 </td>
                                 {% if show_finding_members %}
                                     <td class="px-5 py-3">

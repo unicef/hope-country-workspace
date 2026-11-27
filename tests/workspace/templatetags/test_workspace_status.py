@@ -12,6 +12,10 @@ def render(source: str, **context: str) -> str:
         ("SUCCESS", "success"),
         ("success", "success"),
         ("REVIEW_PENDING", "pending"),
+        ("LOADING", "pending"),
+        ("COMPLETE", "success"),
+        ("DRAFT", "neutral"),
+        ("FINISHED", "neutral"),
         ("FAILURE", "error"),
         ("CANCELLED", "neutral"),
         ("Not scheduled", "neutral"),
@@ -29,6 +33,15 @@ def test_status_box_label_does_not_change_tone() -> None:
 
 def test_status_box_escapes_status() -> None:
     assert "<b>" not in render("{% status_box status %}", status="<b>boom</b>")
+
+
+def test_status_box_callable_matches_the_template() -> None:
+    from country_workspace.workspaces.templatetags.workspace_status import status_box
+
+    assert status_box("FAILURE", detail="importing") == render(
+        "{% status_box status detail=detail %}", status="FAILURE", detail="importing"
+    )
+    assert "<b>" not in status_box("<b>boom</b>")
 
 
 def test_status_box_detail() -> None:

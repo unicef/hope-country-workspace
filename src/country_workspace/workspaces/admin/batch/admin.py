@@ -7,7 +7,7 @@ from admin_extra_buttons.decorators import button, choice, link
 from constance import config as constance_config
 from django import forms
 from django.contrib import messages
-from django.contrib.admin import register
+from django.contrib.admin import display, register
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -21,6 +21,7 @@ from country_workspace.models import AsyncJob, MappingImporter, Program, Transfo
 from ....state import state
 from ...models import CountryBatch
 from ...options import WorkspaceModelAdmin
+from ...templatetags.workspace_status import status_box
 from ...permissions import can_import_program_data, can_reprocess_batch
 from ...sites import workspace
 from ..filters import CWLinkedAutoCompleteFilter, ChoiceFilter, UserAutoCompleteFilter
@@ -146,18 +147,19 @@ class CountryBatchAdminForm(forms.ModelForm):
         fields = ("name", "imported_by", "source", "status")
         help_texts = {
             "related_jobs": _("Background jobs associated with this batch."),
+            "status_display": CountryBatch._meta.get_field("status").help_text,
         }
 
 
 @register(CountryBatch, site=workspace)
 class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ["name", "import_date", "imported_by", "source", "status"]
+    list_display = ["name", "import_date", "imported_by", "source", "status_display"]
     search_fields = ("name",)
     change_list_template = ["workspace/change_list.html"]
     change_form_template = ["workspace/batch/change_form.html", "workspace/change_form.html"]
     ordering = ("-import_date",)
     list_filter = (("source", ChoiceFilter), ("imported_by", UserAutoCompleteFilter))
-    readonly_fields = fields = ("name", "import_date", "imported_by", "source", "status", "related_jobs")
+    readonly_fields = fields = ("name", "import_date", "imported_by", "source", "status_display", "related_jobs")
     form = CountryBatchAdminForm
 
     def get_common_context(self, request: HttpRequest, pk: str | None = None, **kwargs: Any) -> dict[str, Any]:
@@ -179,20 +181,24 @@ class CountryBatchAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
     def has_delete_permission(self, request: HttpRequest, obj: CountryBatch | None = None) -> bool:
         return False
 
+    @display(description=_("Status"), ordering="status")
+    def status_display(self, obj: CountryBatch) -> str:
+        return status_box(obj.status, obj.get_status_display())
+
     def related_jobs(self, obj: CountryBatch) -> str:
         if not (jobs := obj.jobs.order_by("datetime_created")).exists():
             return "-"
         return format_html_join(
             "\n",
-            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px'>"
+            "<div style='display:grid; grid-template-columns:max-content 1fr; column-gap:10px; align-items:center'>"
             "<a href='{}' style='color: var(--link-fg)'>{}</a>"
-            "<span style='white-space:nowrap'>{}</span>"
+            "<span>{}</span>"
             "</div>",
             (
                 (
                     reverse("workspace:workspaces_countryasyncjob_change", args=[job.pk]),
                     str(job),
-                    str(job.task_status) if getattr(job, "task_status", None) is not None else "—",
+                    status_box(status) if (status := getattr(job, "task_status", None)) else "—",
                 )
                 for job in jobs
             ),

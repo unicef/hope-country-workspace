@@ -283,6 +283,8 @@ $arrow-drop-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
   font-size: 10px;
   line-height: 16px;
   letter-spacing: 1.2px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Outside @layer: the tone comes from Python, and Tailwind doesn't scan it, so layered rules would be purged. */

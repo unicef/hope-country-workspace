@@ -51,6 +51,7 @@ from country_workspace.state import state
 from country_workspace.workspaces.models import CountryHousehold, CountryIndividual, CountryRdp
 from country_workspace.workspaces.options import WorkspaceModelAdmin
 from country_workspace.workspaces.sites import workspace
+from country_workspace.workspaces.templatetags.workspace_status import status_box
 
 from .filters import ChoiceFilter
 from .hh_ind import SelectedProgramMixin
@@ -82,7 +83,7 @@ def _has_retryable_operations(btn: StandardButton) -> bool:
 
 @register(CountryRdp, site=workspace)
 class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
-    list_display = ("name", "push_date", "status")
+    list_display = ("name", "push_date", "status_display")
     list_filter = (("status", ChoiceFilter),)
     search_fields = ("name",)
     ordering = ("-push_date",)
@@ -139,6 +140,10 @@ class CountryRdpAdmin(SelectedProgramMixin, WorkspaceModelAdmin):
 
     def has_add_permission(self, request: HttpRequest, obj: CountryRdp | None = None) -> bool:
         return False
+
+    @display(description=_("Status"), ordering="status")
+    def status_display(self, obj: CountryRdp) -> str:
+        return status_box(obj.status, obj.get_status_display())
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[CountryRdp]:
         return super().get_queryset(request).select_related("program__beneficiary_group").filter(program=state.program)
