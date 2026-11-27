@@ -10,7 +10,17 @@ from django.urls import reverse
 from hope_flex_fields.fields import FlexImageField
 from PIL import Image
 from pytest_mock import MockerFixture
+from testutils.factories.smart_fields import (
+    DataCheckerFactory,
+    DataCheckerFieldsetFactory,
+    FieldsetFactory,
+    FlexFieldFactory,
+)
 
+from country_workspace.contrib.hope.account_attachments import AccountAttachmentsField
+from country_workspace.contrib.hope.beneficiary_reference import BeneficiaryReferenceModelChoiceField
+from country_workspace.contrib.hope.latin_names import LatinNameField
+from country_workspace.contrib.hope.phone_numbers import PhoneNumberField
 from country_workspace.utils.fields import TO_REMOVE_VALUES, clean_field_name, clean_field_names, to_reference_key
 from country_workspace.utils.flex_fields import (
     Base64ImageField,
@@ -18,6 +28,8 @@ from country_workspace.utils.flex_fields import (
     CaseInsensitiveChoiceFieldWithEmptyDisplay,
     ConsentSharingChoice,
     ObservedDisabilityChoice,
+    get_checker_field_types,
+    normalize_field_types,
     split_options,
 )
 
@@ -234,3 +246,81 @@ def test_normalize_reference_fallback_object_string() -> None:
             return "  x-ref  "
 
     assert to_reference_key(Obj()) == "x-ref"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("prefix", "phone_name", "age_name"),
+    [
+        pytest.param("", "phone_no", "age", id="no-prefix"),
+        pytest.param("contact_", "contact_phone_no", "contact_age", id="prefix"),
+        pytest.param("contact_%s_value", "contact_phone_no_value", "contact_age_value", id="format-prefix"),
+    ],
+)
+def test_get_checker_field_types(prefix: str, phone_name: str, age_name: str) -> None:
+    parent = FieldsetFactory()
+    FlexFieldFactory(fieldset=parent, name="phone_no", definition__field_type=PhoneNumberField)
+    FlexFieldFactory(fieldset=parent, name="age", definition__field_type=forms.CharField)
+    fieldset = FieldsetFactory(extends=parent)
+    FlexFieldFactory(fieldset=fieldset, name="age", definition__field_type=forms.IntegerField)
+    checker = DataCheckerFactory()
+    DataCheckerFieldsetFactory(checker=checker, fieldset=fieldset, prefix=prefix)
+
+    assert get_checker_field_types(checker) == {phone_name: PhoneNumberField, age_name: forms.IntegerField}
+
+
+def test_get_checker_field_types_without_checker() -> None:
+    assert get_checker_field_types(None) == {}
+
+
+@pytest.mark.parametrize("field_type", [forms.CharField, PhoneNumberField, LatinNameField])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(9328772, "9328772", id="integer"),
+        pytest.param(0, "0", id="zero"),
+        pytest.param(42.0, "42.0", id="integral-float"),
+        pytest.param(42.5, "42.5", id="fractional-float"),
+        pytest.param("00123", "00123", id="leading-zeros"),
+        pytest.param(" text ", " text ", id="whitespace"),
+        pytest.param("", "", id="empty"),
+        pytest.param(None, None, id="null"),
+        pytest.param(True, True, id="true"),
+        pytest.param(False, False, id="false"),
+        pytest.param([1, 2], [1, 2], id="list"),
+        pytest.param({"key": 1}, {"key": 1}, id="dict"),
+    ],
+)
+def test_normalize_field_types_for_text_fields(field_type: type[forms.Field], value: object, expected: object) -> None:
+    data = {"field": value}
+
+    assert normalize_field_types(data, {"field": field_type}) == {"field": expected}
+    assert data == {"field": value}
+
+
+@pytest.mark.parametrize(
+    "field_type",
+    [
+        forms.IntegerField,
+        forms.FloatField,
+        forms.DecimalField,
+        forms.BooleanField,
+        forms.ChoiceField,
+        forms.JSONField,
+        forms.UUIDField,
+        AccountAttachmentsField,
+        BeneficiaryReferenceModelChoiceField,
+        FlexImageField,
+        Base64ImageField,
+    ],
+)
+def test_normalize_field_types_keeps_other_field_types(field_type: type[forms.Field]) -> None:
+    data = {"field": 42}
+
+    assert normalize_field_types(data, {"field": field_type}) == data
+
+
+def test_normalize_field_types_keeps_unknown_and_missing_fields() -> None:
+    data = {"unknown": 42}
+
+    assert normalize_field_types(data, {"missing": forms.CharField}) == data

@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Generator
 
 from django import forms
@@ -30,6 +31,30 @@ def get_checker_fields(
                 f"{fs.prefix if with_fs_prefix else ''}{field.name}",
                 f"{fs.prefix if with_fs_prefix else ''}{(field.attrs.get('label', field.name) or field.name)}",
             )
+
+
+def get_checker_field_types(checker: DataChecker | None) -> dict[str, type[forms.Field]]:
+    """Return field types keyed by their full DataChecker field names."""
+    field_types: dict[str, type[forms.Field]] = {}
+    if checker is not None:
+        for member in checker.members.select_related("fieldset").all():
+            fieldset = member.fieldset
+            names = fieldset.get_prefixed_field_map(member.prefix)
+            field_types.update({names[field.name]: field.definition.field_type for field in fieldset.get_fields()})
+    return field_types
+
+
+def normalize_field_types(data: dict[str, Any], field_types: Mapping[str, type[forms.Field]]) -> dict[str, Any]:
+    """Convert numeric values in text fields to strings without validation."""
+    return {
+        name: str(value)
+        if type(value) in (int, float)
+        and (field_type := field_types.get(name)) is not None
+        and issubclass(field_type, forms.CharField)
+        and field_type.to_python is forms.CharField.to_python
+        else value
+        for name, value in data.items()
+    }
 
 
 def get_file_field_names(checker: DataChecker) -> set[str]:
